@@ -15,6 +15,25 @@ from lib.correction import is_correction
 from lib.persona import section
 
 
+def _disable_git_background_tasks() -> None:
+    config = {
+        "maintenance.auto": "false",
+        "gc.auto": "0",
+        "core.fsmonitor": "false",
+    }
+    try:
+        offset = int(os.environ.get("GIT_CONFIG_COUNT", "0") or "0")
+    except ValueError:
+        offset = 0
+    for index, (key, value) in enumerate(config.items(), start=offset):
+        os.environ[f"GIT_CONFIG_KEY_{index}"] = key
+        os.environ[f"GIT_CONFIG_VALUE_{index}"] = value
+    os.environ["GIT_CONFIG_COUNT"] = str(offset + len(config))
+
+
+_disable_git_background_tasks()
+
+
 def test_pre_write_denies_forced_pending_write():
     payload = {"tool_input": {"file_path": "a.txt", "content": "bad\u2014dash"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
