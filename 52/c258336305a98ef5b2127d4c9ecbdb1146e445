@@ -1,0 +1,25 @@
+.requirements/20260706T000000Z_combined_watcher/REQUIREMENTS.md
+  s_fcfa07d87e7691::t_d8137afeec0d1d 1-91
+hooks/lib/hookio.py
+  s_fcfa07d87e7691::t_81a92869c83c40 1-40
+hooks/lib/model_jury.py
+  s_fcfa07d87e7691::t_5df23ab52740c2 1-255
+hooks/persona.md
+  s_fcfa07d87e7691::t_3f9d0dc4ac3727 1-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "52c258336305a98ef5b2127d4c9ecbdb1146e445",
+  "prompts": {},
+  "sessions": {
+    "s_fcfa07d87e7691": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3658-a70c-7df1-83d3-dbf4a774fdf6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
