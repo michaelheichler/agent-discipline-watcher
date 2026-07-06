@@ -60,11 +60,3 @@ and the exact snippet before assuming the hook failed.
   or structure.
 - Do not broaden the task into style cleanup outside the touched or requested
   scope.
-
-## Install And Trust Caveat
-
-The skill is portable, but hook activation is client-specific. Claude Code,
-Codex, and Pi each have their own settings surface. After installing or changing
-Codex hooks, the user may need to review and trust the commands in `/hooks`
-before enforcement is live. Pi can steer at agent end but cannot block a final
-reply the way Codex or Claude Code hooks can.
