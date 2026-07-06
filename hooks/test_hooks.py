@@ -1,7 +1,10 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import gate
@@ -386,6 +389,35 @@ def _ledger_path():
     return path
 
 
+@contextmanager
+def _temporary_test_directory():
+    path = Path(tempfile.mkdtemp(prefix="agent-discipline-watcher-test-"))
+    try:
+        yield path
+    finally:
+        _remove_temporary_tree(path)
+
+
+def _remove_temporary_tree(path: Path) -> None:
+    last_error = None
+    for _ in range(30):
+        try:
+            shutil.rmtree(path, onexc=_reset_permissions)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            last_error = error
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+
+
+def _reset_permissions(function, path, _exc_info):
+    os.chmod(path, 0o700)
+    function(path)
+
+
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True)
 
@@ -402,40 +434,40 @@ if __name__ == "__main__":
     test_pre_write_denies_clean_code_violation()
     test_pre_write_denies_prose_comment_block()
     test_pre_commit_allows_non_commit_bash()
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_blocks_staged_forced_findings(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_allows_git_commit_as_argument(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_git_c_repo(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_cd_then_git_commit(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_pipeline_git_commit(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_command_wrapper(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_env_wrapper(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_grouped_cd_commit(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_all_commit_cwds(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_staged_blob_when_worktree_is_clean(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_ignores_dirty_worktree_when_staged_blob_is_clean(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_pre_commit_scans_from_repo_subdirectory(Path(directory))
-    with tempfile.TemporaryDirectory() as directory:
-        test_record_and_stop_share_one_ledger(Path(directory))
+    with _temporary_test_directory() as directory:
+        test_pre_commit_blocks_staged_forced_findings(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_allows_git_commit_as_argument(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_git_c_repo(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_cd_then_git_commit(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_pipeline_git_commit(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_command_wrapper(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_env_wrapper(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_grouped_cd_commit(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_all_commit_cwds(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_staged_blob_when_worktree_is_clean(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_ignores_dirty_worktree_when_staged_blob_is_clean(directory)
+    with _temporary_test_directory() as directory:
+        test_pre_commit_scans_from_repo_subdirectory(directory)
+    with _temporary_test_directory() as directory:
+        test_record_and_stop_share_one_ledger(directory)
     test_stop_blocks_pah_empty_validator()
     test_stop_blocks_pah_flattery()
-    with tempfile.TemporaryDirectory() as directory:
-        test_stop_pah_block_keeps_advisory_report(Path(directory))
+    with _temporary_test_directory() as directory:
+        test_stop_pah_block_keeps_advisory_report(directory)
     test_stop_allows_clean_direct_reply()
     test_stop_opener_ignores_later_quote()
-    with tempfile.TemporaryDirectory() as directory:
-        test_session_start_clears_stale_ledger(Path(directory))
+    with _temporary_test_directory() as directory:
+        test_session_start_clears_stale_ledger(directory)
     test_persona_sections_are_present()
     test_prompt_inject_emits_reflex_without_nudge_on_neutral()
     test_prompt_inject_appends_nudge_on_correction()
@@ -443,5 +475,5 @@ if __name__ == "__main__":
     test_run_sh_routes_pretooluse()
     test_run_sh_routes_precommit_non_commit()
     test_run_sh_routes_user_prompt_submit()
-    with tempfile.TemporaryDirectory() as directory:
-        test_run_sh_selects_sibling_model_loader_python(Path(directory))
+    with _temporary_test_directory() as directory:
+        test_run_sh_selects_sibling_model_loader_python(directory)
