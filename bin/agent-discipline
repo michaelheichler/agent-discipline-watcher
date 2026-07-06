@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+CHECKS = ("punctuation", "english", "clean_code")
+DEFAULT_CHECKS = {name: True for name in CHECKS}
+CONFIG_NAME = ".agent-discipline.json"
+
+
+def project_root(path):
+    root = Path(path).expanduser().resolve()
+    if not root.exists():
+        raise SystemExit(f"project path does not exist: {root}")
+    if not root.is_dir():
+        raise SystemExit(f"project path is not a directory: {root}")
+    return root
+
+
+def config_path(root):
+    return root / CONFIG_NAME
+
+
+def find_config(root):
+    for parent in (root, *root.parents):
+        path = config_path(parent)
+        if path.exists():
+            return path
+    return config_path(root)
+
+
+def parse_checks(raw):
+    enabled = set()
+    for part in raw.split(","):
+        name = part.strip()
+        if name:
+            enabled.add(name)
+    unknown = sorted(enabled - set(CHECKS))
+    if unknown:
+        raise SystemExit(f"unknown check: {', '.join(unknown)}")
+    return {name: name in enabled for name in CHECKS}
+
+
+def parse_selected_checks(raw, current):
+    choice = raw.strip().lower()
+    if not choice:
+        return dict(current)
+    if choice == "all":
+        return {name: True for name in CHECKS}
+    if choice == "none":
+        return {name: False for name in CHECKS}
+
+    selected = set()
+    for part in choice.replace(",", " ").split():
+        if not part.isdigit():
+            raise SystemExit(f"unknown selection: {part}")
+        number = int(part)
+        if number < 1 or number > len(CHECKS):
+            raise SystemExit(f"unknown selection: {part}")
+        selected.add(CHECKS[number - 1])
+    return {name: name in selected for name in CHECKS}
+
+
+def load_config(root):
+    path = find_config(root)
+    checks = dict(DEFAULT_CHECKS)
+    if path.exists():
+        data = json.loads(path.read_text())
+        checks.update(data.get("checks", {}))
+    return {
+        "project": str(root),
+        "config_path": str(path),
+        "checks": {name: bool(checks.get(name, True)) for name in CHECKS},
+    }
+
+
+def choose_checks(root):
+    current = load_config(root)["checks"]
+    print("Select checks:")
+    for number, name in enumerate(CHECKS, start=1):
+        state = "on" if current[name] else "off"
+        print(f"{number}. {name} [{state}]")
+    try:
+        raw = input("Numbers, all, none, or Enter: ")
+    except EOFError:
+        raw = ""
+    return parse_selected_checks(raw, current)
+
+
+def configure(args):
+    root = project_root(args.project)
+    checks = choose_checks(root) if args.checks is None else parse_checks(args.checks)
+    data = {"checks": checks}
+    config_path(root).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(load_config(root), indent=2, sort_keys=True))
+
+
+def status(args):
+    root = project_root(args.project)
+    print(json.dumps(load_config(root), indent=2, sort_keys=True))
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        status(argparse.Namespace(project="."))
+        print("Hint: run agent-discipline configure to choose checks.")
+        return 0
+
+    parser = argparse.ArgumentParser(prog="agent-discipline")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    configure_parser = sub.add_parser("configure")
+    configure_parser.add_argument("project", nargs="?", default=".")
+    configure_parser.add_argument(
+        "--checks",
+        help="comma list: punctuation,english,clean_code",
+    )
+    configure_parser.set_defaults(func=configure)
+
+    status_parser = sub.add_parser("status")
+    status_parser.add_argument("project", nargs="?", default=".")
+    status_parser.set_defaults(func=status)
+
+    args = parser.parse_args(argv)
+    args.func(args)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,38 @@
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear|compact"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh SessionStart"
+statusMessage = "Loading agent discipline watcher"
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh UserPromptSubmit"
+
+[[hooks.PreToolUse]]
+matcher = "apply_patch|Edit|Write"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh PreToolUse"
+timeout = 30
+
+[[hooks.PreToolUse]]
+matcher = "Bash"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh PreCommit"
+timeout = 30
+
+[[hooks.PostToolUse]]
+matcher = "apply_patch|Edit|Write"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh PostToolUse"
+timeout = 30
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "__SKILL_DIR__/hooks/run.sh Stop"
+timeout = 30
