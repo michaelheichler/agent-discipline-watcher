@@ -70,6 +70,27 @@ def test_pre_commit_allows_non_commit_bash():
     assert response == {}
 
 
+def test_pre_write_allows_css_semicolons_in_style_block():
+    content = "\n".join([
+        "<style>",
+        "body { margin:0; color:#222; }",
+        "</style>",
+        "<p>visible prose stays scanned</p>",
+        "",
+    ])
+    payload = {"tool_input": {"file_path": "board.html", "content": content}}
+    response = pre_write.run(payload, {"ledger_path": _ledger_path()})
+    assert response == {}
+
+
+def test_pre_write_still_denies_prose_splice_in_html_body():
+    content = "<p>we run it; it works</p>"
+    payload = {"tool_input": {"file_path": "a.html", "content": content}}
+    response = pre_write.run(payload, {"ledger_path": _ledger_path()})
+    assert response["decision"] == "block"
+    assert "punctuation/semicolon_splice" in response["reason"]
+
+
 def test_pre_commit_blocks_staged_forced_findings(tmp_path):
     _git(tmp_path, "init")
     target = tmp_path / "a.py"

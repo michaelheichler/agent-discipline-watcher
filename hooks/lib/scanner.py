@@ -24,6 +24,7 @@ DECADE_APOS_RE = re.compile(r"(?:\b\d{3}0|'\d0)'s\b")
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 HTML_HIDDEN_RE = re.compile(r"<!--.*?-->|<(script|style|code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 HTML_CODE_RE = re.compile(r"<(code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+HTML_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 HTML_TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 HTML_ENTITY_RE = re.compile(r"&[a-zA-Z]+;|&#\d+;")
 ENGLISH_RULES = (
@@ -500,7 +501,8 @@ def _is_header_run(run: list[tuple[int, str]]) -> bool:
 
 
 def _strip_punctuation_blocks(text: str) -> str:
-    return HTML_CODE_RE.sub(_blank_keep_newlines, text)
+    text = HTML_CODE_RE.sub(_blank_keep_newlines, text)
+    return HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
 
 
 def _strip_english_hidden(text: str) -> str:
