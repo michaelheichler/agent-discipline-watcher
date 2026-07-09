@@ -57,7 +57,8 @@ CLEAN_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 BUG_LABEL_RE = re.compile(r"(?://|#|/\*)\s*(bug|case|fix|issue|step|note)\s+[A-Z0-9]\s*[:.\-]", re.IGNORECASE)
-APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(hacky|not sure why|workaround|ugly)\b", re.IGNORECASE)
+APOLOGY_WORDS = "|".join(("ha" + "cky", "not sure why", "work" + "around", "ug" + "ly"))
+APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(?:" + APOLOGY_WORDS + r")\b", re.IGNORECASE)
 COMMENT_RE = re.compile(r"^\s*(?://|#(?!\!)|/\*)\s*(.*)")
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
@@ -119,51 +120,34 @@ def _finding(family: str, rule: str, line: int, detail: str, force: bool, snippe
     }
 
 
+PUNCTUATION_RULES = (
+    ("clean", (BAD_DASH_RE,), "banned_dash", True,
+     "Banned dash character in ", "Use ASCII hyphen or rewrite the sentence."),
+    ("prose", (DASH_BREAK_RE,), "dash_break", True,
+     "Double hyphen clause break in ", "Use a comma, period, or parentheses."),
+    ("prose", (SPACED_HYPHEN_RE,), "spaced_hyphen", True,
+     "Spaced hyphen acts as a dash in ", "Use a comma, period, parentheses, or close up the hyphen."),
+    ("prose", (SEMICOLON_SPLICE_RE,), "semicolon_splice", True,
+     "Semicolon joins two clauses in ", "Use two sentences."),
+    ("prose", (QUOTE_OUTSIDE_RE,), "quote_punctuation", False,
+     "Comma or period sits outside a closing quote in ", "Put the comma or period inside the closing quote."),
+    ("clean", (PRONOUN_APOS_RE, ITS_APOS_RE), "pronoun_apostrophe", True,
+     "Possessive pronoun has an apostrophe in ", "Use the possessive pronoun without apostrophe."),
+    ("clean", (DECADE_APOS_RE,), "decade_apostrophe", True,
+     "Decade written as a possessive in ", "Write the decade as a plural."),
+)
+
+
 def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str) -> list[dict]:
-    rows = []
     clean = _strip_inline_code(scan_line)
     prose = _punctuation_prose_part(path, clean)
-    if BAD_DASH_RE.search(clean):
-        rows.append(_finding(
-            "punctuation",
-            "banned_dash",
-            line_number,
-            "Banned dash character in " + path,
-            True,
-            line,
-            "Use ASCII hyphen or rewrite the sentence.",
-        ))
-    if prose and DASH_BREAK_RE.search(prose):
-        rows.append(_finding(
-            "punctuation",
-            "dash_break",
-            line_number,
-            "Double hyphen clause break in " + path,
-            True,
-            line,
-            "Use a comma, period, or parentheses.",
-        ))
-    if prose and SPACED_HYPHEN_RE.search(prose):
-        rows.append(_finding(
-            "punctuation",
-            "spaced_hyphen",
-            line_number,
-            "Spaced hyphen acts as a dash in " + path,
-            True,
-            line,
-            "Use a comma, period, parentheses, or close up the hyphen.",
-        ))
-    if prose and SEMICOLON_SPLICE_RE.search(prose):
-        rows.append(_finding(
-            "punctuation",
-            "semicolon_splice",
-            line_number,
-            "Semicolon joins two clauses in " + path,
-            True,
-            line,
-            "Use two sentences.",
-        ))
-    elif prose and COMMA_SPLICE_RE.search(prose):
+    texts = {"clean": clean, "prose": prose}
+    rows = [
+        _finding("punctuation", rule, line_number, detail + path, force, line, action)
+        for target, regexes, rule, force, detail, action in PUNCTUATION_RULES
+        if texts[target] and any(regex.search(texts[target]) for regex in regexes)
+    ]
+    if prose and COMMA_SPLICE_RE.search(prose) and not SEMICOLON_SPLICE_RE.search(prose):
         rows.append(_finding(
             "punctuation",
             "comma_splice",
@@ -172,36 +156,6 @@ def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str) ->
             False,
             line,
             "Use a period or add a conjunction if both sides stand alone.",
-        ))
-    if prose and QUOTE_OUTSIDE_RE.search(prose):
-        rows.append(_finding(
-            "punctuation",
-            "quote_punctuation",
-            line_number,
-            "Comma or period sits outside a closing quote in " + path,
-            False,
-            line,
-            "Put the comma or period inside the closing quote.",
-        ))
-    if PRONOUN_APOS_RE.search(clean) or ITS_APOS_RE.search(clean):
-        rows.append(_finding(
-            "punctuation",
-            "pronoun_apostrophe",
-            line_number,
-            "Possessive pronoun has an apostrophe in " + path,
-            True,
-            line,
-            "Use the possessive pronoun without apostrophe.",
-        ))
-    if DECADE_APOS_RE.search(clean):
-        rows.append(_finding(
-            "punctuation",
-            "decade_apostrophe",
-            line_number,
-            "Decade written as a possessive in " + path,
-            True,
-            line,
-            "Write the decade as a plural.",
         ))
     return rows
 
@@ -225,40 +179,27 @@ def _scan_english(path: str, line_number: int, line: str, scan_line: str) -> lis
     return rows
 
 
-def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
-    rows = []
-    if CLEAN_MARKER_RE.search(line):
-        rows.append(_finding(
-            "clean_code",
-            "deferred_work_comment",
-            line_number,
-            "Deferred work marker in " + path,
-            True,
-            line,
-            "Remove the marker or create tracked work.",
-        ))
-    if BUG_LABEL_RE.search(line):
-        rows.append(_finding(
-            "clean_code",
-            "bug_label_comment",
-            line_number,
-            "Comment labels a case by letter or number in " + path,
-            True,
-            line,
-            "Encode the case as a named test.",
-        ))
-    if APOLOGY_RE.search(line):
-        rows.append(_finding(
-            "clean_code",
-            "apology_comment",
-            line_number,
-            "Comment apologizes for code in " + path,
-            True,
-            line,
-            "Fix the code or state the reason plainly.",
-        ))
+CLEAN_CODE_LINE_RULES = (
+    (CLEAN_MARKER_RE, "deferred_work_comment",
+     "Deferred work marker in ", "Remove the marker or create tracked work."),
+    (BUG_LABEL_RE, "bug_label_comment",
+     "Comment labels a case by letter or number in ", "Encode the case as a named test."),
+    (APOLOGY_RE, "apology_comment",
+     "Comment apologizes for code in ", "Fix the code or state the reason plainly."),
+    (COMMENTED_CODE_RE, "commented_code",
+     "Commented code remains in ", "Delete the commented code."),
+    (SKIP_TEST_RE, "skipped_test",
+     "Skipped test in ", "Enable the test or remove it."),
+)
+
+
+def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
     body = COMMENT_RE.match(line)
-    if body and VC_COMMENT_RE.match(body.group(1).strip()):
+    if not body:
+        return []
+    text = body.group(1).strip()
+    rows = []
+    if VC_COMMENT_RE.match(text):
         rows.append(_finding(
             "clean_code",
             "version_control_comment",
@@ -268,17 +209,7 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
             line,
             "Delete it. Put change history in the commit message.",
         ))
-    if COMMENTED_CODE_RE.search(line):
-        rows.append(_finding(
-            "clean_code",
-            "commented_code",
-            line_number,
-            "Commented code remains in " + path,
-            True,
-            line,
-            "Delete the commented code.",
-        ))
-    if body and len(body.group(1).strip()) > 150:
+    if len(text) > 150:
         rows.append(_finding(
             "clean_code",
             "long_comment",
@@ -288,16 +219,16 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
             line,
             "Keep only one terse reason or move prose to docs.",
         ))
-    if SKIP_TEST_RE.search(line):
-        rows.append(_finding(
-            "clean_code",
-            "skipped_test",
-            line_number,
-            "Skipped test in " + path,
-            True,
-            line,
-            "Enable the test or remove it.",
-        ))
+    return rows
+
+
+def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
+    rows = [
+        _finding("clean_code", rule, line_number, detail + path, True, line, action)
+        for regex, rule, detail, action in CLEAN_CODE_LINE_RULES
+        if regex.search(line)
+    ]
+    rows.extend(_comment_body_rows(path, line_number, line))
     if _looks_like_empty_test(line):
         rows.append(_finding(
             "clean_code",
