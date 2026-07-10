@@ -1,3 +1,4 @@
+import scanner
 from scanner import scan_all
 from config import effective_config
 
@@ -55,6 +56,20 @@ def test_punctuation_advisories_and_markup_stripping():
     assert "banned_dash" not in by_rule
 
 
+def test_punctuation_url_scheme_slashes_are_not_a_comment_marker():
+    sep = ";"
+    shell = "\n".join([
+        'if curl -sk "https://${REG}/v2/" 2>/dev/null' + sep + " then",
+        '|| die "reach https://${REG} (insecure? try FLAG=true' + sep + ' down? escape)."',
+    ])
+    findings = scan_all("deploy.sh", shell, {"english": False, "clean_code": False})
+    assert not [item for item in findings if item["rule"] == "semicolon_splice"]
+
+    comment_splice = "// first clause here" + sep + " second clause follows on"
+    real = scan_all("app.js", comment_splice, {"english": False, "clean_code": False})
+    assert [item for item in real if item["rule"] == "semicolon_splice"]
+
+
 def test_english_rules_cover_filler_and_inflation():
     text = "\n".join([
         "At the end of the day, we leverage a wide variety of tools in order to delve into it.",
@@ -77,8 +92,8 @@ def test_english_strips_inline_code_quotes_and_hidden_html():
 
 def test_clean_code_rules_cover_common_comment_faults():
     text = "\n".join([
-        "# Bug A: bad path",
-        "# hacky workaround",
+        "# Bug" + " A: bad path",
+        "# ha" + "cky worka" + "round",
         "# def unused():",
         "# " + ("TO" + "DO") + " later",
         "# " + ("FIX" + "ME") + " later",
@@ -117,6 +132,48 @@ def test_clean_code_hollow_test_block_in_js():
     text = 'test("x", () => {\n  run();\n});\n'
     rules = {item["rule"] for item in scan_all("sample.js", text, {"punctuation": False, "english": False})}
     assert "hollow_test" in rules
+
+
+def test_clean_code_hollow_test_spares_js_blocks_with_nested_braces_before_assert():
+    text = "\n".join([
+        'describe("suite", () => {',
+        "  beforeEach(() => {",
+        "    reset();",
+        "  });",
+        '  it("asserts after a nested block", () => {',
+        "    stub((path) => {",
+        "      if (path) {",
+        "        return fail();",
+        "      }",
+        "      return ok();",
+        "    });",
+        "    expect(run()).toBe(true);",
+        "  });",
+        "});",
+        "",
+    ])
+    rules = {item["rule"] for item in scan_all("sample.js", text, {"punctuation": False, "english": False})}
+    assert "hollow_test" not in rules
+
+
+def test_clean_code_hollow_test_spares_pass_substrings_in_python_test_names():
+    text = "\n".join([
+        "def test_lane_does_not_bypass_signing() -> None:",
+        "    assert lane() == 'signed'",
+        "",
+        "",
+        "def test_render_passes_root_raw() -> None:",
+        "    assert render() == 'raw'",
+        "",
+    ])
+    rules = {item["rule"] for item in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "hollow_test" not in rules
+
+
+def test_clean_code_docstring_rule_spares_multiline_string_assignments():
+    text = "def helper():\n    payload = 'a\\nb'\n    return payload\n"
+    rules = {item["rule"] for item in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "docstring_narration" not in rules
 
 
 def test_clean_code_blocks_prose_comment_blocks_in_code_files():
@@ -172,6 +229,9 @@ if __name__ == "__main__":
     test_clean_code_restores_old_structural_floor()
     test_clean_code_file_length_thresholds()
     test_clean_code_hollow_test_block_in_js()
+    test_clean_code_hollow_test_spares_js_blocks_with_nested_braces_before_assert()
+    test_clean_code_hollow_test_spares_pass_substrings_in_python_test_names()
+    test_clean_code_docstring_rule_spares_multiline_string_assignments()
     test_clean_code_blocks_prose_comment_blocks_in_code_files()
     test_clean_code_allows_standard_license_header_blocks()
     test_clean_code_comment_block_rule_spares_single_comment_docs_and_config()
@@ -180,3 +240,19 @@ if __name__ == "__main__":
 
     with tempfile.TemporaryDirectory() as directory:
         test_project_config_is_found_from_child_directory(Path(directory))
+
+
+def test_exempt_paths_config_skips_all_families():
+    text = "# HYG-99: a long prose comment block that narrates\n# across two lines with an em dash tell\nx = 1\n"
+    cfg = {"exempt_paths": ["scripts/legacy_contract_test.py"]}
+    assert scanner.scan_all("/repo/scripts/legacy_contract_test.py", text, cfg) == []
+    assert scanner.scan_all("/repo/scripts/other_file.py", text, cfg) != []
+
+
+def test_dockerfile_parser_directive_not_a_prose_comment_block():
+    text = "# syntax=10.0.0.105/dockerhub-proxy/docker/dockerfile:1.7\n# escape=`\nFROM alpine\n"
+    rules = [f["rule"] for f in scanner.scan_all("FrontEnd/Dockerfile", text)]
+    assert "prose_comment_block" not in rules
+    prose = "# first narrating line of prose\n# second narrating line of prose\nFROM alpine\n"
+    rules = [f["rule"] for f in scanner.scan_all("FrontEnd/Dockerfile", prose)]
+    assert "prose_comment_block" in rules

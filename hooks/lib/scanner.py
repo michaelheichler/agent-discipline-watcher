@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 import os
 import re
 
@@ -71,10 +72,23 @@ VC_COMMENT_RE = re.compile(
 SKIP_TEST_RE = re.compile(r"\b(skip|skipif|xfail|disabled)\s*\(", re.IGNORECASE)
 ASSERT_RE = re.compile(r"\bassert\b|\.assert|expect\(|raises\(|warns\(|should\b|\.to\b|require\.|verify\(", re.IGNORECASE)
 TEST_START_RE = re.compile(r"^(\s*)(?:async\s+)?def\s+test\w*\s*\([^)]*\):|^(\s*)(?:it|test|describe)\s*\(", re.IGNORECASE)
+PASS_WORD_RE = re.compile(r"\bpass\b", re.IGNORECASE)
+SHELL_IN_CONFIG_RE = re.compile(
+    r"""-c\s+["']|;\s*(?:do|then|fi|done)\b|&&|\|\||\$\{|\$\(|\bimport\s+\w+\s*;|\btrap\s"""
+    r"""|^\s*[\w.\[\]"']+\s*=(?!=)\s*\S"""
+)
+DIRECTIVE_COMMENT_RE = re.compile(r"^#\s*(?:syntax|escape|check)=|^#!")
+
+
+def _is_exempt(path: str, cfg: dict) -> bool:
+    patterns = cfg.get("exempt_paths") or []
+    return any(fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, "*/" + pat) for pat in patterns)
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     cfg = effective_config(config)
+    if _is_exempt(path, cfg):
+        return []
     findings: list[dict] = []
     lines = text.splitlines() or [""]
     punct_lines = _strip_punctuation_blocks(text).splitlines() or [""]
@@ -247,7 +261,7 @@ def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
     run: list[tuple[int, str]] = []
     for number, line in enumerate(text.splitlines(), 1):
         body = COMMENT_RE.match(line)
-        if body and body.group(1).strip():
+        if body and body.group(1).strip() and not DIRECTIVE_COMMENT_RE.match(line.strip()):
             run.append((number, line))
             continue
         _flush_comment_run(path, run, findings)
@@ -258,10 +272,11 @@ def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
 
 def _narrating_docstring(scope) -> tuple[int, str] | None:
     """Return (line, text) of a scope's multi-line docstring, or None."""
-    if not scope.body:
+    body = getattr(scope, "body", [])
+    first = body[0] if body else None
+    if not isinstance(first, ast.Expr):
         return None
-    first = scope.body[0]
-    value = getattr(first, "value", None)
+    value = first.value
     if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
         return None
     if "\n" not in value.value.strip():
@@ -354,7 +369,7 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
         if not match:
             index += 1
             continue
-        if "pass" in stripped.lower():
+        if PASS_WORD_RE.search(stripped):
             index += 1
             continue
         block, next_index = _test_block(lines, index)
@@ -386,10 +401,14 @@ def _test_block(lines: list[str], start: int) -> tuple[list[str], int]:
             index += 1
         return body, index
     body = [line]
+    depth = line.count("{") - line.count("}")
+    if depth <= 0:
+        return body, start + 1
     index = start + 1
     while index < len(lines):
         body.append(lines[index])
-        if lines[index].strip().startswith(("}", "});", "})")):
+        depth += lines[index].count("{") - lines[index].count("}")
+        if depth <= 0:
             return body, index + 1
         index += 1
     return body, index
@@ -416,7 +435,8 @@ def _looks_like_empty_test(line: str) -> bool:
     stripped = line.strip()
     if not re.match(r"(def|function|it|test)\b.*\btest", stripped, re.IGNORECASE):
         return False
-    return "pass" in stripped.lower() and not ASSERT_RE.search(stripped)
+    # word boundary: substrings like "bypass" or "passes" in a test name are not a pass statement
+    return bool(PASS_WORD_RE.search(stripped)) and not ASSERT_RE.search(stripped)
 
 
 def _is_header_run(run: list[tuple[int, str]]) -> bool:
@@ -455,16 +475,26 @@ def _strip_quoted(text: str) -> str:
 
 
 def _punctuation_prose_part(path: str, line: str) -> str:
+    if _is_config(path) and SHELL_IN_CONFIG_RE.search(line):
+        return ""
     if _is_prose(path) or _is_config(path):
         return line
     leading = COMMENT_RE.match(line)
     if leading:
         return leading.group(1)
-    positions = [pos for pos in (line.find("#"), line.find("//")) if pos >= 0]
+    positions = [pos for pos in (line.find("#"), _line_comment_slashes(line)) if pos >= 0]
     if not positions:
         return ""
     pos = min(positions)
     return line[pos + (2 if line.startswith("//", pos) else 1):]
+
+
+def _line_comment_slashes(line: str) -> int:
+    # A URL scheme's :// is not a comment, so shell/code after a URL is not prose.
+    for match in re.finditer(r"//", line):
+        if match.start() == 0 or line[match.start() - 1] != ":":
+            return match.start()
+    return -1
 
 
 def _int_setting(config: dict, key: str, env_name: str, default: int) -> int:
