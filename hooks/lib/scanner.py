@@ -193,33 +193,24 @@ CLEAN_CODE_LINE_RULES = (
 )
 
 
+COMMENT_BODY_RULES = (
+    (lambda text: bool(VC_COMMENT_RE.match(text)), "version_control_comment",
+     "Comment narrates change history in ", "Delete it. Put change history in the commit message."),
+    (lambda text: len(text) > 150, "long_comment",
+     "Long comment in ", "Keep only one terse reason or move prose to docs."),
+)
+
+
 def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
     body = COMMENT_RE.match(line)
     if not body:
         return []
     text = body.group(1).strip()
-    rows = []
-    if VC_COMMENT_RE.match(text):
-        rows.append(_finding(
-            "clean_code",
-            "version_control_comment",
-            line_number,
-            "Comment narrates change history in " + path,
-            True,
-            line,
-            "Delete it. Put change history in the commit message.",
-        ))
-    if len(text) > 150:
-        rows.append(_finding(
-            "clean_code",
-            "long_comment",
-            line_number,
-            "Long comment in " + path,
-            True,
-            line,
-            "Keep only one terse reason or move prose to docs.",
-        ))
-    return rows
+    return [
+        _finding("clean_code", rule, line_number, detail + path, True, line, action)
+        for matches, rule, detail, action in COMMENT_BODY_RULES
+        if matches(text)
+    ]
 
 
 def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
@@ -265,6 +256,19 @@ def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
     return findings
 
 
+def _narrating_docstring(scope) -> tuple[int, str] | None:
+    """Return (line, text) of a scope's multi-line docstring, or None."""
+    if not scope.body:
+        return None
+    first = scope.body[0]
+    value = getattr(first, "value", None)
+    if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+        return None
+    if "\n" not in value.value.strip():
+        return None
+    return getattr(first, "lineno", 1), value.value
+
+
 def _scan_docstrings(path: str, text: str) -> list[dict]:
     if not path.lower().endswith(".py"):
         return []
@@ -272,76 +276,71 @@ def _scan_docstrings(path: str, text: str) -> list[dict]:
         tree = ast.parse(text)
     except SyntaxError:
         return []
-    findings: list[dict] = []
     scopes = [tree]
     scopes.extend(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+    findings: list[dict] = []
     for scope in scopes:
-        if not scope.body:
-            continue
-        first = scope.body[0]
-        value = getattr(first, "value", None)
-        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
-            continue
-        if "\n" not in value.value.strip():
-            continue
-        line = getattr(first, "lineno", 1)
-        findings.append(_finding(
-            "clean_code",
-            "docstring_narration",
-            line,
-            "Multi-line docstring narrates in " + path,
-            True,
-            value.value,
-            "Move the explanation to a wiki page. Create one or update the existing page.",
-        ))
+        hit = _narrating_docstring(scope)
+        if hit:
+            findings.append(_finding(
+                "clean_code",
+                "docstring_narration",
+                hit[0],
+                "Multi-line docstring narrates in " + path,
+                True,
+                hit[1],
+                "Move the explanation to a wiki page. Create one or update the existing page.",
+            ))
     return findings
 
 
-def _scan_lengths(path: str, text: str, lines: list[str], config: dict) -> list[dict]:
-    findings: list[dict] = []
+def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
     warn = _int_setting(config, "file_warn_lines", "CLEANCODER_FILE_WARN_LINES", 500)
     hard = _int_setting(config, "file_block_lines", "CLEANCODER_FILE_BLOCK_LINES", 1000)
-    func_limit = _int_setting(config, "function_block_lines", "CLEANCODER_FUNC_BLOCK_LINES", 80)
-    count = len(lines)
     if count >= hard:
-        findings.append(_finding(
-            "clean_code",
-            "file_too_long",
-            1,
+        return [_finding(
+            "clean_code", "file_too_long", 1,
             "File is over the hard length cap in " + path,
-            True,
-            path,
-            "Split this file into focused modules.",
-        ))
-    elif count >= warn:
-        findings.append(_finding(
-            "clean_code",
-            "file_getting_long",
-            1,
+            True, path, "Split this file into focused modules.",
+        )]
+    if count >= warn:
+        return [_finding(
+            "clean_code", "file_getting_long", 1,
             "File is past the warning length in " + path,
-            False,
-            path,
-            "Plan a split before this file reaches the hard cap.",
-        ))
-    if not path.lower().endswith(".py"):
-        return findings
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return findings
+            False, path, "Plan a split before this file reaches the hard cap.",
+        )]
+    return []
+
+
+def _long_functions(tree, func_limit: int):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             span = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno + 1
             if span > func_limit:
-                findings.append(_finding(
-                    "clean_code",
-                    "function_too_long",
-                    node.lineno,
-                    "Function is over the length cap in " + path,
-                    True,
-                    node.name,
-                    "Extract helpers until each function does one thing.",
-                ))
+                yield node
+
+
+def _function_length_findings(path: str, text: str, config: dict) -> list[dict]:
+    if not path.lower().endswith(".py"):
+        return []
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    func_limit = _int_setting(config, "function_block_lines", "CLEANCODER_FUNC_BLOCK_LINES", 80)
+    return [
+        _finding(
+            "clean_code", "function_too_long", node.lineno,
+            "Function is over the length cap in " + path,
+            True, node.name, "Extract helpers until each function does one thing.",
+        )
+        for node in _long_functions(tree, func_limit)
+    ]
+
+
+def _scan_lengths(path: str, text: str, lines: list[str], config: dict) -> list[dict]:
+    findings = _file_length_findings(path, len(lines), config)
+    findings.extend(_function_length_findings(path, text, config))
     return findings
 
 

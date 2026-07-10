@@ -17,7 +17,7 @@ def owned_policy_text(path: Path, text: str) -> str:
 
     kept = []
     in_fence = False
-    for line in text.splitlines():
+    for line in _without_frontmatter(text.splitlines()):
         if line.lstrip().startswith("```"):
             in_fence = not in_fence
             continue
@@ -27,6 +27,15 @@ def owned_policy_text(path: Path, text: str) -> str:
             continue
         kept.append(line)
     return "\n".join(kept)
+
+
+def _without_frontmatter(lines: list[str]) -> list[str]:
+    if not lines or lines[0].strip() != "---":
+        return lines
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            return lines[index + 1:]
+    return lines
 
 
 def is_markdown_table_separator(line: str) -> bool:
@@ -55,6 +64,20 @@ def test_owned_policy_text_excludes_markdown_code_and_table_separators():
 def test_owned_policy_text_keeps_prose_double_hyphen_strict():
     text = "Normal prose with left" + "--" + "right remains checked."
     assert ("-" + "-") in owned_policy_text(README, text)
+
+
+def test_owned_policy_text_excludes_yaml_frontmatter():
+    text = "\n".join(
+        [
+            "---",
+            "name: agent-discipline-watcher",
+            "description: >-",
+            "  Use when an agent writes files.",
+            "---",
+            "Prose stays checked.",
+        ]
+    )
+    assert ("-" + "-") not in owned_policy_text(SKILL, text)
 
 
 def test_pi_extension_registers_one_combined_lifecycle():
@@ -107,6 +130,7 @@ def test_docs_state_replacement_and_pi_scope():
 if __name__ == "__main__":
     test_owned_policy_text_excludes_markdown_code_and_table_separators()
     test_owned_policy_text_keeps_prose_double_hyphen_strict()
+    test_owned_policy_text_excludes_yaml_frontmatter()
     test_pi_extension_registers_one_combined_lifecycle()
     test_pi_extension_shells_to_combined_python_scanner()
     test_pi_extension_scans_write_results_and_sends_one_steer()

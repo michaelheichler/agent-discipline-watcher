@@ -61,6 +61,28 @@ def _reply_text(payload: dict) -> str:
     return _from_transcript(payload.get("transcript_path"))
 
 
+def _pah_advisory_tail(reason: str, findings: list[dict], cfg: dict, advisory: list[dict]) -> str:
+    pah_finding = {
+        "path": "<assistant>",
+        "family": "professional_agent_helper",
+        "rule": findings[0]["rule"],
+        "line": 1,
+        "force": True,
+        "action": reason,
+        "tells": findings,
+    }
+    compact, _ = compact_block(
+        [pah_finding],
+        cfg,
+        report_findings=[pah_finding] + advisory,
+        advisory_count=len(advisory),
+    )
+    return "\n".join(
+        line for line in compact.splitlines()
+        if line.startswith("... ") or line.startswith("Full report:")
+    )
+
+
 def _pah_tell_block(payload: dict, cfg: dict, advisory: list[dict]) -> dict:
     if payload.get("stop_hook_active"):
         return {}
@@ -74,26 +96,7 @@ def _pah_tell_block(payload: dict, cfg: dict, advisory: list[dict]) -> dict:
         "right, say what is right and why, with no filler."
     )
     if advisory:
-        pah_finding = {
-            "path": "<assistant>",
-            "family": "professional_agent_helper",
-            "rule": findings[0]["rule"],
-            "line": 1,
-            "force": True,
-            "action": reason,
-            "tells": findings,
-        }
-        compact, _ = compact_block(
-            [pah_finding],
-            cfg,
-            report_findings=[pah_finding] + advisory,
-            advisory_count=len(advisory),
-        )
-        tail = "\n".join(
-            line for line in compact.splitlines()
-            if line.startswith("... ") or line.startswith("Full report:")
-        )
-        reason = reason + "\n" + tail
+        reason = reason + "\n" + _pah_advisory_tail(reason, findings, cfg, advisory)
     return stop_block(reason)
 
 

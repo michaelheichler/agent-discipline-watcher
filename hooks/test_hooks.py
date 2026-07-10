@@ -373,10 +373,8 @@ def test_run_sh_routes_user_prompt_submit():
     assert "Probe before you agree" in output["hookSpecificOutput"]["additionalContext"]
 
 
-def test_run_sh_selects_sibling_model_loader_python(tmp_path):
-    skills_root = tmp_path / "skills"
+def _fake_model_loader_python(skills_root):
     fake_python = skills_root / "skill-model-loader" / ".venv" / "bin" / "python"
-    marker = tmp_path / "selected.txt"
     fake_python.parent.mkdir(parents=True)
     fake_python.write_text(
         "#!/bin/sh\n"
@@ -385,6 +383,13 @@ def test_run_sh_selects_sibling_model_loader_python(tmp_path):
         encoding="utf-8",
     )
     fake_python.chmod(0o755)
+    return fake_python
+
+
+def test_run_sh_selects_sibling_model_loader_python(tmp_path):
+    skills_root = tmp_path / "skills"
+    fake_python = _fake_model_loader_python(skills_root)
+    marker = tmp_path / "selected.txt"
 
     env = os.environ.copy()
     env.pop("SML_PYTHON", None)

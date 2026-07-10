@@ -92,7 +92,7 @@ Supported checks:
 
 | Check | Purpose |
 | --- | --- |
-| `punctuation` | Blocks banned dash marks, double hyphen breaks, incorrect apostrophe forms, and related punctuation tells. |
+| `punctuation` | Blocks banned dash marks, double hyphen breaks, semicolon splices, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
 | `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and plain-English issues. |
 | `clean_code` | Blocks deferred-work comments, prose comment blocks, commented-out code, hollow tests, long functions, and related code hygiene issues. |
 
@@ -131,13 +131,19 @@ The Pi extension:
 
 ## Verification
 
-Run the existing repo checks from this directory:
+Run the full test tree from `hooks/`:
 
 ```bash
-rtk python3 hooks/test_hooks.py
-rtk python3 hooks/lib/test_scanner.py
-rtk bash -n install.sh hooks/run.sh
+cd hooks && python3 -m pytest . lib -q
 ```
+
+Syntax-check the shell entry points from this directory:
+
+```bash
+bash -n install.sh hooks/run.sh
+```
+
+The hook code holds itself to its own contract: every function stays under the length cap and the scanner reports zero forced findings on its own files.
 
 Useful manual checks:
 

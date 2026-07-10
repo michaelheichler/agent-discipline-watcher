@@ -92,6 +92,20 @@ def _segments(command: str) -> list[list[str]]:
     return segments
 
 
+def _skip_git_flag(segment: list[str], cursor: int, current: Path) -> tuple[int, Path] | None:
+    """Step over one leading git flag, returning (next_cursor, cwd) or None on a malformed -C."""
+    token = segment[cursor]
+    if token == "-C":
+        if cursor + 1 >= len(segment):
+            return None
+        return cursor + 2, _resolve_cwd(current, segment[cursor + 1])
+    if token.startswith("-C") and len(token) > 2:
+        return cursor + 1, _resolve_cwd(current, token[2:])
+    if token in {"-c", "--git-dir", "--work-tree"}:
+        return cursor + 2, current
+    return cursor + 1, current
+
+
 def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
     segment = _unwrap_command(segment)
     if not segment or segment[0] != "git":
@@ -100,25 +114,13 @@ def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
     cursor = 1
     while cursor < len(segment):
         token = segment[cursor]
-        if token == "-C":
-            if cursor + 1 >= len(segment):
-                return None
-            current = _resolve_cwd(current, segment[cursor + 1])
-            cursor += 2
-            continue
-        if token.startswith("-C") and len(token) > 2:
-            current = _resolve_cwd(current, token[2:])
-            cursor += 1
-            continue
-        if token in {"-c", "--git-dir", "--work-tree"}:
-            cursor += 2
-            continue
         if token.startswith("-"):
-            cursor += 1
+            step = _skip_git_flag(segment, cursor, current)
+            if step is None:
+                return None
+            cursor, current = step
             continue
-        if token == "commit":
-            return current
-        return None
+        return current if token == "commit" else None
     return None
 
 
