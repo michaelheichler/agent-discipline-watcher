@@ -45,6 +45,100 @@ CLAUDE_SETTINGS = {
     }
 }
 
+UNCLE_BOBS_CC_SETTINGS = {
+    "model": "claude-opus-4",
+    "env": {"SOME_FLAG": "1"},
+    "statusLine": {"type": "command", "command": "echo hi"},
+    "permissions": {"allow": ["Bash(ls:*)"], "deny": []},
+    "hooks": {
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/session_start.py"
+                        ),
+                    },
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_session_start.py"
+                        ),
+                    },
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/gate.py"
+                        ),
+                    },
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_gate.py"
+                        ),
+                    },
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/record.py"
+                        ),
+                    },
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_record.py"
+                        ),
+                    },
+                    {"type": "command", "command": "python /x/unrelated-stop.py"},
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/pre_write.py"
+                        ),
+                    },
+                    {
+                        "type": "command",
+                        "command": "/stale/agent-discipline-watcher/hooks/run.sh PreToolUse",
+                    },
+                ],
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
+                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/pre_commit_hook.py"
+                        ),
+                    }
+                ],
+            },
+        ],
+    },
+}
+
 CODEX_CONFIG = """
 [hooks]
 Stop = [{ command = "python professional-agent-helper/hooks/stop.py" }, { command = "python /x/unrelated-inline.py" }]
@@ -82,6 +176,72 @@ command = "/x/professional-agent-helper/hooks/run.sh /x/professional-agent-helpe
 [[hooks.Stop.hooks]]
 type = "command"
 command = "python /x/unrelated-stop.py"
+"""
+
+CODEX_CONFIG_UNCLE_BOBS_CC = """
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/session_start.py"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_session_start.py"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/gate.py"
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_gate.py"
+[[hooks.Stop.hooks]]
+type = "command"
+command = "python /x/unrelated-stop.py"
+"""
+
+# Repro of the x86-host incident: trailing state/projects/tui/mcp_servers tables after the last legacy hooks block.
+CODEX_CONFIG_TRAILING_TABLES = """
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/session_start.py"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/gate.py"
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/prompt_inject.py"
+
+[[hooks.state.trusted_projects]]
+path = "/home/user/project1"
+trust = "trusted"
+
+[[hooks.state.trusted_projects]]
+path = "/home/user/project2"
+trust = "trusted"
+
+[projects."/home/user/project1"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+shown = true
+
+[mcp_servers.alpha]
+command = "alpha-bin"
+args = ["serve"]
+
+[mcp_servers.alpha.http_headers]
+Authorization = "Bearer alpha"
+
+[mcp_servers.beta]
+command = "beta-bin"
+
+[mcp_servers.gamma]
+command = "gamma-bin"
 """
 
 PI_SETTINGS = {
@@ -122,6 +282,15 @@ class MergeConfigTests(unittest.TestCase):
             merged = json.loads(settings.read_text())
         assert_claude_merge(merged)
 
+    def test_claude_strips_uncle_bobs_cc_and_preserves_unrelated_top_level_keys(self):
+        assert CLAUDE.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings.json"
+            settings.write_text(json.dumps(UNCLE_BOBS_CC_SETTINGS))
+            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", "/tmp/agent-discipline-watcher")
+            merged = json.loads(settings.read_text())
+        assert_uncle_bobs_cc_merge(merged)
+
     def test_codex_removes_legacy_hooks_and_adds_watcher_family(self):
         assert CODEX.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,6 +299,26 @@ class MergeConfigTests(unittest.TestCase):
             run_merge(CODEX, "--config", str(config), "--skill-dir", "/tmp/agent-discipline-watcher")
             merged = config.read_text()
         assert_codex_merge(merged)
+
+    def test_codex_strips_uncle_bobs_cc(self):
+        assert CODEX.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(CODEX_CONFIG_UNCLE_BOBS_CC)
+            run_merge(CODEX, "--config", str(config), "--skill-dir", "/tmp/agent-discipline-watcher")
+            merged = config.read_text()
+        assert "uncle-bobs-cc" not in merged
+        assert "unrelated-stop.py" in merged
+        assert_watcher_hook_family(merged)
+
+    def test_codex_preserves_tables_after_last_legacy_hooks_block(self):
+        assert CODEX.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(CODEX_CONFIG_TRAILING_TABLES)
+            run_merge(CODEX, "--config", str(config), "--skill-dir", "/tmp/agent-discipline-watcher")
+            merged = config.read_text()
+        assert_trailing_tables_survive(merged)
 
     def test_pi_removes_legacy_extensions_and_adds_one_watcher_extension(self):
         assert PI.exists()
@@ -162,6 +351,27 @@ def assert_claude_pretool_shape(entries: list[dict]) -> None:
     assert "apply_patch" in write_matcher
 
 
+def assert_uncle_bobs_cc_merge(merged: dict) -> None:
+    text = json.dumps(merged)
+    assert merged["model"] == "claude-opus-4"
+    assert merged["env"] == {"SOME_FLAG": "1"}
+    assert merged["statusLine"] == {"type": "command", "command": "echo hi"}
+    assert merged["permissions"] == {"allow": ["Bash(ls:*)"], "deny": []}
+    assert "uncle-bobs-cc" not in text
+    assert "session_start.py" not in text
+    assert "punct_session_start.py" not in text
+    assert "gate.py" not in text
+    assert "punct_gate.py" not in text
+    assert "record.py" not in text
+    assert "punct_record.py" not in text
+    assert "pre_write.py" not in text
+    assert "pre_commit_hook.py" not in text
+    assert "unrelated-stop.py" in text
+    assert "/stale/agent-discipline-watcher" not in text
+    assert_watcher_hook_family(text)
+    assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
+
+
 def assert_codex_merge(merged: str) -> None:
     assert_no_stale_hooks(merged)
     assert "clean-coder-discipline" not in merged
@@ -175,6 +385,17 @@ def assert_codex_merge(merged: str) -> None:
     assert_watcher_hook_family(merged)
     assert 'matcher = "Bash"' in merged
     assert 'matcher = "apply_patch|Edit|Write"' in merged
+
+
+def assert_trailing_tables_survive(merged: str) -> None:
+    assert "professional-agent-helper" not in merged
+    assert merged.count("[[hooks.state.trusted_projects]]") == 2
+    assert '[projects."/home/user/project1"]' in merged
+    assert "[tui.model_availability_nux]" in merged
+    for server in ("alpha", "beta", "gamma"):
+        assert f"[mcp_servers.{server}]" in merged
+    assert "[mcp_servers.alpha.http_headers]" in merged
+    assert_watcher_hook_family(merged)
 
 
 def assert_pi_merge(merged: dict) -> None:

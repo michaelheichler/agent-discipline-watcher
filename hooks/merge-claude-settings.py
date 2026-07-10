@@ -10,6 +10,7 @@ LEGACY = (
     "clean-coder-discipline",
     "professional-agent-helper",
     "agent-discipline-watcher",
+    "uncle-bobs-cc",
 )
 STALE_HOOK_COMMANDS = LEGACY + (
     "knowledge-based-search",

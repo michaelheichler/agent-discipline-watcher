@@ -15,6 +15,7 @@ LEGACY = (
     "english-for-agents",
     "clean-coder-discipline",
     "professional-agent-helper",
+    "uncle-bobs-cc",
     "agent-discipline-watcher",
 )
 STALE_HOOK_COMMANDS = LEGACY + (
@@ -80,8 +81,11 @@ def strip_legacy_tables(text: str) -> str:
 
 def split_hook_table_trailer(table: str) -> tuple[str, str]:
     lines = table.splitlines(keepends=True)
+    header = re.match(r"\[\[hooks\.([A-Za-z]+)\]\]", lines[0])
+    lifecycle = header.group(1) if header else ""
+    own_hooks_array = f"[[hooks.{lifecycle}.hooks]]"
     for index, line in enumerate(lines[1:], start=1):
-        if line.startswith("[") and not line.startswith("[[hooks."):
+        if line.startswith("[") and not line.startswith(own_hooks_array):
             return "".join(lines[:index]), "".join(lines[index:])
     return table, ""
 
