@@ -1,0 +1,30 @@
+hooks/merge-codex-config.py
+  s_d3f9d1c9ea6883::t_19cd76389a6e16 18
+  s_d3f9d1c9ea6883::t_d868722f723790 84-86,88
+hooks/test_merge_configs.py
+  s_d3f9d1c9ea6883::t_e0ec798c0ec3a0 354-374
+  s_d3f9d1c9ea6883::t_a2984cafdc1605 390-391,393-400
+  s_d3f9d1c9ea6883::t_6fed144b79e31f 392
+  s_d3f9d1c9ea6883::t_49ebc2148470c3 181-246
+  s_d3f9d1c9ea6883::t_c2c9f6eb87d7e4 48-141
+  s_d3f9d1c9ea6883::t_62a86b832045ff 285-293
+  s_d3f9d1c9ea6883::t_cb51dc2dbaba9e 303-322
+hooks/merge-claude-settings.py
+  s_d3f9d1c9ea6883::t_9397e3a7230269 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "9ca9bf83bb055f7a6e692d69f815ded1edff6404",
+  "prompts": {},
+  "sessions": {
+    "s_d3f9d1c9ea6883": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "145e5b94-5323-4925-8abc-634661b1c64b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
