@@ -1,0 +1,37 @@
+hooks/lib/test_pi_extension_contract.py
+  s_7f59bc68fbf5fc::t_17eab2dfa54ef1 125-126
+.requirements/20260711T143158Z_safe_codex_config_merge/REQUIREMENTS.md
+  s_7f59bc68fbf5fc::t_11da8ed9d0232f 1-51
+.requirements/20260712T180000Z_remove_pah_persona/REQUIREMENTS.md
+  s_7f59bc68fbf5fc::t_70c54fe50e5c74 1-37
+README.md
+  s_7f59bc68fbf5fc::t_f9871b24c33c6f 3,104,108
+SKILL.md
+  s_7f59bc68fbf5fc::t_005f2f3e09fbd2 13
+hooks/merge-codex-config.py
+  s_7f59bc68fbf5fc::t_0331c33f3f1d9a 5,155-194,203-204
+hooks/run.sh
+  s_7f59bc68fbf5fc::t_aecd2166cd0acc 59
+hooks/session_start.py
+  s_7f59bc68fbf5fc::t_784156f3003b65 19
+hooks/test_hooks.py
+  s_7f59bc68fbf5fc::t_12535cc7f71130 237,242,245,250,253,261-262,287,315,322,324-325,441-442,444,451
+hooks/test_merge_configs.py
+  s_7f59bc68fbf5fc::t_c1440cc08a679a 2,8,263-270,279,281,283,334-365,383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "bb2af9ac4fe13c645b90994b9ca2155c049d3fa2",
+  "prompts": {},
+  "sessions": {
+    "s_7f59bc68fbf5fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "919599fa-ab76-45d5-86c0-d0bef5bc2c48",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
