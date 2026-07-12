@@ -1,9 +1,11 @@
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -258,6 +260,14 @@ def run_merge(script: Path, *args: str) -> None:
     subprocess.run([sys.executable, str(script), *args], check=True)
 
 
+def load_codex_merger():
+    spec = importlib.util.spec_from_file_location("agent_discipline_codex_merge", CODEX)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def assert_no_stale_hooks(text: str) -> None:
     assert "punctuation-discipline" not in text
     assert "english-for-agents" not in text
@@ -266,10 +276,11 @@ def assert_no_stale_hooks(text: str) -> None:
 
 
 def assert_watcher_hook_family(text: str) -> None:
-    for event in ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"):
+    for event in ("PreToolUse", "PostToolUse", "Stop", "SessionStart"):
         assert event in text
-    for event in ("PreToolUse", "PreCommit", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"):
+    for event in ("PreToolUse", "PreCommit", "PostToolUse", "Stop", "SessionStart"):
         assert f"run.sh {event}" in text
+    assert "run.sh UserPromptSubmit" not in text
 
 
 class MergeConfigTests(unittest.TestCase):
@@ -320,6 +331,38 @@ class MergeConfigTests(unittest.TestCase):
             merged = config.read_text()
         assert_trailing_tables_survive(merged)
 
+    def test_codex_rejects_unrelated_section_loss(self):
+        merger = load_codex_merger()
+        before = '[projects."/work"]\ntrust_level = "trusted"\n\n[mcp_servers.library]\nurl = "http://library/mcp"\n'
+        after = '[projects."/work"]\ntrust_level = "trusted"\n'
+        with self.assertRaisesRegex(ValueError, "mcp_servers"):
+            merger.validate_preserved_sections(before, after)
+
+    def test_codex_failed_atomic_replace_leaves_original_unchanged(self):
+        merger = load_codex_merger()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            original = 'model = "gpt-5.6-sol"\n'
+            config.write_text(original)
+            with mock.patch.object(merger.os, "replace", side_effect=OSError("replace failed")):
+                with self.assertRaisesRegex(OSError, "replace failed"):
+                    merger.atomic_write(config, original + 'model_verbosity = "low"\n')
+            self.assertEqual(config.read_text(), original)
+            self.assertEqual(list(config.parent.glob(f".{config.name}.*.tmp")), [])
+
+    def test_codex_atomic_write_preserves_mode_and_secures_new_files(self):
+        merger = load_codex_merger()
+        with tempfile.TemporaryDirectory() as tmp:
+            existing = Path(tmp) / "existing.toml"
+            existing.write_text('model = "old"\n')
+            existing.chmod(0o640)
+            merger.atomic_write(existing, 'model = "new"\n')
+            self.assertEqual(existing.stat().st_mode & 0o777, 0o640)
+
+            created = Path(tmp) / "created.toml"
+            merger.atomic_write(created, 'model = "new"\n')
+            self.assertEqual(created.stat().st_mode & 0o777, 0o600)
+
     def test_pi_removes_legacy_extensions_and_adds_one_watcher_extension(self):
         assert PI.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -337,7 +380,7 @@ def assert_claude_merge(merged: dict) -> None:
     assert_watcher_hook_family(text)
     assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
     assert "compact" in merged["hooks"]["SessionStart"][0]["matcher"]
-    assert len(merged["hooks"]["UserPromptSubmit"]) == 1
+    assert "run.sh UserPromptSubmit" not in text
 
 
 def assert_claude_pretool_shape(entries: list[dict]) -> None:

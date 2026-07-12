@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from lib.hookio import read_payload, system_message, write_payload
 from lib.ledger import clear_ledger
-from lib.persona import section
 
 
 PROMPT = (
@@ -17,7 +16,7 @@ def run(payload: dict | None = None, config: dict | None = None) -> dict:
     if payload.get("session_id"):
         cfg["session_id"] = payload["session_id"]
     clear_ledger(cfg)
-    return system_message("\n\n".join(part for part in (section("CHARTER"), PROMPT) if part))
+    return system_message(PROMPT)
 
 
 if __name__ == "__main__":

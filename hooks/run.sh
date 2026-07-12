@@ -40,10 +40,6 @@ if [ "$event" = "SessionStart" ]
 then
   exec "$PYTHON" "$DIR/session_start.py"
 fi
-if [ "$event" = "UserPromptSubmit" ]
-then
-  exec "$PYTHON" "$DIR/prompt_inject.py"
-fi
 if [ "$event" = "PreToolUse" ]
 then
   exec "$PYTHON" "$DIR/pre_write.py"
@@ -60,5 +56,5 @@ if [ "$event" = "Stop" ]
 then
   exec "$PYTHON" "$DIR/gate.py"
 fi
-echo "usage: run.sh SessionStart|UserPromptSubmit|PreToolUse|PreCommit|PostToolUse|Stop" >&2
+echo "usage: run.sh SessionStart|PreToolUse|PreCommit|PostToolUse|Stop" >&2
 exit 2

@@ -51,16 +51,6 @@
           }
         ]
       }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh UserPromptSubmit"
-          }
-        ]
-      }
     ]
   }
 }

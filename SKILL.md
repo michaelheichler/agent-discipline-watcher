@@ -10,8 +10,7 @@ description: >-
   subjects, and empty intensifiers. clean-coder-discipline keeps code reviewable
   by rejecting narration comments, dead/commented-out/speculative code,
   deferred-work markers, hollow tests, skipped tests, long functions/files, and
-  unproved done claims. Also keeps the Professional Agent Helper stance:
-  skeptical, verified, direct, and no empty validators.
+  unproved done claims.
 ---
 
 # Agent Discipline Watcher

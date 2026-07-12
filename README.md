@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Agent Discipline Watcher is one hook package for keeping agent output and edits direct, plain, and reviewable. It replaces the older punctuation-discipline, english-for-agents, clean-coder-discipline, and professional-agent-helper packages with one scanner, one ledger, one compact report path, and one Pi extension.
+Agent Discipline Watcher is one hook package for keeping agent output and edits direct, plain, and reviewable. It replaces the older punctuation-discipline, english-for-agents, and clean-coder-discipline packages with one scanner, one ledger, one compact report path, and one Pi extension.
 
 It exists to catch low-level agent drift before it lands in files or final replies: banned punctuation, inflated prose, deferred-work comments, noisy code comments, hollow tests, oversized code shapes, reflexive flattery, and empty agreement.
 
@@ -48,7 +48,6 @@ The Codex hook commands are installed into `~/.codex/config.toml` and call:
 
 ```bash
 hooks/run.sh SessionStart
-hooks/run.sh UserPromptSubmit
 hooks/run.sh PreToolUse
 hooks/run.sh PreCommit
 hooks/run.sh PostToolUse
@@ -102,12 +101,11 @@ Supported checks:
 
 | Event | Behavior |
 | --- | --- |
-| `SessionStart` | Clears stale ledger state and injects the Professional Agent Helper charter plus the watcher reminder. |
-| `UserPromptSubmit` | Adds the PAH reflex every turn and adds the correction nudge only when the user prompt looks like a correction or challenge. |
+| `SessionStart` | Clears stale ledger state and injects the compact watcher reminder. |
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
 | `PostToolUse` | Records findings from written files into the session ledger. |
-| `Stop` | Reads ledger findings, runs optional model juries, blocks PAH tells in the final reply, and emits one compact block or advisory message. |
+| `Stop` | Reads ledger findings, runs optional model juries, and emits one compact block or advisory message. |
 
 ## Stop And Model Jury Behavior
 

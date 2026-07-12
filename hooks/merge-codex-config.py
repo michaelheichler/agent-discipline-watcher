@@ -2,6 +2,7 @@
 import argparse
 import os
 import re
+import tempfile
 from pathlib import Path
 
 try:
@@ -151,6 +152,46 @@ def validate_toml(text: str) -> None:
         tomllib.loads(text)
 
 
+def validate_preserved_sections(before: str, after: str) -> None:
+    if tomllib is None or not before.strip():
+        return
+    before_data = tomllib.loads(before)
+    after_data = tomllib.loads(after)
+    changed = [
+        key
+        for key, value in before_data.items()
+        if key != "hooks" and after_data.get(key) != value
+    ]
+    if changed:
+        names = ", ".join(sorted(changed))
+        raise ValueError(f"merge changed unrelated top-level sections: {names}")
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(text)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        temporary_path.chmod(mode)
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
 def merge(config_path: Path, skill_dir: Path) -> None:
     current = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     current = strip_empty_hook_headers(strip_stale_inline_hook_arrays(strip_legacy_tables(strip_fences(current))))
@@ -159,8 +200,8 @@ def merge(config_path: Path, skill_dir: Path) -> None:
         current += "\n"
     merged = re.sub(r"\n{3,}", "\n\n", current.rstrip() + "\n\n" + block)
     validate_toml(merged)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(merged, encoding="utf-8")
+    validate_preserved_sections(current, merged)
+    atomic_write(config_path, merged)
 
 
 def main() -> None:

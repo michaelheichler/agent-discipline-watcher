@@ -5,11 +5,6 @@ type = "command"
 command = "__SKILL_DIR__/hooks/run.sh SessionStart"
 statusMessage = "Loading agent discipline watcher"
 
-[[hooks.UserPromptSubmit]]
-[[hooks.UserPromptSubmit.hooks]]
-type = "command"
-command = "__SKILL_DIR__/hooks/run.sh UserPromptSubmit"
-
 [[hooks.PreToolUse]]
 matcher = "apply_patch|Edit|Write"
 [[hooks.PreToolUse.hooks]]

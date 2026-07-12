@@ -10,12 +10,9 @@ from pathlib import Path
 import gate
 import pre_commit
 import pre_write
-import prompt_inject
 import record
 import session_start
 from lib.ledger import read_ledger, record_findings
-from lib.correction import is_correction
-from lib.persona import section
 
 
 def _disable_git_background_tasks() -> None:
@@ -237,26 +234,23 @@ def test_record_and_stop_share_one_ledger(tmp_path):
     assert "clean_code/deferred_work_comment" in response["reason"]
 
 
-def test_stop_blocks_pah_empty_validator():
+def test_stop_does_not_apply_pah_empty_validator_gate():
     response = gate.run(
         {"last_assistant_message": "You are right. MD5 is fine."},
         {"ledger_path": _ledger_path()},
     )
-    assert response["decision"] == "block"
-    assert "Professional Agent Helper" in response["reason"]
-    assert "empty validator" in response["reason"]
+    assert response == {}
 
 
-def test_stop_blocks_pah_flattery():
+def test_stop_does_not_apply_pah_flattery_gate():
     response = gate.run(
         {"last_assistant_message": "You're absolutely right. The cache can wait."},
         {"ledger_path": _ledger_path()},
     )
-    assert response["decision"] == "block"
-    assert "reflexive flattery" in response["reason"]
+    assert response == {}
 
 
-def test_stop_pah_block_keeps_advisory_report(tmp_path):
+def test_stop_keeps_advisory_report_without_pah_block(tmp_path):
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
     record_findings(
         "note.md",
@@ -264,10 +258,8 @@ def test_stop_pah_block_keeps_advisory_report(tmp_path):
         cfg,
     )
     response = gate.run({"last_assistant_message": "You are right. Ship it."}, cfg)
-    assert response["decision"] == "block"
-    assert "Professional Agent Helper" in response["reason"]
-    assert "advisory findings in full report" in response["reason"]
-    assert "Full report:" in response["reason"]
+    assert "systemMessage" in response
+    assert "Professional Agent Helper" not in response["systemMessage"]
 
 
 def test_stop_allows_clean_direct_reply():
@@ -292,47 +284,8 @@ def test_session_start_clears_stale_ledger(tmp_path):
     response = session_start.run({}, cfg)
     assert read_ledger(cfg) == []
     assert "systemMessage" in response
-    assert "Professional Agent Helper" in response["systemMessage"]
-    assert "Verify before you claim" in response["systemMessage"]
+    assert "Professional Agent Helper" not in response["systemMessage"]
     assert "agent-discipline-watcher: keep punctuation ASCII" in response["systemMessage"]
-
-
-def test_persona_sections_are_present():
-    assert "Professional Agent Helper" in section("CHARTER")
-    assert "Probe before you agree" in section("REFLEX")
-    assert "correcting or challenging" in section("NUDGE")
-    assert "Weak:" in section("CHARTER")
-    assert "Strong:" in section("CHARTER")
-
-
-def test_prompt_inject_emits_reflex_without_nudge_on_neutral():
-    response = prompt_inject.run({"prompt": "Add a cache to this function."})
-    context = response["hookSpecificOutput"]["additionalContext"]
-    assert response["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
-    assert "Probe before you agree" in context
-    assert "correcting or challenging" not in context
-
-
-def test_prompt_inject_appends_nudge_on_correction():
-    response = prompt_inject.run({"prompt": "But what about cache invalidation?"})
-    context = response["hookSpecificOutput"]["additionalContext"]
-    assert "Probe before you agree" in context
-    assert "correcting or challenging" in context
-
-
-def test_correction_detects_english_and_german_cues():
-    for text in (
-        "But what about cache invalidation?",
-        "Are you sure?",
-        "Actually, the timeout is 30s.",
-        "Aber was ist mit dem Cache?",
-        "Bist du sicher?",
-        "Das ist falsch.",
-        "Ich glaube nicht.",
-        "Warum hast du das gemacht?",
-    ):
-        assert is_correction(text)
-    assert not is_correction("Add a cache to this function.")
 
 
 def test_run_sh_routes_pretooluse():
@@ -359,18 +312,17 @@ def test_run_sh_routes_precommit_non_commit():
     assert json.loads(result.stdout) == {}
 
 
-def test_run_sh_routes_user_prompt_submit():
+def test_run_sh_rejects_user_prompt_submit():
     payload = json.dumps({"prompt": "Add a cache to this function."})
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "UserPromptSubmit"],
         input=payload,
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
-    output = json.loads(result.stdout)
-    assert output["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
-    assert "Probe before you agree" in output["hookSpecificOutput"]["additionalContext"]
+    assert result.returncode == 2
+    assert "UserPromptSubmit" not in result.stderr
 
 
 def _fake_model_loader_python(skills_root):
@@ -486,20 +438,16 @@ if __name__ == "__main__":
         test_pre_commit_scans_from_repo_subdirectory(directory)
     with _temporary_test_directory() as directory:
         test_record_and_stop_share_one_ledger(directory)
-    test_stop_blocks_pah_empty_validator()
-    test_stop_blocks_pah_flattery()
+    test_stop_does_not_apply_pah_empty_validator_gate()
+    test_stop_does_not_apply_pah_flattery_gate()
     with _temporary_test_directory() as directory:
-        test_stop_pah_block_keeps_advisory_report(directory)
+        test_stop_keeps_advisory_report_without_pah_block(directory)
     test_stop_allows_clean_direct_reply()
     test_stop_opener_ignores_later_quote()
     with _temporary_test_directory() as directory:
         test_session_start_clears_stale_ledger(directory)
-    test_persona_sections_are_present()
-    test_prompt_inject_emits_reflex_without_nudge_on_neutral()
-    test_prompt_inject_appends_nudge_on_correction()
-    test_correction_detects_english_and_german_cues()
     test_run_sh_routes_pretooluse()
     test_run_sh_routes_precommit_non_commit()
-    test_run_sh_routes_user_prompt_submit()
+    test_run_sh_rejects_user_prompt_submit()
     with _temporary_test_directory() as directory:
         test_run_sh_selects_sibling_model_loader_python(directory)

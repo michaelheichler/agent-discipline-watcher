@@ -122,7 +122,8 @@ def test_owned_text_has_no_legacy_extension_or_banned_markers():
 
 def test_docs_state_replacement_and_pi_scope():
     text = f"{read(README)}\n{read(SKILL)}"
-    assert "professional-agent-helper" in text
+    assert "professional-agent-helper" not in text
+    assert "Professional Agent Helper" not in text
     assert "one Pi extension" in text
     assert "one ledger" in text
 
