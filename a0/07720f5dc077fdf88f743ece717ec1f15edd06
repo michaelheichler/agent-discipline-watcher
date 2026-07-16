@@ -1,0 +1,21 @@
+hooks/lib/test_skip_detection_removed.py
+  s_ef227f29261427::t_89f91af1d84065 1-7
+.requirements/20260716T203348Z_remove_skip_detection/REQUIREMENTS.md
+  s_ef227f29261427::t_4fbce0245ccc96 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a007720f5dc077fdf88f743ece717ec1f15edd06",
+  "prompts": {},
+  "sessions": {
+    "s_ef227f29261427": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5177-b841-77f3-aaf7-8fd5cd6e51cb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
