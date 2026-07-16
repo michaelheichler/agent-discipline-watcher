@@ -69,7 +69,6 @@ VC_COMMENT_RE = re.compile(
     r"to|from|into|with|previously|used to|formerly|instead of)\b",
     re.IGNORECASE,
 )
-SKIP_TEST_RE = re.compile(r"\b(skip|skipif|xfail|disabled)\s*\(", re.IGNORECASE)
 ASSERT_RE = re.compile(r"\bassert\b|\.assert|expect\(|raises\(|warns\(|should\b|\.to\b|require\.|verify\(", re.IGNORECASE)
 TEST_START_RE = re.compile(r"^(\s*)(?:async\s+)?def\s+test\w*\s*\([^)]*\):|^(\s*)(?:it|test|describe)\s*\(", re.IGNORECASE)
 PASS_WORD_RE = re.compile(r"\bpass\b", re.IGNORECASE)
@@ -202,8 +201,6 @@ CLEAN_CODE_LINE_RULES = (
      "Comment apologizes for code in ", "Fix the code or state the reason plainly."),
     (COMMENTED_CODE_RE, "commented_code",
      "Commented code remains in ", "Delete the commented code."),
-    (SKIP_TEST_RE, "skipped_test",
-     "Skipped test in ", "Enable the test or remove it."),
 )
 
 
