@@ -119,9 +119,54 @@ def test_record_keeps_clean_touched_file_for_stop_jury(tmp_path):
     assert "clean_code/deep_clean_code" in response["systemMessage"]
 
 
+def test_stop_jury_skips_default_exempt_paths(tmp_path):
+    prompt = tmp_path / ".tweakcc" / "system-prompts" / "upstream.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("This upstream sentence stays untouched.", encoding="utf-8")
+    english = EnglishPipeline()
+    clean = CleanJudge()
+    cfg = _cfg(tmp_path, english, clean, HostClient())
+    stale = {
+        "family": "punctuation",
+        "rule": "banned_dash",
+        "line": 1,
+        "detail": "Recorded before the path became exempt.",
+        "force": True,
+        "snippet": "upstream prompt",
+        "action": "Ignore this generated snapshot.",
+    }
+    record_findings(str(prompt), [stale], cfg)
+
+    assert gate.run({"session_id": "s-exempt"}, cfg) == {}
+    assert english.sentences == []
+    assert clean.paths == []
+
+
+def test_stop_rescans_current_files_and_drops_missing_paths(tmp_path):
+    current = tmp_path / "current.md"
+    missing = tmp_path / "missing.md"
+    current.write_text("Current text is clean.", encoding="utf-8")
+    stale = {
+        "family": "punctuation",
+        "rule": "banned_dash",
+        "line": 1,
+        "detail": "Old content.",
+        "force": True,
+        "snippet": "old content",
+        "action": "Use current content.",
+    }
+    cfg = _cfg(tmp_path, EnglishPipeline(), CleanJudge(), HostClient())
+    cfg["english"] = False
+    cfg["clean_code"] = False
+    record_findings(str(current), [stale], cfg)
+    record_findings(str(missing), [stale], cfg)
+
+    assert gate.run({"session_id": "s-current"}, cfg) == {}
+
+
 def test_blocking_stop_report_keeps_advisory_model_findings(tmp_path):
     prose = tmp_path / "note.md"
-    prose.write_text("This sentence has enough words.", encoding="utf-8")
+    prose.write_text("This sentence\u2014has enough words.", encoding="utf-8")
     forced = {
         "family": "punctuation",
         "rule": "banned_dash",

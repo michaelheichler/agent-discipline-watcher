@@ -251,12 +251,10 @@ def test_stop_does_not_apply_pah_flattery_gate():
 
 
 def test_stop_keeps_advisory_report_without_pah_block(tmp_path):
+    note = tmp_path / "note.md"
+    note.write_text("I came home, I went to bed.", encoding="utf-8")
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    record_findings(
-        "note.md",
-        [{"family": "english", "rule": "maybe", "line": 1, "force": False, "action": "Review wording."}],
-        cfg,
-    )
+    record_findings(str(note), [], cfg)
     response = gate.run({"last_assistant_message": "You are right. Ship it."}, cfg)
     assert "systemMessage" in response
     assert "Professional Agent Helper" not in response["systemMessage"]

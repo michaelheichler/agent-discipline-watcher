@@ -10,10 +10,10 @@ from pathlib import Path
 
 try:
     from .ledger import touched_files
-    from .scanner import _is_prose
+    from .scanner import _is_exempt, _is_prose
 except ImportError:
     from ledger import touched_files
-    from scanner import _is_prose
+    from scanner import _is_exempt, _is_prose
 
 
 SKILLS_ROOT = Path(__file__).resolve().parents[3]
@@ -33,6 +33,8 @@ def judge_touched(payload: dict, config: dict) -> list[dict]:
     attempted_clean = False
     try:
         for path in touched_files(config):
+            if _is_exempt(path, config):
+                continue
             full = Path(path)
             if not full.is_file():
                 continue
