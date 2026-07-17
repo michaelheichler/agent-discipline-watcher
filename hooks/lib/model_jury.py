@@ -16,7 +16,7 @@ except ImportError:
     from scanner import _is_exempt, _is_prose
 
 
-SKILLS_ROOT = Path(__file__).resolve().parents[3]
+SKILLS_ROOT = Path(os.environ.get("ADW_SKILLS_ROOT") or Path(__file__).resolve().parents[3])
 OLD_ENGLISH_LIB = SKILLS_ROOT / "english-for-agents" / "hooks" / "lib"
 OLD_CLEAN_LIB = SKILLS_ROOT / "clean-coder-discipline" / "hooks" / "lib"
 CODE_EXTS = {

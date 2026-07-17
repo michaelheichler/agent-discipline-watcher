@@ -74,7 +74,7 @@ TEST_START_RE = re.compile(r"^(\s*)(?:async\s+)?def\s+test\w*\s*\([^)]*\):|^(\s*
 PASS_WORD_RE = re.compile(r"\bpass\b", re.IGNORECASE)
 SHELL_IN_CONFIG_RE = re.compile(
     r"""-c\s+["']|;\s*(?:do|then|fi|done)\b|&&|\|\||\$\{|\$\(|\bimport\s+\w+\s*;|\btrap\s"""
-    r"""|^\s*[\w.\[\]"']+\s*=(?!=)\s*\S"""
+    r"""|^\s*[\w.\[\]"']+\s*=(?!=)\s*\S|\s--\s"""
 )
 DIRECTIVE_COMMENT_RE = re.compile(r"^#\s*(?:syntax|escape|check)=|^#!")
 
@@ -82,6 +82,31 @@ DIRECTIVE_COMMENT_RE = re.compile(r"^#\s*(?:syntax|escape|check)=|^#!")
 def _is_exempt(path: str, cfg: dict) -> bool:
     patterns = cfg.get("exempt_paths") or []
     return any(fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, "*/" + pat) for pat in patterns)
+
+
+def read_scannable(path, config: dict) -> str | None:
+    cfg = effective_config(config)
+    try:
+        if path.stat().st_size > _max_scan_bytes(cfg):
+            return None
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if b"\0" in raw[:8192]:
+        return None
+    return raw.decode("utf-8", errors="replace")
+
+
+def scannable_text(text: str, config: dict) -> str | None:
+    if len(text) > _max_scan_bytes(effective_config(config)):
+        return None
+    if "\0" in text[:8192]:
+        return None
+    return text
+
+
+def _max_scan_bytes(config: dict) -> int:
+    return _int_setting(config, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", 1_000_000)
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:

@@ -40,7 +40,3 @@ def _find_project_config(cwd: Path) -> Path:
         if candidate.exists():
             return candidate
     return current / CONFIG_NAME
-
-
-def enabled(config: dict, family: str) -> bool:
-    return bool(effective_config(config).get(family, False))

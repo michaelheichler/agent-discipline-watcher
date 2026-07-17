@@ -97,6 +97,8 @@ Supported checks:
 
 `max_rows` can be set in `.agent-discipline.json` to change how many compact report rows are shown before the full local report path.
 
+`max_scan_bytes` can be set in `.agent-discipline.json`, or through the `ADW_MAX_SCAN_BYTES` environment variable, to cap how large a file the hooks will read. Files over the cap and files that look binary are skipped. The default is 1000000 bytes.
+
 ## Hook Lifecycle
 
 | Event | Behavior |
@@ -107,15 +109,17 @@ Supported checks:
 | `PostToolUse` | Records findings from written files into the session ledger. |
 | `Stop` | Reads ledger findings, runs optional model juries, and emits one compact block or advisory message. |
 
+PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
+
 ## Stop And Model Jury Behavior
 
 Stop always runs deterministic ledger findings. When the related checks are enabled and model resources can load, Stop also runs the model-backed English jury over touched prose files and the model-backed Clean Coder jury over touched code files.
 
-Model failures fail soft. If a model cannot load, is out of capacity, or raises an exception, deterministic findings still report and the session continues with the model jury skipped.
+Model failures fail soft. If a model cannot load, is out of capacity, or raises an exception, deterministic findings still report and the session continues with the model jury skipped. If the jury fails in an unexpected way, Stop prints a warning to stderr and keeps going.
 
 Reports are compact and token-lean. Hook output shows a bounded set of rows and writes full finding detail to a local temp JSON report. Model and host resources are released after Stop, including English pipeline unload, Clean Coder unload, and skill-model-loader turn release when available.
 
-`hooks/run.sh` selects one Python runtime for all hook events. It prefers executable `SML_PYTHON`, then the sibling `skill-model-loader/.venv/bin/python`, then Clean Coder venvs, before falling back to `python3`.
+`hooks/run.sh` selects one Python runtime for all hook events. It prefers executable `SML_PYTHON`, then the sibling `skill-model-loader/.venv/bin/python`, then Clean Coder venvs, before falling back to `python3`. Set `ADW_SKILLS_ROOT` to point both run.sh and the Python model jury at a different skills workspace.
 
 ## Pi Behavior
 

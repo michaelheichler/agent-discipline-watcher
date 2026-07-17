@@ -8,7 +8,7 @@ from pathlib import Path
 from lib.config import effective_config
 from lib.hookio import allow, deny, read_payload, write_payload
 from lib.reporting import compact_block
-from lib.scanner import scan_all
+from lib.scanner import scan_all, scannable_text
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
@@ -25,7 +25,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
         cfg = effective_config(config, commit_cwd)
         for path in _staged(repo):
             text = _staged_text(repo, path)
-            if text is None:
+            if text is None or scannable_text(text, cfg) is None:
                 continue
             for finding in scan_all(path, text, cfg):
                 if not finding.get("force"):

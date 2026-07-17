@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from lib.config import effective_config
@@ -7,7 +8,7 @@ from lib.hookio import read_payload, stop_block, system_message, write_payload
 from lib.ledger import touched_files
 from lib.model_jury import judge_touched
 from lib.reporting import compact_block, compact_system_message, split_findings
-from lib.scanner import _is_exempt, scan_all
+from lib.scanner import _is_exempt, read_scannable, scan_all
 
 
 def current_findings(config: dict) -> list[dict]:
@@ -18,7 +19,9 @@ def current_findings(config: dict) -> list[dict]:
         path = Path(raw_path)
         if not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = read_scannable(path, config)
+        if text is None:
+            continue
         for finding in scan_all(str(path), text, config):
             item = dict(finding)
             item["path"] = str(path)
@@ -34,8 +37,8 @@ def run(payload: dict | None = None, config: dict | None = None) -> dict:
     findings = current_findings(cfg)
     try:
         findings.extend(judge_touched(payload, cfg))
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"agent-discipline-watcher: model jury skipped after error: {exc}", file=sys.stderr)
     forced, advisory = split_findings(findings)
     if forced:
         reason, _ = compact_block(forced, cfg, report_findings=findings, advisory_count=len(advisory))

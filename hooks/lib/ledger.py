@@ -41,17 +41,6 @@ def read_ledger(config: dict | None = None) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
-def all_findings(config: dict | None = None) -> list[dict]:
-    rows: list[dict] = []
-    for entry in read_ledger(config):
-        path = entry.get("path", "")
-        for finding in entry.get("findings", []):
-            item = dict(finding)
-            item["path"] = path
-            rows.append(item)
-    return rows
-
-
 def touched_files(config: dict | None = None) -> list[str]:
     rows = []
     for entry in read_ledger(config):
@@ -64,6 +53,10 @@ def touched_files(config: dict | None = None) -> list[str]:
 def _write_ledger(rows: list[dict], config: dict | None = None) -> None:
     path = ledger_path(config)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError:
+        return
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         json.dump(rows, handle, ensure_ascii=True, indent=2)

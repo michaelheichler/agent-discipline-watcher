@@ -264,3 +264,31 @@ def test_dockerfile_parser_directive_not_a_prose_comment_block():
     prose = "# first narrating line of prose\n# second narrating line of prose\nFROM alpine\n"
     rules = [f["rule"] for f in scanner.scan_all("FrontEnd/Dockerfile", prose)]
     assert "prose_comment_block" in rules
+
+
+def test_config_shell_argument_separator_is_not_a_dash_break():
+    cfg = {"english": False, "clean_code": False}
+    shellish = "run: grep foo " + "--" + " dir"
+    assert scan_all("ci.yaml", shellish, cfg) == []
+    prose = "first clause " + "--" + " second clause"
+    rules = {item["rule"] for item in scan_all("notes.md", prose, cfg)}
+    assert "dash_break" in rules
+
+
+def test_read_scannable_skips_oversized_and_binary_files(tmp_path):
+    cfg = {"max_scan_bytes": 10}
+    big = tmp_path / "big.py"
+    big.write_text("x = 1\n" * 4, encoding="utf-8")
+    assert scanner.read_scannable(big, cfg) is None
+    blob = tmp_path / "blob.py"
+    blob.write_bytes(b"x = 1\n" + b"\0" + b"y = 2\n")
+    assert scanner.read_scannable(blob, {"max_scan_bytes": 1000}) is None
+    small = tmp_path / "small.py"
+    small.write_text("x = 1\n", encoding="utf-8")
+    assert scanner.read_scannable(small, cfg) == "x = 1\n"
+
+
+def test_scannable_text_caps_length_and_nul_bytes():
+    assert scanner.scannable_text("x" * 20, {"max_scan_bytes": 10}) is None
+    assert scanner.scannable_text("a\0b", {"max_scan_bytes": 100}) is None
+    assert scanner.scannable_text("ok", {"max_scan_bytes": 10}) == "ok"

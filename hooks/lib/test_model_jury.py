@@ -201,6 +201,29 @@ def _cfg(tmp_path, english, clean, host):
     }
 
 
+def test_stop_warns_when_jury_raises(tmp_path, capsys, monkeypatch):
+    def boom(payload, config):
+        raise RuntimeError("jury exploded")
+
+    monkeypatch.setattr(gate, "judge_touched", boom)
+    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
+    assert gate.run({"session_id": "sx"}, cfg) == {}
+    assert "model jury" in capsys.readouterr().err
+
+
+def test_skills_root_honors_adw_env_override(tmp_path, monkeypatch):
+    import importlib
+    import model_jury
+
+    monkeypatch.setenv("ADW_SKILLS_ROOT", str(tmp_path))
+    importlib.reload(model_jury)
+    try:
+        assert model_jury.SKILLS_ROOT == tmp_path
+    finally:
+        monkeypatch.undo()
+        importlib.reload(model_jury)
+
+
 if __name__ == "__main__":
     from pathlib import Path
     import tempfile

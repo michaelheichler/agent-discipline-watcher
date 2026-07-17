@@ -6,7 +6,7 @@ from pathlib import Path
 from lib.config import effective_config
 from lib.hookio import read_payload, write_payload
 from lib.ledger import record_findings
-from lib.scanner import scan_all
+from lib.scanner import read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
 
@@ -35,7 +35,9 @@ def run(payload: dict, config: dict | None = None) -> dict:
             path = cwd / path
         if not path.exists() or not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = read_scannable(path, cfg)
+        if text is None:
+            continue
         record_findings(str(path), scan_all(str(path), text, cfg), cfg)
     return {}
 
