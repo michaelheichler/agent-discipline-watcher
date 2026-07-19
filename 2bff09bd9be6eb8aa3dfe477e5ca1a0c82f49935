@@ -1,0 +1,40 @@
+README.md
+  s_2074c35763590b::t_51cd8b8537ffc1 5
+  s_2074c35763590b::t_2eff72b595542f 120-122
+  s_2074c35763590b::t_56e5f64d86bb74 3,107,110
+hooks/run.sh
+  s_2074c35763590b::t_9ddbb2f1453ef0 24
+hooks/test_hooks.py
+  s_2074c35763590b::t_314730cc52a7e7 227
+  s_2074c35763590b::t_a3a462716a031f 262
+  s_2074c35763590b::t_e70d1ad4b7f64e 394-395
+  s_2074c35763590b::t_9c61e7c67f964e 224
+  s_2074c35763590b::t_e8ac2118b30b86 261
+  s_2074c35763590b::t_6aa55526872c65 305-316
+hooks/lib/test_pi_extension_contract.py
+  s_2074c35763590b::t_80916bc939dfa5 85
+  s_2074c35763590b::t_bbbacd152cf091 102,105-107
+  s_2074c35763590b::t_6aa55526872c65 88-89,135
+hooks/lib/test_regex_only_runtime.py
+  s_2074c35763590b::t_6aa55526872c65 7,10-12
+.requirements/20260719T084553Z_remove_stop_hook/REQUIREMENTS.md
+  s_2074c35763590b::t_7d793e18c7f77b 1-36
+hooks/test_merge_configs.py
+  s_2074c35763590b::t_6aa55526872c65 279,281,283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "2bff09bd9be6eb8aa3dfe477e5ca1a0c82f49935",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
