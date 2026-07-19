@@ -87,6 +87,8 @@ Project configuration lives in `.agent-discipline.json` at the project root:
 
 The hook code searches upward from the current working directory for `.agent-discipline.json`. If no file is found, punctuation, English, and clean-code checks are enabled.
 
+The Craftsman suppression marker is always blocked on every scanned file. Project check switches and path exemptions cannot disable this rule. Fix the reported issue instead.
+
 Supported checks:
 
 | Check | Purpose |

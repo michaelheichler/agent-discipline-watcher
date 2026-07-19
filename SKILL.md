@@ -55,6 +55,8 @@ and the exact snippet before assuming the hook failed.
 - Do not end a turn while a forced finding remains in your own changes.
 - Do not silence a hook, delete hook state, or change config to get past a
   finding unless the user explicitly asked for configuration work.
+- Do not add a Craftsman suppression marker. It is an unconditional blocker.
+  Fix the reported issue.
 - Do not add prose comments to explain code that should be clearer through names
   or structure.
 - Do not broaden the task into style cleanup outside the touched or requested

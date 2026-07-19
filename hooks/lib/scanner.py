@@ -77,6 +77,8 @@ SHELL_IN_CONFIG_RE = re.compile(
     r"""|^\s*[\w.\[\]"']+\s*=(?!=)\s*\S|\s--\s"""
 )
 DIRECTIVE_COMMENT_RE = re.compile(r"^#\s*(?:syntax|escape|check)=|^#!")
+SUPPRESSION_MARKER = "craftsman" + "-ignore"
+SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b", re.IGNORECASE)
 
 
 def _is_exempt(path: str, cfg: dict) -> bool:
@@ -111,10 +113,22 @@ def _max_scan_bytes(config: dict) -> int:
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     cfg = effective_config(config)
-    if _is_exempt(path, cfg):
-        return []
-    findings: list[dict] = []
     lines = text.splitlines() or [""]
+    findings = [
+        _finding(
+            "clean_code",
+            "suppression_escape_hatch",
+            number,
+            "Craftsman suppression marker in " + path,
+            True,
+            line,
+            "Remove the marker and fix the reported issue.",
+        )
+        for number, line in enumerate(lines, 1)
+        if SUPPRESSION_MARKER_RE.search(line)
+    ]
+    if _is_exempt(path, cfg):
+        return findings
     punct_lines = _strip_punctuation_blocks(text).splitlines() or [""]
     english_lines = _strip_english_hidden(text).splitlines() or [""]
     code_file = _is_code(path)

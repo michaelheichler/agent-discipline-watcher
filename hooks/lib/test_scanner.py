@@ -105,6 +105,25 @@ def test_clean_code_rules_cover_common_comment_faults():
     assert {"bug_label_comment", "apology_comment", "commented_code", "deferred_work_comment", "hollow_test"} <= rules
 
 
+def test_craftsman_suppression_marker_is_always_blocked():
+    marker = "craftsman" + "-ignore: PY002"
+    for path in ("sample.py", "README.md", "settings.toml"):
+        findings = scan_all(
+            path,
+            "# " + marker + "\n",
+            {"punctuation": False, "english": False, "clean_code": False},
+        )
+        rows = [item for item in findings if item["rule"] == "suppression_escape_hatch"]
+        assert len(rows) == 1
+        assert rows[0]["force"] is True
+    exempt = scan_all(
+        "/repo/generated/sample.py",
+        "# " + marker + "\n",
+        {"exempt_paths": ["generated/*"]},
+    )
+    assert [item for item in exempt if item["rule"] == "suppression_escape_hatch"]
+
+
 def test_clean_code_restores_old_structural_floor():
     long_func = "def test_big():\n" + "\n".join("    x%s = %s" % (i, i) for i in range(81))
     text = "\n".join([
