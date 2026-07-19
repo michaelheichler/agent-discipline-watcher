@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 from lib.config import effective_config
 from lib.hookio import read_payload, write_payload
 from lib.ledger import record_findings
+from lib.reporting import compact_block
 from lib.scanner import read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
@@ -29,6 +31,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
     if payload.get("session_id"):
         cfg["session_id"] = payload["session_id"]
     cwd = Path(payload.get("cwd") or ".")
+    forced = []
     for raw_path in edited_paths(payload):
         path = Path(raw_path)
         if not path.is_absolute():
@@ -38,9 +41,22 @@ def run(payload: dict, config: dict | None = None) -> dict:
         text = read_scannable(path, cfg)
         if text is None:
             continue
-        record_findings(str(path), scan_all(str(path), text, cfg), cfg)
+        findings = scan_all(str(path), text, cfg)
+        record_findings(str(path), findings, cfg)
+        for finding in findings:
+            if finding.get("force"):
+                item = dict(finding)
+                item["path"] = str(path)
+                forced.append(item)
+    if forced:
+        reason, _ = compact_block(forced, cfg)
+        return {"decision": "block", "reason": reason}
     return {}
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    response = run(read_payload())
+    if response.get("decision") == "block":
+        sys.stderr.write(response["reason"] + "\n")
+        raise SystemExit(2)
+    write_payload(response)

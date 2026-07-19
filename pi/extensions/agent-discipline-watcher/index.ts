@@ -131,6 +131,11 @@ export default function (pi: any) {
     const findings = await scan(file);
     if (findings.length) ledger.set(file, findings);
     else ledger.delete(file);
+    const forced = findings.filter((finding) => finding.force !== false);
+    if (forced.length) {
+      const message = compactReport(forced.map((finding) => ({ file, finding })));
+      return { content: [{ type: "text", text: message }], isError: true };
+    }
     return undefined;
   });
 

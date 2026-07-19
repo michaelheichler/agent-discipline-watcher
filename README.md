@@ -108,10 +108,12 @@ Supported checks:
 | `SessionStart` | Clears stale ledger state and injects the compact watcher reminder. |
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
-| `PostToolUse` | Records findings from written files into the session ledger. |
+| `PostToolUse` | Rescans written files, records findings, and immediately blocks agent continuation when forced findings remain. |
 | `Stop` | Rescans touched files and emits one compact block or advisory message. |
 
 PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
+
+PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a completed write, so a forced finding returns a blocking error that requires the agent to repair the file before continuing.
 
 ## Stop Behavior
 
@@ -126,8 +128,8 @@ The Pi extension:
 1. Clears its in-memory ledger on `session_start`.
 2. Adds a short policy prompt before the agent starts.
 3. Scans write, edit, and multiedit tool results through the Python scanner.
-4. Keeps findings in memory for the session.
-5. Sends one compact steer message at `agent_end` when forced findings remain.
+4. Turns a result with forced findings into an immediate error result that requires correction.
+5. Keeps findings in memory and sends a compact fallback steer at `agent_end` when forced findings remain.
 
 ## Verification
 

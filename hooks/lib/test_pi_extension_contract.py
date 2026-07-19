@@ -108,6 +108,13 @@ def test_pi_extension_scans_write_results_and_sends_one_steer():
     assert "Full report:" in source
 
 
+def test_pi_extension_returns_immediate_error_for_forced_findings():
+    source = read(EXTENSION)
+    assert "const forced = findings.filter((finding) => finding.force !== false)" in source
+    assert "return { content:" in source
+    assert "isError: true" in source
+
+
 def test_owned_text_has_no_legacy_extension_or_banned_markers():
     text = "\n".join(owned_policy_text(path, read(path)) for path in (EXTENSION, README, SKILL))
     assert "punctuation-discipline/pi" not in text

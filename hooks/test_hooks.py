@@ -227,11 +227,42 @@ def test_record_and_stop_share_one_ledger(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    record.run({"tool_input": {"file_path": str(target)}}, cfg)
+    post_response = record.run({"tool_input": {"file_path": str(target)}}, cfg)
+    assert post_response["decision"] == "block"
+    assert "clean_code/deferred_work_comment" in post_response["reason"]
     assert len(read_ledger(cfg)) == 1
     response = gate.run({}, cfg)
     assert response["decision"] == "block"
     assert "clean_code/deferred_work_comment" in response["reason"]
+
+
+def test_record_allows_clean_post_write(tmp_path):
+    target = tmp_path / "a.py"
+    target.write_text("print(1)\n", encoding="utf-8")
+    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
+    assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
+
+
+def test_record_allows_advisory_post_write(tmp_path):
+    target = tmp_path / "note.md"
+    target.write_text("I came home, I went to bed.\n", encoding="utf-8")
+    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
+    assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
+
+
+def test_run_sh_blocks_forced_posttooluse(tmp_path):
+    target = tmp_path / "note.md"
+    target.write_text("bad\u2014dash\n", encoding="utf-8")
+    payload = json.dumps({"tool_input": {"file_path": str(target)}})
+    result = subprocess.run(
+        [str(Path(__file__).parent / "run.sh"), "PostToolUse"],
+        input=payload,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "punctuation/banned_dash" in result.stderr
 
 
 def test_stop_does_not_apply_pah_empty_validator_gate():
