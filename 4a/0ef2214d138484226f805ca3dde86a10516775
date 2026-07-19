@@ -1,0 +1,51 @@
+hooks/lib/test_ledger_reporting.py
+  s_2074c35763590b::t_27e28b96931e23 3,23-27,30
+hooks/lib/test_scanner.py
+  s_2074c35763590b::t_f064c22e27ac0e 40,52
+  s_2074c35763590b::t_c5ae0dfaa81e93 104-112
+  s_2074c35763590b::t_28262fc0ca7c5d 150
+  s_2074c35763590b::t_419e0589da761e 256,260
+hooks/lib/reporting.py
+  s_2074c35763590b::t_82aab97fc972f0 28
+  s_2074c35763590b::t_ae9b1b3da94f82 23
+hooks/pre_write.py
+  s_2074c35763590b::t_f95cb588413c82 61,63
+pi/extensions/agent-discipline-watcher/index.ts
+  s_2074c35763590b::t_0ce2222dbacf48 117-118
+hooks/test_hooks.py
+  s_2074c35763590b::t_fdc62abb4238d1 239
+hooks/lib/scanner.py
+  s_2074c35763590b::t_9a06803e384727 235-236
+  s_2074c35763590b::t_0ff9563c7eee00 160,166,173,175,177,179,181,183,193-194
+  s_2074c35763590b::t_6eb6266fff04d7 246,254,338,363
+hooks/lib/test_pi_extension_contract.py
+  s_2074c35763590b::t_26ac78f1579a65 105,107,111,113-114
+.requirements/20260719T093240Z_forced_regex_only/REQUIREMENTS.md
+  s_2074c35763590b::t_5505c144499f49 1-4,6-14,16-21,23-34,36
+  s_2074c35763590b::t_e5c9304bb1cfa1 5,15,22,35
+README.md
+  s_2074c35763590b::t_e5c9304bb1cfa1 99
+  s_2074c35763590b::t_82aab97fc972f0 7-8,112,126,142
+hooks/lib/test_regex_only_runtime.py
+  s_2074c35763590b::t_52ce934f69f44d 19-24
+hooks/record.py
+  s_2074c35763590b::t_f95cb588413c82 33,43-48
+SKILL.md
+  s_2074c35763590b::t_82aab97fc972f0 43-45,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4a0ef2214d138484226f805ca3dde86a10516775",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
