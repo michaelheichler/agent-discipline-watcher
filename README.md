@@ -1,8 +1,8 @@
 # Agent Discipline Watcher
 
-Agent Discipline Watcher is one hook package for keeping agent output and edits direct, plain, and reviewable. It replaces the older punctuation-discipline, english-for-agents, and clean-coder-discipline packages with one scanner, one ledger, one compact report path, and one Pi extension.
+Agent Discipline Watcher is one hook package for keeping agent output and edits direct, plain, and reviewable. It replaces the older punctuation-discipline, english-for-agents, and clean-coder-discipline packages with one scanner, one compact report path, and one Pi extension.
 
-It exists to catch low-level agent drift before it lands in files or final replies: banned punctuation, inflated prose, deferred-work comments, noisy code comments, hollow tests, oversized code shapes, reflexive flattery, and empty agreement.
+It exists to catch deterministic low-level drift before it lands in files: banned punctuation, inflated prose, deferred-work comments, noisy code comments, hollow tests, and oversized code shapes.
 
 ## What It Installs
 
@@ -51,7 +51,6 @@ hooks/run.sh SessionStart
 hooks/run.sh PreToolUse
 hooks/run.sh PreCommit
 hooks/run.sh PostToolUse
-hooks/run.sh Stop
 ```
 
 ## Usage
@@ -105,31 +104,22 @@ Supported checks:
 
 | Event | Behavior |
 | --- | --- |
-| `SessionStart` | Clears stale ledger state and injects the compact watcher reminder. |
+| `SessionStart` | Injects the compact watcher reminder. |
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
-| `PostToolUse` | Rescans written files, records findings, and immediately blocks agent continuation when forced findings remain. |
-| `Stop` | Rescans touched files and emits one compact block or advisory message. |
+| `PostToolUse` | Rescans written files and immediately blocks agent continuation when forced findings remain. |
 
 PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
 
 PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a completed write, so a forced finding returns a blocking error that requires the agent to repair the file before continuing.
 
-## Stop Behavior
-
-Stop rescans touched files with the same deterministic regex scanner used by the write and commit hooks. It does not load models or external judge packages.
-
-Reports are compact. Hook output shows a bounded set of rows and writes full finding detail to a local temp JSON report. `hooks/run.sh` uses the platform's `python3` runtime for every hook event.
-
 ## Pi Behavior
 
 The Pi extension:
 
-1. Clears its in-memory ledger on `session_start`.
-2. Adds a short policy prompt before the agent starts.
-3. Scans write, edit, and multiedit tool results through the Python scanner.
-4. Turns a result with forced findings into an immediate error result that requires correction.
-5. Keeps findings in memory and sends a compact fallback steer at `agent_end` when forced findings remain.
+1. Adds a short policy prompt before the agent starts.
+2. Scans write, edit, and multiedit tool results through the Python scanner.
+3. Turns a result with forced findings into an immediate error result that requires correction.
 
 ## Verification
 

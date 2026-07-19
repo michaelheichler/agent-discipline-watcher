@@ -276,10 +276,11 @@ def assert_no_stale_hooks(text: str) -> None:
 
 
 def assert_watcher_hook_family(text: str) -> None:
-    for event in ("PreToolUse", "PostToolUse", "Stop", "SessionStart"):
+    for event in ("PreToolUse", "PostToolUse", "SessionStart"):
         assert event in text
-    for event in ("PreToolUse", "PreCommit", "PostToolUse", "Stop", "SessionStart"):
+    for event in ("PreToolUse", "PreCommit", "PostToolUse", "SessionStart"):
         assert f"run.sh {event}" in text
+    assert "run.sh Stop" not in text
     assert "run.sh UserPromptSubmit" not in text
 
 

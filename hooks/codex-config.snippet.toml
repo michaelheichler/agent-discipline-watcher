@@ -25,9 +25,3 @@ matcher = "apply_patch|Edit|Write"
 type = "command"
 command = "__SKILL_DIR__/hooks/run.sh PostToolUse"
 timeout = 30
-
-[[hooks.Stop]]
-[[hooks.Stop.hooks]]
-type = "command"
-command = "__SKILL_DIR__/hooks/run.sh Stop"
-timeout = 30

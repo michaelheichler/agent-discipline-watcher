@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from lib.hookio import read_payload, system_message, write_payload
-from lib.ledger import clear_ledger
 
 
 PROMPT = (
@@ -11,11 +10,6 @@ PROMPT = (
 
 
 def run(payload: dict | None = None, config: dict | None = None) -> dict:
-    payload = payload or {}
-    cfg = dict(config or {})
-    if payload.get("session_id"):
-        cfg["session_id"] = payload["session_id"]
-    clear_ledger(cfg)
     return system_message(PROMPT)
 
 

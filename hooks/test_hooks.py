@@ -7,12 +7,10 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-import gate
 import pre_commit
 import pre_write
 import record
 import session_start
-from lib.ledger import read_ledger, record_findings
 
 
 def _disable_git_background_tasks() -> None:
@@ -223,17 +221,12 @@ def test_pre_commit_scans_from_repo_subdirectory(tmp_path):
     assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
 
 
-def test_record_and_stop_share_one_ledger(tmp_path):
+def test_record_blocks_forced_post_write(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
-    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    post_response = record.run({"tool_input": {"file_path": str(target)}}, cfg)
+    post_response = record.run({"tool_input": {"file_path": str(target)}})
     assert post_response["decision"] == "block"
     assert "clean_code/deferred_work_comment" in post_response["reason"]
-    assert len(read_ledger(cfg)) == 1
-    response = gate.run({}, cfg)
-    assert response["decision"] == "block"
-    assert "clean_code/deferred_work_comment" in response["reason"]
 
 
 def test_record_allows_clean_post_write(tmp_path):
@@ -265,53 +258,8 @@ def test_run_sh_blocks_forced_posttooluse(tmp_path):
     assert "punctuation/banned_dash" in result.stderr
 
 
-def test_stop_does_not_apply_pah_empty_validator_gate():
-    response = gate.run(
-        {"last_assistant_message": "You are right. MD5 is fine."},
-        {"ledger_path": _ledger_path()},
-    )
-    assert response == {}
-
-
-def test_stop_does_not_apply_pah_flattery_gate():
-    response = gate.run(
-        {"last_assistant_message": "You're absolutely right. The cache can wait."},
-        {"ledger_path": _ledger_path()},
-    )
-    assert response == {}
-
-
-def test_stop_keeps_advisory_report_without_pah_block(tmp_path):
-    note = tmp_path / "note.md"
-    note.write_text("I came home, I went to bed.", encoding="utf-8")
-    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    record_findings(str(note), [], cfg)
-    response = gate.run({"last_assistant_message": "You are right. Ship it."}, cfg)
-    assert "systemMessage" in response
-    assert "Professional Agent Helper" not in response["systemMessage"]
-
-
-def test_stop_allows_clean_direct_reply():
-    response = gate.run(
-        {"last_assistant_message": "MD5 is wrong for passwords. Use Argon2."},
-        {"ledger_path": _ledger_path()},
-    )
-    assert response == {}
-
-
-def test_stop_opener_ignores_later_quote():
-    response = gate.run(
-        {"last_assistant_message": "MD5 is wrong for passwords.\n\n> You are right."},
-        {"ledger_path": _ledger_path()},
-    )
-    assert response == {}
-
-
-def test_session_start_clears_stale_ledger(tmp_path):
-    cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    Path(cfg["ledger_path"]).write_text(json.dumps([{"path": "old", "findings": [{}]}]), encoding="utf-8")
-    response = session_start.run({}, cfg)
-    assert read_ledger(cfg) == []
+def test_session_start_injects_policy():
+    response = session_start.run({})
     assert "systemMessage" in response
     assert "Professional Agent Helper" not in response["systemMessage"]
     assert "agent-discipline-watcher: keep punctuation ASCII" in response["systemMessage"]
@@ -352,6 +300,18 @@ def test_run_sh_rejects_user_prompt_submit():
     )
     assert result.returncode == 2
     assert "UserPromptSubmit" not in result.stderr
+
+
+def test_run_sh_rejects_stop():
+    result = subprocess.run(
+        [str(Path(__file__).parent / "run.sh"), "Stop"],
+        input="{}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "Stop" not in result.stderr
 
 
 def _ledger_path():
@@ -431,15 +391,8 @@ if __name__ == "__main__":
     with _temporary_test_directory() as directory:
         test_pre_commit_scans_from_repo_subdirectory(directory)
     with _temporary_test_directory() as directory:
-        test_record_and_stop_share_one_ledger(directory)
-    test_stop_does_not_apply_pah_empty_validator_gate()
-    test_stop_does_not_apply_pah_flattery_gate()
-    with _temporary_test_directory() as directory:
-        test_stop_keeps_advisory_report_without_pah_block(directory)
-    test_stop_allows_clean_direct_reply()
-    test_stop_opener_ignores_later_quote()
-    with _temporary_test_directory() as directory:
-        test_session_start_clears_stale_ledger(directory)
+        test_record_blocks_forced_post_write(directory)
+    test_session_start_injects_policy()
     test_run_sh_routes_pretooluse()
     test_run_sh_routes_precommit_non_commit()
     test_run_sh_rejects_user_prompt_submit()

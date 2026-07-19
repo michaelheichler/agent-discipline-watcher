@@ -50,8 +50,6 @@ type Finding = {
   force?: boolean;
 };
 
-const ledger = new Map<string, Finding[]>();
-
 function editedPath(event: any): string | undefined {
   return event?.input?.path ?? event?.input?.file_path ?? event?.input?.filename ?? event?.result?.path;
 }
@@ -107,19 +105,7 @@ function compactReport(rows: Array<{ file: string; finding: Finding }>): string 
   return lines.join("\n");
 }
 
-async function steer(pi: any, message: string): Promise<void> {
-  if (typeof pi.sendUserMessage === "function") {
-    await pi.sendUserMessage(message, { deliverAs: "steer" });
-  } else if (typeof pi.sendMessage === "function") {
-    await pi.sendMessage(message, { deliverAs: "steer" });
-  }
-}
-
 export default function (pi: any) {
-  pi.on("session_start", async () => {
-    ledger.clear();
-  });
-
   pi.on("before_agent_start", async (event: any) => {
     return { systemPrompt: `${event?.systemPrompt ?? ""}\n\n${POLICY}` };
   });
@@ -129,27 +115,11 @@ export default function (pi: any) {
     const file = editedPath(event);
     if (!file) return undefined;
     const findings = await scan(file);
-    if (findings.length) ledger.set(file, findings);
-    else ledger.delete(file);
     const forced = findings.filter((finding) => finding.force !== false);
     if (forced.length) {
       const message = compactReport(forced.map((finding) => ({ file, finding })));
       return { content: [{ type: "text", text: message }], isError: true };
     }
-    return undefined;
-  });
-
-  pi.on("agent_end", async () => {
-    const rows: Array<{ file: string; finding: Finding }> = [];
-    for (const [file, findings] of ledger) {
-      for (const finding of findings) {
-        if (finding.force !== false) rows.push({ file, finding });
-      }
-    }
-    if (!rows.length) return undefined;
-    const message = compactReport(rows);
-    ledger.clear();
-    await steer(pi, message);
     return undefined;
   });
 }

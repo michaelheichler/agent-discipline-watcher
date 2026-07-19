@@ -6,7 +6,6 @@ from pathlib import Path
 
 from lib.config import effective_config
 from lib.hookio import read_payload, write_payload
-from lib.ledger import record_findings
 from lib.reporting import compact_block
 from lib.scanner import read_scannable, scan_all
 
@@ -42,7 +41,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
         if text is None:
             continue
         findings = scan_all(str(path), text, cfg)
-        record_findings(str(path), findings, cfg)
         for finding in findings:
             if finding.get("force"):
                 item = dict(finding)

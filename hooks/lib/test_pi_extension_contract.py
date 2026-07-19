@@ -82,11 +82,11 @@ def test_owned_policy_text_excludes_yaml_frontmatter():
 
 def test_pi_extension_registers_one_combined_lifecycle():
     source = read(EXTENSION)
-    assert source.count('pi.on("session_start"') == 1
+    assert 'pi.on("session_start"' not in source
     assert source.count('pi.on("before_agent_start"') == 1
     assert source.count('pi.on("tool_result"') == 1
-    assert source.count('pi.on("agent_end"') == 1
-    assert "const ledger = new Map<string, Finding[]>()" in source
+    assert 'pi.on("agent_end"' not in source
+    assert "const ledger =" not in source
     assert "const POLICY =" in source
 
 
@@ -99,12 +99,12 @@ def test_pi_extension_shells_to_combined_python_scanner():
     assert '"clean_code": True' in source
 
 
-def test_pi_extension_scans_write_results_and_sends_one_steer():
+def test_pi_extension_scans_write_results_and_returns_one_error():
     source = read(EXTENSION)
     assert 'tool === "write" || tool === "edit" || tool === "multiedit"' in source
-    assert "compactReport(rows)" in source
-    assert 'deliverAs: "steer"' in source
-    assert source.count("compactReport(rows)") == 1
+    assert "compactReport(forced.map" in source
+    assert 'deliverAs: "steer"' not in source
+    assert source.count("compactReport(forced.map") == 1
     assert "Full report:" in source
 
 
@@ -132,7 +132,7 @@ def test_docs_state_replacement_and_pi_scope():
     assert "professional-agent-helper" not in text
     assert "Professional Agent Helper" not in text
     assert "one Pi extension" in text
-    assert "one ledger" in text
+    assert "agent-end fallback" not in text
 
 
 if __name__ == "__main__":

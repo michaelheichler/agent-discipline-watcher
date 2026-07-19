@@ -4,12 +4,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_stop_runtime_is_regex_only():
-    gate = (ROOT / "hooks" / "gate.py").read_text()
+def test_stop_runtime_is_removed():
     launcher = (ROOT / "hooks" / "run.sh").read_text()
 
-    assert "model_jury" not in gate
-    assert "judge_touched" not in gate
+    assert not (ROOT / "hooks" / "gate.py").exists()
+    assert not (ROOT / "hooks" / "lib" / "ledger.py").exists()
+    assert "run.sh Stop" not in launcher
     assert "skill-model-loader" not in launcher
     assert "SML_PYTHON" not in launcher
 
