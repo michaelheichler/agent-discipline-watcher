@@ -4,6 +4,7 @@ set -eu
 skill_dir="$(cd "$(dirname "$0")" && pwd)"
 install_claude=1
 install_codex=1
+install_opencode=1
 install_pi=1
 assume_yes=0
 
@@ -11,9 +12,11 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --claude) install_claude=1 ;;
     --codex) install_codex=1 ;;
+    --opencode) install_opencode=1 ;;
     --pi) install_pi=1 ;;
     --no-claude) install_claude=0 ;;
     --no-codex) install_codex=0 ;;
+    --no-opencode) install_opencode=0 ;;
     --no-pi) install_pi=0 ;;
     -y) assume_yes=1 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -35,6 +38,9 @@ backup_file() {
   cp "$1" "$1.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"
 }
 
+mkdir -p "$HOME/.agents/skills"
+ln -snf "$skill_dir" "$HOME/.agents/skills/agent-discipline-watcher"
+
 if [ "$install_claude" -eq 1 ]; then
   mkdir -p "$HOME/.claude/skills"
   ln -snf "$skill_dir" "$HOME/.claude/skills/agent-discipline-watcher"
@@ -45,8 +51,7 @@ if [ "$install_claude" -eq 1 ]; then
 fi
 
 if [ "$install_codex" -eq 1 ]; then
-  mkdir -p "$HOME/.codex/skills"
-  ln -snf "$skill_dir" "$HOME/.codex/skills/agent-discipline-watcher"
+  rm -f "$HOME/.codex/skills/agent-discipline-watcher"
   backup_file "$HOME/.codex/config.toml"
   backup_file "$HOME/.codex/hooks.json"
   rm -f "$HOME/.codex/hooks.json"
@@ -54,6 +59,12 @@ if [ "$install_codex" -eq 1 ]; then
     --config "$HOME/.codex/config.toml" \
     --skill-dir "$skill_dir"
   echo "Codex hooks installed globally. Run /hooks in Codex to review and trust new or changed hooks."
+fi
+
+if [ "$install_opencode" -eq 1 ]; then
+  mkdir -p "$HOME/.config/opencode/plugins"
+  cp "$skill_dir/opencode/agent-discipline-watcher.ts" \
+    "$HOME/.config/opencode/plugins/agent-discipline-watcher.ts"
 fi
 
 if [ "$install_pi" -eq 1 ]; then
