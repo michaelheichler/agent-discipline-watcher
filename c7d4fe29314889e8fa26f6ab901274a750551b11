@@ -1,0 +1,27 @@
+README.md
+  s_2074c35763590b::t_9b9952823595ff 162
+  s_2074c35763590b::t_78c9c48fdb13e1 110,114,116,118
+hooks/lib/test_regex_only_runtime.py
+  s_2074c35763590b::t_78c9c48fdb13e1 1-18
+.requirements/20260719T053817Z_regex_only_and_pi_factory/REQUIREMENTS.md
+  s_2074c35763590b::t_a73ad48b848ee4 1-14,16-22,24-30,32-38
+  s_2074c35763590b::t_405c0ebfc86064 15,23,31
+hooks/run.sh
+  s_2074c35763590b::t_78c9c48fdb13e1 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c7d4fe29314889e8fa26f6ab901274a750551b11",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
