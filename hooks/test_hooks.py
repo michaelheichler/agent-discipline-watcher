@@ -323,41 +323,6 @@ def test_run_sh_rejects_user_prompt_submit():
     assert "UserPromptSubmit" not in result.stderr
 
 
-def _fake_model_loader_python(skills_root):
-    fake_python = skills_root / "skill-model-loader" / ".venv" / "bin" / "python"
-    fake_python.parent.mkdir(parents=True)
-    fake_python.write_text(
-        "#!/bin/sh\n"
-        "printf '%s\\n' \"$0\" > \"$ADW_TEST_MARKER\"\n"
-        "printf '%s\\n' \"$1\" >> \"$ADW_TEST_MARKER\"\n",
-        encoding="utf-8",
-    )
-    fake_python.chmod(0o755)
-    return fake_python
-
-
-def test_run_sh_selects_sibling_model_loader_python(tmp_path):
-    skills_root = tmp_path / "skills"
-    fake_python = _fake_model_loader_python(skills_root)
-    marker = tmp_path / "selected.txt"
-
-    env = os.environ.copy()
-    env.pop("SML_PYTHON", None)
-    env["ADW_SKILLS_ROOT"] = str(skills_root)
-    env["ADW_TEST_MARKER"] = str(marker)
-    subprocess.run(
-        [str(Path(__file__).parent / "run.sh"), "Stop"],
-        text=True,
-        capture_output=True,
-        check=True,
-        env=env,
-    )
-
-    selected, script = marker.read_text(encoding="utf-8").splitlines()
-    assert selected == str(fake_python)
-    assert script == str(Path(__file__).parent / "gate.py")
-
-
 def _ledger_path():
     handle, path = tempfile.mkstemp(prefix="agent-discipline-watcher-test-", suffix=".json")
     os.close(handle)

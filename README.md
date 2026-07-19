@@ -107,19 +107,15 @@ Supported checks:
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
 | `PostToolUse` | Records findings from written files into the session ledger. |
-| `Stop` | Reads ledger findings, runs optional model juries, and emits one compact block or advisory message. |
+| `Stop` | Rescans touched files and emits one compact block or advisory message. |
 
 PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
 
-## Stop And Model Jury Behavior
+## Stop Behavior
 
-Stop always runs deterministic ledger findings. When the related checks are enabled and model resources can load, Stop also runs the model-backed English jury over touched prose files and the model-backed Clean Coder jury over touched code files.
+Stop rescans touched files with the same deterministic regex scanner used by the write and commit hooks. It does not load models or external judge packages.
 
-Model failures fail soft. If a model cannot load, is out of capacity, or raises an exception, deterministic findings still report and the session continues with the model jury skipped. If the jury fails in an unexpected way, Stop prints a warning to stderr and keeps going.
-
-Reports are compact and token-lean. Hook output shows a bounded set of rows and writes full finding detail to a local temp JSON report. Model and host resources are released after Stop, including English pipeline unload, Clean Coder unload, and skill-model-loader turn release when available.
-
-`hooks/run.sh` selects one Python runtime for all hook events. It prefers executable `SML_PYTHON`, then the sibling `skill-model-loader/.venv/bin/python`, then Clean Coder venvs, before falling back to `python3`. Set `ADW_SKILLS_ROOT` to point both run.sh and the Python model jury at a different skills workspace.
+Reports are compact. Hook output shows a bounded set of rows and writes full finding detail to a local temp JSON report. `hooks/run.sh` uses the platform's `python3` runtime for every hook event.
 
 ## Pi Behavior
 
@@ -163,9 +159,7 @@ If hooks do not run in Codex, run `/hooks` and verify the Agent Discipline Watch
 
 If a project needs fewer checks, run `agent-discipline configure` in that project and disable only the unwanted check families.
 
-If Stop reports only deterministic findings, that can be expected. Model juries run only when the corresponding check is enabled and model loading is available.
-
-If output is too short for diagnosis, open the `Full report:` JSON path printed by the hook. The model-facing message is intentionally compact.
+If output is too short for diagnosis, open the `Full report:` JSON path printed by the hook. The agent-facing message is intentionally compact.
 
 If Pi does not steer after edits, verify that `~/.pi/agent/settings.json` includes the extension path under `pi/extensions/agent-discipline-watcher/index.ts`.
 
