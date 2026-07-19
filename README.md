@@ -113,6 +113,8 @@ PreCommit parses the shell command heuristically. Commits launched through `sh -
 
 PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a completed write, so a forced finding returns a blocking error that requires the agent to repair the file before continuing.
 
+An already-running client may retain the removed Stop callback until it restarts. The launcher treats that stale callback as a silent no-op.
+
 ## Pi Behavior
 
 The Pi extension:

@@ -21,5 +21,9 @@ if [ "$event" = "PostToolUse" ]
 then
   exec "$PYTHON" "$DIR/record.py"
 fi
+if [ "$event" = "Stop" ]
+then
+  exit 0
+fi
 echo "usage: run.sh SessionStart|PreToolUse|PreCommit|PostToolUse" >&2
 exit 2

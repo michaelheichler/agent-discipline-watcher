@@ -302,7 +302,7 @@ def test_run_sh_rejects_user_prompt_submit():
     assert "UserPromptSubmit" not in result.stderr
 
 
-def test_run_sh_rejects_stop():
+def test_run_sh_ignores_stale_stop():
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "Stop"],
         input="{}",
@@ -310,8 +310,9 @@ def test_run_sh_rejects_stop():
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 2
-    assert "Stop" not in result.stderr
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
 
 
 def _ledger_path():
