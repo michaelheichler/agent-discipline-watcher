@@ -58,10 +58,9 @@ def run(payload: dict, config: dict | None = None) -> dict:
             item = dict(finding)
             item["path"] = path
             findings.append(item)
-    forced = [item for item in findings if item.get("force")]
-    if not forced:
+    if not findings:
         return allow()
-    reason, _ = compact_block(forced, cfg)
+    reason, _ = compact_block(findings, cfg)
     return deny(reason)
 
 

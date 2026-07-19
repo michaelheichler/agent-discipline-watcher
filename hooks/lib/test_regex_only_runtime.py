@@ -16,3 +16,9 @@ def test_stop_runtime_is_removed():
 
 def test_model_jury_module_is_removed():
     assert not (ROOT / "hooks" / "lib" / "model_jury.py").exists()
+
+
+def test_hook_runtimes_do_not_branch_on_finding_confidence():
+    for name in ("pre_write.py", "record.py", "pre_commit.py"):
+        source = (ROOT / "hooks" / name).read_text()
+        assert 'get("force")' not in source

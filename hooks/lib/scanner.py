@@ -17,8 +17,6 @@ CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".co
 DASH_BREAK_RE = re.compile(r"\w-{2,} ?\w|\w -{2,} \w")
 SPACED_HYPHEN_RE = re.compile(r"\w +- +\w")
 SEMICOLON_SPLICE_RE = re.compile(r"[a-z]\s*;\s+[a-z]", re.IGNORECASE)
-COMMA_SPLICE_RE = re.compile(r"\b(?:I|we|you|he|she|it|they)\b[^,.;:]{0,40},\s+(?:I|we|you|he|she|it|they)\s+[a-z]+", re.IGNORECASE)
-QUOTE_OUTSIDE_RE = re.compile(r"[a-z]\"\s*[.,]")
 PRONOUN_APOS_RE = re.compile(r"\b(your|their|her|our|its)'s\b", re.IGNORECASE)
 ITS_APOS_RE = re.compile(r"(?<![\w\"'])its" + chr(39) + r"(?!\w)", re.IGNORECASE)
 DECADE_APOS_RE = re.compile(r"(?:\b\d{3}0|'\d0)'s\b")
@@ -120,7 +118,6 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
             "suppression_escape_hatch",
             number,
             "Craftsman suppression marker in " + path,
-            True,
             line,
             "Remove the marker and fix the reported issue.",
         )
@@ -160,32 +157,30 @@ def _is_code(path: str) -> bool:
     return not _is_prose(path) and not _is_config(path)
 
 
-def _finding(family: str, rule: str, line: int, detail: str, force: bool, snippet: str, action: str) -> dict:
+def _finding(family: str, rule: str, line: int, detail: str, snippet: str, action: str) -> dict:
     return {
         "family": family,
         "rule": rule,
         "line": line,
         "detail": detail,
-        "force": force,
+        "force": True,
         "snippet": snippet.strip()[:180],
         "action": action,
     }
 
 
 PUNCTUATION_RULES = (
-    ("clean", (BAD_DASH_RE,), "banned_dash", True,
+    ("clean", (BAD_DASH_RE,), "banned_dash",
      "Banned dash character in ", "Use ASCII hyphen or rewrite the sentence."),
-    ("prose", (DASH_BREAK_RE,), "dash_break", True,
+    ("prose", (DASH_BREAK_RE,), "dash_break",
      "Double hyphen clause break in ", "Use a comma, period, or parentheses."),
-    ("prose", (SPACED_HYPHEN_RE,), "spaced_hyphen", True,
+    ("prose", (SPACED_HYPHEN_RE,), "spaced_hyphen",
      "Spaced hyphen acts as a dash in ", "Use a comma, period, parentheses, or close up the hyphen."),
-    ("prose", (SEMICOLON_SPLICE_RE,), "semicolon_splice", True,
+    ("prose", (SEMICOLON_SPLICE_RE,), "semicolon_splice",
      "Semicolon joins two clauses in ", "Use two sentences."),
-    ("prose", (QUOTE_OUTSIDE_RE,), "quote_punctuation", False,
-     "Comma or period sits outside a closing quote in ", "Put the comma or period inside the closing quote."),
-    ("clean", (PRONOUN_APOS_RE, ITS_APOS_RE), "pronoun_apostrophe", True,
+    ("clean", (PRONOUN_APOS_RE, ITS_APOS_RE), "pronoun_apostrophe",
      "Possessive pronoun has an apostrophe in ", "Use the possessive pronoun without apostrophe."),
-    ("clean", (DECADE_APOS_RE,), "decade_apostrophe", True,
+    ("clean", (DECADE_APOS_RE,), "decade_apostrophe",
      "Decade written as a possessive in ", "Write the decade as a plural."),
 )
 
@@ -195,20 +190,10 @@ def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str) ->
     prose = _punctuation_prose_part(path, clean)
     texts = {"clean": clean, "prose": prose}
     rows = [
-        _finding("punctuation", rule, line_number, detail + path, force, line, action)
-        for target, regexes, rule, force, detail, action in PUNCTUATION_RULES
+        _finding("punctuation", rule, line_number, detail + path, line, action)
+        for target, regexes, rule, detail, action in PUNCTUATION_RULES
         if texts[target] and any(regex.search(texts[target]) for regex in regexes)
     ]
-    if prose and COMMA_SPLICE_RE.search(prose) and not SEMICOLON_SPLICE_RE.search(prose):
-        rows.append(_finding(
-            "punctuation",
-            "comma_splice",
-            line_number,
-            "Comma may splice two clauses in " + path,
-            False,
-            line,
-            "Use a period or add a conjunction if both sides stand alone.",
-        ))
     return rows
 
 
@@ -224,7 +209,6 @@ def _scan_english(path: str, line_number: int, line: str, scan_line: str) -> lis
                 rule,
                 line_number,
                 "Plain English rule in " + path,
-                True,
                 line,
                 action,
             ))
@@ -248,6 +232,8 @@ COMMENT_BODY_RULES = (
      "Comment narrates change history in ", "Delete it. Put change history in the commit message."),
     (lambda text: len(text) > 150, "long_comment",
      "Long comment in ", "Keep only one terse reason or move prose to docs."),
+    (lambda text: bool(re.match(r"^(?:now(?:\s+we)?|this\s+(?:function|method|class))\b", text, re.IGNORECASE)),
+     "narration_comment", "Comment narrates code in ", "Delete it and let names and structure carry the intent."),
 )
 
 
@@ -257,7 +243,7 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
         return []
     text = body.group(1).strip()
     return [
-        _finding("clean_code", rule, line_number, detail + path, True, line, action)
+        _finding("clean_code", rule, line_number, detail + path, line, action)
         for matches, rule, detail, action in COMMENT_BODY_RULES
         if matches(text)
     ]
@@ -265,7 +251,7 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
 
 def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
     rows = [
-        _finding("clean_code", rule, line_number, detail + path, True, line, action)
+        _finding("clean_code", rule, line_number, detail + path, line, action)
         for regex, rule, detail, action in CLEAN_CODE_LINE_RULES
         if regex.search(line)
     ]
@@ -276,7 +262,6 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
             "hollow_test",
             line_number,
             "Test body has no assertion in " + path,
-            True,
             line,
             "Add an assertion or delete the hollow test.",
         ))
@@ -338,7 +323,6 @@ def _scan_docstrings(path: str, text: str) -> list[dict]:
                 "docstring_narration",
                 hit[0],
                 "Multi-line docstring narrates in " + path,
-                True,
                 hit[1],
                 "Move the explanation to a wiki page. Create one or update the existing page.",
             ))
@@ -346,19 +330,12 @@ def _scan_docstrings(path: str, text: str) -> list[dict]:
 
 
 def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
-    warn = _int_setting(config, "file_warn_lines", "CLEANCODER_FILE_WARN_LINES", 500)
     hard = _int_setting(config, "file_block_lines", "CLEANCODER_FILE_BLOCK_LINES", 1000)
     if count >= hard:
         return [_finding(
             "clean_code", "file_too_long", 1,
             "File is over the hard length cap in " + path,
-            True, path, "Split this file into focused modules.",
-        )]
-    if count >= warn:
-        return [_finding(
-            "clean_code", "file_getting_long", 1,
-            "File is past the warning length in " + path,
-            False, path, "Plan a split before this file reaches the hard cap.",
+            path, "Split this file into focused modules.",
         )]
     return []
 
@@ -383,7 +360,7 @@ def _function_length_findings(path: str, text: str, config: dict) -> list[dict]:
         _finding(
             "clean_code", "function_too_long", node.lineno,
             "Function is over the length cap in " + path,
-            True, node.name, "Extract helpers until each function does one thing.",
+            node.name, "Extract helpers until each function does one thing.",
         )
         for node in _long_functions(tree, func_limit)
     ]
@@ -415,7 +392,6 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
                 "hollow_test",
                 index + 1,
                 "Test body has no assertion in " + path,
-                True,
                 line,
                 "Add an assertion or delete the hollow test.",
             ))
@@ -461,7 +437,6 @@ def _flush_comment_run(path: str, run: list[tuple[int, str]], findings: list[dic
         "prose_comment_block",
         line_number,
         "Comment block narrates in " + path,
-        True,
         line,
         "Move the explanation to a wiki page. Create one or update the existing page.",
     ))

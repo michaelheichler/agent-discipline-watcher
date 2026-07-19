@@ -40,11 +40,9 @@ discipline layer for Codex, Claude Code, and Pi.
 
 ## Responding To Hook Findings
 
-When a hook reports findings, treat forced findings as blockers. Fix the named
-file or reply text, then rerun the relevant check if the task requires proof.
-Advisory findings still deserve review. Dismiss one only when the reported text
-is a quoted example, generated artifact, external source, or a case where the
-plain fix would damage correctness.
+Every hook finding is a blocker. Fix the named file or reply text, then rerun
+the relevant check if the task requires proof. The scanner does not emit fuzzy
+or advisory results.
 
 Keep fixes narrow. Rewrite the offending sentence, comment, test, or function
 instead of disabling checks. If a finding looks wrong, inspect the scanner rule
@@ -52,7 +50,7 @@ and the exact snippet before assuming the hook failed.
 
 ## Do Not
 
-- Do not end a turn while a forced finding remains in your own changes.
+- Do not end a turn while a finding remains in your own changes.
 - Do not silence a hook, delete hook state, or change config to get past a
   finding unless the user explicitly asked for configuration work.
 - Do not add a Craftsman suppression marker. It is an unconditional blocker.

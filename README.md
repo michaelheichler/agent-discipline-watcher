@@ -4,6 +4,8 @@ Agent Discipline Watcher is one hook package for keeping agent output and edits 
 
 It exists to catch deterministic low-level drift before it lands in files: banned punctuation, inflated prose, deferred-work comments, noisy code comments, hollow tests, and oversized code shapes.
 
+Every emitted finding blocks. The scanner does not report uncertain or advisory results.
+
 ## What It Installs
 
 `install.sh` can install three live surfaces:
@@ -94,7 +96,7 @@ Supported checks:
 | --- | --- |
 | `punctuation` | Blocks banned dash marks, double hyphen breaks, semicolon splices, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
 | `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and plain-English issues. |
-| `clean_code` | Blocks deferred-work comments, prose comment blocks, commented-out code, hollow tests, long functions, and related code hygiene issues. |
+| `clean_code` | Blocks deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. |
 
 `max_rows` can be set in `.agent-discipline.json` to change how many compact report rows are shown before the full local report path.
 
@@ -107,7 +109,7 @@ Supported checks:
 | `SessionStart` | Injects the compact watcher reminder. |
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
-| `PostToolUse` | Rescans written files and immediately blocks agent continuation when forced findings remain. |
+| `PostToolUse` | Rescans written files and immediately blocks agent continuation when findings remain. |
 
 PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
 
@@ -121,7 +123,7 @@ The Pi extension:
 
 1. Adds a short policy prompt before the agent starts.
 2. Scans write, edit, and multiedit tool results through the Python scanner.
-3. Turns a result with forced findings into an immediate error result that requires correction.
+3. Turns any finding into an immediate error result that requires correction.
 
 ## Verification
 
@@ -137,7 +139,7 @@ Syntax-check the shell entry points from this directory:
 bash -n install.sh hooks/run.sh
 ```
 
-The hook code holds itself to its own contract: every function stays under the length cap and the scanner reports zero forced findings on its own files.
+The hook code holds itself to its own contract: every function stays under the length cap and the scanner reports zero findings on its own files.
 
 Useful manual checks:
 

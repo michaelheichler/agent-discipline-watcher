@@ -28,8 +28,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
             if text is None or scannable_text(text, cfg) is None:
                 continue
             for finding in scan_all(path, text, cfg):
-                if not finding.get("force"):
-                    continue
                 item = dict(finding)
                 item["path"] = path
                 findings.append(item)

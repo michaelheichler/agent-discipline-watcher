@@ -102,15 +102,16 @@ def test_pi_extension_shells_to_combined_python_scanner():
 def test_pi_extension_scans_write_results_and_returns_one_error():
     source = read(EXTENSION)
     assert 'tool === "write" || tool === "edit" || tool === "multiedit"' in source
-    assert "compactReport(forced.map" in source
+    assert "compactReport(findings.map" in source
     assert 'deliverAs: "steer"' not in source
-    assert source.count("compactReport(forced.map") == 1
+    assert source.count("compactReport(findings.map") == 1
     assert "Full report:" in source
 
 
-def test_pi_extension_returns_immediate_error_for_forced_findings():
+def test_pi_extension_returns_immediate_error_for_every_finding():
     source = read(EXTENSION)
-    assert "const forced = findings.filter((finding) => finding.force !== false)" in source
+    assert "finding.force" not in source
+    assert "if (findings.length)" in source
     assert "return { content:" in source
     assert "isError: true" in source
 

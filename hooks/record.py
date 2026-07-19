@@ -30,7 +30,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
     if payload.get("session_id"):
         cfg["session_id"] = payload["session_id"]
     cwd = Path(payload.get("cwd") or ".")
-    forced = []
+    findings = []
     for raw_path in edited_paths(payload):
         path = Path(raw_path)
         if not path.is_absolute():
@@ -40,14 +40,12 @@ def run(payload: dict, config: dict | None = None) -> dict:
         text = read_scannable(path, cfg)
         if text is None:
             continue
-        findings = scan_all(str(path), text, cfg)
-        for finding in findings:
-            if finding.get("force"):
-                item = dict(finding)
-                item["path"] = str(path)
-                forced.append(item)
-    if forced:
-        reason, _ = compact_block(forced, cfg)
+        for finding in scan_all(str(path), text, cfg):
+            item = dict(finding)
+            item["path"] = str(path)
+            findings.append(item)
+    if findings:
+        reason, _ = compact_block(findings, cfg)
         return {"decision": "block", "reason": reason}
     return {}
 

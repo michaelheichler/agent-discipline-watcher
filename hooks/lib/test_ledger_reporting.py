@@ -1,5 +1,6 @@
 import os
 
+import reporting
 from reporting import compact_block
 
 
@@ -19,5 +20,11 @@ def test_compact_block_writes_private_full_report():
     assert oct(os.stat(report).st_mode & 0o777) == "0o600"
 
 
+def test_reporting_has_no_advisory_path():
+    assert not hasattr(reporting, "split_findings")
+    assert not hasattr(reporting, "compact_system_message")
+
+
 if __name__ == "__main__":
     test_compact_block_writes_private_full_report()
+    test_reporting_has_no_advisory_path()

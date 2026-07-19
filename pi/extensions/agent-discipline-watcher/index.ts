@@ -47,7 +47,6 @@ type Finding = {
   detail?: string;
   fix?: string;
   next_code?: string;
-  force?: boolean;
 };
 
 function editedPath(event: any): string | undefined {
@@ -115,9 +114,8 @@ export default function (pi: any) {
     const file = editedPath(event);
     if (!file) return undefined;
     const findings = await scan(file);
-    const forced = findings.filter((finding) => finding.force !== false);
-    if (forced.length) {
-      const message = compactReport(forced.map((finding) => ({ file, finding })));
+    if (findings.length) {
+      const message = compactReport(findings.map((finding) => ({ file, finding })));
       return { content: [{ type: "text", text: message }], isError: true };
     }
     return undefined;

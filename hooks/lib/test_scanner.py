@@ -37,7 +37,7 @@ def test_punctuation_rules_cover_diagnosed_marks():
     assert all(item["force"] is True for item in findings)
 
 
-def test_punctuation_advisories_and_markup_stripping():
+def test_uncertain_punctuation_is_ignored_and_markup_is_stripped():
     findings = scan_all(
         "sample.md",
         "\n".join([
@@ -49,11 +49,7 @@ def test_punctuation_advisories_and_markup_stripping():
         ]),
         {"english": False, "clean_code": False},
     )
-    by_rule = {item["rule"]: item for item in findings}
-    assert by_rule["comma_splice"]["force"] is False
-    assert by_rule["quote_punctuation"]["force"] is False
-    assert "dash_break" not in by_rule
-    assert "banned_dash" not in by_rule
+    assert findings == []
 
 
 def test_punctuation_url_scheme_slashes_are_not_a_comment_marker():
@@ -105,6 +101,15 @@ def test_clean_code_rules_cover_common_comment_faults():
     assert {"bug_label_comment", "apology_comment", "commented_code", "deferred_work_comment", "hollow_test"} <= rules
 
 
+def test_clean_code_blocks_explicit_narration_starters():
+    text = "\n".join([
+        "# " + "now validate the input",
+        "// " + "this function returns the socket",
+    ])
+    rules = {item["rule"] for item in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "narration_comment" in rules
+
+
 def test_craftsman_suppression_marker_is_always_blocked():
     marker = "craftsman" + "-ignore: PY002"
     for path in ("sample.py", "README.md", "settings.toml"):
@@ -141,9 +146,8 @@ def test_clean_code_restores_old_structural_floor():
 def test_clean_code_file_length_thresholds():
     warn = scan_all("sample.py", "\n".join("x = 1" for _ in range(500)), {"punctuation": False, "english": False})
     hard = scan_all("sample.py", "\n".join("x = 1" for _ in range(1000)), {"punctuation": False, "english": False})
-    warn_rows = [item for item in warn if item["rule"] == "file_getting_long"]
     hard_rows = [item for item in hard if item["rule"] == "file_too_long"]
-    assert warn_rows and warn_rows[0]["force"] is False
+    assert warn == []
     assert hard_rows and hard_rows[0]["force"] is True
 
 
@@ -249,10 +253,11 @@ if __name__ == "__main__":
     test_scan_all_normalizes_enabled_families()
     test_scan_all_respects_switches()
     test_punctuation_rules_cover_diagnosed_marks()
-    test_punctuation_advisories_and_markup_stripping()
+    test_uncertain_punctuation_is_ignored_and_markup_is_stripped()
     test_english_rules_cover_filler_and_inflation()
     test_english_strips_inline_code_quotes_and_hidden_html()
     test_clean_code_rules_cover_common_comment_faults()
+    test_clean_code_blocks_explicit_narration_starters()
     test_clean_code_restores_old_structural_floor()
     test_clean_code_file_length_thresholds()
     test_clean_code_hollow_test_block_in_js()

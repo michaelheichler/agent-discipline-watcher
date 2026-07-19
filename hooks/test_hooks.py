@@ -236,7 +236,7 @@ def test_record_allows_clean_post_write(tmp_path):
     assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
 
 
-def test_record_allows_advisory_post_write(tmp_path):
+def test_record_ignores_uncertain_punctuation(tmp_path):
     target = tmp_path / "note.md"
     target.write_text("I came home, I went to bed.\n", encoding="utf-8")
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
