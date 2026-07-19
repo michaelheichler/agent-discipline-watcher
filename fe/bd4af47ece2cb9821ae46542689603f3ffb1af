@@ -1,0 +1,27 @@
+README.md
+  s_2074c35763590b::t_56a7d3a45890db 90-91
+hooks/lib/test_scanner.py
+  s_2074c35763590b::t_e1efbc6beb5c10 108-110,116-118,125-126
+  s_2074c35763590b::t_9930802609a6c6 111-115,119-124
+SKILL.md
+  s_2074c35763590b::t_56a7d3a45890db 58-59
+hooks/lib/scanner.py
+  s_2074c35763590b::t_6ccafaaabe0f5c 117-131
+  s_2074c35763590b::t_148fe96b337039 80-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "febd4af47ece2cb9821ae46542689603f3ffb1af",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
