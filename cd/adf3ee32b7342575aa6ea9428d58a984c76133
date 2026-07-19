@@ -1,0 +1,34 @@
+install.sh
+  s_d15b0008266c7d::t_1b429f67dbcc61 7,15,19,41-43,54,64-67
+  s_99ba1a1237c8f6::t_a9103de167dd56 68-69
+.requirements/20260719T071954Z_opencode_adapter/REQUIREMENTS.md
+  s_d15b0008266c7d::t_b25da483401647 1-40
+opencode/agent-discipline-watcher.test.ts
+  s_d15b0008266c7d::t_e01e0046f88f7d 1-107
+opencode/agent-discipline-watcher.ts
+  s_d15b0008266c7d::t_ac5dbdc235e3ce 1-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cdadf3ee32b7342575aa6ea9428d58a984c76133",
+  "prompts": {},
+  "sessions": {
+    "s_99ba1a1237c8f6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f617b-fe46-7cd2-9611-af96369490fe",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_d15b0008266c7d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f791d-e2ae-76f3-b71b-76e115ff15c3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
