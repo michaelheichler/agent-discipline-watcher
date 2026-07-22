@@ -10,7 +10,7 @@ DEFAULTS = {
     "english": True,
     "clean_code": True,
     "max_rows": 8,
-    "exempt_paths": ["*/.tweakcc/system-prompts/*"],
+    "exempt_paths": [],
 }
 CONFIG_NAME = ".agent-discipline.json"
 

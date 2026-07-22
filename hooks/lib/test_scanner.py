@@ -233,11 +233,11 @@ def test_clean_code_comment_block_rule_spares_single_comment_docs_and_config():
         assert not [item for item in scan_all(path, text, cfg) if item["family"] == "clean_code"]
 
 
-def test_default_exemption_skips_tweakcc_prompt_snapshots_only():
+def test_default_config_scans_tweakcc_prompt_snapshots():
     text = "upstream\u2014prompt"
-    exempt = "/Users/example/.tweakcc/system-prompts/upstream.md"
+    prompt = "/Users/example/.tweakcc/system-prompts/upstream.md"
     control = "/Users/example/.tweakcc/config.json"
-    assert scan_all(exempt, text, {}) == []
+    assert {item["rule"] for item in scan_all(prompt, text, {})} == {"banned_dash"}
     assert {item["rule"] for item in scan_all(control, text, {})} == {"banned_dash"}
 
 
