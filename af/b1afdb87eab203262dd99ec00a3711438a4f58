@@ -1,0 +1,28 @@
+hooks/merge-pi-settings.py
+  s_6716b054d475e9::t_24831d46df4566 34,36,44
+.github/workflows/pylint.yml
+  s_6716b054d475e9::t_d235e60b950203 10,14
+hooks/test_run_dispatch.py
+  s_6716b054d475e9::t_b1fb4dafb9d5a5 46
+hooks/merge-claude-settings.py
+  s_6716b054d475e9::t_24831d46df4566 59,61,66,78
+.pylintrc
+  s_6716b054d475e9::t_d9f1b5afdd1deb 14-17
+  s_6716b054d475e9::t_9bc4a7b48d1109 1-13,18-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "afb1afdb87eab203262dd99ec00a3711438a4f58",
+  "prompts": {},
+  "sessions": {
+    "s_6716b054d475e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c7001d5-2667-4966-9c4f-5a8526610aed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
