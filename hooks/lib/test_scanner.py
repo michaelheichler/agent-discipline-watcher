@@ -359,17 +359,24 @@ def test_what_comment_ignores_exempt_paths_and_the_clean_code_switch():
     )
 
 
-def test_extensionless_dotfile_is_config_not_code():
+def test_named_config_dotfile_is_config_not_code():
     for path in (".pylintrc", ".npmrc", ".editorconfig", "repo/.pylintrc"):
         assert scanner._is_config(path)
         assert not scanner._is_code(path)
+
+
+def test_shell_dotfiles_are_still_scanned_as_code():
+    for path in (".bashrc", ".zshrc", ".profile", ".envrc", ".bash_profile"):
+        assert scanner._is_code(path)
+        rules = [row["rule"] for row in scan_all(path, "# sets the path\nexport A=1\n", {})]
+        assert "what_comment" in rules
 
 
 def test_dotfile_with_a_real_extension_stays_code():
     assert scanner._is_code(".hidden.py")
 
 
-def test_what_comment_does_not_fire_on_a_dotfile_config():
+def test_what_comment_does_not_fire_on_a_named_config_dotfile():
     assert scan_all(".pylintrc", "# pins the version\nmax-line-length = 120\n", {}) == []
 
 

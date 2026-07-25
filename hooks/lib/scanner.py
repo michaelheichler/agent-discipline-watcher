@@ -15,6 +15,10 @@ except ImportError:
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
 PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
+CONFIG_BASENAMES = frozenset({
+    ".pylintrc", ".editorconfig", ".npmrc", ".yarnrc", ".gitignore", ".gitattributes",
+    ".dockerignore", ".flake8", ".coveragerc", ".prettierrc", ".eslintrc", ".babelrc",
+})
 DASH_BREAK_RE = re.compile(r"\w-{2,} ?\w|\w -{2,} \w")
 SPACED_HYPHEN_RE = re.compile(r"\w +- +\w")
 SEMICOLON_SPLICE_RE = re.compile(r"[a-z]\s*;\s+[a-z]", re.IGNORECASE)
@@ -177,9 +181,8 @@ def _is_config(path: str) -> bool:
     lowered = path.lower()
     if any(lowered.endswith(ext) for ext in CONFIG_EXTS):
         return True
-    name = PurePath(lowered).name
-    # An extensionless dotfile is settings rather than code, so treat it as config to prevent the code-only comment rules firing on it.
-    return name.startswith(".") and "." not in name[1:]
+    # Named one by one because an extensionless dotfile is as often a shell script, and .bashrc must keep being scanned as code.
+    return PurePath(lowered).name in CONFIG_BASENAMES
 
 
 def _is_code(path: str) -> bool:
