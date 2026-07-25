@@ -1,0 +1,25 @@
+hooks/record.py
+  s_6716b054d475e9::t_58e91b0cc79fa1 29
+  s_6716b054d475e9::t_8314926da9ae91 77-95
+  s_6716b054d475e9::t_9d6245218ea638 10
+  s_6716b054d475e9::t_ebb9603b446c0a 45
+hooks/test_edit_journal.py
+  s_6716b054d475e9::t_d21408077ec830 9,17-21,29-35,46,64,77,106,119-149
+  s_6716b054d475e9::t_9dca8eba7babb9 150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "dd120b5351300e9a5fae46a4e641f56e4994ab6c",
+  "prompts": {},
+  "sessions": {
+    "s_6716b054d475e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c7001d5-2667-4966-9c4f-5a8526610aed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
