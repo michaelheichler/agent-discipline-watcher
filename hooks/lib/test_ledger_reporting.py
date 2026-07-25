@@ -94,7 +94,7 @@ class UnwritableLedgerTests(unittest.TestCase):
             return {"decision": "block", "reason": "x"}
 
         result = reporting.run_with_ledger(
-            hook="pre_write", event="PreToolUse",
+            hook="pre_write",
             payload={"session_id": "s1"}, gate=gate, ledger_root=read_only,
             state_root=self.root,
         )
@@ -107,7 +107,7 @@ class UnwritableLedgerTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             reporting.run_with_ledger(
-                hook="pre_write", event="PreToolUse",
+                hook="pre_write",
                 payload={"session_id": "s1"}, gate=gate,
                 ledger_root=self.root, state_root=self.root,
             )
@@ -178,7 +178,7 @@ class HeartbeatTests(unittest.TestCase):
 
     def test_heartbeat_row_uses_observed_event_and_blank_outcome(self):
         reporting.record_heartbeat(
-            session_id="s1", hook="pre_write", event="PreToolUse",
+            session_id="s1", hook="pre_write",
             turn_id="t9", duration_ms=3, root=self.root,
         )
         rows = reporting._read_jsonl(reporting.LEDGER_FILENAME, self.root)
@@ -194,7 +194,7 @@ class HeartbeatTests(unittest.TestCase):
             return {}
 
         reporting.run_with_ledger(
-            hook="pre_write", event="PreToolUse",
+            hook="pre_write",
             payload={"session_id": "s1"}, gate=gate,
             ledger_root=self.root, state_root=self.root,
         )
@@ -225,7 +225,7 @@ class TurnIdStampingTests(unittest.TestCase):
             return {}
 
         reporting.run_with_ledger(
-            hook="pre_write", event="PreToolUse",
+            hook="pre_write",
             payload={"session_id": "s1"}, gate=gate,
             ledger_root=self.root, state_root=self.root,
         )
@@ -238,7 +238,7 @@ class TurnIdStampingTests(unittest.TestCase):
             return {}
 
         reporting.run_with_ledger(
-            hook="pre_write", event="PreToolUse",
+            hook="pre_write",
             payload={}, gate=gate, ledger_root=self.root, state_root=self.root,
         )
         self.assertFalse((self.root / reporting.LEDGER_FILENAME).exists())

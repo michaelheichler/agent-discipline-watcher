@@ -128,7 +128,6 @@ def record_heartbeat(
     *,
     session_id: str,
     hook: str,
-    event: str,
     turn_id: str,
     duration_ms: int = 0,
     root: str | os.PathLike[str] | None = None,
@@ -147,7 +146,6 @@ def record_heartbeat(
 def run_with_ledger(
     *,
     hook: str,
-    event: str,
     payload: dict,
     gate: Callable[[str], dict],
     ledger_root: str | os.PathLike[str] | None = None,
@@ -163,7 +161,7 @@ def run_with_ledger(
     finally:
         if session_id:
             record_heartbeat(
-                session_id=session_id, hook=hook, event=event, turn_id=turn_id,
+                session_id=session_id, hook=hook, turn_id=turn_id,
                 root=ledger_root,
                 duration_ms=int((time.monotonic() - started) * 1000),
             )

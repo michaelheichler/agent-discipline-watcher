@@ -87,7 +87,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
     return run_with_ledger(
         hook="record",
-        event="PostToolUse",
         payload=payload,
         gate=gate,
         ledger_root=cfg.get("ledger_root"),
