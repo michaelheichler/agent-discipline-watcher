@@ -100,6 +100,15 @@ class EditJournalTests(unittest.TestCase):
         self.assertIn("src/new.py", paths)
         self.assertIn("src/old.py", paths)
 
+    def test_sessionless_invocation_does_not_journal(self):
+        # A sessionless invocation skips the journal because it has no session to attribute the edit to.
+        target = self.root / "a.py"
+        target.write_text("print(1)\n", encoding="utf-8")
+        payload = {"tool_name": "Write", "tool_input": {"file_path": str(target)}}
+        response = record.run(payload, self.cfg)
+        self.assertEqual(response, {})
+        self.assertEqual(self._ledger_rows(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
