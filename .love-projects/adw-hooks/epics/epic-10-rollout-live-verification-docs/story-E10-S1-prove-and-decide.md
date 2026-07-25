@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=81e0624b do not hand-edit -->
+<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
 
 # E10-S1 Prove and decide
 

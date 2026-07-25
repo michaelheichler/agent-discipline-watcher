@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=81e0624b do not hand-edit -->
+<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
 
 # E1-S3 Core libraries: durable session state and findings ledger
 
@@ -14,5 +14,5 @@ As the ADW maintainer, I want one dispatch table, one payload contract, one stat
 
 ## Execution
 - [x] E1-S1-T2: Durable session state store (lib/session_state.py)
-- [ ] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
+- [x] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
 

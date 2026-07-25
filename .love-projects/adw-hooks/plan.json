@@ -201,7 +201,7 @@
         {
           "id": "E1-S3",
           "title": "Core libraries: durable session state and findings ledger",
-          "status": "doing",
+          "status": "done",
           "sprint": 1,
           "craft_gate": "unit-testing",
           "why": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
@@ -229,7 +229,7 @@
             {
               "id": "E1-S1-T4",
               "t": "E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S1-T2"
@@ -1894,8 +1894,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "Never say about anything, I have lost it, but only I have given it back.",
-    "who": "Epictetus",
+    "text": "No matter what anyone says or does, my task is to be good. like gold or emerald or purple repeating to itself, \"no matter what anyone says or does, my task is to be emerald, my color undiminished.\"",
+    "who": "Marcus Aurelius",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }

@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=81e0624b do not hand-edit -->
+<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> Never say about anything, I have lost it, but only I have given it back.
-> Epictetus
+> No matter what anyone says or does, my task is to be good. like gold or emerald or purple repeating to itself, "no matter what anyone says or does, my task is to be emerald, my color undiminished."
+> Marcus Aurelius
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 
@@ -26,10 +26,10 @@
 - Fail-safe registration: an unknown event key in a client config is treated as able to break config parsing before any handler runs, never assumed to be a dormant no-op. Therefore events register train by train behind the E10-T0 gate, every wiring task proves the merged config in a sandbox HOME (parse-back plus the client's own config validation where one exists) before the lead installs live, the parity matrix records the minimum client version per event, and the timestamped install backups are the immediate rollback when a client still rejects a key. Tradeoff: Wiring lands in more, smaller steps than one bulk registration, but a client that chokes on a new event key is caught in a throwaway HOME, not in the operator's live config. [claims: claim-continuous-evidence | sources: book-delivery-evidence | receipts: verified]
 
 ## Epics
-### E1. Foundation: dispatcher, state, payload contracts, ledger  (0/3 stories done)
+### E1. Foundation: dispatcher, state, payload contracts, ledger  (1/3 stories done)
 Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.
 - **E1-S1 Core libraries: dispatch, payloads, and gate config** (doing, sprint 1, gate simplification)
-- **E1-S3 Core libraries: durable session state and findings ledger** (doing, sprint 1, gate unit-testing)
+- **E1-S3 Core libraries: durable session state and findings ledger** (done, sprint 1, gate unit-testing)
 - **E1-S2 Existing-wiring hardening and parity map** (todo, sprint 1, gate code-review)
 
 ### E2. Turn-end and completion enforcement (Stop family)  (0/6 stories done)

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=81e0624b do not hand-edit -->
+<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -29,7 +29,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [ ] E1-S1-T5: Central gate-state config schema (lib/config.py)
 
 ## E1-S3 Core libraries: durable session state and findings ledger
-- Gate: unit-testing. Sprint: 1. Status: doing.
+- Gate: unit-testing. Sprint: 1. Status: done.
 - Why: As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.
 - Done when:
   - lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd
@@ -37,7 +37,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check
 - Tasks:
   - [x] E1-S1-T2: Durable session state store (lib/session_state.py)
-  - [ ] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
+  - [x] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
 
 ## E1-S2 Existing-wiring hardening and parity map
 - Gate: code-review. Sprint: 1. Status: todo.
