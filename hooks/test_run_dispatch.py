@@ -19,12 +19,16 @@ DISPATCH = {
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(list(DISPATCH) + ["Stop"])
 
+# The stub answers only when run.sh resolves its interpreter through PATH, so hardcoding an
+# absolute interpreter would run the real hook and drop this marker instead of passing quietly.
+STUB_MARKER = "adw-stub"
+
 
 class RunDispatchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         stub = Path(self.tmp.name) / "python3"
-        stub.write_text('#!/bin/sh\necho "$@"\n')
+        stub.write_text(f'#!/bin/sh\necho "{STUB_MARKER} $@"\n')
         stub.chmod(0o755)
         env = os.environ.copy()
         env["PATH"] = self.tmp.name + os.pathsep + env.get("PATH", "")
@@ -46,6 +50,7 @@ class RunDispatchTests(unittest.TestCase):
             with self.subTest(event=event):
                 result = self._run(event)
                 self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(result.stdout.startswith(STUB_MARKER), result.stdout)
                 self.assertTrue(result.stdout.strip().endswith(script), result.stdout)
 
     def test_stop_is_a_wired_no_op(self):
