@@ -1,8 +1,8 @@
-<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
+<!-- love-render src=plan.json sha=28c6dd7d do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> No matter what anyone says or does, my task is to be good. like gold or emerald or purple repeating to itself, "no matter what anyone says or does, my task is to be emerald, my color undiminished."
+> But death and life, honor and dishonor, pain and pleasure—all these things equally happen to good men and bad, being things which make us neither better nor worse. Therefore they are neither good nor evil.
 > Marcus Aurelius
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=cf7a7885 do not hand-edit -->
+<!-- love-render src=plan.json sha=28c6dd7d do not hand-edit -->
 
 # E6-W E6 wiring
 
