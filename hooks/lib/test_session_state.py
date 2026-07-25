@@ -115,6 +115,16 @@ class SessionStateTests(unittest.TestCase):
                 session_state.write_state("s1", {"pwned": True}, root=self.root)
             self.assertFalse((victim / "state.json").exists())
 
+    def test_symlink_session_id_cannot_redirect_cleanup_outside_root(self):
+        """Cleanup deletes a tree, so an escape here destroys data rather than merely misplacing it."""
+        with tempfile.TemporaryDirectory() as outside:
+            keep = Path(outside) / "keep.txt"
+            keep.write_text("data", encoding="utf-8")
+            (self.root / "c1").symlink_to(outside)
+            with self.assertRaises(ValueError):
+                session_state.cleanup_session("c1", root=self.root)
+            self.assertTrue(keep.exists())
+
     def test_symlink_pointing_inside_root_is_allowed(self):
         target = self.root / "real-target"
         target.mkdir()
