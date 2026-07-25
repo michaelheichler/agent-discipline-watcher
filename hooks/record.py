@@ -7,7 +7,7 @@ from pathlib import Path
 
 from lib.config import effective_config
 from lib.hookio import read_payload, write_payload
-from lib.reporting import append_row, compact_block, now_iso
+from lib.reporting import append_row, compact_block, now_iso, run_with_ledger
 from lib.scanner import read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
@@ -26,7 +26,7 @@ def edited_paths(payload: dict) -> list[str]:
     return []
 
 
-def _journal_edits(payload: dict, paths: list[str], root) -> None:
+def _journal_edits(payload: dict, paths: list[str], root, turn_id: str = "") -> None:
     """Record one journal row per edited path, swallowing write errors."""
     tool = str(payload.get("tool_name") or "")
     stamp = now_iso()
@@ -42,7 +42,7 @@ def _journal_edits(payload: dict, paths: list[str], root) -> None:
                 "path": path,
                 "tool": tool,
                 "tool_use_id": str(payload.get("tool_use_id") or ""),
-                "turn_id": "",
+                "turn_id": turn_id,
                 "outcome": "",
             },
             root,
@@ -74,14 +74,25 @@ def run(payload: dict, config: dict | None = None) -> dict:
         cfg["session_id"] = payload["session_id"]
     cwd = Path(payload.get("cwd") or ".")
     paths = edited_paths(payload)
-    # Gate the journal on session_id because a sessionless invocation cannot be attributed and must not write the production ledger.
-    if payload.get("session_id"):
-        _journal_edits(payload, paths, cfg.get("ledger_root"))
-    findings = _scan_paths(paths, cwd, cfg)
-    if findings:
-        reason, _ = compact_block(findings, cfg)
-        return {"decision": "block", "reason": reason}
-    return {}
+
+    def gate(turn_id: str) -> dict:
+        # Gate the journal on session_id because a sessionless invocation cannot be attributed and must not write the production ledger.
+        if payload.get("session_id"):
+            _journal_edits(payload, paths, cfg.get("ledger_root"), turn_id)
+        findings = _scan_paths(paths, cwd, cfg)
+        if findings:
+            reason, _ = compact_block(findings, cfg)
+            return {"decision": "block", "reason": reason}
+        return {}
+
+    return run_with_ledger(
+        hook="record",
+        event="PostToolUse",
+        payload=payload,
+        gate=gate,
+        ledger_root=cfg.get("ledger_root"),
+        state_root=cfg.get("state_root"),
+    )
 
 
 if __name__ == "__main__":
