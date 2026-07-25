@@ -1,0 +1,1620 @@
+{
+  "schema_version": 1,
+  "project": "adw-hooks",
+  "title": "ADW ecosystem hook integration",
+  "goal": "Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).",
+  "strategy": "TDD per task on the existing 86-test pytest net, staged Lean rollout for every new blocking gate (observe-first per D7, promoted on adjudicated ledger evidence), with DevOps and responsible-engineering gates borrowed where a hook touches install, user prompts, or secrets.",
+  "epics": [
+    {
+      "id": "E1",
+      "title": "Foundation: dispatcher, state, payload contracts, ledger",
+      "outcome": "Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.",
+      "stories": [
+        {
+          "id": "E1-S1",
+          "title": "Core libraries",
+          "user_story": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
+          "acceptance": [
+            "run.sh routes events from a single data-driven table, one entry script per event-and-matcher pair (D11), and unknown events still exit 2 with usage",
+            "lib/payloads.py exposes typed accessors for every documented field the plan consumes (session_id, cwd, tool_name, last_assistant_message, stop_hook_active, agent_id, agent_type, agent_transcript_path, prompt, source, file_path, error, is_interrupt, duration_ms, tool_calls, task_id, task_subject), each with a contract test",
+            "lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd",
+            "every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session",
+            "every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check",
+            "lib/config.py carries the central gate-state schema: every gate family resolves to off, observe, or enforce, with observe running the full check and writing would_block rows without blocking (D7)",
+            "every new hook module follows the existing pattern: an importable module exposing run(payload, config) with I/O only via the hookio helpers, so test files import it directly and call run() the way test_hooks.py already does"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E1-S1-T1: Data-driven run.sh dispatcher",
+              "done": false,
+              "id": "E1-S1-T1",
+              "owner": "claude",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/test_run_dispatch.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S1-T2: Durable session state store (lib/session_state.py)",
+              "done": false,
+              "id": "E1-S1-T2",
+              "owner": "claude",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/lib/session_state.py",
+                "hooks/lib/test_session_state.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S1-T3: Payload contract module (lib/payloads.py)",
+              "done": false,
+              "id": "E1-S1-T3",
+              "owner": "claude",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/lib/payloads.py",
+                "hooks/lib/test_payloads.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report",
+              "done": false,
+              "id": "E1-S1-T4",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2"
+              ],
+              "owned_paths": [
+                "hooks/lib/reporting.py",
+                "hooks/lib/test_ledger_reporting.py",
+                "hooks/record.py",
+                "hooks/test_edit_journal.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S1-T5: Central gate-state config schema (lib/config.py)",
+              "done": false,
+              "id": "E1-S1-T5",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/lib/config.py",
+                "hooks/lib/test_config_schema.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E1-S2",
+          "title": "Existing-wiring hardening and parity map",
+          "user_story": "As the ADW maintainer, I want the existing wiring scoped tighter and a per-client event availability matrix, so that new-event wiring tasks have a factual basis per client.",
+          "acceptance": [
+            "the Claude snippet's Bash pre-commit hook carries the documented if filter for git commit while pre_commit.py's own parser stays as the cross-client backstop",
+            "an async-flag policy exists: log-only hooks declare async true in the Claude snippet",
+            "a parity matrix (README section) states, per client and per event used in this plan, wired or degraded or not-available, from each client's primary docs, including the Pi post-hoc-only and OpenCode injection-only-Stop limits",
+            "HOOK_LIFECYCLES in merge-codex-config.py lists every event ADW wires, with a merge test asserting the list matches the snippet"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E1-S2-T1: if-field scoping plus async flag policy on the Claude snippet",
+              "done": false,
+              "id": "E1-S2-T1",
+              "owner": "claude",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/claude-settings.snippet.json",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S2-T2: Cross-client event parity matrix plus merge-script generalization",
+              "done": false,
+              "id": "E1-S2-T2",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S2-T1"
+              ],
+              "owned_paths": [
+                "README.md",
+                "hooks/merge-claude-settings.py",
+                "hooks/merge-codex-config.py",
+                "hooks/merge-pi-settings.py",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "title": "Turn-end and completion enforcement (Stop family)",
+      "outcome": "ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.",
+      "stories": [
+        {
+          "id": "E2-S1",
+          "title": "Stop gate",
+          "user_story": "As an operator, I want the turn blocked when the final message claims done without evidence or violates prose discipline, so that unproved claims never end a turn silently.",
+          "acceptance": [
+            "stop.py scans last_assistant_message with the existing scanner families plus an unproved-done rule in lib/done_claims.py (done, fixed, complete, or passing language with no verification evidence in the message), keeping scanner.py untouched",
+            "stop_hook_active is honored with no re-block loops, and the documented cap of eight consecutive blocks is respected by design",
+            "the optional verify mode runs trusted repo-declared commands, ships in observe per D7, and blocks on failure only once the family is promoted to enforce",
+            "every decision lands in the ledger"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-S1-T1: stop.py discipline plus unproved-done gate",
+              "done": false,
+              "id": "E2-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T1",
+                "E1-S1-T2",
+                "E1-S1-T3",
+                "E1-S1-T4",
+                "E1-S1-T5"
+              ],
+              "owned_paths": [
+                "hooks/stop.py",
+                "hooks/test_stop.py",
+                "hooks/lib/done_claims.py",
+                "hooks/lib/test_done_claims.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E2-S1-T2: Verify-command Stop gate (deterministic test gate)",
+              "done": false,
+              "id": "E2-S1-T2",
+              "owner": "claude",
+              "depends_on": [
+                "E2-S1-T1",
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/stop.py",
+                "hooks/test_stop.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E2-S2",
+          "title": "SubagentStop coverage",
+          "user_story": "As an operator, I want delegated work held to the same turn-end discipline, so that a subagent cannot hand back unproved claims invisibly.",
+          "acceptance": [
+            "subagent_stop.py scans the subagent's last_assistant_message with the same rules as stop.py",
+            "agent_type matcher support is documented, and ledger rows carry agent_id and agent_type"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-S2-T1: subagent_stop.py scan",
+              "done": false,
+              "id": "E2-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/subagent_stop.py",
+                "hooks/test_subagent_stop.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E2-S3",
+          "title": "TaskCompleted gate",
+          "user_story": "As an operator, I want a task blocked from completing while its changed files carry findings or its verify matrix fails, so that a bad done lands per task, not at turn end.",
+          "acceptance": [
+            "task_completed.py uses the corrected fields (task_id, task_subject, optional teammate and team) and the corrected control (exit 2 or continue false), not the disproven task_result or decision-block fields",
+            "scans files recorded as changed this session (ledger) and, when configured, runs the verify matrix scoped by changed-file categories",
+            "documented as Claude-only until the parity matrix says otherwise"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-S3-T1: task_completed.py verification gate",
+              "done": false,
+              "id": "E2-S3-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4",
+                "E1-S1-T5"
+              ],
+              "owned_paths": [
+                "hooks/task_completed.py",
+                "hooks/test_task_completed.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E2-S4",
+          "title": "PostToolBatch single-pass scan",
+          "user_story": "As an operator, I want one coherent block message per parallel edit batch, so that findings across simultaneous writes are deduplicated and cross-file patterns are visible.",
+          "acceptance": [
+            "record.py's per-call scan stays canonical and is never suppressed or buffered (D13)",
+            "batch.py correlates via tool_use_id (payload contract and ledger row field) between the tool_calls array and the batch's PostToolUse rows, and reports only new cross-file findings, so its dedupe is of its own output and nothing is lost if PostToolBatch never fires",
+            "when live payloads lack tool_use_id, batch.py drops ledger dedupe and restricts itself to intrinsically cross-file rules, the degraded mode D13 documents"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-S4-T1: batch.py additive cross-file pass (D13)",
+              "done": false,
+              "id": "E2-S4-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/batch.py",
+                "hooks/test_batch.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E2-S5",
+          "title": "Failure-event handling",
+          "user_story": "As an operator, I want repeated tool failures met with deterministic guidance and unhealthy MCP servers short-circuited, so that the agent neither weakens changes to dodge errors nor burns turns on dead providers.",
+          "acceptance": [
+            "failure.py records per-tool and per-target failure streaks (error, is_interrupt, duration_ms) in session state",
+            "a streak threshold injects a fix-the-root-cause instruction naming the repeated failure",
+            "MCP substate: a server is marked unhealthy on failure with 30s base exponential backoff capped at 10min, and a PreToolUse consult blocks calls to known-unhealthy servers until backoff expiry"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-S5-T1: failure.py plus MCP circuit breaker",
+              "done": false,
+              "id": "E2-S5-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/failure.py",
+                "hooks/pre_mcp.py",
+                "hooks/test_failure.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E2-W",
+          "title": "E2 wiring and parity",
+          "user_story": "As the ADW maintainer, I want the E2 events registered on every client that supports them, so the gates actually fire on all four clients or the gap is a documented fact.",
+          "acceptance": [
+            "E2-W-T0 wires the Stop event alone and heads the shared-file chain, so E10-T0 can smoke the riskiest bet before anything else goes live",
+            "the Claude snippet then gains SubagentStop, TaskCompleted, PostToolBatch, PostToolUseFailure, and the mcp__* PreToolUse consult entries, with run.sh routing each event, only after E10-T0 passes",
+            "the Codex TOML gains the events the parity matrix confirms, and HOOK_LIFECYCLES covers each of them (E1-S2-T2 groundwork)",
+            "the OpenCode and Pi adapters are extended in their own tasks below for every plan event their APIs support, and every gate's parity row records wired, degraded, or not-available per client (D10)",
+            "install.sh and merge scripts stay idempotent on re-run, proven by a sandbox install into a temporary HOME with every merged client config parsed back cleanly"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E2-W-T0: Wire Stop only (the MVP slice)",
+              "done": false,
+              "id": "E2-W-T0",
+              "owner": "claude",
+              "depends_on": [
+                "E2-S1-T1",
+                "E1-S2-T2"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q",
+                "H=$(mktemp -d) && HOME=\"$H\" ./install.sh -y --no-codex --no-opencode --no-pi && python3 -c 'import json,sys; json.load(open(sys.argv[1]+\"/.claude/settings.json\"))' \"$H\""
+              ]
+            },
+            {
+              "t": "E2-W-T1: Wire the remaining E2 events on Claude and Codex (post-smoke)",
+              "done": false,
+              "id": "E2-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E2-S2-T1",
+                "E2-S3-T1",
+                "E2-S4-T1",
+                "E2-S5-T1",
+                "E1-S2-T2",
+                "E2-W-T0",
+                "E10-T0"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/codex-config.snippet.toml",
+                "hooks/test_merge_configs.py",
+                "install.sh"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q",
+                "H=$(mktemp -d) && HOME=\"$H\" ./install.sh -y && python3 -c 'import json,tomllib,sys; h=sys.argv[1]; json.load(open(h+\"/.claude/settings.json\")); tomllib.load(open(h+\"/.codex/config.toml\",\"rb\")); json.load(open(h+\"/.pi/agent/settings.json\"))' \"$H\""
+              ]
+            },
+            {
+              "t": "E2-W-T2: Extend the OpenCode adapter (all plan events its API supports)",
+              "done": false,
+              "id": "E2-W-T2",
+              "owner": "claude",
+              "depends_on": [
+                "E2-S1-T1",
+                "E2-S2-T1",
+                "E1-S2-T2",
+                "E10-T0",
+                "E3-S1-T3",
+                "E4-S2-T1",
+                "E5-S1-T1",
+                "E9-S2-T1",
+                "E9-S3-T1"
+              ],
+              "owned_paths": [
+                "opencode/agent-discipline-watcher.ts",
+                "opencode/agent-discipline-watcher.test.ts"
+              ],
+              "checks": [
+                "node --experimental-strip-types --test opencode/agent-discipline-watcher.test.ts"
+              ]
+            },
+            {
+              "t": "E2-W-T3: Extend the Pi adapter (post-hoc surfaces only, with its own tests)",
+              "done": false,
+              "id": "E2-W-T3",
+              "owner": "claude",
+              "depends_on": [
+                "E2-S1-T1",
+                "E2-S2-T1",
+                "E1-S2-T2",
+                "E10-T0",
+                "E3-S1-T3",
+                "E4-S2-T1",
+                "E5-S1-T1",
+                "E9-S2-T1",
+                "E9-S3-T1"
+              ],
+              "owned_paths": [
+                "pi/extensions/agent-discipline-watcher/index.ts",
+                "pi/extensions/agent-discipline-watcher/index.test.ts"
+              ],
+              "checks": [
+                "node --experimental-strip-types --test pi/extensions/agent-discipline-watcher/index.test.ts"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "title": "Prompt and context boundary (UserPromptSubmit plus JIT injection)",
+      "outcome": "Discipline applies at the source: human prompts that induce violations get a deterministic warning (or opt-in block), and targeted convention context is injected exactly when relevant.",
+      "stories": [
+        {
+          "id": "E3-S1",
+          "title": "Prompt firewall",
+          "user_story": "As an operator, I want prompts like 'just comment it out' or 'skip the tests' met with an injected discipline reminder before the agent complies, so violations stop at the source.",
+          "acceptance": [
+            "prompt_submit.py matches a small reviewed rule list against the prompt field, injects additionalContext by default (D9), and offers block-mode as a config opt-in",
+            "the at-mention rule (config-gated, default off) blocks literal @filename tokens forcing an explicit Read, for data-boundary mode",
+            "the keyword-to-context map (config-gated, default off) injects mapped guidance deterministically",
+            "no prompt text is persisted anywhere"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E3-S1-T1: prompt_submit.py firewall (inject-first)",
+              "done": false,
+              "id": "E3-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/prompt_submit.py",
+                "hooks/test_prompt_submit.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E3-S1-T2: At-mention bypass rule (config-gated)",
+              "done": false,
+              "id": "E3-S1-T2",
+              "owner": "claude",
+              "depends_on": [
+                "E3-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/prompt_submit.py",
+                "hooks/test_prompt_submit.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E3-S1-T3: Keyword-to-context injection map (config-gated)",
+              "done": false,
+              "id": "E3-S1-T3",
+              "owner": "claude",
+              "depends_on": [
+                "E3-S1-T2"
+              ],
+              "owned_paths": [
+                "hooks/prompt_submit.py",
+                "hooks/test_prompt_submit.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E3-S2",
+          "title": "Just-in-time convention injection on edits",
+          "user_story": "As an operator, I want path-scoped conventions injected at the moment of the edit, so guidance arrives before the model commits to an approach instead of only rejecting after.",
+          "acceptance": [
+            "pre_write.py consults a path-glob-to-snippet map (config) and returns the snippet as context alongside allow",
+            "injection happens at most once per file per session (session state)"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E3-S2-T1: Path-scoped JIT convention injection in pre_write",
+              "done": false,
+              "id": "E3-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/pre_write.py",
+                "hooks/test_hooks.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E3-W",
+          "title": "E3 wiring",
+          "user_story": "As the ADW maintainer, I want UserPromptSubmit registered where available.",
+          "acceptance": [
+            "Claude snippet plus run.sh route added, other clients per the parity matrix, merge tests updated"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E3-W-T1: Wire UserPromptSubmit (Claude and Codex)",
+              "done": false,
+              "id": "E3-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E3-S1-T3",
+                "E2-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/codex-config.snippet.toml",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "title": "Self-protection and scope discipline",
+      "outcome": "ADW defends its own leash (config tamper seal, ConfigChange defense) and offers structural scope enforcement (freeze lease, first-touch gate, taint sequences).",
+      "stories": [
+        {
+          "id": "E4-S1",
+          "title": "Quality-config tamper seal",
+          "user_story": "As an operator, I want edits to linter, formatter, typecheck, hook, and ignore configs and to ADW's own wiring blocked unless explicitly authorized, so the agent cannot green-light checks by weakening the checker.",
+          "acceptance": [
+            "a protected-path policy in lib/protected.py blocks edits to existing protected files, allows first-time creation, and fails closed on stat errors (EACCES and EPERM treated as exists)",
+            "case-insensitive basename matching for case-insensitive filesystems",
+            "explicit authorization via config or a documented env var, with authorized changes invalidating cached verify results and landing in the ledger",
+            "new blanket suppressions in source edits (file-level lint disables, blanket type-ignores) are blocked unless policy permits them"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-S1-T1: Tamper seal in pre_write (merges the ECC config lock and the tamper seal)",
+              "done": false,
+              "id": "E4-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E3-S2-T1"
+              ],
+              "owned_paths": [
+                "hooks/pre_write.py",
+                "hooks/lib/protected.py",
+                "hooks/lib/test_protected.py",
+                "hooks/test_hooks.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E4-S2",
+          "title": "ConfigChange self-tampering defense",
+          "user_story": "As an operator, I want mid-session changes to ADW's hook registration blocked, so a prompt-injected instruction cannot silently disable enforcement.",
+          "acceptance": [
+            "config_change.py blocks changes whose source is user_settings, project_settings, local_settings, or skills when the changed file matches ADW wiring or skill files",
+            "policy_settings changes are logged only, since the docs say blocking is ignored there"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-S2-T1: config_change.py hook",
+              "done": false,
+              "id": "E4-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/config_change.py",
+                "hooks/test_config_change.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E4-S3",
+          "title": "Session-scoped edit freeze lease",
+          "user_story": "As an operator, I want an opt-in freeze command that denies edits outside a directory boundary until I widen it, so scope creep is structurally impossible during focused work.",
+          "acceptance": [
+            "CLI subcommands freeze, unfreeze, and status write the lease to session state",
+            "pre_write denies (permissionDecision deny) resolved paths outside the boundary with the lease named in the reason"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-S3-T1: Freeze lease (CLI plus pre_write deny)",
+              "done": false,
+              "id": "E4-S3-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E4-S1-T1",
+                "E1-S1-T2"
+              ],
+              "owned_paths": [
+                "bin/agent-discipline",
+                "hooks/pre_write.py",
+                "hooks/test_hooks.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E4-S4",
+          "title": "First-touch fact-forcing gate (opt-in)",
+          "user_story": "As an operator, I want the first edit to each file per session to force an explicit impact statement, so change-impact thinking happens before the write, not after.",
+          "acceptance": [
+            "default off. When on, the first Edit or Write per file per session is denied with an instruction to state importers and callers, affected APIs, and the current instruction. The denial marks the file acknowledged in session state so the retry passes",
+            "destructive Bash (rm -rf and configured patterns) gets the same one-pause gate requiring listed targets and a rollback plan"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-S4-T1: First-touch gate in pre_write plus the Bash destructive gate",
+              "done": false,
+              "id": "E4-S4-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E4-S3-T1",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/pre_write.py",
+                "hooks/pre_commit.py",
+                "hooks/test_hooks.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E4-S5",
+          "title": "Cross-call behavioral taint sequences",
+          "user_story": "As an operator, I want read-secret-then-network and download-then-execute sequences blocked, so multi-step exfiltration patterns are caught that single-payload scans cannot see.",
+          "acceptance": [
+            "record.py (PostToolUse) appends tool events to a session event log, and lib/taint.py evaluates a small named-rule set (sensitive-read-then-network, write-then-build poisoning, sensitive-read-then-MCP) on PreToolUse for Bash, Write, and Edit",
+            "rules also block Bash commands manipulating ADW's own config or allowlist",
+            "each rule has a named id in block reasons and ledger rows"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-S5-T1: lib/taint.py sequence rules plus the event log feed",
+              "done": false,
+              "id": "E4-S5-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E4-S4-T1",
+                "E1-S1-T2",
+                "E1-S1-T4",
+                "E1-S1-T5"
+              ],
+              "owned_paths": [
+                "hooks/lib/taint.py",
+                "hooks/lib/test_taint.py",
+                "hooks/record.py",
+                "hooks/pre_write.py",
+                "hooks/pre_commit.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E4-W",
+          "title": "E4 wiring",
+          "user_story": "As the ADW maintainer, I want ConfigChange registered and the CLI reachable.",
+          "acceptance": [
+            "ConfigChange snippet plus route. install.sh already links bin/agent-discipline. Merge tests updated"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E4-W-T1: Wire ConfigChange (Claude only per matrix)",
+              "done": false,
+              "id": "E4-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E4-S2-T1",
+                "E3-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "title": "Compaction resilience",
+      "outcome": "Discipline state survives compaction: PreCompact snapshots session state, and the already-wired SessionStart(compact) path re-injects the full contract plus the snapshot.",
+      "stories": [
+        {
+          "id": "E5-S1",
+          "title": "PreCompact snapshot with a scoped veto",
+          "user_story": "As an operator, I want session discipline state snapshotted before compaction, and compaction vetoed only while a blocking gate is unresolved, so enforcement context cannot be summarized away mid-gate.",
+          "acceptance": [
+            "pre_compact.py writes the snapshot (active leases, ack sets, streaks, pending block state) to session state and handles the manual and auto matchers",
+            "the veto (block decision) fires only when a blocking gate is mid-flight, and the default is allow"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E5-S1-T1: pre_compact.py snapshot and scoped veto",
+              "done": false,
+              "id": "E5-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/pre_compact.py",
+                "hooks/test_pre_compact.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E5-S2",
+          "title": "SessionStart(compact) contract re-injection",
+          "user_story": "As an operator, I want the full discipline contract re-injected after compaction, so long sessions do not lose the rules.",
+          "acceptance": [
+            "session_start.py branches on source: compact gets the full contract plus a one-line snapshot summary, startup keeps today's line. Wiring already matches compact on Claude and Codex"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E5-S2-T1: session_start.py compact-path enrichment plus janitor call",
+              "done": false,
+              "id": "E5-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E5-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/session_start.py",
+                "hooks/test_session_start.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E5-W",
+          "title": "E5 wiring",
+          "user_story": "As the ADW maintainer, I want PreCompact registered.",
+          "acceptance": [
+            "PreCompact snippet plus route on clients per the parity matrix"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E5-W-T1: Wire PreCompact",
+              "done": false,
+              "id": "E5-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E5-S1-T1",
+                "E4-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/codex-config.snippet.toml",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "title": "Repo verification tier (config-driven quality gates, trust-gated, observe-first)",
+      "outcome": "One verify runner plus per-category recipes (format, lint delta, typecheck, impacted tests, coverage, AST rules, commit messages) give runtime evidence that text scanning cannot. Entirely config-driven, inert without the D12 trust grant, and observe-first per D7.",
+      "stories": [
+        {
+          "id": "E6-S1",
+          "title": "Verify runner core",
+          "user_story": "As the ADW maintainer, I want one runner for repo-declared checks with changed-file category mapping, so six quality gates share one execution and reporting path.",
+          "acceptance": [
+            "lib/verify.py: a declared matrix in .agent-discipline.json (category to commands), changed-file-to-category mapping, fail-fast, per-command timeout, compact structured failures, ledger rows with elapsed time",
+            "trust boundary (D12): command-bearing config is inert until a user-owned grant exists at ~/.agent-discipline/trust/<repo-fingerprint>, written by the installed CLI 'agent-discipline trust' run in the repo. Without it every recipe no-ops with a visible note. Commands execute as argv lists, never through a shell",
+            "an end-to-end test proves the documented command works from a temporary target repo after a sandbox install: trust, revoke, and moved-repo, so the boundary is usable, not just fail-closed"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S1-T1: lib/verify.py runner with the trust boundary",
+              "done": false,
+              "id": "E6-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T4",
+                "E1-S1-T5",
+                "E4-S3-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/verify.py",
+                "hooks/lib/test_verify.py",
+                "bin/agent-discipline"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S2",
+          "title": "Formatter fixed-point",
+          "user_story": "As an operator, I want touched files formatted to a fixed point after each edit with non-convergence blocking, so formatting noise never reaches review.",
+          "acceptance": [
+            "a config map from language to formatter runs on the touched file only, check-mode verifies convergence, changed bytes return the path as context to force a reread, and crashes or non-convergence block",
+            "opt-in: this is ADW's only mutating hook and the config key says so explicitly"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S2-T1: lib/format_fix.py post-edit formatter recipe",
+              "done": false,
+              "id": "E6-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/format_fix.py",
+                "hooks/lib/test_format_fix.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S3",
+          "title": "Baseline-aware lint delta gate",
+          "user_story": "As an operator, I want only newly introduced lint diagnostics blocked, so legacy debt stays visible without freezing work.",
+          "acceptance": [
+            "the baseline is captured lazily once per session on the first post-edit check (keyed by session_id in session state, which keeps all work inside lib and avoids owning session_start.py), post-edit lint runs on the touched file or package and blocks only new diagnostics in structured file, line, and rule form, and the baseline recomputes on base-revision or lint-config change"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S3-T1: lib/lint_delta.py plus lazy baseline capture",
+              "done": false,
+              "id": "E6-S3-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E6-S1-T1",
+                "E1-S1-T2"
+              ],
+              "owned_paths": [
+                "hooks/lib/lint_delta.py",
+                "hooks/lib/test_lint_delta.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S4",
+          "title": "Content-hashed typecheck gate",
+          "user_story": "As an operator, I want fresh type errors blocked cheaply after typed-language edits, so cross-file type breakage is caught before review.",
+          "acceptance": [
+            "locate the owning package, run the no-output typecheck, cache keyed by config-file hashes (the verified prior art) with a full-input hash as stretch, block on fresh errors, and offer an uncached full check at completion"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S4-T1: lib/typecheck.py cached gate",
+              "done": false,
+              "id": "E6-S4-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/typecheck.py",
+                "hooks/lib/test_typecheck.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S5",
+          "title": "Impact-selected tests on edits",
+          "user_story": "As an operator, I want the affected tests run immediately after a source edit, so behavioral evidence arrives per edit, not per turn.",
+          "acceptance": [
+            "adapters for jest --findRelatedTests and pytest-testmon, failing assertions returned as blocking feedback, and the full suite reserved for Stop, TaskCompleted, or commit"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S5-T1: lib/impacted.py test selection adapters",
+              "done": false,
+              "id": "E6-S5-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/impacted.py",
+                "hooks/lib/test_impacted.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S6",
+          "title": "Differential coverage ratchet",
+          "user_story": "As an operator, I want changed-line coverage below policy blocked at completion or commit, so new debt is stopped while legacy coverage stays visible.",
+          "acceptance": [
+            "diff-cover and coverage.py integration, changed-line and changed-branch thresholds, and rejection of a drop from the base-branch baseline"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S6-T1: lib/coverage_gate.py ratchet",
+              "done": false,
+              "id": "E6-S6-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/coverage_gate.py",
+                "hooks/lib/test_coverage_gate.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S7",
+          "title": "AST-native forbidden-API and architecture rules",
+          "user_story": "As an operator, I want project-owned ast-grep or Semgrep rules run on changed files with rule ids and precise ranges, so code-pattern policy is structural, not regex-lexical.",
+          "acceptance": [
+            "the adapter runs project rules on changed files at PostToolUse and diff-wide at commit or TaskCompleted, blocks with rule id plus range, and reserves regex for non-code files"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S7-T1: lib/ast_rules.py adapter",
+              "done": false,
+              "id": "E6-S7-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E6-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/ast_rules.py",
+                "hooks/lib/test_ast_rules.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-S8",
+          "title": "Commit-message gate",
+          "user_story": "As an operator, I want commit messages extracted from -m payloads and scanned (discipline families plus an optional conventional-commit format) before Bash executes, so commit text meets the same bar as file text.",
+          "acceptance": [
+            "pre_commit.py extracts every -m and message-file payload with its existing shell-aware parser, scans with the scanner families, applies the optional format policy from config, and lets editor-only forms pass unless strict mode is on"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-S8-T1: Commit-message extraction and scan in pre_commit",
+              "done": false,
+              "id": "E6-S8-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E4-S5-T1",
+                "E1-S1-T5"
+              ],
+              "owned_paths": [
+                "hooks/pre_commit.py",
+                "hooks/test_commit_message.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E6-W",
+          "title": "E6 wiring",
+          "user_story": "As the ADW maintainer, I want the verification recipes reachable from record.py, stop.py, and task_completed.py per config.",
+          "acceptance": [
+            "record.py consults configured recipes post-edit, stop and task_completed run the full tier, snippets are updated where a new registration is needed, and every recipe is inert without the trust grant and observe-first per D7"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E6-W-T1: Integrate verify recipes into the hook flow",
+              "done": false,
+              "id": "E6-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E6-S2-T1",
+                "E6-S3-T1",
+                "E6-S4-T1",
+                "E6-S5-T1",
+                "E6-S6-T1",
+                "E6-S7-T1",
+                "E6-S8-T1",
+                "E5-W-T1",
+                "E2-S1-T2",
+                "E2-S3-T1",
+                "E8-S1-T2"
+              ],
+              "owned_paths": [
+                "hooks/record.py",
+                "hooks/stop.py",
+                "hooks/task_completed.py",
+                "hooks/claude-settings.snippet.json",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E7",
+      "title": "Data boundary (secrets and redaction, opt-in)",
+      "outcome": "A deterministic secret-block tier plus an opt-in pseudonymization boundary with a persistent, lock-guarded mapping, and spilled-output scanning so indirection is part of the payload. No separate hook registrations: per D11 the rewrites ride the pre_write and record.py orchestrators, so E7 needs no wiring task of its own.",
+      "stories": [
+        {
+          "id": "E7-S1",
+          "title": "Secret block tier",
+          "user_story": "As an operator, I want true secrets (key, token, and credential patterns) blocked at write, commit, and prompt, so secrets never pass a boundary in plain form.",
+          "acceptance": [
+            "a new secrets scanner family, config-gated, with a reviewed pattern set and per-rule ids, available to every scan_all caller: pre_write and pre_commit pick it up with no file edits, and the prompt boundary consumes it through E3-S1-T1's scanner integration",
+            "blocked values never reach the ledger or reports in plain form (fingerprint only)"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E7-S1-T1: Secrets family in the scanner",
+              "done": false,
+              "id": "E7-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/lib/scanner.py",
+                "hooks/lib/test_scanner.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E7-S2",
+          "title": "Pseudonymization boundary (Claude-only decision fields)",
+          "user_story": "As an operator, I want lower-risk identifiers consistently pseudonymized via updatedInput and updatedToolOutput with one stable mapping, so scrubbed sessions stay coherent.",
+          "acceptance": [
+            "lib/pseudonym.py holds the persistent mapping under an exclusive flock on a sidecar lockfile, with one synthetic replacement per matched value across concurrent invocations",
+            "the input rewrite (updatedInput) runs first inside pre_write's orchestration and the output rewrite (updatedToolOutput) inside record.py's (D11), so rewrite-then-scan order is code, not racing hook registrations. Both default off, enabled only by data_boundary config",
+            "documented Claude-only (the decision fields are unavailable elsewhere), with other clients getting the block tier only"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E7-S2-T1: lib/pseudonym.py mapping store (keyed HMAC)",
+              "done": false,
+              "id": "E7-S2-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E7-S1-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/pseudonym.py",
+                "hooks/lib/test_pseudonym.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E7-S2-T2: lib/redact_input.py wired first in pre_write (updatedInput)",
+              "done": false,
+              "id": "E7-S2-T2",
+              "owner": "codex",
+              "depends_on": [
+                "E7-S2-T1",
+                "E8-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/lib/redact_input.py",
+                "hooks/lib/test_redact_input.py",
+                "hooks/pre_write.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E7-S2-T3: lib/redact_output.py wired last in record.py (updatedToolOutput)",
+              "done": false,
+              "id": "E7-S2-T3",
+              "owner": "codex",
+              "depends_on": [
+                "E7-S2-T1",
+                "E7-S3-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/redact_output.py",
+                "hooks/lib/test_redact_output.py",
+                "hooks/record.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E7-S3",
+          "title": "Spilled-output scanning",
+          "user_story": "As an operator, I want spill stubs (truncated, preview, and output-file indirection) scanned at their source up to 1 MiB, so hidden content is part of the payload.",
+          "acceptance": [
+            "lib/spill.py recognizes the stub heuristics, reads the spilled path capped at 1 MiB, runs block rules against the hidden content, and is wired from record.py"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E7-S3-T1: lib/spill.py plus record.py integration",
+              "done": false,
+              "id": "E7-S3-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E7-S1-T1",
+                "E6-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/spill.py",
+                "hooks/lib/test_spill.py",
+                "hooks/record.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E7-H",
+          "title": "Human policy gate",
+          "user_story": "As the owner, I decide the redaction policy (identifier classes, retention of the mapping store, custody and rotation of the HMAC key, who may enable data_boundary mode) before the tier can be switched on.",
+          "acceptance": [
+            "a short written policy in the repo docs covering identifier classes, mapping retention, and HMAC key custody plus rotation, and data_boundary mode refuses to enable without it"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E7-H-T1: Redaction policy decision",
+              "done": false,
+              "id": "E7-H-T1",
+              "owner": "human",
+              "depends_on": [
+                "E7-S2-T2",
+                "E7-S2-T3",
+                "E1-S2-T2"
+              ],
+              "owned_paths": [
+                "README.md"
+              ],
+              "checks": [
+                "grep -Eqi '^## .*redaction.*policy' README.md && grep -Eqi 'identifier classes' README.md && grep -Eqi 'mapping (store )?retention' README.md && grep -Eqi 'HMAC key custody' README.md && grep -Eqi 'rotation' README.md"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E8",
+      "title": "Negative memory (dead-end registry)",
+      "outcome": "Failed approaches become deterministic warnings: mined at Stop and SubagentStop, injected at UserPromptSubmit, optionally blocking reintroduction at PreToolUse.",
+      "stories": [
+        {
+          "id": "E8-S1",
+          "title": "Dead-end registry pipeline",
+          "user_story": "As an operator, I want tried-and-reverted approaches remembered outside the repo and surfaced when they are about to be retried, so sessions stop rediscovering the same dead ends.",
+          "acceptance": [
+            "a repo-keyed JSONL store outside the repo with a schema of approach fingerprint, evidence pointer, created, and expiry",
+            "miners on Stop and SubagentStop detect tried-and-reverted hunks from the session ledger and transcript",
+            "UserPromptSubmit injects a DEAD END card on match, and the PreToolUse similarity check warns by default and blocks only when configured"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E8-S1-T1: lib/deadends.py store plus similarity fingerprinting",
+              "done": false,
+              "id": "E8-S1-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2"
+              ],
+              "owned_paths": [
+                "hooks/lib/deadends.py",
+                "hooks/lib/test_deadends.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E8-S1-T2: Stop and SubagentStop dead-end miners",
+              "done": false,
+              "id": "E8-S1-T2",
+              "owner": "codex",
+              "depends_on": [
+                "E8-S1-T1",
+                "E2-S1-T2",
+                "E2-S2-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/deadend_mining.py",
+                "hooks/lib/test_deadend_mining.py",
+                "hooks/stop.py",
+                "hooks/subagent_stop.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E8-S1-T3: UserPromptSubmit dead-end warning card",
+              "done": false,
+              "id": "E8-S1-T3",
+              "owner": "claude",
+              "depends_on": [
+                "E8-S1-T1",
+                "E3-S1-T3"
+              ],
+              "owned_paths": [
+                "hooks/prompt_submit.py",
+                "hooks/test_prompt_submit.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E8-S1-T4: PreToolUse reintroduction guard (warn-first)",
+              "done": false,
+              "id": "E8-S1-T4",
+              "owner": "claude",
+              "depends_on": [
+                "E8-S1-T1",
+                "E4-S5-T1"
+              ],
+              "owned_paths": [
+                "hooks/pre_write.py",
+                "hooks/test_hooks.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E8-W",
+          "title": "E8 wiring",
+          "user_story": "As the ADW maintainer, I want the registry flush wired into PreCompact and SessionEnd.",
+          "acceptance": [
+            "pre_compact and session_end flush pending mining state, and no new events are needed"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E8-W-T1: Registry lifecycle wiring",
+              "done": false,
+              "id": "E8-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E8-S1-T2",
+                "E5-S1-T1",
+                "E9-S2-T1"
+              ],
+              "owned_paths": [
+                "hooks/pre_compact.py",
+                "hooks/session_end.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E9",
+      "title": "Telemetry and audit",
+      "outcome": "ADW measures itself: which prose rules deserve promotion (dead-rules scorecard), which gates fire (the ledger from E1), what loaded when (InstructionsLoaded), and clean shutdown (SessionEnd).",
+      "stories": [
+        {
+          "id": "E9-S1",
+          "title": "Dead-rules compliance telemetry",
+          "user_story": "As the maintainer, I want CLAUDE.md parsed into atomic rules with per-rule relevance and violation tallies and a worst-first scorecard, so the next prose rule worth converting into a deterministic blocker is a measurement, not a guess.",
+          "acceptance": [
+            "SessionStart parses CLAUDE.md into numbered rules, PostToolUse tallies, and SessionEnd renders the worst-first scorecard to the ledger dir"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E9-S1-T1: lib/dead_rules.py plus its three hook integrations",
+              "done": false,
+              "id": "E9-S1-T1",
+              "owner": "codex",
+              "depends_on": [
+                "E9-S2-T1",
+                "E5-S2-T1",
+                "E7-S2-T3",
+                "E8-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/lib/dead_rules.py",
+                "hooks/lib/test_dead_rules.py",
+                "hooks/session_start.py",
+                "hooks/record.py",
+                "hooks/session_end.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E9-S2",
+          "title": "SessionEnd cleanup and flush",
+          "user_story": "As an operator, I want session state cleaned and metrics flushed however the session ends, so state directories do not accrete.",
+          "acceptance": [
+            "session_end.py flushes ledger buffers, renders pending scorecards, removes the session state dir, and stays fast (async where wired)"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E9-S2-T1: session_end.py",
+              "done": false,
+              "id": "E9-S2-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/session_end.py",
+                "hooks/test_session_end.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E9-S3",
+          "title": "InstructionsLoaded audit log",
+          "user_story": "As the maintainer, I want a ground-truth log of which rule and skill files loaded and why, so checking whether an orphaned hook still loads is a one-line lookup.",
+          "acceptance": [
+            "instructions_loaded.py appends file, load_reason, and ts to the ledger dir, runs async, and its output is ignored per docs"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E9-S3-T1: instructions_loaded.py async logger",
+              "done": false,
+              "id": "E9-S3-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T3",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/instructions_loaded.py",
+                "hooks/test_instructions_loaded.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E9-W",
+          "title": "E9 wiring",
+          "user_story": "As the ADW maintainer, I want SessionEnd and InstructionsLoaded registered with async true.",
+          "acceptance": [
+            "snippet entries with async true on both, routes added, merge tests updated. Covers the wiring half of the async-hooks idea"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E9-W-T1: Wire SessionEnd plus InstructionsLoaded (async)",
+              "done": false,
+              "id": "E9-W-T1",
+              "owner": "claude",
+              "depends_on": [
+                "E9-S2-T1",
+                "E9-S3-T1",
+                "E8-W-T1",
+                "E5-W-T1",
+                "E6-W-T1"
+              ],
+              "owned_paths": [
+                "hooks/run.sh",
+                "hooks/claude-settings.snippet.json",
+                "hooks/test_merge_configs.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E10",
+      "title": "Rollout, live verification, docs",
+      "outcome": "The MVP slice is proven in a live session, gate defaults are a deliberate human decision on ledger evidence, and SKILL.md plus README document the new surface including parity gaps.",
+      "stories": [
+        {
+          "id": "E10-S1",
+          "title": "Prove and decide",
+          "user_story": "As the owner, I want live proof that the events fire as planned and an evidence-based decision on which gates go default-on, so rollout is a decision, not a hope.",
+          "acceptance": [
+            "E10-T0 first: a live session proves the Stop hook blocks and releases as documented, before any other new event goes live. The lead runs the install. This is the first pivot-or-persevere gate from validation.decision_rule",
+            "E10-T1 then verifies the full surface: SubagentStop scan, UserPromptSubmit inject, ConfigChange block, PreCompact snapshot plus compact re-inject, with a heartbeat requirement (at least one ledger row per wired event during the session) and the installed client version recorded next to the results",
+            "the gate promotion decision (observe to enforce) is recorded per family with the report's adjudicated false-signal rate and ledger numbers that justified it",
+            "SKILL.md and README are updated with new events, config keys, the parity matrix with its fallback column, and kill-switches, and block messages are reviewed for actionability (the block message is ADW's whole UI)"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E10-T0: Live Stop smoke (the MVP experiment)",
+              "done": false,
+              "id": "E10-T0",
+              "owner": "human",
+              "depends_on": [
+                "E2-W-T0"
+              ],
+              "owned_paths": [],
+              "checks": [
+                "python3 -c 'import glob,json,os,datetime; sid_path=os.path.expanduser(\"~/.agent-discipline/ledger/smoke-session.txt\"); assert os.path.exists(sid_path), \"smoke-session.txt missing\"; sid=open(sid_path).read().strip(); assert sid, \"smoke-session.txt empty\"; rows=[json.loads(line) for path in glob.glob(os.path.expanduser(\"~/.agent-discipline/ledger/\")+\"*.jsonl\") for line in open(path)]; stop_rows=[row for row in rows if row.get(\"family\")==\"stop\" and row.get(\"session_id\")==sid]; blocks=[row for row in stop_rows if row.get(\"outcome\")==\"block\"]; releases=[row for row in stop_rows if row.get(\"outcome\")==\"release\"]; assert blocks, \"no stop block row in the recorded smoke session\"; assert all(row.get(\"ts\") for row in rows), \"ledger row without ts, ledger corruption, E1-S1-T4 always writes ts\"; utc=datetime.timezone.utc; norm=lambda value: (lambda parsed: parsed if parsed.tzinfo else parsed.replace(tzinfo=utc))(datetime.datetime.fromisoformat(value)); pinned_all=[row for row in rows if row.get(\"session_id\")==sid]; assert max(norm(row[\"ts\"]) for row in pinned_all)>=max(norm(row[\"ts\"]) for row in rows), \"stale smoke-session.txt: another session holds newer ledger rows, re-pin the current smoke session\"; first_block=min(norm(row[\"ts\"]) for row in blocks); now=datetime.datetime.now(utc); assert abs(now-first_block)<=datetime.timedelta(hours=2), \"stale evidence: the pinned smoke block is outside the two-hour live window\"; assert any(norm(row[\"ts\"])>=first_block for row in releases), \"no release row at or after the block instant in the recorded smoke session\"'",
+                "test -s \"$HOME/.agent-discipline/ledger/client-version.txt\""
+              ]
+            },
+            {
+              "t": "E10-T1: Full-event live verification",
+              "done": false,
+              "id": "E10-T1",
+              "owner": "human",
+              "depends_on": [
+                "E2-W-T1",
+                "E3-W-T1",
+                "E4-W-T1",
+                "E5-W-T1"
+              ],
+              "owned_paths": [],
+              "checks": [
+                "python3 -c 'import glob,json,os,datetime; sid_path=os.path.expanduser(\"~/.agent-discipline/ledger/live-session.txt\"); assert os.path.exists(sid_path), \"live-session.txt missing\"; sid=open(sid_path).read().strip(); assert sid, \"live-session.txt empty\"; rows=[json.loads(line) for path in glob.glob(os.path.expanduser(\"~/.agent-discipline/ledger/\")+\"*.jsonl\") for line in open(path)]; pinned=[row for row in rows if row.get(\"session_id\")==sid]; assert pinned, \"no ledger rows in the recorded live session\"; assert all(row.get(\"ts\") for row in rows), \"ledger row without ts, ledger corruption, E1-S1-T4 always writes ts\"; utc=datetime.timezone.utc; norm=lambda value: (lambda parsed: parsed if parsed.tzinfo else parsed.replace(tzinfo=utc))(datetime.datetime.fromisoformat(value)); newest=max(norm(row[\"ts\"]) for row in pinned); assert newest>=max(norm(row[\"ts\"]) for row in rows), \"stale live-session.txt: another session holds newer ledger rows, re-pin the current verification session\"; now=datetime.datetime.now(utc); assert abs(now-newest)<=datetime.timedelta(hours=2), \"stale evidence: the pinned live session is outside the two-hour window\"; seen={row.get(\"event\") for row in pinned}; wired=set(json.load(open(\"hooks/claude-settings.snippet.json\"))[\"hooks\"]); missing=sorted(wired-seen); assert not missing, \"no ledger row in the recorded live session for: \"+\", \".join(missing)'",
+                "test -s \"$HOME/.agent-discipline/ledger/live-verification-results.md\" && test -s \"$HOME/.agent-discipline/ledger/client-version.txt\""
+              ]
+            },
+            {
+              "t": "E10-T2: Gate promotion decision (observe to enforce)",
+              "done": false,
+              "id": "E10-T2",
+              "owner": "human",
+              "depends_on": [
+                "E10-T1",
+                "E9-W-T1"
+              ],
+              "owned_paths": [],
+              "checks": [
+                "cd hooks && python3 -m lib.reporting observe-report"
+              ]
+            },
+            {
+              "t": "E10-T3: SKILL.md plus README documentation pass",
+              "done": false,
+              "id": "E10-T3",
+              "owner": "claude",
+              "depends_on": [
+                "E9-W-T1",
+                "E7-H-T1"
+              ],
+              "owned_paths": [
+                "SKILL.md",
+                "README.md"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

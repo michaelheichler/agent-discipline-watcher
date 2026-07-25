@@ -1,0 +1,18 @@
+{
+  "projects": [
+    {
+      "id": "adw-hooks",
+      "title": "ADW ecosystem hook integration",
+      "code_paths": [
+        "README.md",
+        "SKILL.md",
+        "bin",
+        "hooks",
+        "install.sh",
+        "opencode",
+        "pi"
+      ],
+      "plan": "adw-hooks/plan.json"
+    }
+  ]
+}

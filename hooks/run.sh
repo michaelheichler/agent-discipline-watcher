@@ -25,5 +25,5 @@ if [ "$event" = "Stop" ]
 then
   exit 0
 fi
-echo "usage: run.sh SessionStart|PreToolUse|PreCommit|PostToolUse" >&2
+echo "usage: run.sh SessionStart|PreToolUse|PreCommit|PostToolUse|Stop" >&2
 exit 2

@@ -61,9 +61,19 @@ APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(?:" + APOLOGY_WORDS + r")\b", re.I
 COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)")
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
+WHY_RULE_IS_HEURISTIC = (
+    "The WHY and WHAT split is a lexical heuristic, not semantic analysis. "
+    "A WHAT comment with a marker can pass, and a genuine WHY comment without one can be blocked. "
+    "Its deliberate bias toward over-blocking matches the hard-block policy with no exceptions."
+)
 WHY_COMMENT_RE = re.compile(
-    r"(?:^why:\s*\S|\b(?:because|since|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
+    r"(?:^why:\s*\S|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
     r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
+    re.IGNORECASE,
+)
+SINCE_RE = re.compile(r"\bsince\s+\S", re.IGNORECASE)
+TEMPORAL_SINCE_RE = re.compile(
+    r"\bsince\s+(?:the\s+)?(?:(?:last\s+)?release\b|v(?:ersion)?\.?\s*\d|\d)",
     re.IGNORECASE,
 )
 WHAT_COMMENT_ACTION = (
@@ -261,11 +271,17 @@ def _comment_text(line: str) -> str | None:
     return text
 
 
+def _has_why_marker(text: str) -> bool:
+    if WHY_COMMENT_RE.search(text):
+        return True
+    return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
+
+
 def _what_comment_rows(path: str, lines: list[str]) -> list[dict]:
     rows = []
     for line_number, line in enumerate(lines, 1):
         text = _comment_text(line)
-        if text is None or WHY_COMMENT_RE.search(text):
+        if text is None or _has_why_marker(text):
             continue
         rows.append(_finding(
             "clean_code", "what_comment", line_number,

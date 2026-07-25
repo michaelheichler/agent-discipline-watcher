@@ -134,14 +134,3 @@ def test_docs_state_replacement_and_pi_scope():
     assert "Professional Agent Helper" not in text
     assert "one Pi extension" in text
     assert "agent-end fallback" not in text
-
-
-if __name__ == "__main__":
-    test_owned_policy_text_excludes_markdown_code_and_table_separators()
-    test_owned_policy_text_keeps_prose_double_hyphen_strict()
-    test_owned_policy_text_excludes_yaml_frontmatter()
-    test_pi_extension_registers_one_combined_lifecycle()
-    test_pi_extension_shells_to_combined_python_scanner()
-    test_pi_extension_scans_write_results_and_sends_one_steer()
-    test_owned_text_has_no_legacy_extension_or_banned_markers()
-    test_docs_state_replacement_and_pi_scope()

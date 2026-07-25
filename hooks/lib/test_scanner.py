@@ -274,7 +274,7 @@ if __name__ == "__main__":
         test_project_config_is_found_from_child_directory(Path(directory))
 
 
-def test_exempt_paths_config_skips_all_families():
+def test_exempt_paths_config_skips_configurable_families():
     text = (
         "# Keep this HYG-99 fixture because exempt paths must skip prose blocks\n"
         "# Preserve a second line because the fixture needs a comment run\n"
@@ -320,3 +320,40 @@ def test_scannable_text_caps_length_and_nul_bytes():
     assert scanner.scannable_text("x" * 20, {"max_scan_bytes": 10}) is None
     assert scanner.scannable_text("a\0b", {"max_scan_bytes": 100}) is None
     assert scanner.scannable_text("ok", {"max_scan_bytes": 10}) == "ok"
+
+
+def _what_rows(path, line, config=None):
+    findings = scan_all(path, line + "\n", config if config is not None else {})
+    return [item for item in findings if item["rule"] == "what_comment"]
+
+
+def test_why_marker_gate():
+    for line in (
+        "# cached since v2",
+        "# deprecated since 2024",
+        "# unchanged since release 3",
+        "# since 2020",
+        "# valid since v1.4.2",
+        "# increments the counter",
+        "# this function returns the total",
+    ):
+        assert len(_what_rows("sample.py", line)) == 1, line
+    for line in (
+        "# skip since the file is locked",
+        "# since the lock is held, bail out early",
+        "# retry otherwise the socket leaks",
+        "# poll twice, otherwise the race wins",
+        "# because the socket leaks",
+    ):
+        assert _what_rows("sample.py", line) == [], line
+
+
+def test_what_comment_ignores_exempt_paths_and_the_clean_code_switch():
+    line = "# increments the counter"
+    switches_off = {"punctuation": False, "english": False, "clean_code": False}
+    assert _what_rows("sample.py", line, switches_off)
+    assert _what_rows(
+        "/repo/generated/sample.py",
+        line,
+        {"exempt_paths": ["generated/*"], "clean_code": False},
+    )

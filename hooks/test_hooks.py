@@ -1,10 +1,7 @@
 import json
 import os
-import shutil
 import subprocess
 import tempfile
-import time
-from contextlib import contextmanager
 from pathlib import Path
 
 import pre_commit
@@ -403,35 +400,6 @@ def _ledger_path():
     return path
 
 
-@contextmanager
-def _temporary_test_directory():
-    path = Path(tempfile.mkdtemp(prefix="agent-discipline-watcher-test-"))
-    try:
-        yield path
-    finally:
-        _remove_temporary_tree(path)
-
-
-def _remove_temporary_tree(path: Path) -> None:
-    last_error = None
-    for _ in range(30):
-        try:
-            shutil.rmtree(path, onexc=_reset_permissions)
-            return
-        except FileNotFoundError:
-            return
-        except OSError as error:
-            last_error = error
-            time.sleep(0.1)
-    if last_error is not None:
-        raise last_error
-
-
-def _reset_permissions(function, path, _exc_info):
-    os.chmod(path, 0o700)
-    function(path)
-
-
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True)
 
@@ -440,46 +408,3 @@ def _stage_bad_python(cwd: Path) -> None:
     target = cwd / "a.py"
     target.write_text("# first line\n# second line\nprint(1)\n", encoding="utf-8")
     _git(cwd, "add", "a.py")
-
-
-if __name__ == "__main__":
-    test_pre_write_denies_forced_pending_write()
-    test_pre_write_denies_plain_english_violation()
-    test_pre_write_denies_clean_code_violation()
-    test_pre_write_denies_prose_comment_block()
-    test_pre_write_blocks_what_comment_and_allows_why_comment()
-    test_pre_write_enforces_vue_comment_contract()
-    test_pre_write_allows_comment_exemptions_and_css_selectors()
-    test_pre_commit_allows_non_commit_bash()
-    with _temporary_test_directory() as directory:
-        test_pre_commit_blocks_staged_forced_findings(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_allows_git_commit_as_argument(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_git_c_repo(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_cd_then_git_commit(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_pipeline_git_commit(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_command_wrapper(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_env_wrapper(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_grouped_cd_commit(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_all_commit_cwds(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_staged_blob_when_worktree_is_clean(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_ignores_dirty_worktree_when_staged_blob_is_clean(directory)
-    with _temporary_test_directory() as directory:
-        test_pre_commit_scans_from_repo_subdirectory(directory)
-    with _temporary_test_directory() as directory:
-        test_record_blocks_forced_post_write(directory)
-    test_session_start_injects_policy()
-    test_run_sh_routes_pretooluse()
-    test_run_sh_routes_precommit_non_commit()
-    test_run_sh_rejects_user_prompt_submit()
-    with _temporary_test_directory() as directory:
-        test_run_sh_selects_sibling_model_loader_python(directory)

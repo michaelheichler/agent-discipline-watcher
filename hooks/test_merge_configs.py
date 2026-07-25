@@ -275,12 +275,12 @@ def assert_no_stale_hooks(text: str) -> None:
     assert "professional-agent-helper" not in text
 
 
-def assert_watcher_hook_family(text: str) -> None:
+def assert_watcher_hook_family(text: str, stop_wired: bool = False) -> None:
     for event in ("PreToolUse", "PostToolUse", "SessionStart"):
         assert event in text
     for event in ("PreToolUse", "PreCommit", "PostToolUse", "SessionStart"):
         assert f"run.sh {event}" in text
-    assert "run.sh Stop" not in text
+    assert ("run.sh Stop" in text) is stop_wired
     assert "run.sh UserPromptSubmit" not in text
 
 
@@ -378,10 +378,22 @@ def assert_claude_merge(merged: dict) -> None:
     text = json.dumps(merged)
     assert_no_stale_hooks(text)
     assert "unrelated-stop.py" in text
-    assert_watcher_hook_family(text)
+    assert_watcher_hook_family(text, stop_wired=True)
+    assert_claude_stop_entry(merged)
     assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
     assert "compact" in merged["hooks"]["SessionStart"][0]["matcher"]
     assert "run.sh UserPromptSubmit" not in text
+
+
+def assert_claude_stop_entry(merged: dict) -> None:
+    entries = merged["hooks"]["Stop"]
+    watcher = [entry for entry in entries if "agent-discipline-watcher" in json.dumps(entry)]
+    assert len(watcher) == 1, "Stop must merge to exactly one watcher entry, re-running install must not stack"
+    assert "matcher" not in watcher[0], "Stop carries no matcher, an unknown key can break config parsing"
+    assert watcher[0]["hooks"] == [
+        {"type": "command", "command": "/tmp/agent-discipline-watcher/hooks/run.sh Stop"}
+    ]
+    assert "unrelated-stop.py" in json.dumps(entries)
 
 
 def assert_claude_pretool_shape(entries: list[dict]) -> None:
@@ -412,7 +424,8 @@ def assert_uncle_bobs_cc_merge(merged: dict) -> None:
     assert "pre_commit_hook.py" not in text
     assert "unrelated-stop.py" in text
     assert "/stale/agent-discipline-watcher" not in text
-    assert_watcher_hook_family(text)
+    assert_watcher_hook_family(text, stop_wired=True)
+    assert_claude_stop_entry(merged)
     assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
 
 

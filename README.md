@@ -90,13 +90,15 @@ The hook code searches upward from the current working directory for `.agent-dis
 
 The Craftsman suppression marker is always blocked on every scanned file. Project check switches and path exemptions cannot disable this rule. Fix the reported issue instead.
 
+The `what_comment` rule is also unconditional on code files. Neither `clean_code: false` nor `exempt_paths` suppresses it. State a WHY or delete the comment.
+
 Supported checks:
 
 | Check | Purpose |
 | --- | --- |
 | `punctuation` | Blocks banned dash marks, double hyphen breaks, semicolon splices, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
 | `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and plain-English issues. |
-| `clean_code` | Blocks deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. |
+| `clean_code` | Toggles deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. It does not toggle the always-on `what_comment` rule described above. |
 
 `max_rows` can be set in `.agent-discipline.json` to change how many compact report rows are shown before the full local report path.
 
@@ -110,12 +112,13 @@ Supported checks:
 | `PreToolUse` | Scans pending write or patch content and blocks forced deterministic findings before the write runs. |
 | `PreCommit` | Watches Bash `git commit` commands, scans staged ACM files, and blocks forced deterministic findings before the commit runs. |
 | `PostToolUse` | Rescans written files and immediately blocks agent continuation when findings remain. |
+| `Stop` | Wired on the Claude surface and inert. The route exits without scanning until the turn-end gate module lands. |
 
 PreCommit parses the shell command heuristically. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are not scanned.
 
 PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a completed write, so a forced finding returns a blocking error that requires the agent to repair the file before continuing.
 
-An already-running client may retain the removed Stop callback until it restarts. The launcher treats that stale callback as a silent no-op.
+The Claude surface wires the Stop event to `hooks/run.sh Stop`. That route exits without scanning today, so a Stop callback costs one process and changes nothing. The turn-end gate arrives with its own hook module, and the wiring stays inert until then.
 
 ## Pi Behavior
 
