@@ -1,29 +1,28 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="python3"
+PYTHON=python3
+
+DISPATCH="SessionStart:session_start.py PreToolUse:pre_write.py PreCommit:pre_commit.py PostToolUse:record.py Stop:"
 
 event="${1:-}"
-if [ "$event" = "SessionStart" ]
-then
-  exec "$PYTHON" "$DIR/session_start.py"
-fi
-if [ "$event" = "PreToolUse" ]
-then
-  exec "$PYTHON" "$DIR/pre_write.py"
-fi
-if [ "$event" = "PreCommit" ]
-then
-  exec "$PYTHON" "$DIR/pre_commit.py"
-fi
-if [ "$event" = "PostToolUse" ]
-then
-  exec "$PYTHON" "$DIR/record.py"
-fi
-if [ "$event" = "Stop" ]
-then
-  exit 0
-fi
-echo "usage: run.sh SessionStart|PreToolUse|PreCommit|PostToolUse|Stop" >&2
+usage="usage: run.sh "
+sep=""
+for pair in $DISPATCH
+do
+  name=${pair%%:*}
+  usage="$usage$sep$name"
+  sep="|"
+  if [ "$event" = "$name" ]
+  then
+    script=${pair#*:}
+    if [ -n "$script" ]
+    then
+      exec "$PYTHON" "$DIR/$script"
+    fi
+    exit 0
+  fi
+done
+echo "$usage" >&2
 exit 2
