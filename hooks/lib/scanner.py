@@ -4,6 +4,7 @@ import ast
 import fnmatch
 import os
 import re
+from pathlib import PurePath
 
 try:
     from .config import effective_config
@@ -174,7 +175,11 @@ def _is_prose(path: str) -> bool:
 
 def _is_config(path: str) -> bool:
     lowered = path.lower()
-    return any(lowered.endswith(ext) for ext in CONFIG_EXTS)
+    if any(lowered.endswith(ext) for ext in CONFIG_EXTS):
+        return True
+    name = PurePath(lowered).name
+    # An extensionless dotfile is settings rather than code, so treat it as config to prevent the code-only comment rules firing on it.
+    return name.startswith(".") and "." not in name[1:]
 
 
 def _is_code(path: str) -> bool:
