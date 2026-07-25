@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=64c1d163 do not hand-edit -->
+<!-- love-render src=plan.json sha=3cb07f1b do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -16,7 +16,7 @@ Why this frees you rather than fences you:
 Honest limit: this worktree is a separate checkout, not an enforced sandbox. It gives each project its own files and branch so they do not collide. It does not stop a process from reaching outside. The boundary holds because you keep it, not because a wall forces it.
 
 ## E1-S1 Core libraries: dispatch, payloads, and gate config
-- Gate: simplification. Sprint: 1. Status: todo.
+- Gate: simplification. Sprint: 1. Status: doing.
 - Why: As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.
 - Done when:
   - run.sh routes events from a single data-driven table, one entry script per event-and-matcher pair (D11), and unknown events still exit 2 with usage
@@ -24,19 +24,19 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - lib/config.py carries the central gate-state schema: every gate family resolves to off, observe, or enforce, with observe running the full check and writing would_block rows without blocking (D7)
   - every new hook module follows the existing pattern: an importable module exposing run(payload, config) with I/O only via the hookio helpers, so test files import it directly and call run() the way test_hooks.py already does
 - Tasks:
-  - [ ] E1-S1-T1: Data-driven run.sh dispatcher
-  - [ ] E1-S1-T3: Payload contract module (lib/payloads.py)
+  - [x] E1-S1-T1: Data-driven run.sh dispatcher
+  - [x] E1-S1-T3: Payload contract module (lib/payloads.py)
   - [ ] E1-S1-T5: Central gate-state config schema (lib/config.py)
 
 ## E1-S3 Core libraries: durable session state and findings ledger
-- Gate: unit-testing. Sprint: 1. Status: todo.
+- Gate: unit-testing. Sprint: 1. Status: doing.
 - Why: As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.
 - Done when:
   - lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd
   - every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session
   - every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check
 - Tasks:
-  - [ ] E1-S1-T2: Durable session state store (lib/session_state.py)
+  - [x] E1-S1-T2: Durable session state store (lib/session_state.py)
   - [ ] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
 
 ## E1-S2 Existing-wiring hardening and parity map

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=64c1d163 do not hand-edit -->
+<!-- love-render src=plan.json sha=3cb07f1b do not hand-edit -->
 
 # E1-S3 Core libraries: durable session state and findings ledger
 
@@ -13,6 +13,6 @@ As the ADW maintainer, I want one dispatch table, one payload contract, one stat
 - every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check
 
 ## Execution
-- [ ] E1-S1-T2: Durable session state store (lib/session_state.py)
+- [x] E1-S1-T2: Durable session state store (lib/session_state.py)
 - [ ] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
 

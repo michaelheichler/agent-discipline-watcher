@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=64c1d163 do not hand-edit -->
+<!-- love-render src=plan.json sha=3cb07f1b do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> Everyone prefers belief to the exercise of judgement.
-> Seneca
+> A man when he has done a good act, does not call out for others to come and see, but he goes on to another act, as a vine goes on to produce again the grapes in season.
+> Marcus Aurelius
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 
@@ -28,8 +28,8 @@
 ## Epics
 ### E1. Foundation: dispatcher, state, payload contracts, ledger  (0/3 stories done)
 Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.
-- **E1-S1 Core libraries: dispatch, payloads, and gate config** (todo, sprint 1, gate simplification)
-- **E1-S3 Core libraries: durable session state and findings ledger** (todo, sprint 1, gate unit-testing)
+- **E1-S1 Core libraries: dispatch, payloads, and gate config** (doing, sprint 1, gate simplification)
+- **E1-S3 Core libraries: durable session state and findings ledger** (doing, sprint 1, gate unit-testing)
 - **E1-S2 Existing-wiring hardening and parity map** (todo, sprint 1, gate code-review)
 
 ### E2. Turn-end and completion enforcement (Stop family)  (0/6 stories done)

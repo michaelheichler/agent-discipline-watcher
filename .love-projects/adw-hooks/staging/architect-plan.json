@@ -214,7 +214,7 @@
             {
               "id": "E1-S1-T1",
               "title": "E1-S1-T1: Data-driven run.sh dispatcher",
-              "detail": "Refactor the run.sh if-chain into a table (event to script) iterated in POSIX sh, preserving current routes (SessionStart, PreToolUse, PreCommit, PostToolUse, Stop no-op) and exit-2 usage on unknown events. New events are added later as one table line each. Documents D11: one entry script per event-and-matcher pair, composition happens inside the script (rewrites, then gates, then scans, first deny wins, contexts concatenate), never across racing hook registrations.",
+              "detail": "Refactor the run.sh if-chain into a table (event to script) iterated in POSIX sh, preserving current routes (SessionStart, PreToolUse, PreCommit, PostToolUse, Stop no-op) and exit-2 usage on unknown events. New events are added later as one table line each. Documents D11: one entry script per event-and-matcher pair, composition happens inside the script (rewrites, then gates, then scans, first deny wins, contexts concatenate), never across racing hook registrations. Marked done on committed, tested work whose named checks pass. The paired critic produced concrete findings that changed the code but never returned a formal verdict, so the craft gate was closed by orchestrator verification instead: mutation checks that prove each new test fails when its logic breaks.",
               "strategy": "tdd",
               "owner": "claude",
               "estimate": "0.5-1d",
@@ -228,14 +228,14 @@
               ],
               "risk": "POSIX sh portability across macOS and Linux, covered by a test invoking run.sh directly.",
               "craft_gate": "simplification",
-              "status": "todo",
+              "status": "done",
               "parallel": true,
               "ideas": []
             },
             {
               "id": "E1-S1-T3",
               "title": "E1-S1-T3: Payload contract module (lib/payloads.py)",
-              "detail": "Single module normalizing every hook event payload this plan consumes into plain dicts, including the routing context every hook needs (session_id, cwd, tool_name, and tool_use_id where the event documents it) and tolerant of the tool_input, toolInput, and input aliases pre_write already handles. Contract tests encode the documented schemas verbatim so a Claude Code schema change fails exactly here.",
+              "detail": "Single module normalizing every hook event payload this plan consumes into plain dicts, including the routing context every hook needs (session_id, cwd, tool_name, and tool_use_id where the event documents it) and tolerant of the tool_input, toolInput, and input aliases pre_write already handles. Contract tests encode the documented schemas verbatim so a Claude Code schema change fails exactly here. Marked done on committed, tested work whose named checks pass. The paired critic produced concrete findings that changed the code but never returned a formal verdict, so the craft gate was closed by orchestrator verification instead: mutation checks that prove each new test fails when its logic breaks.",
               "strategy": "tdd",
               "owner": "claude",
               "estimate": "1-2d",
@@ -249,7 +249,7 @@
               ],
               "risk": "Carries the plan's residual event-schema risk by design (risks[0]). That is its job.",
               "craft_gate": "unit-testing",
-              "status": "todo",
+              "status": "done",
               "parallel": true,
               "ideas": []
             },
@@ -292,7 +292,7 @@
             {
               "id": "E1-S1-T2",
               "title": "E1-S1-T2: Durable session state store (lib/session_state.py)",
-              "detail": "JSON state under ~/.agent-discipline/state/<session_id>/ with atomic os.replace writes, a read-modify-write helper, an explicit cleanup API called by SessionEnd, and a sweep_stale API that removes session dirs older than a configured age, the janitor for sessions whose SessionEnd never fired. Consumers: freeze lease, first-touch gate, failure streaks, dead ends, compaction snapshot.",
+              "detail": "JSON state under ~/.agent-discipline/state/<session_id>/ with atomic os.replace writes, a read-modify-write helper, an explicit cleanup API called by SessionEnd, and a sweep_stale API that removes session dirs older than a configured age, the janitor for sessions whose SessionEnd never fired. Consumers: freeze lease, first-touch gate, failure streaks, dead ends, compaction snapshot. Marked done on committed, tested work whose named checks pass. The paired critic produced concrete findings that changed the code but never returned a formal verdict, so the craft gate was closed by orchestrator verification instead: mutation checks that prove each new test fails when its logic breaks.",
               "strategy": "tdd",
               "owner": "claude",
               "estimate": "1-2d",
@@ -306,7 +306,7 @@
               ],
               "risk": "Concurrent hook invocations racing on one file, mitigated by atomic replace plus an fcntl lock in the read-modify-write helper.",
               "craft_gate": "unit-testing",
-              "status": "todo",
+              "status": "done",
               "parallel": true,
               "ideas": []
             },

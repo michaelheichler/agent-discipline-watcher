@@ -137,7 +137,7 @@
         {
           "id": "E1-S1",
           "title": "Core libraries: dispatch, payloads, and gate config",
-          "status": "todo",
+          "status": "doing",
           "sprint": 1,
           "craft_gate": "simplification",
           "why": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
@@ -151,7 +151,7 @@
             {
               "id": "E1-S1-T1",
               "t": "E1-S1-T1: Data-driven run.sh dispatcher",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [],
               "owned_paths": [
@@ -166,7 +166,7 @@
             {
               "id": "E1-S1-T3",
               "t": "E1-S1-T3: Payload contract module (lib/payloads.py)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [],
               "owned_paths": [
@@ -201,7 +201,7 @@
         {
           "id": "E1-S3",
           "title": "Core libraries: durable session state and findings ledger",
-          "status": "todo",
+          "status": "doing",
           "sprint": 1,
           "craft_gate": "unit-testing",
           "why": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
@@ -214,7 +214,7 @@
             {
               "id": "E1-S1-T2",
               "t": "E1-S1-T2: Durable session state store (lib/session_state.py)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [],
               "owned_paths": [
@@ -1894,8 +1894,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "Everyone prefers belief to the exercise of judgement.",
-    "who": "Seneca",
+    "text": "A man when he has done a good act, does not call out for others to come and see, but he goes on to another act, as a vine goes on to produce again the grapes in season.",
+    "who": "Marcus Aurelius",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }

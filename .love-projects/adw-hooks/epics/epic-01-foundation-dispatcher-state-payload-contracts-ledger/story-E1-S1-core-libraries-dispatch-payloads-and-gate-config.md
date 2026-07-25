@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=64c1d163 do not hand-edit -->
+<!-- love-render src=plan.json sha=3cb07f1b do not hand-edit -->
 
 # E1-S1 Core libraries: dispatch, payloads, and gate config
 
@@ -14,7 +14,7 @@ As the ADW maintainer, I want one dispatch table, one payload contract, one stat
 - every new hook module follows the existing pattern: an importable module exposing run(payload, config) with I/O only via the hookio helpers, so test files import it directly and call run() the way test_hooks.py already does
 
 ## Execution
-- [ ] E1-S1-T1: Data-driven run.sh dispatcher
-- [ ] E1-S1-T3: Payload contract module (lib/payloads.py)
+- [x] E1-S1-T1: Data-driven run.sh dispatcher
+- [x] E1-S1-T3: Payload contract module (lib/payloads.py)
 - [ ] E1-S1-T5: Central gate-state config schema (lib/config.py)
 
