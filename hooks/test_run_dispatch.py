@@ -43,6 +43,7 @@ class RunDispatchTests(unittest.TestCase):
             env=self.env,
             capture_output=True,
             text=True,
+            check=False,
         )
 
     def test_routes_each_event_to_its_entry_script(self):

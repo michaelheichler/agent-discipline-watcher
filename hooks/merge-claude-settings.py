@@ -56,14 +56,14 @@ def prune(value):
 
 
 def load_json(path):
-    if not path.exists() or not path.read_text().strip():
+    if not path.exists() or not path.read_text(encoding="utf-8").strip():
         return {}
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def watcher_hooks(skill_dir):
     snippet = Path(__file__).with_name("claude-settings.snippet.json")
-    raw = snippet.read_text().replace("__SKILL_DIR__", str(skill_dir))
+    raw = snippet.read_text(encoding="utf-8").replace("__SKILL_DIR__", str(skill_dir))
     return json.loads(raw)["hooks"]
 
 
@@ -75,7 +75,7 @@ def merge(settings_path, skill_dir):
     for lifecycle, entries in watcher_hooks(skill_dir).items():
         hooks[lifecycle] = list(hooks.get(lifecycle, [])) + entries
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n")
+    settings_path.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main():

@@ -31,9 +31,9 @@ def prune(value):
 
 
 def load_json(path):
-    if not path.exists() or not path.read_text().strip():
+    if not path.exists() or not path.read_text(encoding="utf-8").strip():
         return {}
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def merge(settings_path, skill_dir):
@@ -41,7 +41,7 @@ def merge(settings_path, skill_dir):
     extensions = settings.setdefault("extensions", [])
     extensions.append(str(skill_dir / "pi" / "extensions" / "agent-discipline-watcher" / "index.ts"))
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n")
+    settings_path.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main():

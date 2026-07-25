@@ -1,0 +1,33 @@
+[MAIN]
+# Set because plan decision D6 pins this codebase to stdlib-only Python 3.11 or newer.
+py-version = 3.11
+
+[MESSAGES CONTROL]
+disable =
+# Disabled because this repo's own scanner owns docstring policy and is stricter, rejecting the WHAT
+# comments and narration that pylint counts as a docstring being present.
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+# Disabled because the three client merge scripts are deliberately parallel, one per client.
+    duplicate-code,
+# Disabled because this repo rejects multi-line comment blocks, so a WHY comment cannot be wrapped and must run long.
+    line-too-long,
+# Disabled because every hook entry script exposes the same run(payload, config) contract, so one of the two is often unread.
+    unused-argument,
+# Disabled because tests reach into internals on purpose, to assert against the real boundary rather than a mock.
+    protected-access,
+    redefined-outer-name,
+# Disabled because unittest holds a TemporaryDirectory across setUp and tearDown, which no with block expresses.
+    consider-using-with,
+# Disabled because a ledger or state write must never fail a hook, so those sites catch everything by design.
+    broad-exception-caught,
+    unnecessary-lambda,
+    import-outside-toplevel,
+    use-implicit-booleaness-not-comparison,
+    consider-using-f-string,
+    superfluous-parens,
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-public-methods,
+    invalid-name
