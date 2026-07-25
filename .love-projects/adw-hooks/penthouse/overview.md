@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=3cb07f1b do not hand-edit -->
+<!-- love-render src=plan.json sha=81e0624b do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> A man when he has done a good act, does not call out for others to come and see, but he goes on to another act, as a vine goes on to produce again the grapes in season.
-> Marcus Aurelius
+> Never say about anything, I have lost it, but only I have given it back.
+> Epictetus
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 
