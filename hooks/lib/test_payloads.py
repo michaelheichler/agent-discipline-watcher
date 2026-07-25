@@ -103,7 +103,7 @@ class AgentTranscriptPathTests(unittest.TestCase):
         }
         self.assertEqual(payloads.agent_transcript_path(payload), "/tmp/agent-7.jsonl")
 
-    def test_falls_back_to_documented_transcript_path(self):
+    def test_falls_back_to_common_transcript_path(self):
         # because transcript_path is documented as a common field on every hook event
         payload = {"hook_event_name": "SubagentStop", "transcript_path": "/tmp/main.jsonl"}
         self.assertEqual(payloads.agent_transcript_path(payload), "/tmp/main.jsonl")
