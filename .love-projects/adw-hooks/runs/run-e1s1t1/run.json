@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "run_id": "run-e1s1t1",
+  "project": "adw-hooks",
+  "state": "active",
+  "task": {
+    "id": "E1-S1-T1",
+    "t": "E1-S1-T1: Data-driven run.sh dispatcher",
+    "done": false,
+    "owner": "claude",
+    "depends_on": [],
+    "owned_paths": [
+      "hooks/run.sh",
+      "hooks/test_run_dispatch.py"
+    ],
+    "checks": [
+      "cd hooks && python3 -m pytest -q"
+    ],
+    "risk": "POSIX sh portability across macOS and Linux, covered by a test invoking run.sh directly."
+  },
+  "plan_hash": "64c1d163",
+  "evidence": {
+    "note": "Named peers linux-engineer and linux-critic spawned together on E1-S1-T1.",
+    "owned_paths": [
+      "hooks/run.sh",
+      "hooks/test_run_dispatch.py"
+    ],
+    "agents": [
+      "linux-engineer",
+      "linux-critic"
+    ]
+  },
+  "assignments": {}
+}

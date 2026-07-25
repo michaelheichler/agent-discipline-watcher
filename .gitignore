@@ -21,3 +21,6 @@ agent-discipline-watcher-*.json
 *.temp
 tmp/
 temp/
+
+.love-projects/*/active-run
+.love-projects/*/run-intent.json
