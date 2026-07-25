@@ -13,6 +13,12 @@ import record
 import session_start
 
 
+WHAT_COMMENT_ACTION = (
+    "Only WHY comments are allowed. WHAT comments are never allowed. "
+    "State the reason the code is this way, or delete the comment."
+)
+
+
 def _disable_git_background_tasks() -> None:
     config = {
         "maintenance.auto": "false",
@@ -58,6 +64,81 @@ def test_pre_write_denies_prose_comment_block():
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "clean_code": True})
     assert response["decision"] == "block"
     assert "clean_code/prose_comment_block" in response["reason"]
+
+
+def test_pre_write_blocks_what_comment_and_allows_why_comment():
+    config = {"ledger_path": _ledger_path(), "clean_code": True}
+    what_payload = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
+    response = pre_write.run(what_payload, config)
+    assert response["decision"] == "block"
+    assert "clean_code/what_comment" in response["reason"]
+    assert WHAT_COMMENT_ACTION in response["reason"]
+
+    why_payload = {
+        "tool_input": {
+            "file_path": "a.py",
+            "content": "# Keep this check because stale entries break ordering\nvalidate()\n",
+        }
+    }
+    assert pre_write.run(why_payload, config) == {}
+
+    disabled_and_exempt = {
+        "ledger_path": _ledger_path(),
+        "clean_code": False,
+        "exempt_paths": ["a.py"],
+    }
+    response = pre_write.run(what_payload, disabled_and_exempt)
+    assert response["decision"] == "block"
+    assert "clean_code/what_comment" in response["reason"]
+
+
+def test_pre_write_enforces_vue_comment_contract():
+    config = {"ledger_path": _ledger_path(), "clean_code": True}
+    two_comments = {
+        "tool_input": {
+            "file_path": "component.vue",
+            "content": (
+                "// Keep the fallback because old clients omit the field\n"
+                "// Preserve the default because empty values are valid\n"
+                "const value = fallback\n"
+            ),
+        }
+    }
+    response = pre_write.run(two_comments, config)
+    assert response["decision"] == "block"
+    assert "clean_code/prose_comment_block" in response["reason"]
+
+    one_comment = {
+        "tool_input": {
+            "file_path": "component.vue",
+            "content": "// Keep the fallback because old clients omit the field\nconst value = fallback\n",
+        }
+    }
+    assert pre_write.run(one_comment, config) == {}
+
+
+def test_pre_write_allows_comment_exemptions_and_css_selectors():
+    cases = [
+        ("script.py", "#!/usr/bin/env python3\nprint(1)\n"),
+        (
+            "script.py",
+            "# SPDX-FileCopyrightText: 2026 Example\n# SPDX-License-Identifier: MIT\n# coding: utf-8\nprint(1)\n",
+        ),
+        ("Dockerfile", "# syntax=docker/dockerfile:1\nFROM scratch\n"),
+        ("Dockerfile", "# escape=`\nFROM scratch\n"),
+        ("Dockerfile", "# check=skip=JSONArgsRecommended\nFROM scratch\n"),
+        ("script.py", "# noqa: E501\nprint(1)\n"),
+        ("script.py", "# type: ignore\nprint(1)\n"),
+        ("script.py", "# pragma: no cover\nprint(1)\n"),
+        ("script.py", "# ruff: noqa\nprint(1)\n"),
+        ("script.py", "# fmt: off\nprint(1)\n"),
+        ("script.js", "# eslint-disable-next-line\nrun()\n"),
+        ("script.ts", "// @ts-expect-error\nrun()\n"),
+        ("component.vue", "<style>\n#app { color: #222; }\n.widget { color: red; }\n</style>\n"),
+    ]
+    for path, content in cases:
+        payload = {"tool_input": {"file_path": path, "content": content}}
+        assert pre_write.run(payload, {"ledger_path": _ledger_path()}) == {}, (path, content)
 
 
 def test_pre_commit_allows_non_commit_bash():
@@ -366,6 +447,9 @@ if __name__ == "__main__":
     test_pre_write_denies_plain_english_violation()
     test_pre_write_denies_clean_code_violation()
     test_pre_write_denies_prose_comment_block()
+    test_pre_write_blocks_what_comment_and_allows_why_comment()
+    test_pre_write_enforces_vue_comment_contract()
+    test_pre_write_allows_comment_exemptions_and_css_selectors()
     test_pre_commit_allows_non_commit_bash()
     with _temporary_test_directory() as directory:
         test_pre_commit_blocks_staged_forced_findings(directory)

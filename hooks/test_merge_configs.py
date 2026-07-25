@@ -201,7 +201,7 @@ type = "command"
 command = "python /x/unrelated-stop.py"
 """
 
-# Repro of the x86-host incident: trailing state/projects/tui/mcp_servers tables after the last legacy hooks block.
+# Keep this regression case because trailing tables after legacy hooks caused config loss.
 CODEX_CONFIG_TRAILING_TABLES = """
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]

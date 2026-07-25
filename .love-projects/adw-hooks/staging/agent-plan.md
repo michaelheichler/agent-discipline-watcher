@@ -819,7 +819,7 @@ Acceptance criteria:
 - Depends on: E7-S2-T2, E7-S2-T3, E1-S2-T2
 - Scope (owned_paths): README.md
 - Out of scope: every path not listed above, git, install, and other tasks' hooks even when adjacent.
-- Checks: policy section present in README.md covering identifier classes, retention, and HMAC key custody plus rotation
+- Checks: `grep -Eqi '^## .*redaction.*policy' README.md && grep -Eqi 'identifier classes' README.md && grep -Eqi 'mapping (store )?retention' README.md && grep -Eqi 'HMAC key custody' README.md && grep -Eqi 'rotation' README.md`
 - Known risk: Without this gate the tier could ship with unexamined privacy defaults.
 
 ## E8: Negative memory (dead-end registry)
@@ -983,7 +983,7 @@ As the owner, I want live proof that the events fire as planned and an evidence-
 Acceptance criteria:
 - E10-T0 first: a live session proves the Stop hook blocks and releases as documented, before any other new event goes live. The lead runs the install. This is the first pivot-or-persevere gate from validation.decision_rule
 - E10-T1 then verifies the full surface: SubagentStop scan, UserPromptSubmit inject, ConfigChange block, PreCompact snapshot plus compact re-inject, with a heartbeat requirement (at least one ledger row per wired event during the session) and the installed client version recorded next to the results
-- the gate promotion decision (observe to enforce) is recorded per family with the ledger numbers that justified it
+- the gate promotion decision (observe to enforce) is recorded per family with the report's adjudicated false-signal rate and ledger numbers that justified it
 - SKILL.md and README are updated with new events, config keys, the parity matrix with its fallback column, and kill-switches, and block messages are reviewed for actionability (the block message is ADW's whole UI)
 
 #### E10-T0: Live Stop smoke (the MVP experiment)
@@ -1013,7 +1013,7 @@ Acceptance criteria:
 - Depends on: E10-T1, E9-W-T1
 - Scope (owned_paths): no file changes, a decision or verification task
 - Out of scope: every path not listed above, git, install, and other tasks' hooks even when adjacent.
-- Checks: `cd hooks && python3 -m lib.reporting observe-report` | decision recorded per gate family citing the report's adjudicated false-signal rate and ledger evidence
+- Checks: `cd hooks && python3 -m lib.reporting observe-report`
 - Known risk: Skipping this turns observe-mode staging into permanent limbo. It is scheduled, not optional.
 
 #### E10-T3: SKILL.md plus README documentation pass

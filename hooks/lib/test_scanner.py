@@ -275,7 +275,11 @@ if __name__ == "__main__":
 
 
 def test_exempt_paths_config_skips_all_families():
-    text = "# HYG-99: a long prose comment block that narrates\n# across two lines with an em dash tell\nx = 1\n"
+    text = (
+        "# Keep this HYG-99 fixture because exempt paths must skip prose blocks\n"
+        "# Preserve a second line because the fixture needs a comment run\n"
+        "x = 1\n"
+    )
     cfg = {"exempt_paths": ["scripts/legacy_contract_test.py"]}
     assert scanner.scan_all("/repo/scripts/legacy_contract_test.py", text, cfg) == []
     assert scanner.scan_all("/repo/scripts/other_file.py", text, cfg) != []

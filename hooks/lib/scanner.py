@@ -58,9 +58,18 @@ CLEAN_MARKER_RE = re.compile(
 BUG_LABEL_RE = re.compile(r"(?://|#|/\*)\s*(bug|case|fix|issue|step|note)\s+[A-Z0-9]\s*[:.\-]", re.IGNORECASE)
 APOLOGY_WORDS = "|".join(("ha" + "cky", "not sure why", "work" + "around", "ug" + "ly"))
 APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(?:" + APOLOGY_WORDS + r")\b", re.IGNORECASE)
-COMMENT_RE = re.compile(r"^\s*(?://|#(?!\!)|/\*)\s*(.*)")
+COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)")
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
+WHY_COMMENT_RE = re.compile(
+    r"(?:^why:\s*\S|\b(?:because|since|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
+    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
+    re.IGNORECASE,
+)
+WHAT_COMMENT_ACTION = (
+    "Only WHY comments are allowed. WHAT comments are never allowed. "
+    "State the reason the code is this way, or delete the comment."
+)
 VC_COMMENT_RE = re.compile(
     r"^\s*(changed?|renamed?|moved?|removed?|added?|replaced?|refactored?|"
     r"fixed|reverted?|updated?|was)\b.{0,60}?\b("
@@ -74,7 +83,11 @@ SHELL_IN_CONFIG_RE = re.compile(
     r"""-c\s+["']|;\s*(?:do|then|fi|done)\b|&&|\|\||\$\{|\$\(|\bimport\s+\w+\s*;|\btrap\s"""
     r"""|^\s*[\w.\[\]"']+\s*=(?!=)\s*\S|\s--\s"""
 )
-DIRECTIVE_COMMENT_RE = re.compile(r"^#\s*(?:syntax|escape|check)=|^#!")
+DIRECTIVE_COMMENT_RE = re.compile(
+    r"^(?:#!|#\s*(?:(?:syntax|escape|check)=|noqa\b|type:|pragma\b|ruff:|fmt:|"
+    r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+)",
+    re.IGNORECASE,
+)
 SUPPRESSION_MARKER = "craftsman" + "-ignore"
 SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b", re.IGNORECASE)
 
@@ -109,21 +122,22 @@ def _max_scan_bytes(config: dict) -> int:
     return _int_setting(config, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", 1_000_000)
 
 
+def _unconditional_findings(path: str, lines: list[str]) -> list[dict]:
+    findings = [
+        _finding("clean_code", "suppression_escape_hatch", number,
+                 "Craftsman suppression marker in " + path, line,
+                 "Remove the marker and fix the reported issue.")
+        for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
+    ]
+    if _is_code(path):
+        findings.extend(_what_comment_rows(path, lines))
+    return findings
+
+
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     cfg = effective_config(config)
     lines = text.splitlines() or [""]
-    findings = [
-        _finding(
-            "clean_code",
-            "suppression_escape_hatch",
-            number,
-            "Craftsman suppression marker in " + path,
-            line,
-            "Remove the marker and fix the reported issue.",
-        )
-        for number, line in enumerate(lines, 1)
-        if SUPPRESSION_MARKER_RE.search(line)
-    ]
+    findings = _unconditional_findings(path, lines)
     if _is_exempt(path, cfg):
         return findings
     punct_lines = _strip_punctuation_blocks(text).splitlines() or [""]
@@ -237,11 +251,34 @@ COMMENT_BODY_RULES = (
 )
 
 
-def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
+def _comment_text(line: str) -> str | None:
     body = COMMENT_RE.match(line)
     if not body:
-        return []
+        return None
     text = body.group(1).strip()
+    if DIRECTIVE_COMMENT_RE.match(line.strip()) or HEADER_COMMENT_RE.search(text):
+        return None
+    return text
+
+
+def _what_comment_rows(path: str, lines: list[str]) -> list[dict]:
+    rows = []
+    for line_number, line in enumerate(lines, 1):
+        text = _comment_text(line)
+        if text is None or WHY_COMMENT_RE.search(text):
+            continue
+        rows.append(_finding(
+            "clean_code", "what_comment", line_number,
+            "Comment states what the code does in " + path,
+            line, WHAT_COMMENT_ACTION,
+        ))
+    return rows
+
+
+def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
+    text = _comment_text(line)
+    if text is None:
+        return []
     return [
         _finding("clean_code", rule, line_number, detail + path, line, action)
         for matches, rule, detail, action in COMMENT_BODY_RULES
@@ -446,7 +483,7 @@ def _looks_like_empty_test(line: str) -> bool:
     stripped = line.strip()
     if not re.match(r"(def|function|it|test)\b.*\btest", stripped, re.IGNORECASE):
         return False
-    # word boundary: substrings like "bypass" or "passes" in a test name are not a pass statement
+    # Use a word boundary because names such as "bypass" and "passes" contain "pass".
     return bool(PASS_WORD_RE.search(stripped)) and not ASSERT_RE.search(stripped)
 
 
@@ -501,7 +538,7 @@ def _punctuation_prose_part(path: str, line: str) -> str:
 
 
 def _line_comment_slashes(line: str) -> int:
-    # A URL scheme's :// is not a comment, so shell/code after a URL is not prose.
+    # Ignore URL schemes because their :// token is not a comment marker.
     for match in re.finditer(r"//", line):
         if match.start() == 0 or line[match.start() - 1] != ":":
             return match.start()
