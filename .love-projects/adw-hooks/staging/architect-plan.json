@@ -202,14 +202,11 @@
       "stories": [
         {
           "id": "E1-S1",
-          "title": "Core libraries",
+          "title": "Core libraries: dispatch, payloads, and gate config",
           "user_story": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
           "acceptance_criteria": [
             "run.sh routes events from a single data-driven table, one entry script per event-and-matcher pair (D11), and unknown events still exit 2 with usage",
             "lib/payloads.py exposes typed accessors for every documented field the plan consumes (session_id, cwd, tool_name, last_assistant_message, stop_hook_active, agent_id, agent_type, agent_transcript_path, prompt, source, file_path, error, is_interrupt, duration_ms, tool_calls, task_id, task_subject), each with a contract test",
-            "lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd",
-            "every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session",
-            "every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check",
             "lib/config.py carries the central gate-state schema: every gate family resolves to off, observe, or enforce, with observe running the full check and writing would_block rows without blocking (D7)",
             "every new hook module follows the existing pattern: an importable module exposing run(payload, config) with I/O only via the hookio helpers, so test files import it directly and call run() the way test_hooks.py already does"
           ],
@@ -236,27 +233,6 @@
               "ideas": []
             },
             {
-              "id": "E1-S1-T2",
-              "title": "Durable session state store (lib/session_state.py)",
-              "detail": "JSON state under ~/.agent-discipline/state/<session_id>/ with atomic os.replace writes, a read-modify-write helper, an explicit cleanup API called by SessionEnd, and a sweep_stale API that removes session dirs older than a configured age, the janitor for sessions whose SessionEnd never fired. Consumers: freeze lease, first-touch gate, failure streaks, dead ends, compaction snapshot.",
-              "strategy": "tdd",
-              "owner": "claude",
-              "estimate": "1-2d",
-              "depends_on": [],
-              "owned_paths": [
-                "hooks/lib/session_state.py",
-                "hooks/lib/test_session_state.py"
-              ],
-              "checks": [
-                "cd hooks && python3 -m pytest -q"
-              ],
-              "risk": "Concurrent hook invocations racing on one file, mitigated by atomic replace plus an fcntl lock in the read-modify-write helper.",
-              "craft_gate": "unit-testing",
-              "status": "todo",
-              "parallel": true,
-              "ideas": []
-            },
-            {
               "id": "E1-S1-T3",
               "title": "Payload contract module (lib/payloads.py)",
               "detail": "Single module normalizing every hook event payload this plan consumes into plain dicts, including the routing context every hook needs (session_id, cwd, tool_name, and tool_use_id where the event documents it) and tolerant of the tool_input, toolInput, and input aliases pre_write already handles. Contract tests encode the documented schemas verbatim so a Claude Code schema change fails exactly here.",
@@ -272,6 +248,63 @@
                 "cd hooks && python3 -m pytest -q"
               ],
               "risk": "Carries the plan's residual event-schema risk by design (risks[0]). That is its job.",
+              "craft_gate": "unit-testing",
+              "status": "todo",
+              "parallel": true,
+              "ideas": []
+            },
+            {
+              "id": "E1-S1-T5",
+              "title": "Central gate-state config schema (lib/config.py)",
+              "detail": "Extend lib/config.py with the three-state gate model from D7: every gate family resolves to off, observe, or enforce, with helpers the hooks call to decide whether a finding blocks or lands as would_block. On resolution it compares each family's effective state to the last snapshot in session state and logs a state-transition ledger row on change, the defined producer for the override signal. Includes the schema for verify categories, data_boundary, and per-family kill-switches, so config keys are defined once.",
+              "strategy": "tdd",
+              "owner": "claude",
+              "estimate": "0.5-1d",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/lib/config.py",
+                "hooks/lib/test_config_schema.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ],
+              "risk": "Schema creep. The task defines only the keys tasks in this plan consume, nothing speculative.",
+              "craft_gate": "unit-testing",
+              "status": "todo",
+              "parallel": false,
+              "ideas": []
+            }
+          ]
+        },
+        {
+          "id": "E1-S3",
+          "title": "Core libraries: durable session state and findings ledger",
+          "user_story": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
+          "acceptance_criteria": [
+            "lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd",
+            "every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session",
+            "every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check"
+          ],
+          "tasks": [
+            {
+              "id": "E1-S1-T2",
+              "title": "Durable session state store (lib/session_state.py)",
+              "detail": "JSON state under ~/.agent-discipline/state/<session_id>/ with atomic os.replace writes, a read-modify-write helper, an explicit cleanup API called by SessionEnd, and a sweep_stale API that removes session dirs older than a configured age, the janitor for sessions whose SessionEnd never fired. Consumers: freeze lease, first-touch gate, failure streaks, dead ends, compaction snapshot.",
+              "strategy": "tdd",
+              "owner": "claude",
+              "estimate": "1-2d",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/lib/session_state.py",
+                "hooks/lib/test_session_state.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ],
+              "risk": "Concurrent hook invocations racing on one file, mitigated by atomic replace plus an fcntl lock in the read-modify-write helper.",
               "craft_gate": "unit-testing",
               "status": "todo",
               "parallel": true,
@@ -300,30 +333,6 @@
               "craft_gate": "code-review",
               "status": "todo",
               "parallel": true,
-              "ideas": []
-            },
-            {
-              "id": "E1-S1-T5",
-              "title": "Central gate-state config schema (lib/config.py)",
-              "detail": "Extend lib/config.py with the three-state gate model from D7: every gate family resolves to off, observe, or enforce, with helpers the hooks call to decide whether a finding blocks or lands as would_block. On resolution it compares each family's effective state to the last snapshot in session state and logs a state-transition ledger row on change, the defined producer for the override signal. Includes the schema for verify categories, data_boundary, and per-family kill-switches, so config keys are defined once.",
-              "strategy": "tdd",
-              "owner": "claude",
-              "estimate": "0.5-1d",
-              "depends_on": [
-                "E1-S1-T2",
-                "E1-S1-T4"
-              ],
-              "owned_paths": [
-                "hooks/lib/config.py",
-                "hooks/lib/test_config_schema.py"
-              ],
-              "checks": [
-                "cd hooks && python3 -m pytest -q"
-              ],
-              "risk": "Schema creep. The task defines only the keys tasks in this plan consume, nothing speculative.",
-              "craft_gate": "unit-testing",
-              "status": "todo",
-              "parallel": false,
               "ideas": []
             }
           ]

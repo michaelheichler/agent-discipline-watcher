@@ -12,14 +12,11 @@
       "stories": [
         {
           "id": "E1-S1",
-          "title": "Core libraries",
+          "title": "Core libraries: dispatch, payloads, and gate config",
           "user_story": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
           "acceptance": [
             "run.sh routes events from a single data-driven table, one entry script per event-and-matcher pair (D11), and unknown events still exit 2 with usage",
             "lib/payloads.py exposes typed accessors for every documented field the plan consumes (session_id, cwd, tool_name, last_assistant_message, stop_hook_active, agent_id, agent_type, agent_transcript_path, prompt, source, file_path, error, is_interrupt, duration_ms, tool_calls, task_id, task_subject), each with a contract test",
-            "lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd",
-            "every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session",
-            "every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check",
             "lib/config.py carries the central gate-state schema: every gate family resolves to off, observe, or enforce, with observe running the full check and writing would_block rows without blocking (D7)",
             "every new hook module follows the existing pattern: an importable module exposing run(payload, config) with I/O only via the hookio helpers, so test files import it directly and call run() the way test_hooks.py already does"
           ],
@@ -40,20 +37,6 @@
               ]
             },
             {
-              "t": "E1-S1-T2: Durable session state store (lib/session_state.py)",
-              "done": false,
-              "id": "E1-S1-T2",
-              "owner": "claude",
-              "depends_on": [],
-              "owned_paths": [
-                "hooks/lib/session_state.py",
-                "hooks/lib/test_session_state.py"
-              ],
-              "checks": [
-                "cd hooks && python3 -m pytest -q"
-              ]
-            },
-            {
               "t": "E1-S1-T3: Payload contract module (lib/payloads.py)",
               "done": false,
               "id": "E1-S1-T3",
@@ -62,6 +45,50 @@
               "owned_paths": [
                 "hooks/lib/payloads.py",
                 "hooks/lib/test_payloads.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            },
+            {
+              "t": "E1-S1-T5: Central gate-state config schema (lib/config.py)",
+              "done": false,
+              "id": "E1-S1-T5",
+              "owner": "claude",
+              "depends_on": [
+                "E1-S1-T2",
+                "E1-S1-T4"
+              ],
+              "owned_paths": [
+                "hooks/lib/config.py",
+                "hooks/lib/test_config_schema.py"
+              ],
+              "checks": [
+                "cd hooks && python3 -m pytest -q"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E1-S3",
+          "title": "Core libraries: durable session state and findings ledger",
+          "user_story": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
+          "acceptance": [
+            "lib/session_state.py survives process restart and concurrent writers (atomic replace), keyed by session_id, and offers a sweep API that removes stale session dirs, the janitor for a missed SessionEnd",
+            "every gate decision appends one JSONL ledger row with hook, rule, duration_ms, tool_use_id where present, and an outcome from the enum block, inject, would_block, no_edits, and record.py journals every successful edit (path, tool, ts) so completion gates know what changed this session",
+            "every entry script runs through the shared main wrapper, which emits one observed heartbeat row per invocation, the denominator for the D7 metric and the producer for the E10-T1 heartbeat check"
+          ],
+          "status": "todo",
+          "tasks": [
+            {
+              "t": "E1-S1-T2: Durable session state store (lib/session_state.py)",
+              "done": false,
+              "id": "E1-S1-T2",
+              "owner": "claude",
+              "depends_on": [],
+              "owned_paths": [
+                "hooks/lib/session_state.py",
+                "hooks/lib/test_session_state.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
@@ -80,23 +107,6 @@
                 "hooks/lib/test_ledger_reporting.py",
                 "hooks/record.py",
                 "hooks/test_edit_journal.py"
-              ],
-              "checks": [
-                "cd hooks && python3 -m pytest -q"
-              ]
-            },
-            {
-              "t": "E1-S1-T5: Central gate-state config schema (lib/config.py)",
-              "done": false,
-              "id": "E1-S1-T5",
-              "owner": "claude",
-              "depends_on": [
-                "E1-S1-T2",
-                "E1-S1-T4"
-              ],
-              "owned_paths": [
-                "hooks/lib/config.py",
-                "hooks/lib/test_config_schema.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
