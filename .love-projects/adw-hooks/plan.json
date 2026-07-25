@@ -137,7 +137,7 @@
         {
           "id": "E1-S1",
           "title": "Core libraries: dispatch, payloads, and gate config",
-          "status": "doing",
+          "status": "done",
           "sprint": 1,
           "craft_gate": "simplification",
           "why": "As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.",
@@ -181,7 +181,7 @@
             {
               "id": "E1-S1-T5",
               "t": "E1-S1-T5: Central gate-state config schema (lib/config.py)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S1-T2",
@@ -1894,8 +1894,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "But death and life, honor and dishonor, pain and pleasure—all these things equally happen to good men and bad, being things which make us neither better nor worse. Therefore they are neither good nor evil.",
-    "who": "Marcus Aurelius",
+    "text": "You fear everything as mortals but desire to have everything as gods.",
+    "who": "Seneca",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }

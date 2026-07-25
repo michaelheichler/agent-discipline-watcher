@@ -256,7 +256,7 @@
             {
               "id": "E1-S1-T5",
               "title": "E1-S1-T5: Central gate-state config schema (lib/config.py)",
-              "detail": "Extend lib/config.py with the three-state gate model from D7: every gate family resolves to off, observe, or enforce, with helpers the hooks call to decide whether a finding blocks or lands as would_block. On resolution it compares each family's effective state to the last snapshot in session state and logs a state-transition ledger row on change, the defined producer for the override signal. Includes the schema for verify categories, data_boundary, and per-family kill-switches, so config keys are defined once.",
+              "detail": "Extend lib/config.py with the three-state gate model from D7: every gate family resolves to off, observe, or enforce, with helpers the hooks call to decide whether a finding blocks or lands as would_block. On resolution it compares each family's effective state to the last snapshot in session state and logs a state-transition ledger row on change, the defined producer for the override signal. Includes the schema for verify categories, data_boundary, and per-family kill-switches, so config keys are defined once. Closed on committed, tested work whose named checks pass, with the critic's PASS independently reproduced. One defect was caught after that PASS and fixed before shipping: the transition logger's lazy imports used bare module names, which resolve when a test imports config directly but not when a hook imports it as lib.config, and the broad except swallowed the ImportError, so the override signal would have been silently dead in production while its tests stayed green. A subprocess test now drives the real lib.config path.",
               "strategy": "tdd",
               "owner": "claude",
               "estimate": "0.5-1d",
@@ -273,7 +273,7 @@
               ],
               "risk": "Schema creep. The task defines only the keys tasks in this plan consume, nothing speculative.",
               "craft_gate": "unit-testing",
-              "status": "todo",
+              "status": "done",
               "parallel": false,
               "ideas": []
             }

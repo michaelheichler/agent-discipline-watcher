@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=28c6dd7d do not hand-edit -->
+<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,10 +15,10 @@
  .meta { color:#8a857a; font-size:13px; }
 </style></head><body><main>
 <h1>ADW ecosystem hook integration</h1>
-<blockquote>But death and life, honor and dishonor, pain and pleasure—all these things equally happen to good men and bad, being things which make us neither better nor worse. Therefore they are neither good nor evil.<br><em>Marcus Aurelius</em></blockquote>
+<blockquote>You fear everything as mortals but desire to have everything as gods.<br><em>Seneca</em></blockquote>
 <p><strong>Goal.</strong> Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).</p>
 <h2>E1. Foundation: dispatcher, state, payload contracts, ledger</h2><p class="out">Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.</p>
-<div class="story"><span class="id">E1-S1</span><span class="t">Core libraries: dispatch, payloads, and gate config</span><span class="chip" style="background:#c96">doing</span><span class="meta">sprint 1, simplification</span></div>
+<div class="story"><span class="id">E1-S1</span><span class="t">Core libraries: dispatch, payloads, and gate config</span><span class="chip" style="background:#4a6b57">done</span><span class="meta">sprint 1, simplification</span></div>
 <div class="story"><span class="id">E1-S3</span><span class="t">Core libraries: durable session state and findings ledger</span><span class="chip" style="background:#4a6b57">done</span><span class="meta">sprint 1, unit-testing</span></div>
 <div class="story"><span class="id">E1-S2</span><span class="t">Existing-wiring hardening and parity map</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 1, code-review</span></div>
 <h2>E2. Turn-end and completion enforcement (Stop family)</h2><p class="out">ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.</p>

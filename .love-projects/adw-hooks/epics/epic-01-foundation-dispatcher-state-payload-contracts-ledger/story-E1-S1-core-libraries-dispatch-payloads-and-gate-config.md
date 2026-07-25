@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=28c6dd7d do not hand-edit -->
+<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
 
 # E1-S1 Core libraries: dispatch, payloads, and gate config
 
@@ -16,5 +16,5 @@ As the ADW maintainer, I want one dispatch table, one payload contract, one stat
 ## Execution
 - [x] E1-S1-T1: Data-driven run.sh dispatcher
 - [x] E1-S1-T3: Payload contract module (lib/payloads.py)
-- [ ] E1-S1-T5: Central gate-state config schema (lib/config.py)
+- [x] E1-S1-T5: Central gate-state config schema (lib/config.py)
 

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=28c6dd7d do not hand-edit -->
+<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -16,7 +16,7 @@ Why this frees you rather than fences you:
 Honest limit: this worktree is a separate checkout, not an enforced sandbox. It gives each project its own files and branch so they do not collide. It does not stop a process from reaching outside. The boundary holds because you keep it, not because a wall forces it.
 
 ## E1-S1 Core libraries: dispatch, payloads, and gate config
-- Gate: simplification. Sprint: 1. Status: doing.
+- Gate: simplification. Sprint: 1. Status: done.
 - Why: As the ADW maintainer, I want one dispatch table, one payload contract, one state store, and one ledger, so that eleven new hooks share tested plumbing instead of reinventing it.
 - Done when:
   - run.sh routes events from a single data-driven table, one entry script per event-and-matcher pair (D11), and unknown events still exit 2 with usage
@@ -26,7 +26,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
 - Tasks:
   - [x] E1-S1-T1: Data-driven run.sh dispatcher
   - [x] E1-S1-T3: Payload contract module (lib/payloads.py)
-  - [ ] E1-S1-T5: Central gate-state config schema (lib/config.py)
+  - [x] E1-S1-T5: Central gate-state config schema (lib/config.py)
 
 ## E1-S3 Core libraries: durable session state and findings ledger
 - Gate: unit-testing. Sprint: 1. Status: done.
