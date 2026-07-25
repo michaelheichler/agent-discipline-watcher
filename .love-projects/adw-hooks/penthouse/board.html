@@ -1,0 +1,71 @@
+<!-- love-render src=plan.json sha=64c1d163 do not hand-edit -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADW ecosystem hook integration</title>
+<style>
+ body { margin:0; background:#f4f1ea; color:#2c2a26; font:500 16px/1.6 system-ui,sans-serif; padding:24px; }
+ main { max-width:760px; margin:0 auto; }
+ blockquote { color:#6b675f; border-left:3px solid #4a6b57; margin:0 0 20px; padding:4px 16px; }
+ h1 { font-size:22px; } h2 { font-size:17px; margin-top:24px; }
+ .out { color:#6b675f; margin:2px 0 8px; }
+ .story { display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid #e2ddd0; }
+ .id { color:#6b675f; width:34px; } .t { flex:1; }
+ .chip { color:#fff; border-radius:10px; padding:2px 10px; font-size:13px; }
+ .meta { color:#8a857a; font-size:13px; }
+</style></head><body><main>
+<h1>ADW ecosystem hook integration</h1>
+<blockquote>Everyone prefers belief to the exercise of judgement.<br><em>Seneca</em></blockquote>
+<p><strong>Goal.</strong> Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).</p>
+<h2>E1. Foundation: dispatcher, state, payload contracts, ledger</h2><p class="out">Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.</p>
+<div class="story"><span class="id">E1-S1</span><span class="t">Core libraries: dispatch, payloads, and gate config</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 1, simplification</span></div>
+<div class="story"><span class="id">E1-S3</span><span class="t">Core libraries: durable session state and findings ledger</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 1, unit-testing</span></div>
+<div class="story"><span class="id">E1-S2</span><span class="t">Existing-wiring hardening and parity map</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 1, code-review</span></div>
+<h2>E2. Turn-end and completion enforcement (Stop family)</h2><p class="out">ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.</p>
+<div class="story"><span class="id">E2-S1</span><span class="t">Stop gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 2, code-review</span></div>
+<div class="story"><span class="id">E2-S2</span><span class="t">SubagentStop coverage</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 2, code-review</span></div>
+<div class="story"><span class="id">E2-S3</span><span class="t">TaskCompleted gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 2, code-review</span></div>
+<div class="story"><span class="id">E2-S4</span><span class="t">PostToolBatch single-pass scan</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 2, code-review</span></div>
+<div class="story"><span class="id">E2-S5</span><span class="t">Failure-event handling</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 2, unit-testing</span></div>
+<div class="story"><span class="id">E2-W</span><span class="t">E2 wiring and parity</span><span class="chip" style="background:#c96">doing</span><span class="meta">sprint 2, code-review</span></div>
+<h2>E3. Prompt and context boundary (UserPromptSubmit plus JIT injection)</h2><p class="out">Discipline applies at the source: human prompts that induce violations get a deterministic warning (or opt-in block), and targeted convention context is injected exactly when relevant.</p>
+<div class="story"><span class="id">E3-S1</span><span class="t">Prompt firewall</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
+<div class="story"><span class="id">E3-S2</span><span class="t">Just-in-time convention injection on edits</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
+<div class="story"><span class="id">E3-W</span><span class="t">E3 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
+<h2>E4. Self-protection and scope discipline</h2><p class="out">ADW defends its own leash (config tamper seal, ConfigChange defense) and offers structural scope enforcement (freeze lease, first-touch gate, taint sequences).</p>
+<div class="story"><span class="id">E4-S1</span><span class="t">Quality-config tamper seal</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, unit-testing</span></div>
+<div class="story"><span class="id">E4-S2</span><span class="t">ConfigChange self-tampering defense</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, code-review</span></div>
+<div class="story"><span class="id">E4-S3</span><span class="t">Session-scoped edit freeze lease</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, code-review</span></div>
+<div class="story"><span class="id">E4-S4</span><span class="t">First-touch fact-forcing gate (opt-in)</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, code-review</span></div>
+<div class="story"><span class="id">E4-S5</span><span class="t">Cross-call behavioral taint sequences</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, unit-testing</span></div>
+<div class="story"><span class="id">E4-W</span><span class="t">E4 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 4, code-review</span></div>
+<h2>E5. Compaction resilience</h2><p class="out">Discipline state survives compaction: PreCompact snapshots session state, and the already-wired SessionStart(compact) path re-injects the full contract plus the snapshot.</p>
+<div class="story"><span class="id">E5-S1</span><span class="t">PreCompact snapshot with a scoped veto</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 5, code-review</span></div>
+<div class="story"><span class="id">E5-S2</span><span class="t">SessionStart(compact) contract re-injection</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 5, code-review</span></div>
+<div class="story"><span class="id">E5-W</span><span class="t">E5 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 5, code-review</span></div>
+<h2>E6. Repo verification tier (config-driven quality gates, trust-gated, observe-first)</h2><p class="out">One verify runner plus per-category recipes (format, lint delta, typecheck, impacted tests, coverage, AST rules, commit messages) give runtime evidence that text scanning cannot. Entirely config-driven, inert without the D12 trust grant, and observe-first per D7.</p>
+<div class="story"><span class="id">E6-S1</span><span class="t">Verify runner core</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, unit-testing</span></div>
+<div class="story"><span class="id">E6-S2</span><span class="t">Formatter fixed-point</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, code-review</span></div>
+<div class="story"><span class="id">E6-S3</span><span class="t">Baseline-aware lint delta gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, unit-testing</span></div>
+<div class="story"><span class="id">E6-S4</span><span class="t">Content-hashed typecheck gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, unit-testing</span></div>
+<div class="story"><span class="id">E6-S5</span><span class="t">Impact-selected tests on edits</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, unit-testing</span></div>
+<div class="story"><span class="id">E6-S6</span><span class="t">Differential coverage ratchet</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, code-review</span></div>
+<div class="story"><span class="id">E6-S7</span><span class="t">AST-native forbidden-API and architecture rules</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, unit-testing</span></div>
+<div class="story"><span class="id">E6-S8</span><span class="t">Commit-message gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, code-review</span></div>
+<div class="story"><span class="id">E6-W</span><span class="t">E6 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 6, code-review</span></div>
+<h2>E7. Data boundary (secrets and redaction, opt-in)</h2><p class="out">A deterministic secret-block tier plus an opt-in pseudonymization boundary with a persistent, lock-guarded mapping, and spilled-output scanning so indirection is part of the payload. No separate hook registrations: per D11 the rewrites ride the pre_write and record.py orchestrators, so E7 needs no wiring task of its own.</p>
+<div class="story"><span class="id">E7-S1</span><span class="t">Secret block tier</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 7, unit-testing</span></div>
+<div class="story"><span class="id">E7-S2</span><span class="t">Pseudonymization boundary (Claude-only decision fields)</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 7, unit-testing</span></div>
+<div class="story"><span class="id">E7-S3</span><span class="t">Spilled-output scanning</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 7, code-review</span></div>
+<div class="story"><span class="id">E7-H</span><span class="t">Human policy gate</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 7, code-review</span></div>
+<h2>E8. Negative memory (dead-end registry)</h2><p class="out">Failed approaches become deterministic warnings: mined at Stop and SubagentStop, injected at UserPromptSubmit, optionally blocking reintroduction at PreToolUse.</p>
+<div class="story"><span class="id">E8-S1</span><span class="t">Dead-end registry pipeline</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 8, unit-testing</span></div>
+<div class="story"><span class="id">E8-W</span><span class="t">E8 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 8, code-review</span></div>
+<h2>E9. Telemetry and audit</h2><p class="out">ADW measures itself: which prose rules deserve promotion (dead-rules scorecard), which gates fire (the ledger from E1), what loaded when (InstructionsLoaded), and clean shutdown (SessionEnd).</p>
+<div class="story"><span class="id">E9-S1</span><span class="t">Dead-rules compliance telemetry</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 9, unit-testing</span></div>
+<div class="story"><span class="id">E9-S2</span><span class="t">SessionEnd cleanup and flush</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 9, code-review</span></div>
+<div class="story"><span class="id">E9-S3</span><span class="t">InstructionsLoaded audit log</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 9, code-review</span></div>
+<div class="story"><span class="id">E9-W</span><span class="t">E9 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 9, code-review</span></div>
+<h2>E10. Rollout, live verification, docs</h2><p class="out">The MVP slice is proven in a live session, gate defaults are a deliberate human decision on ledger evidence, and SKILL.md plus README document the new surface including parity gaps.</p>
+<div class="story"><span class="id">E10-S1</span><span class="t">Prove and decide</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 10, code-review</span></div>
+</main></body></html>
