@@ -12,6 +12,11 @@ Thumbs.db
 
 .agent-discipline.json
 agent-discipline-watcher-*.json
+
+.love-projects/.autonomy
+.love-projects/.active
+.love-projects/.heartbeat
+.love-projects/.lock
 *.tmp
 *.temp
 tmp/
