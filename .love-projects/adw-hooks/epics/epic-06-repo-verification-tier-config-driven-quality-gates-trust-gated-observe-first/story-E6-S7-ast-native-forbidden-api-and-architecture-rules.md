@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=0dae5af9 do not hand-edit -->
+<!-- love-render src=plan.json sha=b02c4752 do not hand-edit -->
 
 # E6-S7 AST-native forbidden-API and architecture rules
 

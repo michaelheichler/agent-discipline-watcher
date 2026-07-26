@@ -490,7 +490,9 @@
                 "hooks/failure.py",
                 "hooks/pre_mcp.py",
                 "hooks/test_failure.py",
-                "hooks/record.py"
+                "hooks/record.py",
+                "hooks/lib/payloads.py",
+                "hooks/lib/test_payloads.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
@@ -1897,7 +1899,7 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "Life is short. That’s all there is to say. Get what you can from the present—thoughtfully, justly. Unrestrained moderation.",
+    "text": "The present moment is the only thing of which anyone can be deprived, at least if this is the only thing he has and he cannot lose what he has not got.",
     "who": "Marcus Aurelius",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }

@@ -1,8 +1,8 @@
-<!-- love-render src=plan.json sha=0dae5af9 do not hand-edit -->
+<!-- love-render src=plan.json sha=b02c4752 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> Life is short. That’s all there is to say. Get what you can from the present—thoughtfully, justly. Unrestrained moderation.
+> The present moment is the only thing of which anyone can be deprived, at least if this is the only thing he has and he cannot lose what he has not got.
 > Marcus Aurelius
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
