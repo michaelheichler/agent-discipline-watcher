@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
+<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -118,7 +118,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [ ] E2-W-T3: Extend the Pi adapter (post-hoc surfaces only, with its own tests)
 
 ## E3-S1 Prompt firewall
-- Gate: code-review. Sprint: 3. Status: todo.
+- Gate: code-review. Sprint: 3. Status: doing.
 - Why: As an operator, I want prompts like 'just comment it out' or 'skip the tests' met with an injected discipline reminder before the agent complies, so violations stop at the source.
 - Done when:
   - prompt_submit.py matches a small reviewed rule list against the prompt field, injects additionalContext by default (D9), and offers block-mode as a config opt-in
@@ -126,7 +126,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - the keyword-to-context map (config-gated, default off) injects mapped guidance deterministically
   - no prompt text is persisted anywhere
 - Tasks:
-  - [ ] E3-S1-T1: prompt_submit.py firewall (inject-first)
+  - [x] E3-S1-T1: prompt_submit.py firewall (inject-first)
   - [ ] E3-S1-T2: At-mention bypass rule (config-gated)
   - [ ] E3-S1-T3: Keyword-to-context injection map (config-gated)
 

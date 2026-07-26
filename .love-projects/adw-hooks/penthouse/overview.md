@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
+<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> No person is free who is not master of themselves.
-> Epictetus
+> Do every act of your life as though it were the very last act of your life.
+> Marcus Aurelius
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 
@@ -43,7 +43,7 @@ ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipli
 
 ### E3. Prompt and context boundary (UserPromptSubmit plus JIT injection)  (0/3 stories done)
 Discipline applies at the source: human prompts that induce violations get a deterministic warning (or opt-in block), and targeted convention context is injected exactly when relevant.
-- **E3-S1 Prompt firewall** (todo, sprint 3, gate code-review)
+- **E3-S1 Prompt firewall** (doing, sprint 3, gate code-review)
 - **E3-S2 Just-in-time convention injection on edits** (todo, sprint 3, gate code-review)
 - **E3-W E3 wiring** (todo, sprint 3, gate code-review)
 

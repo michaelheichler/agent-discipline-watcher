@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
+<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,7 +15,7 @@
  .meta { color:#8a857a; font-size:13px; }
 </style></head><body><main>
 <h1>ADW ecosystem hook integration</h1>
-<blockquote>No person is free who is not master of themselves.<br><em>Epictetus</em></blockquote>
+<blockquote>Do every act of your life as though it were the very last act of your life.<br><em>Marcus Aurelius</em></blockquote>
 <p><strong>Goal.</strong> Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).</p>
 <h2>E1. Foundation: dispatcher, state, payload contracts, ledger</h2><p class="out">Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.</p>
 <div class="story"><span class="id">E1-S1</span><span class="t">Core libraries: dispatch, payloads, and gate config</span><span class="chip" style="background:#4a6b57">done</span><span class="meta">sprint 1, simplification</span></div>
@@ -29,7 +29,7 @@
 <div class="story"><span class="id">E2-S5</span><span class="t">Failure-event handling</span><span class="chip" style="background:#4a6b57">done</span><span class="meta">sprint 2, unit-testing</span></div>
 <div class="story"><span class="id">E2-W</span><span class="t">E2 wiring and parity</span><span class="chip" style="background:#c96">doing</span><span class="meta">sprint 2, code-review</span></div>
 <h2>E3. Prompt and context boundary (UserPromptSubmit plus JIT injection)</h2><p class="out">Discipline applies at the source: human prompts that induce violations get a deterministic warning (or opt-in block), and targeted convention context is injected exactly when relevant.</p>
-<div class="story"><span class="id">E3-S1</span><span class="t">Prompt firewall</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
+<div class="story"><span class="id">E3-S1</span><span class="t">Prompt firewall</span><span class="chip" style="background:#c96">doing</span><span class="meta">sprint 3, code-review</span></div>
 <div class="story"><span class="id">E3-S2</span><span class="t">Just-in-time convention injection on edits</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
 <div class="story"><span class="id">E3-W</span><span class="t">E3 wiring</span><span class="chip" style="background:#9a8">todo</span><span class="meta">sprint 3, code-review</span></div>
 <h2>E4. Self-protection and scope discipline</h2><p class="out">ADW defends its own leash (config tamper seal, ConfigChange defense) and offers structural scope enforcement (freeze lease, first-touch gate, taint sequences).</p>

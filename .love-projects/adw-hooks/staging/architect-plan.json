@@ -815,7 +815,7 @@
        ],
        "risk": "Blocking human input is the highest-harm failure in the plan. D9 keeps the default inject-only. The 30s default timeout on this event is noted in tests.",
        "craft_gate": "code-review",
-       "status": "todo",
+       "status": "done",
        "parallel": true,
        "ideas": [
         "UserPromptSubmit as a discipline firewall on human input"

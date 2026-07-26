@@ -626,7 +626,7 @@
         {
           "id": "E3-S1",
           "title": "Prompt firewall",
-          "status": "todo",
+          "status": "doing",
           "sprint": 3,
           "craft_gate": "code-review",
           "why": "As an operator, I want prompts like 'just comment it out' or 'skip the tests' met with an injected discipline reminder before the agent complies, so violations stop at the source.",
@@ -640,7 +640,7 @@
             {
               "id": "E3-S1-T1",
               "t": "E3-S1-T1: prompt_submit.py firewall (inject-first)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S1-T3",
@@ -1900,8 +1900,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "No person is free who is not master of themselves.",
-    "who": "Epictetus",
+    "text": "Do every act of your life as though it were the very last act of your life.",
+    "who": "Marcus Aurelius",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }

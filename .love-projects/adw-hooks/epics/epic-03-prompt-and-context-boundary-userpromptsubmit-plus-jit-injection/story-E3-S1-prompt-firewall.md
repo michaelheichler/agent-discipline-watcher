@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
+<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
 
 # E3-S1 Prompt firewall
 
@@ -14,7 +14,7 @@ As an operator, I want prompts like 'just comment it out' or 'skip the tests' me
 - no prompt text is persisted anywhere
 
 ## Execution
-- [ ] E3-S1-T1: prompt_submit.py firewall (inject-first)
+- [x] E3-S1-T1: prompt_submit.py firewall (inject-first)
 - [ ] E3-S1-T2: At-mention bypass rule (config-gated)
 - [ ] E3-S1-T3: Keyword-to-context injection map (config-gated)
 
