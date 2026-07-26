@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=0856a21c do not hand-edit -->
+<!-- love-render src=plan.json sha=0dae5af9 do not hand-edit -->
 
 # E6-S6 Differential coverage ratchet
 

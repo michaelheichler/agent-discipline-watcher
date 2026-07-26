@@ -609,7 +609,7 @@
       {
        "id": "E2-S5-T1",
        "title": "E2-S5-T1: failure.py plus MCP circuit breaker",
-       "detail": "New PostToolUseFailure hook plus a small PreToolUse consult (pre_mcp.py, matcher mcp__*) reading the same health substate.",
+        "detail": "New PostToolUseFailure hook plus a small PreToolUse consult (pre_mcp.py, matcher mcp__*) reading the same health substate. A minimal record.py success callback resets the matching tool, target, and MCP server state so failure streak and health semantics remain truthful across successful calls.",
        "strategy": "tdd",
        "owner": "codex",
        "estimate": "2-3d",
@@ -621,7 +621,8 @@
        "owned_paths": [
         "hooks/failure.py",
         "hooks/pre_mcp.py",
-        "hooks/test_failure.py"
+         "hooks/test_failure.py",
+         "hooks/record.py"
        ],
        "checks": [
         "cd hooks && python3 -m pytest -q"

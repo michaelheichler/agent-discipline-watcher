@@ -489,7 +489,8 @@
               "owned_paths": [
                 "hooks/failure.py",
                 "hooks/pre_mcp.py",
-                "hooks/test_failure.py"
+                "hooks/test_failure.py",
+                "hooks/record.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
@@ -1896,8 +1897,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "He who restrains himself within the limits prescribed by nature, will not feel poverty; he who exceeds them will always be poor, however great his wealth may be.",
-    "who": "Seneca",
+    "text": "Life is short. That’s all there is to say. Get what you can from the present—thoughtfully, justly. Unrestrained moderation.",
+    "who": "Marcus Aurelius",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }
