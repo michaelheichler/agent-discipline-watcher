@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=b02c4752 do not hand-edit -->
+<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> The present moment is the only thing of which anyone can be deprived, at least if this is the only thing he has and he cannot lose what he has not got.
-> Marcus Aurelius
+> Your greatest difficulty is with yourself; for you are your own stumbling-block.
+> Seneca
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 

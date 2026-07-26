@@ -492,7 +492,8 @@
                 "hooks/test_failure.py",
                 "hooks/record.py",
                 "hooks/lib/payloads.py",
-                "hooks/lib/test_payloads.py"
+                "hooks/lib/test_payloads.py",
+                "hooks/test_failure_boundaries.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
@@ -1899,8 +1900,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "The present moment is the only thing of which anyone can be deprived, at least if this is the only thing he has and he cannot lose what he has not got.",
-    "who": "Marcus Aurelius",
+    "text": "Your greatest difficulty is with yourself; for you are your own stumbling-block.",
+    "who": "Seneca",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }

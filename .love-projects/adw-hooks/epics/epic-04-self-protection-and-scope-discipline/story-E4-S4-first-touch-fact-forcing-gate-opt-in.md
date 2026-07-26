@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b02c4752 do not hand-edit -->
+<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
 
 # E4-S4 First-touch fact-forcing gate (opt-in)
 
