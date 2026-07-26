@@ -490,7 +490,7 @@
       {
        "id": "E2-S2-T1",
        "title": "E2-S2-T1: subagent_stop.py scan",
-       "detail": "New hook mirroring stop.py for the SubagentStop payload (agent_id, agent_type, agent_transcript_path, last_assistant_message). Shares the scan path through the lib helpers (scanner families plus lib/done_claims), imported, never edited, so no file ownership overlaps with E2-S1-T1. Also covers the deterministic half of the SubagentStop QA idea.",
+       "detail": "New hook mirroring stop.py for the SubagentStop payload (agent_id, agent_type, agent_transcript_path, last_assistant_message). Shares the scan path through the lib helpers (scanner families plus lib/done_claims), imported, never edited, so no file ownership overlaps with E2-S1-T1. Also covers the deterministic half of the SubagentStop QA idea. Closed after two executable critic rounds. Review replaced a single session-wide pending boolean with an atomic per-agent identity set, preventing concurrent subagents from consuming or stealing each other's release proof. Missing IDs use a collision-safe sentinel, corrupt legacy roots fail closed, and tests pin interleaving, repeat cycles, attribution, and parent-state preservation.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "0.5-1d",
@@ -507,7 +507,7 @@
        ],
        "risk": "Transcript-file scanning stays out of this task (message-only) until the ledger shows need. Transcript files can be huge.",
        "craft_gate": "code-review",
-       "status": "todo",
+       "status": "done",
        "parallel": true,
        "ideas": [
         "SubagentStop coverage for delegated work"

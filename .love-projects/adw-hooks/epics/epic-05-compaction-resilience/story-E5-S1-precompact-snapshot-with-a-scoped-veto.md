@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
+<!-- love-render src=plan.json sha=fd7f0750 do not hand-edit -->
 
 # E5-S1 PreCompact snapshot with a scoped veto
 

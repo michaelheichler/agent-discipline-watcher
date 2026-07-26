@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
+<!-- love-render src=plan.json sha=fd7f0750 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -64,13 +64,13 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [ ] E2-S1-T2: Verify-command Stop gate (deterministic test gate)
 
 ## E2-S2 SubagentStop coverage
-- Gate: code-review. Sprint: 2. Status: todo.
+- Gate: code-review. Sprint: 2. Status: done.
 - Why: As an operator, I want delegated work held to the same turn-end discipline, so that a subagent cannot hand back unproved claims invisibly.
 - Done when:
   - subagent_stop.py scans the subagent's last_assistant_message with the same rules as stop.py
   - agent_type matcher support is documented, and ledger rows carry agent_id and agent_type
 - Tasks:
-  - [ ] E2-S2-T1: subagent_stop.py scan
+  - [x] E2-S2-T1: subagent_stop.py scan
 
 ## E2-S3 TaskCompleted gate
 - Gate: code-review. Sprint: 2. Status: todo.

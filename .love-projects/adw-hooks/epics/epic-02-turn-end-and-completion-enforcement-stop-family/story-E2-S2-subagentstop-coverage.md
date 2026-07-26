@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
+<!-- love-render src=plan.json sha=fd7f0750 do not hand-edit -->
 
 # E2-S2 SubagentStop coverage
 
@@ -12,5 +12,5 @@ As an operator, I want delegated work held to the same turn-end discipline, so t
 - agent_type matcher support is documented, and ledger rows carry agent_id and agent_type
 
 ## Execution
-- [ ] E2-S2-T1: subagent_stop.py scan
+- [x] E2-S2-T1: subagent_stop.py scan
 

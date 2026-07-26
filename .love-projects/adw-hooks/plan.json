@@ -365,7 +365,7 @@
         {
           "id": "E2-S2",
           "title": "SubagentStop coverage",
-          "status": "todo",
+          "status": "done",
           "sprint": 2,
           "craft_gate": "code-review",
           "why": "As an operator, I want delegated work held to the same turn-end discipline, so that a subagent cannot hand back unproved claims invisibly.",
@@ -377,7 +377,7 @@
             {
               "id": "E2-S2-T1",
               "t": "E2-S2-T1: subagent_stop.py scan",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S1-T3",
