@@ -570,7 +570,7 @@
       {
        "id": "E2-S4-T1",
        "title": "E2-S4-T1: batch.py additive cross-file pass (D13)",
-       "detail": "New hook consuming the tool_calls array after the per-call scans have run. Correlates by tool_use_id against the batch's existing ledger rows and emits only findings not already reported, cross-file patterns first. If the id is absent in live payloads (contract test plus smoke), it degrades to cross-file rules only. record.py is untouched and remains the guaranteed fallback, which is also why this task owns no record.py path.",
+        "detail": "New hook consuming the tool_calls array after the per-call scans have run. Correlates by tool_use_id against the batch's existing ledger rows and emits only findings not already reported, cross-file patterns first. If the id is absent in live payloads (contract test plus smoke), it degrades to cross-file rules only. record.py is untouched and remains the guaranteed fallback, which is also why this task owns no record.py path. Validation and trust-boundary regressions live in a second test module so both files stay below the scanner's hard 1000-line cap.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "1-2d",
@@ -580,7 +580,8 @@
        ],
        "owned_paths": [
         "hooks/batch.py",
-        "hooks/test_batch.py"
+         "hooks/test_batch.py",
+         "hooks/test_batch_validation.py"
        ],
        "checks": [
         "cd hooks && python3 -m pytest -q"

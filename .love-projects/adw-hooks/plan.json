@@ -453,7 +453,8 @@
               ],
               "owned_paths": [
                 "hooks/batch.py",
-                "hooks/test_batch.py"
+                "hooks/test_batch.py",
+                "hooks/test_batch_validation.py"
               ],
               "checks": [
                 "cd hooks && python3 -m pytest -q"
