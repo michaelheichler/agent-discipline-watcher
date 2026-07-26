@@ -303,6 +303,20 @@ class MergeConfigTests(unittest.TestCase):
             merged = json.loads(settings.read_text())
         assert_uncle_bobs_cc_merge(merged)
 
+    def test_claude_if_filter_and_async_convention_survive_double_merge(self):
+        assert CLAUDE.exists()
+        merge_args = ("--skill-dir", "/tmp/agent-discipline-watcher")  # noqa: S108 (placeholder path, never created)
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings.json"
+            settings.write_text(json.dumps(CLAUDE_SETTINGS))
+            run_merge(CLAUDE, "--settings", str(settings), *merge_args)
+            run_merge(CLAUDE, "--settings", str(settings), *merge_args)
+            merged = json.loads(settings.read_text())
+        assert_claude_bash_if_filter(merged)
+        assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
+        assert_claude_stop_entry(merged)
+        assert_no_async_flags(merged)
+
     def test_codex_removes_legacy_hooks_and_adds_watcher_family(self):
         assert CODEX.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -394,6 +408,39 @@ def assert_claude_stop_entry(merged: dict) -> None:
         {"type": "command", "command": "/tmp/agent-discipline-watcher/hooks/run.sh Stop"}
     ]
     assert "unrelated-stop.py" in json.dumps(entries)
+
+
+def assert_claude_bash_if_filter(merged: dict) -> None:
+    bash_entries = [
+        entry for entry in merged["hooks"]["PreToolUse"]
+        if entry.get("matcher") == "Bash"
+    ]
+    assert len(bash_entries) == 1, "Bash matcher must be unique after merge"
+    commands = bash_entries[0]["hooks"]
+    assert len(commands) == 1, "Bash matcher must own exactly one watcher command"
+    assert commands[0].get("if") == "Bash(git commit *)", (
+        "if filter must use the documented word-boundary form so it matches git commit "
+        "with args but not git commit-tree, and a wrong literal disables the gate silently"
+    )
+    assert "run.sh PreCommit" in commands[0]["command"]
+
+
+def assert_no_async_flags(merged: dict) -> None:
+    watcher_groups = [
+        group for lifecycle in merged["hooks"].values() for group in lifecycle
+        if "agent-discipline-watcher" in json.dumps(group)
+    ]
+    assert watcher_groups, "watcher groups must be present before the async guard runs"
+    for group in watcher_groups:
+        for hook in group["hooks"]:
+            assert "async" not in hook, (
+                "async detaches a deny-capable watcher entry so it cannot block: "
+                f"{hook['command']}"
+            )
+            assert "asyncRewake" not in hook, (
+                "asyncRewake implies async and would detach this deny-capable entry: "
+                f"{hook['command']}"
+            )
 
 
 def assert_claude_pretool_shape(entries: list[dict]) -> None:
