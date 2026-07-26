@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=fd7f0750 do not hand-edit -->
+<!-- love-render src=plan.json sha=3d899cf9 do not hand-edit -->
 
 # E1-S2 Existing-wiring hardening and parity map
 

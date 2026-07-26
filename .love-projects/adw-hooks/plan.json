@@ -329,7 +329,8 @@
                 "E1-S1-T2",
                 "E1-S1-T3",
                 "E1-S1-T4",
-                "E1-S1-T5"
+                "E1-S1-T5",
+                "E6-S1-T1"
               ],
               "owned_paths": [
                 "hooks/stop.py",

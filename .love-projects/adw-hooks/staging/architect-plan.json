@@ -528,14 +528,15 @@
       {
        "id": "E2-S3-T1",
        "title": "E2-S3-T1: task_completed.py verification gate",
-       "detail": "New hook merging the three TaskCompleted ideas: a discipline scan over the session edit journal's files plus an optional verify-matrix run at task completion, with exit-2 semantics. An empty journal is reported as no_edits, distinguished from a clean pass. Ships in observe like every new gate (D7).",
+        "detail": "New hook merging the three TaskCompleted ideas: a discipline scan over the session edit journal's files plus an optional verify-matrix run at task completion, with exit-2 semantics. An empty journal is reported as no_edits, distinguished from a clean pass. Ships in observe like every new gate (D7). Dependency correction: the verify mode consumes the shared lib/verify.py trust boundary owned by E6-S1-T1, so this task cannot ship before that primitive exists.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "1-2d",
        "depends_on": [
         "E1-S1-T3",
         "E1-S1-T4",
-        "E1-S1-T5"
+         "E1-S1-T5",
+         "E6-S1-T1"
        ],
        "owned_paths": [
         "hooks/task_completed.py",
