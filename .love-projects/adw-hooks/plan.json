@@ -329,8 +329,7 @@
                 "E1-S1-T2",
                 "E1-S1-T3",
                 "E1-S1-T4",
-                "E1-S1-T5",
-                "E6-S1-T1"
+                "E1-S1-T5"
               ],
               "owned_paths": [
                 "hooks/stop.py",
@@ -416,7 +415,8 @@
               "depends_on": [
                 "E1-S1-T3",
                 "E1-S1-T4",
-                "E1-S1-T5"
+                "E1-S1-T5",
+                "E6-S1-T1"
               ],
               "owned_paths": [
                 "hooks/task_completed.py",
@@ -1896,9 +1896,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "You fear everything as mortals but desire to have everything as gods.",
+    "text": "He who restrains himself within the limits prescribed by nature, will not feel poverty; he who exceeds them will always be poor, however great his wealth may be.",
     "who": "Seneca",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
-  },
-  "updated": "2026-07-26"
+  }
 }

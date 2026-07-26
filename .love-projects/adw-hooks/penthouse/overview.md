@@ -1,8 +1,8 @@
-<!-- love-render src=plan.json sha=b5fb4514 do not hand-edit -->
+<!-- love-render src=plan.json sha=0856a21c do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> You fear everything as mortals but desire to have everything as gods.
+> He who restrains himself within the limits prescribed by nature, will not feel poverty; he who exceeds them will always be poor, however great his wealth may be.
 > Seneca
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).

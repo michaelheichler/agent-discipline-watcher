@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b5fb4514 do not hand-edit -->
+<!-- love-render src=plan.json sha=0856a21c do not hand-edit -->
 
 # E1-S1 Core libraries: dispatch, payloads, and gate config
 
