@@ -375,7 +375,7 @@
       {
        "id": "E1-S2-T2",
        "title": "E1-S2-T2: Cross-client event parity matrix plus merge-script generalization",
-       "detail": "Research, from primary docs per client, which of the new events exist on Codex, OpenCode, and Pi. Write the matrix into README.md, including the known adapter limits: OpenCode's pseudo-Stop is injection-only, and Pi has no pre-execution hook point so blocking gates degrade to post-hoc findings there (D10). Every event row also carries a fallback column stating what ADW does when that event never fires (for example Stop falls back to per-edit record.py scanning, UserPromptSubmit to the SessionStart contract injection, SessionEnd to the startup janitor sweep), and a minimum-client-version column per D14, since an unknown event key can break config parsing rather than no-op. Generalize the three merge scripts to merge arbitrary event keys idempotently, which explicitly includes extending HOOK_LIFECYCLES in merge-codex-config.py to every event ADW wires (SubagentStop, PostToolBatch, TaskCompleted, PostToolUseFailure, InstructionsLoaded, ConfigChange) so the stale-strip logic does not mishandle them on reinstall.",
+       "detail": "Research, from primary docs per client, which of the new events exist on Codex, OpenCode, and Pi. Write the matrix into README.md, including the known adapter limits: OpenCode's pseudo-Stop is injection-only, and Pi has no pre-execution hook point so blocking gates degrade to post-hoc findings there (D10). Every event row also carries a fallback column stating what ADW does when that event never fires (for example Stop falls back to per-edit record.py scanning, UserPromptSubmit to the SessionStart contract injection, SessionEnd to the startup janitor sweep), and a minimum-client-version column per D14, since an unknown event key can break config parsing rather than no-op. Generalize the three merge scripts to merge arbitrary event keys idempotently, which explicitly includes extending HOOK_LIFECYCLES in merge-codex-config.py to every event ADW wires (SubagentStop, PostToolBatch, TaskCompleted, PostToolUseFailure, InstructionsLoaded, ConfigChange) so the stale-strip logic does not mishandle them on reinstall. Closed with two research corrections to plan premises. Current Pi documents a blocking pre-execution tool_call event, so D10's 'no pre-execution hook point' wording is stale; the ADW Pi adapter stays post-hoc and unwired, and whether to wire tool_call is an owner decision affecting E2-W-T3. Codex fires PostToolUse after failed Bash calls, so Codex failure coverage is degraded, not absent. No client publishes per-event minimum versions, so that column is uniformly unknown with the D14 sandbox-parse note.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "1-2d",
@@ -394,7 +394,7 @@
        ],
        "risk": "Codex and Pi docs may be thin. Where undocumented, the matrix says unknown and the gate ships Claude-only. A missed HOOK_LIFECYCLES entry silently corrupts reinstall merges, so the merge tests assert one entry per wired event.",
        "craft_gate": "code-review",
-       "status": "todo",
+       "status": "done",
        "parallel": false,
        "ideas": []
       }

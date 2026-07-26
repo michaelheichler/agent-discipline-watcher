@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
+<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -40,7 +40,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [x] E1-S1-T4: Findings ledger, session edit journal, heartbeat wrapper, observe report
 
 ## E1-S2 Existing-wiring hardening and parity map
-- Gate: code-review. Sprint: 1. Status: doing.
+- Gate: code-review. Sprint: 1. Status: done.
 - Why: As the ADW maintainer, I want the existing wiring scoped tighter and a per-client event availability matrix, so that new-event wiring tasks have a factual basis per client.
 - Done when:
   - the Claude snippet's Bash pre-commit hook carries the documented if filter for git commit while pre_commit.py's own parser stays as the cross-client backstop
@@ -49,7 +49,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - HOOK_LIFECYCLES in merge-codex-config.py lists every event ADW wires, with a merge test asserting the list matches the snippet
 - Tasks:
   - [x] E1-S2-T1: if-field scoping plus async flag policy on the Claude snippet
-  - [ ] E1-S2-T2: Cross-client event parity matrix plus merge-script generalization
+  - [x] E1-S2-T2: Cross-client event parity matrix plus merge-script generalization
 
 ## E2-S1 Stop gate
 - Gate: code-review. Sprint: 2. Status: todo.

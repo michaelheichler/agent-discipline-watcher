@@ -250,7 +250,7 @@
         {
           "id": "E1-S2",
           "title": "Existing-wiring hardening and parity map",
-          "status": "doing",
+          "status": "done",
           "sprint": 1,
           "craft_gate": "code-review",
           "why": "As the ADW maintainer, I want the existing wiring scoped tighter and a per-client event availability matrix, so that new-event wiring tasks have a factual basis per client.",
@@ -279,7 +279,7 @@
             {
               "id": "E1-S2-T2",
               "t": "E1-S2-T2: Cross-client event parity matrix plus merge-script generalization",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S2-T1"

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
+<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
 
 # ADW ecosystem hook integration
 
@@ -26,11 +26,11 @@
 - Fail-safe registration: an unknown event key in a client config is treated as able to break config parsing before any handler runs, never assumed to be a dormant no-op. Therefore events register train by train behind the E10-T0 gate, every wiring task proves the merged config in a sandbox HOME (parse-back plus the client's own config validation where one exists) before the lead installs live, the parity matrix records the minimum client version per event, and the timestamped install backups are the immediate rollback when a client still rejects a key. Tradeoff: Wiring lands in more, smaller steps than one bulk registration, but a client that chokes on a new event key is caught in a throwaway HOME, not in the operator's live config. [claims: claim-continuous-evidence | sources: book-delivery-evidence | receipts: verified]
 
 ## Epics
-### E1. Foundation: dispatcher, state, payload contracts, ledger  (2/3 stories done)
+### E1. Foundation: dispatcher, state, payload contracts, ledger  (3/3 stories done)
 Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.
 - **E1-S1 Core libraries: dispatch, payloads, and gate config** (done, sprint 1, gate simplification)
 - **E1-S3 Core libraries: durable session state and findings ledger** (done, sprint 1, gate unit-testing)
-- **E1-S2 Existing-wiring hardening and parity map** (doing, sprint 1, gate code-review)
+- **E1-S2 Existing-wiring hardening and parity map** (done, sprint 1, gate code-review)
 
 ### E2. Turn-end and completion enforcement (Stop family)  (0/6 stories done)
 ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
+<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
 
 # E4-S1 Quality-config tamper seal
 
