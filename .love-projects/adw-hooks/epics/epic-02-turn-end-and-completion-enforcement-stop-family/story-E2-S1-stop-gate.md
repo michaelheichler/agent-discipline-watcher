@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
+<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
 
 # E2-S1 Stop gate
 
@@ -14,6 +14,6 @@ As an operator, I want the turn blocked when the final message claims done witho
 - every decision lands in the ledger
 
 ## Execution
-- [ ] E2-S1-T1: stop.py discipline plus unproved-done gate
+- [x] E2-S1-T1: stop.py discipline plus unproved-done gate
 - [ ] E2-S1-T2: Verify-command Stop gate (deterministic test gate)
 

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
+<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
@@ -34,7 +34,7 @@ Every later hook plugs into a data-driven dispatcher, a tested payload layer, du
 
 ### E2. Turn-end and completion enforcement (Stop family)  (0/6 stories done)
 ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.
-- **E2-S1 Stop gate** (todo, sprint 2, gate code-review)
+- **E2-S1 Stop gate** (doing, sprint 2, gate code-review)
 - **E2-S2 SubagentStop coverage** (todo, sprint 2, gate code-review)
 - **E2-S3 TaskCompleted gate** (todo, sprint 2, gate code-review)
 - **E2-S4 PostToolBatch single-pass scan** (todo, sprint 2, gate code-review)

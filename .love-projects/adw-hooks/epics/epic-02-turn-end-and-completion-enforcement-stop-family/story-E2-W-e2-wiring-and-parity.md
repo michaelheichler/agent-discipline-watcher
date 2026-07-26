@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
+<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
 
 # E2-W E2 wiring and parity
 

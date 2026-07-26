@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9ecf862e do not hand-edit -->
+<!-- love-render src=plan.json sha=37bf6be4 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -52,7 +52,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [x] E1-S2-T2: Cross-client event parity matrix plus merge-script generalization
 
 ## E2-S1 Stop gate
-- Gate: code-review. Sprint: 2. Status: todo.
+- Gate: code-review. Sprint: 2. Status: doing.
 - Why: As an operator, I want the turn blocked when the final message claims done without evidence or violates prose discipline, so that unproved claims never end a turn silently.
 - Done when:
   - stop.py scans last_assistant_message with the existing scanner families plus an unproved-done rule in lib/done_claims.py (done, fixed, complete, or passing language with no verification evidence in the message), keeping scanner.py untouched
@@ -60,7 +60,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - the optional verify mode runs trusted repo-declared commands, ships in observe per D7, and blocks on failure only once the family is promoted to enforce
   - every decision lands in the ledger
 - Tasks:
-  - [ ] E2-S1-T1: stop.py discipline plus unproved-done gate
+  - [x] E2-S1-T1: stop.py discipline plus unproved-done gate
   - [ ] E2-S1-T2: Verify-command Stop gate (deterministic test gate)
 
 ## E2-S2 SubagentStop coverage

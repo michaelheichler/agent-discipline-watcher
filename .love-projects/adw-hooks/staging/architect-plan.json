@@ -422,7 +422,7 @@
       {
        "id": "E2-S1-T1",
        "title": "E2-S1-T1: stop.py discipline plus unproved-done gate",
-       "detail": "New hooks/stop.py: read the Stop payload via lib/payloads, scan last_assistant_message with the existing scanner families plus a new deterministic unproved-done rule that lives in its own module lib/done_claims.py (scanner.py stays untouched, so E7-S1-T1 keeps sole ownership of it and both tasks stay parallel). Resolve the stop family's gate state through lib/config (D7), return a block decision with reason when enforcing and a would_block ledger row when observing, honor stop_hook_active, write ledger rows, and advance the session turn counter in lib/session_state only when stop_hook_active is false, so a blocked turn's stop_hook_active retries keep the same turn_id and the turn counts once, the producer for D7's turn denominator with the retry dedupe as an explicit test case. A Stop invocation that arrives with stop_hook_active true and passes the gate writes a ledger row with outcome release, the explicit marker the E10-T0 smoke asserts, and by construction that row can only follow a block in the same session. Replaces the run.sh Stop no-op.",
+       "detail": "New hooks/stop.py: read the Stop payload via lib/payloads, scan last_assistant_message with the existing scanner families plus a new deterministic unproved-done rule that lives in its own module lib/done_claims.py (scanner.py stays untouched, so E7-S1-T1 keeps sole ownership of it and both tasks stay parallel). Resolve the stop family's gate state through lib/config (D7), return a block decision with reason when enforcing and a would_block ledger row when observing, honor stop_hook_active, write ledger rows, and advance the session turn counter in lib/session_state only when stop_hook_active is false, so a blocked turn's stop_hook_active retries keep the same turn_id and the turn counts once, the producer for D7's turn denominator with the retry dedupe as an explicit test case. A Stop invocation that arrives with stop_hook_active true and passes the gate writes a ledger row with outcome release, the explicit marker the E10-T0 smoke asserts, and by construction that row can only follow a block in the same session. Replaces the run.sh Stop no-op. Closed after four critic rounds. Two design upgrades landed beyond the letter of the spec: release rows require a state-proved pending-block marker in session state, not the client-asserted stop_hook_active flag, and evidence means shown results only, never tool mentions, which removes the negation-phrasing attack surface by deletion. Quote stripping uses line-local odd/even pairing with an over-strip ban and a documented malformed-quote trade-off.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "1-2d",
@@ -444,7 +444,7 @@
        ],
        "risk": "Scanning final prose can over-fire on quoted user text. The rule set starts narrow with the done-claim patterns the clean-coder family already defines.",
        "craft_gate": "code-review",
-       "status": "todo",
+       "status": "done",
        "parallel": true,
        "ideas": [
         "Stop hook as end-of-turn verification gate"
