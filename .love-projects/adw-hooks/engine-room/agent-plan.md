@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
+<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -93,14 +93,14 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [x] E2-S4-T1: batch.py additive cross-file pass (D13)
 
 ## E2-S5 Failure-event handling
-- Gate: unit-testing. Sprint: 2. Status: todo.
+- Gate: unit-testing. Sprint: 2. Status: done.
 - Why: As an operator, I want repeated tool failures met with deterministic guidance and unhealthy MCP servers short-circuited, so that the agent neither weakens changes to dodge errors nor burns turns on dead providers.
 - Done when:
   - failure.py records per-tool and per-target failure streaks (error, is_interrupt, duration_ms) in session state
   - a streak threshold injects a fix-the-root-cause instruction naming the repeated failure
   - MCP substate: a server is marked unhealthy on failure with 30s base exponential backoff capped at 10min, and a PreToolUse consult blocks calls to known-unhealthy servers until backoff expiry
 - Tasks:
-  - [ ] E2-S5-T1: failure.py plus MCP circuit breaker
+  - [x] E2-S5-T1: failure.py plus MCP circuit breaker
 
 ## E2-W E2 wiring and parity
 - Gate: code-review. Sprint: 2. Status: doing.

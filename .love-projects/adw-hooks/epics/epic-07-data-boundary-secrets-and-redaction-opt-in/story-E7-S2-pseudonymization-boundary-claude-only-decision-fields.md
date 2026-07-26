@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
+<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
 
 # E7-S2 Pseudonymization boundary (Claude-only decision fields)
 

@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
+<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> Your greatest difficulty is with yourself; for you are your own stumbling-block.
-> Seneca
+> No person is free who is not master of themselves.
+> Epictetus
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 
@@ -32,13 +32,13 @@ Every later hook plugs into a data-driven dispatcher, a tested payload layer, du
 - **E1-S3 Core libraries: durable session state and findings ledger** (done, sprint 1, gate unit-testing)
 - **E1-S2 Existing-wiring hardening and parity map** (done, sprint 1, gate code-review)
 
-### E2. Turn-end and completion enforcement (Stop family)  (2/6 stories done)
+### E2. Turn-end and completion enforcement (Stop family)  (3/6 stories done)
 ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.
 - **E2-S1 Stop gate** (doing, sprint 2, gate code-review)
 - **E2-S2 SubagentStop coverage** (done, sprint 2, gate code-review)
 - **E2-S3 TaskCompleted gate** (todo, sprint 2, gate code-review)
 - **E2-S4 PostToolBatch single-pass scan** (done, sprint 2, gate code-review)
-- **E2-S5 Failure-event handling** (todo, sprint 2, gate unit-testing)
+- **E2-S5 Failure-event handling** (done, sprint 2, gate unit-testing)
 - **E2-W E2 wiring and parity** (doing, sprint 2, gate code-review)
 
 ### E3. Prompt and context boundary (UserPromptSubmit plus JIT injection)  (0/3 stories done)

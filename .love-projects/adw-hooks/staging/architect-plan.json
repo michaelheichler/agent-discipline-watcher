@@ -609,7 +609,7 @@
       {
        "id": "E2-S5-T1",
        "title": "E2-S5-T1: failure.py plus MCP circuit breaker",
-        "detail": "New PostToolUseFailure hook plus a small PreToolUse consult (pre_mcp.py, matcher mcp__*) reading the same health substate. A minimal record.py success callback resets the matching tool, target, and MCP server state so failure streak and health semantics remain truthful across successful calls. Event normalization extends the central lib/payloads.py contract per D2; hooks never project raw event keys independently. Hostile-input and parser regressions live in a separate boundary test module so every test file stays below the product scanner's hard 1000-line cap.",
+         "detail": "New PostToolUseFailure hook plus a small PreToolUse consult (pre_mcp.py, matcher mcp__*) reading the same health substate. A minimal record.py success callback resets the matching tool, target, and MCP server state so failure streak and health semantics remain truthful across successful calls. Event normalization extends the central lib/payloads.py contract per D2; hooks never project raw event keys independently. Hostile-input and parser regressions live in a separate boundary test module so every test file stays below the product scanner's hard 1000-line cap. Closed after executable adversarial review added exact trust-boundary projection, safe session and persistence-root authority, atomic state noninterference, truthful success resets, spec-compatible MCP identities, lexical target canonicalization, and mutation-sensitive concurrency and parser proofs.",
        "strategy": "tdd",
        "owner": "codex",
        "estimate": "2-3d",
@@ -632,7 +632,7 @@
        ],
        "risk": "Backoff state is keyed per session first. Cross-session escalation only if the ledger shows need. Fail-safe: if PostToolUseFailure never fires, the health substate stays empty and pre_mcp allows everything, degraded but harmless.",
        "craft_gate": "unit-testing",
-       "status": "todo",
+        "status": "done",
        "parallel": true,
        "ideas": [
         "PostToolUseFailure retry-loop / workaround detection",

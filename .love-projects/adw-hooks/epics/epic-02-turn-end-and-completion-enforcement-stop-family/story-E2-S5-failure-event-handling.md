@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=37535ee8 do not hand-edit -->
+<!-- love-render src=plan.json sha=966c7260 do not hand-edit -->
 
 # E2-S5 Failure-event handling
 
@@ -13,5 +13,5 @@ As an operator, I want repeated tool failures met with deterministic guidance an
 - MCP substate: a server is marked unhealthy on failure with 30s base exponential backoff capped at 10min, and a PreToolUse consult blocks calls to known-unhealthy servers until backoff expiry
 
 ## Execution
-- [ ] E2-S5-T1: failure.py plus MCP circuit breaker
+- [x] E2-S5-T1: failure.py plus MCP circuit breaker
 

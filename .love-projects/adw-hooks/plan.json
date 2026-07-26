@@ -466,7 +466,7 @@
         {
           "id": "E2-S5",
           "title": "Failure-event handling",
-          "status": "todo",
+          "status": "done",
           "sprint": 2,
           "craft_gate": "unit-testing",
           "why": "As an operator, I want repeated tool failures met with deterministic guidance and unhealthy MCP servers short-circuited, so that the agent neither weakens changes to dodge errors nor burns turns on dead providers.",
@@ -479,7 +479,7 @@
             {
               "id": "E2-S5-T1",
               "t": "E2-S5-T1: failure.py plus MCP circuit breaker",
-              "done": false,
+              "done": true,
               "owner": "codex",
               "depends_on": [
                 "E1-S1-T2",
@@ -1900,8 +1900,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "Your greatest difficulty is with yourself; for you are your own stumbling-block.",
-    "who": "Seneca",
+    "text": "No person is free who is not master of themselves.",
+    "who": "Epictetus",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }
