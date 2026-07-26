@@ -1,2 +1,4 @@
 {"at": "2026-07-25T12:44:16Z", "event": "run.created", "run_id": "run-e1s1t1", "transaction_id": "30b8991da2e5a00f"}
 {"at": "2026-07-25T12:46:45Z", "event": "run.transitioned", "run_id": "run-e1s1t1", "target": "active", "transaction_id": "f1b5748f736f9b58"}
+{"at": "2026-07-26T09:58:45Z", "event": "run.recovery-blocked", "run_id": "run-e1s1t1", "target": "blocked", "transaction_id": "a22d20ef59bd598d"}
+{"at": "2026-07-26T10:01:03Z", "event": "run.transitioned", "run_id": "run-e1s1t1", "target": "active", "transaction_id": "f4c365fc5d2a6a74"}

@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
+<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
 
 # ADW ecosystem hook integration
 
@@ -30,7 +30,7 @@
 Every later hook plugs into a data-driven dispatcher, a tested payload layer, durable session state, and a findings ledger. Nothing user-visible changes yet except if-field scoping and async flags on existing wiring.
 - **E1-S1 Core libraries: dispatch, payloads, and gate config** (done, sprint 1, gate simplification)
 - **E1-S3 Core libraries: durable session state and findings ledger** (done, sprint 1, gate unit-testing)
-- **E1-S2 Existing-wiring hardening and parity map** (todo, sprint 1, gate code-review)
+- **E1-S2 Existing-wiring hardening and parity map** (doing, sprint 1, gate code-review)
 
 ### E2. Turn-end and completion enforcement (Stop family)  (0/6 stories done)
 ADW can refuse to end a turn, a subagent, a task, or a tool batch while discipline findings or failed verification stand. This is the MVP value epic.

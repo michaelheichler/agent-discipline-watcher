@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
+<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
 
 # E6-S8 Commit-message gate
 

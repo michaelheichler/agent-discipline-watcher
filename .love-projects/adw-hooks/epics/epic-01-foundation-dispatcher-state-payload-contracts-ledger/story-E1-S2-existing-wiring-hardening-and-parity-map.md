@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=445cf8f0 do not hand-edit -->
+<!-- love-render src=plan.json sha=b04826fe do not hand-edit -->
 
 # E1-S2 Existing-wiring hardening and parity map
 
@@ -14,6 +14,6 @@ As the ADW maintainer, I want the existing wiring scoped tighter and a per-clien
 - HOOK_LIFECYCLES in merge-codex-config.py lists every event ADW wires, with a merge test asserting the list matches the snippet
 
 ## Execution
-- [ ] E1-S2-T1: if-field scoping plus async flag policy on the Claude snippet
+- [x] E1-S2-T1: if-field scoping plus async flag policy on the Claude snippet
 - [ ] E1-S2-T2: Cross-client event parity matrix plus merge-script generalization
 
