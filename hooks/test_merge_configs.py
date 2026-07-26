@@ -1,5 +1,6 @@
-import json
 import importlib.util
+import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -7,11 +8,49 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CLAUDE = ROOT / "hooks" / "merge-claude-settings.py"
 CODEX = ROOT / "hooks" / "merge-codex-config.py"
 PI = ROOT / "hooks" / "merge-pi-settings.py"
+CODEX_SNIPPET = ROOT / "hooks" / "codex-config.snippet.toml"
+README = ROOT / "README.md"
+
+STALE_WATCHER_RUN_SH = "/stale/agent-discipline-watcher/hooks/run.sh"
+SKILL_DIR = "/tmp/agent-discipline-watcher"  # noqa: S108 (placeholder path, never created)
+
+MATRIX_EVENTS = (
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "SubagentStop",
+    "TaskCompleted",
+    "PostToolBatch",
+    "PostToolUseFailure",
+    "UserPromptSubmit",
+    "PreCompact",
+    "SessionEnd",
+    "InstructionsLoaded",
+    "ConfigChange",
+)
+MATRIX_CLIENT_COLUMNS = ("Claude", "Codex", "OpenCode", "Pi")
+MATRIX_STATE_PATTERN = re.compile(r"(wired|degraded|not-available|unknown)(: .*)?")
+
+WIRED_EVENTS = frozenset({
+    "ConfigChange",
+    "InstructionsLoaded",
+    "PostToolBatch",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreCompact",
+    "PreToolUse",
+    "SessionEnd",
+    "SessionStart",
+    "Stop",
+    "SubagentStop",
+    "TaskCompleted",
+    "UserPromptSubmit",
+})
 
 CLAUDE_SETTINGS = {
     "hooks": {
@@ -246,6 +285,18 @@ command = "beta-bin"
 command = "gamma-bin"
 """
 
+CODEX_CONFIG_NEW_EVENT_INLINE_ARRAYS = (
+    "\n[hooks]\n"
+    'SubagentStop = [{ command = "python professional-agent-helper/hooks/sub.py" },'
+    ' { command = "python /x/unrelated-subagent.py" }]\n'
+    'PostToolBatch = [{ command = "python punctuation-discipline/hooks/batch.py" }]\n'
+    'TaskCompleted = [{ command = "python english-for-agents/hooks/task.py" }]\n'
+    'PostToolUseFailure = [{ command = "python clean-coder-discipline/hooks/fail.py" }]\n'
+    'InstructionsLoaded = [{ command = "python uncle-bobs-cc/hooks/loaded.py" }]\n'
+    f'ConfigChange = [{{ command = "{STALE_WATCHER_RUN_SH} ConfigChange" }},'
+    ' { command = "python /x/unrelated-config.py" }]\n'
+)
+
 PI_SETTINGS = {
     "extensions": [
         "/x/punctuation-discipline/pi/extensions/punctuation-discipline/index.ts",
@@ -266,6 +317,21 @@ def load_codex_merger():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def parse_parity_matrix(readme_text: str) -> list[dict[str, str]]:
+    section = readme_text.split("## Cross-Client Event Parity", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    table_lines = [line for line in section.splitlines() if line.startswith("|")]
+    header_index = next(
+        index for index, line in enumerate(table_lines) if "| Event |" in line
+    )
+    columns = [cell.strip() for cell in table_lines[header_index].strip("|").split("|")]
+    rows = []
+    for line in table_lines[header_index + 2 :]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        rows.append(dict(zip(columns, cells, strict=False)))
+    return rows
 
 
 def assert_no_stale_hooks(text: str) -> None:
@@ -377,6 +443,130 @@ class MergeConfigTests(unittest.TestCase):
             created = Path(tmp) / "created.toml"
             merger.atomic_write(created, 'model = "new"\n')
             self.assertEqual(created.stat().st_mode & 0o777, 0o600)
+
+    def test_codex_hook_lifecycles_cover_every_wired_event(self):
+        merger = load_codex_merger()
+        missing = sorted(WIRED_EVENTS - merger.HOOK_LIFECYCLES)
+        assert not missing, (
+            "HOOK_LIFECYCLES misses wired events, stale-strip mishandles them on reinstall: "
+            f"{missing}"
+        )
+
+    def test_codex_hook_lifecycles_cover_snippet_events(self):
+        merger = load_codex_merger()
+        snippet_events = set(
+            re.findall(r"\[\[hooks\.([A-Za-z]+)(?:\.hooks)?\]\]", CODEX_SNIPPET.read_text())
+        )
+        missing = sorted(snippet_events - merger.HOOK_LIFECYCLES)
+        assert not missing, f"snippet wires events HOOK_LIFECYCLES cannot strip: {missing}"
+
+    def test_codex_strips_stale_inline_arrays_for_new_events(self):
+        assert CODEX.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(CODEX_CONFIG_NEW_EVENT_INLINE_ARRAYS)
+            run_merge(CODEX, "--config", str(config), "--skill-dir", SKILL_DIR)
+            merged = config.read_text()
+        assert_no_stale_hooks(merged)
+        assert "clean-coder-discipline" not in merged
+        assert "uncle-bobs-cc" not in merged
+        assert "/stale/agent-discipline-watcher" not in merged
+        assert "unrelated-subagent.py" in merged
+        assert "unrelated-config.py" in merged
+
+    def test_codex_double_merge_is_idempotent(self):
+        assert CODEX.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(CODEX_CONFIG)
+            run_merge(CODEX, "--config", str(config), "--skill-dir", SKILL_DIR)
+            once = config.read_text()
+            run_merge(CODEX, "--config", str(config), "--skill-dir", SKILL_DIR)
+            twice = config.read_text()
+        assert once == twice, "second merge must not duplicate or corrupt entries"
+        assert twice.count("# >>> agent-discipline-watcher >>>") == 1
+        for event in ("SessionStart", "PreToolUse", "PreCommit", "PostToolUse"):
+            assert twice.count(f"run.sh {event}") == 1
+
+    def test_claude_prunes_watcher_entries_under_arbitrary_event_keys(self):
+        assert CLAUDE.exists()
+        settings_payload = {
+            "hooks": {
+                "SubagentStop": [
+                    {
+                        "hooks": [
+                            {"type": "command", "command": f"{STALE_WATCHER_RUN_SH} SubagentStop"},
+                            {"type": "command", "command": "python /x/unrelated-subagent.py"},
+                        ]
+                    }
+                ],
+                "ConfigChange": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python punctuation-discipline/hooks/config.py",
+                            },
+                        ]
+                    }
+                ],
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings.json"
+            settings.write_text(json.dumps(settings_payload))
+            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            once = settings.read_text()
+            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            twice = settings.read_text()
+        assert once == twice, "double merge must be idempotent under arbitrary event keys"
+        merged = json.loads(twice)
+        text = json.dumps(merged)
+        assert "punctuation-discipline" not in text
+        assert "/stale/agent-discipline-watcher" not in text
+        subagent_entries = merged["hooks"]["SubagentStop"]
+        assert json.dumps(subagent_entries).count("run.sh SubagentStop") == 0
+        assert "unrelated-subagent.py" in json.dumps(subagent_entries)
+        assert "ConfigChange" not in merged["hooks"] or "punctuation-discipline" not in json.dumps(
+            merged["hooks"]["ConfigChange"]
+        )
+
+    def test_pi_double_merge_keeps_single_extension(self):
+        assert PI.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings.json"
+            settings.write_text(json.dumps(PI_SETTINGS))
+            run_merge(PI, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            once = settings.read_text()
+            run_merge(PI, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            twice = settings.read_text()
+        assert once == twice
+        merged = json.loads(twice)
+        watcher = [entry for entry in merged["extensions"] if "agent-discipline-watcher" in entry]
+        assert len(watcher) == 1, "re-running install must not stack Pi extensions"
+
+    def test_readme_matrix_lists_exactly_the_tracked_events(self):
+        rows = parse_parity_matrix(README.read_text())
+        events = [row["Event"].strip("`") for row in rows]
+        assert events == list(MATRIX_EVENTS)
+
+    def test_readme_matrix_rows_carry_fallback_and_min_version(self):
+        rows = parse_parity_matrix(README.read_text())
+        for row in rows:
+            fallback = [value for key, value in row.items() if key.startswith("Fallback")]
+            version = [value for key, value in row.items() if key.startswith("Min")]
+            assert fallback and fallback[0], f"row without fallback column: {row}"
+            assert version and version[0], f"row without min-version column: {row}"
+
+    def test_readme_matrix_cells_use_the_four_state_vocabulary(self):
+        rows = parse_parity_matrix(README.read_text())
+        for row in rows:
+            for column in MATRIX_CLIENT_COLUMNS:
+                cell = row[column]
+                assert MATRIX_STATE_PATTERN.fullmatch(cell), (
+                    f"{row['Event']} {column} cell outside the four-state vocabulary: {cell!r}"
+                )
+        assert "supported, unwired" not in README.read_text()
 
     def test_pi_removes_legacy_extensions_and_adds_one_watcher_extension(self):
         assert PI.exists()

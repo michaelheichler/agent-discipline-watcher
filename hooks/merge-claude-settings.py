@@ -16,7 +16,6 @@ STALE_HOOK_COMMANDS = LEGACY + (
     "knowledge-based-search",
     "lean-ctx",
 )
-LIFECYCLES = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit")
 DROP = object()
 
 

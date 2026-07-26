@@ -24,12 +24,18 @@ STALE_HOOK_COMMANDS = LEGACY + (
     "lean-ctx",
 )
 HOOK_LIFECYCLES = {
+    "ConfigChange",
+    "InstructionsLoaded",
+    "PostToolBatch",
+    "PostToolUse",
+    "PostToolUseFailure",
     "PreCompact",
     "PreToolUse",
-    "PostToolUse",
     "SessionEnd",
     "SessionStart",
     "Stop",
+    "SubagentStop",
+    "TaskCompleted",
     "UserPromptSubmit",
 }
 FENCE_START = "# >>> agent-discipline-watcher >>>"
