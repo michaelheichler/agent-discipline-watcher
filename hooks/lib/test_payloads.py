@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import unittest
 
+import record
 from lib import payloads
 
-
-PRE_TOOL_USE = {
+PRE_TOOL_USE: dict[str, object] = {
     "session_id": "sess-1",
     "cwd": "/repo",
     "hook_event_name": "PreToolUse",
@@ -15,6 +15,105 @@ PRE_TOOL_USE = {
     "tool_use_id": "toolu_01",
     "tool_input": {"file_path": "/repo/a.py", "content": "x = 1"},
 }
+
+
+class HostileDict(dict):
+    calls = 0
+
+    def get(self, key, default=None):
+        type(self).calls += 1
+        raise AssertionError("hostile get called")
+
+    def items(self):
+        type(self).calls += 1
+        raise AssertionError("hostile items called")
+
+
+class HostileString(str):
+    calls = 0
+
+    def __str__(self) -> str:
+        type(self).calls += 1
+        return super().__str__()
+
+
+class CollidingKey:
+    calls = 0
+
+    def __hash__(self):
+        type(self).calls += 1
+        return hash("session_id")
+
+    def __eq__(self, other):
+        type(self).calls += 1
+        return False
+
+
+class BoundaryProjectionTests(unittest.TestCase):
+    def test_failure_projection_accepts_only_exact_schema_types(self):
+        projected = payloads.failure_payload(
+            {
+                "session_id": HostileString("hidden"),
+                "cwd": "/repo",
+                "tool_name": "Write",
+                "tool_use_id": "call-1",
+                "tool_input": {"file_path": HostileString("secret.py")},
+                "error": "failed",
+                "is_interrupt": 1,
+                "duration_ms": True,
+            }
+        )
+        self.assertEqual(
+            projected,
+            {
+                "session_id": "",
+                "cwd": "/repo",
+                "tool_name": "Write",
+                "tool_use_id": "call-1",
+                "file_path": "",
+                "error": "failed",
+                "is_interrupt": False,
+                "duration_ms": 0,
+            },
+        )
+        self.assertEqual(HostileString.calls, 0)
+
+    def test_record_projection_rejects_hostile_containers_without_dispatch(self):
+        HostileDict.calls = 0
+        self.assertEqual(
+            payloads.record_payload(HostileDict(PRE_TOOL_USE)),
+            {
+                "session_id": "",
+                "cwd": "",
+                "tool_name": "",
+                "tool_use_id": "",
+                "file_path": "",
+                "edit_text": "",
+            },
+        )
+        self.assertEqual(HostileDict.calls, 0)
+
+        payload = dict(PRE_TOOL_USE)
+        payload["tool_input"] = HostileDict(file_path="secret.py")
+        self.assertEqual(payloads.record_payload(payload)["file_path"], "")
+        self.assertEqual(HostileDict.calls, 0)
+
+        self.assertEqual(record.run(HostileDict(PRE_TOOL_USE), {}), {})
+        self.assertEqual(HostileDict.calls, 0)
+
+    def test_non_string_keys_are_filtered_before_field_lookup(self):
+        key = CollidingKey()
+        payload: dict[object, object] = {key: "hidden", "session_id": "safe"}
+        CollidingKey.calls = 0
+        self.assertEqual(payloads.session_id(payload), "safe")
+        self.assertEqual(CollidingKey.calls, 0)
+
+    def test_edit_text_list_requires_exact_strings(self):
+        exact = {"tool_input": {"command": ["first", "second"]}}
+        hostile = {"tool_input": {"command": ["first", HostileString("second")]}}
+        self.assertEqual(payloads.record_payload(exact)["edit_text"], "first\nsecond")
+        self.assertEqual(payloads.record_payload(hostile)["edit_text"], "")
+        self.assertEqual(HostileString.calls, 0)
 
 
 class SessionIdTests(unittest.TestCase):
@@ -57,22 +156,27 @@ class LastAssistantMessageTests(unittest.TestCase):
             "hook_event_name": "Stop",
             "last_assistant_message": "Done. All tests pass.",
         }
-        self.assertEqual(payloads.last_assistant_message(payload), "Done. All tests pass.")
+        self.assertEqual(
+            payloads.last_assistant_message(payload), "Done. All tests pass."
+        )
 
     def test_absent_returns_empty_string(self):
         self.assertEqual(payloads.last_assistant_message({}), "")
 
 
 class StopHookActiveTests(unittest.TestCase):
+    def test_compatibility_name_is_direct_alias(self):
+        self.assertIs(payloads.stop_hook_active, payloads.is_stop_hook_active)
+
     def test_true_when_flag_set(self):
         payload = {"hook_event_name": "Stop", "stop_hook_active": True}
         self.assertIs(payloads.stop_hook_active(payload), True)
+        self.assertIs(payloads.is_stop_hook_active(payload), True)
 
     def test_absent_returns_false(self):
         self.assertIs(payloads.stop_hook_active({"hook_event_name": "Stop"}), False)
 
     def test_string_false_does_not_coerce_to_true(self):
-        # because bool("false") is True, a wrong-type value must stay False rather than flip the gate
         self.assertIs(payloads.stop_hook_active({"stop_hook_active": "false"}), False)
 
 
@@ -99,14 +203,19 @@ class AgentTranscriptPathTests(unittest.TestCase):
         # assumed because agent_transcript_path is not in the published docs, only plan-named
         payload = {
             "hook_event_name": "SubagentStop",
-            "agent_transcript_path": "/tmp/agent-7.jsonl",
+            "agent_transcript_path": "fixtures/agent-7.jsonl",
         }
-        self.assertEqual(payloads.agent_transcript_path(payload), "/tmp/agent-7.jsonl")
+        self.assertEqual(
+            payloads.agent_transcript_path(payload), "fixtures/agent-7.jsonl"
+        )
 
     def test_falls_back_to_common_transcript_path(self):
         # because transcript_path is documented as a common field on every hook event
-        payload = {"hook_event_name": "SubagentStop", "transcript_path": "/tmp/main.jsonl"}
-        self.assertEqual(payloads.agent_transcript_path(payload), "/tmp/main.jsonl")
+        payload = {
+            "hook_event_name": "SubagentStop",
+            "transcript_path": "fixtures/main.jsonl",
+        }
+        self.assertEqual(payloads.agent_transcript_path(payload), "fixtures/main.jsonl")
 
     def test_absent_returns_empty_string(self):
         self.assertEqual(payloads.agent_transcript_path({}), "")
@@ -120,7 +229,10 @@ class PromptTests(unittest.TestCase):
 
     def test_reads_user_prompt_alias(self):
         # assumed because the published schema summary names this field user_prompt
-        payload = {"hook_event_name": "UserPromptSubmit", "user_prompt": "refactor the loop"}
+        payload = {
+            "hook_event_name": "UserPromptSubmit",
+            "user_prompt": "refactor the loop",
+        }
         self.assertEqual(payloads.prompt(payload), "refactor the loop")
 
     def test_absent_returns_empty_string(self):
@@ -187,7 +299,6 @@ class IsInterruptTests(unittest.TestCase):
         self.assertIs(payloads.is_interrupt({}), False)
 
     def test_string_false_does_not_coerce_to_true(self):
-        # because bool("false") is True, a wrong-type value must stay False rather than flip the gate
         self.assertIs(payloads.is_interrupt({"is_interrupt": "false"}), False)
 
 
@@ -208,17 +319,20 @@ class DurationMsTests(unittest.TestCase):
 class ToolCallsTests(unittest.TestCase):
     def test_reads_documented_posttoolbatch_array(self):
         # assumed because PostToolBatch is expected to carry a tool_calls array keyed by tool_use_id
-        payload = {
+        payload: dict[str, object] = {
             "hook_event_name": "PostToolBatch",
             "tool_calls": [
                 {"tool_use_id": "toolu_01", "tool_name": "Write"},
                 {"tool_use_id": "toolu_02", "tool_name": "Edit"},
             ],
         }
-        self.assertEqual(payloads.tool_calls(payload), [
-            {"tool_use_id": "toolu_01", "tool_name": "Write"},
-            {"tool_use_id": "toolu_02", "tool_name": "Edit"},
-        ])
+        self.assertEqual(
+            payloads.tool_calls(payload),
+            [
+                {"tool_use_id": "toolu_01", "tool_name": "Write"},
+                {"tool_use_id": "toolu_02", "tool_name": "Edit"},
+            ],
+        )
 
     def test_absent_returns_empty_list(self):
         self.assertEqual(payloads.tool_calls({}), [])
@@ -236,12 +350,18 @@ class TaskIdTests(unittest.TestCase):
 class TaskSubjectTests(unittest.TestCase):
     def test_reads_task_subject(self):
         # assumed because the plan corrects this field to task_subject over task_result
-        payload = {"hook_event_name": "TaskCompleted", "task_subject": "wire the stop gate"}
+        payload = {
+            "hook_event_name": "TaskCompleted",
+            "task_subject": "wire the stop gate",
+        }
         self.assertEqual(payloads.task_subject(payload), "wire the stop gate")
 
     def test_reads_task_name_alias(self):
         # assumed because the published summary names task_name, so it is carried as an alias
-        payload = {"hook_event_name": "TaskCompleted", "task_name": "wire the stop gate"}
+        payload = {
+            "hook_event_name": "TaskCompleted",
+            "task_name": "wire the stop gate",
+        }
         self.assertEqual(payloads.task_subject(payload), "wire the stop gate")
 
     def test_absent_returns_empty_string(self):
