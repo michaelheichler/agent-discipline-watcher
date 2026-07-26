@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b59ba9e7 do not hand-edit -->
+<!-- love-render src=plan.json sha=b5fb4514 do not hand-edit -->
 
 # E2-S4 PostToolBatch single-pass scan
 
@@ -13,5 +13,5 @@ As an operator, I want one coherent block message per parallel edit batch, so th
 - when live payloads lack tool_use_id, batch.py drops ledger dedupe and restricts itself to intrinsically cross-file rules, the degraded mode D13 documents
 
 ## Execution
-- [ ] E2-S4-T1: batch.py additive cross-file pass (D13)
+- [x] E2-S4-T1: batch.py additive cross-file pass (D13)
 

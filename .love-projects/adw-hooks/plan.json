@@ -432,7 +432,7 @@
         {
           "id": "E2-S4",
           "title": "PostToolBatch single-pass scan",
-          "status": "todo",
+          "status": "done",
           "sprint": 2,
           "craft_gate": "code-review",
           "why": "As an operator, I want one coherent block message per parallel edit batch, so that findings across simultaneous writes are deduplicated and cross-file patterns are visible.",
@@ -445,7 +445,7 @@
             {
               "id": "E2-S4-T1",
               "t": "E2-S4-T1: batch.py additive cross-file pass (D13)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E1-S1-T3",

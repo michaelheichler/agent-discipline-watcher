@@ -570,7 +570,7 @@
       {
        "id": "E2-S4-T1",
        "title": "E2-S4-T1: batch.py additive cross-file pass (D13)",
-        "detail": "New hook consuming the tool_calls array after the per-call scans have run. Correlates by tool_use_id against the batch's existing ledger rows and emits only findings not already reported, cross-file patterns first. If the id is absent in live payloads (contract test plus smoke), it degrades to cross-file rules only. record.py is untouched and remains the guaranteed fallback, which is also why this task owns no record.py path. Validation and trust-boundary regressions live in a second test module so both files stay below the scanner's hard 1000-line cap.",
+         "detail": "New hook consuming the tool_calls array after the per-call scans have run. Correlates by tool_use_id against the batch's existing ledger rows and emits only findings not already reported, cross-file patterns first. If the id is absent in live payloads (contract test plus smoke), it degrades to cross-file rules only. record.py is untouched and remains the guaranteed fallback, which is also why this task owns no record.py path. Validation and trust-boundary regressions live in a second test module so both files stay below the scanner's hard 1000-line cap. Closed after executable adversarial review hardened temporal correlation, semantic call identity, stable file identity, malformed exact-shape boundaries, hostile Python protocols, typed memoized DAG canonicalization, and mutation-sensitive race proofs. The accepted residual is per-file stable reads rather than one atomic multi-file snapshot.",
        "strategy": "tdd",
        "owner": "claude",
        "estimate": "1-2d",
@@ -588,7 +588,7 @@
        ],
        "risk": "Correlation rests on tool_use_id arriving in both payloads. The degraded mode and the batch-absent case are both explicit tests, so neither assumption can fail silently.",
        "craft_gate": "code-review",
-       "status": "todo",
+        "status": "done",
        "parallel": true,
        "ideas": [
         "PostToolBatch single-pass scan across parallel edits"

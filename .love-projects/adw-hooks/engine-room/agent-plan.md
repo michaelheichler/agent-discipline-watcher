@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=b59ba9e7 do not hand-edit -->
+<!-- love-render src=plan.json sha=b5fb4514 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -83,14 +83,14 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - [ ] E2-S3-T1: task_completed.py verification gate
 
 ## E2-S4 PostToolBatch single-pass scan
-- Gate: code-review. Sprint: 2. Status: todo.
+- Gate: code-review. Sprint: 2. Status: done.
 - Why: As an operator, I want one coherent block message per parallel edit batch, so that findings across simultaneous writes are deduplicated and cross-file patterns are visible.
 - Done when:
   - record.py's per-call scan stays canonical and is never suppressed or buffered (D13)
   - batch.py correlates via tool_use_id (payload contract and ledger row field) between the tool_calls array and the batch's PostToolUse rows, and reports only new cross-file findings, so its dedupe is of its own output and nothing is lost if PostToolBatch never fires
   - when live payloads lack tool_use_id, batch.py drops ledger dedupe and restricts itself to intrinsically cross-file rules, the degraded mode D13 documents
 - Tasks:
-  - [ ] E2-S4-T1: batch.py additive cross-file pass (D13)
+  - [x] E2-S4-T1: batch.py additive cross-file pass (D13)
 
 ## E2-S5 Failure-event handling
 - Gate: unit-testing. Sprint: 2. Status: todo.
