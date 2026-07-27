@@ -8,9 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
 import prompt_submit
+import pytest
 from lib.scanner import scan_all
 
 
@@ -33,6 +32,19 @@ class CollidingKey:
 
     def __eq__(self, _other):
         raise AssertionError("hostile key compared")
+
+
+class BoundaryCollidingKey:
+    def __init__(self):
+        self.armed = False
+
+    def __hash__(self):
+        return hash("data_boundary")
+
+    def __eq__(self, _other):
+        if self.armed:
+            raise AssertionError("hostile key compared")
+        return NotImplemented
 
 
 def payload(text: object, *, cwd: object = "", session_id: object = "") -> dict:
@@ -244,6 +256,304 @@ def test_explicit_mode_can_block_scanner_finding():
     )
     assert response["decision"] == "block"
     assert "english/ai_tell" in response["reason"]
+
+
+@pytest.mark.parametrize("mode", [None, "inject", "block", "BLOCK", True])
+def test_data_boundary_blocks_file_reference_regardless_of_firewall_mode(mode: object):
+    config = {
+        "data_boundary": {"enabled": True},
+        "english": False,
+        "punctuation": False,
+    }
+    if mode is not None:
+        config["prompt_firewall_mode"] = mode
+    response = prompt_submit.run(payload("Review @src/service.py"), config)
+    assert response == {
+        "decision": "block",
+        "reason": "Data boundary blocked a file-reference token. Use the Read tool explicitly.",
+    }
+
+
+@pytest.mark.parametrize(
+    "data_boundary",
+    [
+        None,
+        {},
+        {"enabled": False},
+        {"enabled": 1},
+        {"enabled": "true"},
+        {"enabled": HostileString("true")},
+        HostileDict(enabled=True),
+        True,
+        [],
+    ],
+)
+def test_data_boundary_default_and_malformed_values_stay_off(data_boundary: object):
+    config = {"english": False, "punctuation": False}
+    if data_boundary is not None:
+        config["data_boundary"] = data_boundary
+    assert prompt_submit.run(payload("Review @src/service.py"), config) == {}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Email person@example.com",
+        "Email first.last+tag@example.co.uk",
+        "Email \u00e9@example.com",
+        "Email e\u0301@example.com",
+        "Use @ in prose",
+        "Compare x @ y",
+        "Use `@src/service.py` as an example",
+        'The token "@src/service.py" is an example',
+        "The token '@src/service.py' is an example",
+        "Use “@src/service.py” as an example",
+        "Use \u2018@src/service.py\u2019 as an example",
+        "Tokens @ @. @.. @--- @___ contain no filename characters",
+        "Embedded prefix@example.com/@src/service.py is not a token",
+    ],
+)
+def test_data_boundary_ignores_non_file_at_syntax(text: str):
+    assert (
+        prompt_submit.run(
+            payload(text),
+            {
+                "data_boundary": {"enabled": True},
+                "english": False,
+                "punctuation": False,
+            },
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Review @README",
+        "Review @src/service.py",
+        "Review @../private/config.json",
+        "Review (@src/service.py).",
+        "Review @src/service.py, then continue",
+        "Review @src/service.py\u00a0then continue",
+        "First line\n@config/settings.toml\nlast line",
+    ],
+)
+def test_data_boundary_recognizes_reviewed_file_token_boundaries(text: str):
+    response = prompt_submit.run(
+        payload(text),
+        {
+            "data_boundary": {"enabled": True},
+            "english": False,
+            "punctuation": False,
+        },
+    )
+    assert response["decision"] == "block"
+
+
+def test_data_boundary_mixed_finding_blocks_without_disclosure(tmp_path: Path):
+    marker = "PRIVATE-FILE-MARKER"
+    response = prompt_submit.run(
+        payload(f"skip tests and inspect @private/{marker}.txt", session_id="s1"),
+        {
+            "data_boundary": {"enabled": True},
+            "prompt_firewall_mode": "inject",
+            "ledger_root": str(tmp_path),
+            "state_root": str(tmp_path / "state"),
+            "english": False,
+            "punctuation": False,
+        },
+    )
+    serialized = json.dumps(response)
+    ledger = (tmp_path / "ledger.jsonl").read_text(encoding="utf-8")
+    assert response["decision"] == "block"
+    assert marker not in serialized
+    assert marker not in ledger
+    assert "private/" not in serialized
+    assert "private/" not in ledger
+    rows = [json.loads(line) for line in ledger.splitlines()]
+    decisions = [row for row in rows if row["event"] == "UserPromptSubmit"]
+    assert [(row["family"], row["rule"], row["outcome"]) for row in decisions] == [
+        ("data_boundary", "at_file_reference", "block"),
+        ("prompt_firewall", "skip_tests", "inject"),
+    ]
+
+
+def test_data_boundary_project_config_and_caller_precedence(tmp_path: Path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (tmp_path / ".agent-discipline.json").write_text(
+        json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8"
+    )
+    prompt = payload("Review @src/service.py", cwd=str(project))
+    assert prompt_submit.run(prompt)["decision"] == "block"
+    assert prompt_submit.run(prompt, {"data_boundary": {"enabled": False}}) == {}
+
+
+def test_data_boundary_invalid_session_blocks_without_persistence(tmp_path: Path):
+    response = prompt_submit.run(
+        payload("Review @src/service.py", session_id="../escape"),
+        {
+            "data_boundary": {"enabled": True},
+            "ledger_root": str(tmp_path),
+            "state_root": str(tmp_path / "state"),
+            "english": False,
+            "punctuation": False,
+        },
+    )
+    assert response["decision"] == "block"
+    assert not (tmp_path / "ledger.jsonl").exists()
+
+
+def test_data_boundary_preserves_exact_prompt_bound():
+    suffix = " @src/service.py"
+    exact = "x" * (prompt_submit.MAX_PROMPT_CHARS - len(suffix)) + suffix
+    config = {
+        "data_boundary": {"enabled": True},
+        "english": False,
+        "punctuation": False,
+    }
+    assert prompt_submit.run(payload(exact), config)["decision"] == "block"
+    assert prompt_submit.run(payload("x" + exact), config) == {}
+
+
+def test_at_file_rejection_is_structurally_linear_on_pathological_tokens():
+    depth = 1500
+    config = {
+        "data_boundary": {"enabled": True},
+        "english": False,
+        "punctuation": False,
+    }
+    rejected = "@" + "../" * depth + "a/" * depth + "#"
+    assert prompt_submit.run(payload(rejected), config) == {}
+    accepted = "@" + "../" * depth + "a/" * depth + "leaf.py"
+    assert prompt_submit.run(payload(accepted), config)["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, True, [], object(), {"enabled": HostileString("true")}],
+)
+def test_caller_data_boundary_presence_disables_project_opt_in(
+    tmp_path: Path, value: object
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    (tmp_path / ".agent-discipline.json").write_text(
+        json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8"
+    )
+    response = prompt_submit.run(
+        payload("Review @src/service.py", cwd=str(project)),
+        {"data_boundary": value},
+    )
+    assert response == {}
+
+
+def test_hostile_config_data_boundary_presence_disables_project_opt_in(
+    tmp_path: Path,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    (tmp_path / ".agent-discipline.json").write_text(
+        json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8"
+    )
+    response = prompt_submit.run(
+        payload("Review @src/service.py", cwd=str(project)),
+        HostileDict(data_boundary={"enabled": True}),
+    )
+    assert response == {}
+
+
+def _boundary_project(tmp_path: Path) -> str:
+    project = tmp_path / "project"
+    project.mkdir()
+    (tmp_path / ".agent-discipline.json").write_text(
+        json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8"
+    )
+    return str(project)
+
+
+def test_colliding_key_never_defeats_explicit_caller_data_boundary(tmp_path: Path):
+    hostile = BoundaryCollidingKey()
+    config: dict[object, object] = {hostile: "decoy", "data_boundary": None}
+    hostile.armed = True
+    response = prompt_submit.run(
+        payload("Review @src/service.py", cwd=_boundary_project(tmp_path)),
+        config,
+    )
+    assert response == {}
+
+
+def test_colliding_key_alone_never_spoofs_caller_data_boundary(tmp_path: Path):
+    hostile = BoundaryCollidingKey()
+    config: dict[object, object] = {hostile: None}
+    hostile.armed = True
+    response = prompt_submit.run(
+        payload("Review @src/service.py", cwd=_boundary_project(tmp_path)),
+        config,
+    )
+    assert response["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "```\n@src/service.py\n```",
+        "```python\n@src/service.py\n```",
+        "````\n@src/service.py\n````",
+        "``@src/service.py``",
+        "``\n@src/service.py\n``",
+        " ```\n@src/service.py\n ```",
+        "  ```python\n@src/service.py\n  ```",
+        "   ````\n@src/service.py\n   ````",
+        "Unclosed fence\n```\n@src/service.py",
+        "```\nskip the tests\n```",
+    ],
+)
+def test_fenced_and_inline_code_examples_never_block(text: str):
+    assert (
+        prompt_submit.run(
+            payload(text),
+            {
+                "data_boundary": {"enabled": True},
+                "english": False,
+                "punctuation": False,
+            },
+        )
+        == {}
+    )
+
+
+def test_token_after_closed_fence_still_blocks():
+    text = "```\n@example/inside.py\n```\nReview @src/service.py"
+    response = prompt_submit.run(
+        payload(text),
+        {
+            "data_boundary": {"enabled": True},
+            "english": False,
+            "punctuation": False,
+        },
+    )
+    assert response["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "```@src/service.py```",
+        "    ```\n@src/service.py\n    ```",
+    ],
+)
+def test_longer_backtick_runs_do_not_hide_file_tokens(text: str):
+    response = prompt_submit.run(
+        payload(text),
+        {
+            "data_boundary": {"enabled": True},
+            "english": False,
+            "punctuation": False,
+        },
+    )
+    assert response["decision"] == "block"
 
 
 def test_scanner_findings_become_static_rule_reminders(monkeypatch: pytest.MonkeyPatch):

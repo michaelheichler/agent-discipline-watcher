@@ -6,6 +6,7 @@ import operator
 import re
 import sys
 import time
+import unicodedata
 from contextlib import suppress
 from typing import NamedTuple, cast
 
@@ -22,6 +23,10 @@ PROMPT_PATH = "user_prompt.md"
 PROMPT_EVENT = "UserPromptSubmit"
 FIREWALL_FAMILY = "prompt_firewall"
 FIREWALL_MODE_KEY = "prompt_firewall_mode"
+DATA_BOUNDARY_FINDING = ("data_boundary", "at_file_reference")
+DATA_BOUNDARY_REASON = (
+    "Data boundary blocked a file-reference token. Use the Read tool explicitly."
+)
 
 
 class PromptRule(NamedTuple):
@@ -54,7 +59,7 @@ PROMPT_RULES = (
 )
 
 _QUOTED_RE = re.compile(
-    r"`[^`\n]*`|(?<!\w)\"(?:\\.|[^\"\\\n])*\"|"
+    r"(?<!\w)\"(?:\\.|[^\"\\\n])*\"|"
     r"(?<!\w)'(?:\\.|[^'\\\n])*'|"
     r"(?<!\w)\u201c[^\u201d\n]*\u201d|(?<!\w)\u2018[^\u2019\n]*\u2019"
 )
@@ -68,6 +73,12 @@ _EXPLANATORY_RE = re.compile(
     r"\b(?:phrase|wording|example)\b[^,;:.!?\n]*$", re.IGNORECASE
 )
 _SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z", re.ASCII)
+_AT_ALNUM = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+_AT_SEGMENT = _AT_ALNUM | frozenset("_+~.-")
+_AT_BOUNDARY_EXCLUDED = _AT_ALNUM | frozenset("_@./+~-")
+_AT_TERMINATORS = frozenset(" \t\n\r\v\f,;:!?()[]{}")
+_MIN_FENCE_WIDTH = 3
+_MAX_FENCE_INDENT = 3
 _MAX_CONFIG_DEPTH = 5
 _MAX_CONFIG_ITEMS = 256
 _MAX_CONFIG_TEXT = 4096
@@ -133,6 +144,17 @@ def _safe_config(config: object) -> dict[str, object]:
     return cast(dict[str, object], copied) if operator.is_(type(copied), dict) else {}
 
 
+def _caller_mentions(config: object, key: str) -> bool:
+    """Return whether a caller mapping literally holds key, bypassing its methods."""
+    if not isinstance(config, dict):
+        return False
+    with suppress(Exception):
+        for candidate in dict.keys(cast("dict[object, object]", config)):
+            if operator.is_(type(candidate), str) and candidate == key:
+                return True
+    return False
+
+
 def _resolved_config(config: dict[str, object], cwd: str) -> dict[str, object]:
     """Merge safe caller and project config, falling back when project I/O fails."""
     try:
@@ -163,6 +185,147 @@ def _mask_quoted(text: str) -> str:
     return _QUOTED_RE.sub(lambda match: " " * len(match.group(0)), text)
 
 
+def _fence_body(line: str) -> str:
+    """Return the line past up to three spaces of CommonMark fence indentation."""
+    indent = len(line) - len(line.lstrip(" "))
+    return line[indent:] if indent <= _MAX_FENCE_INDENT else ""
+
+
+def _fence_opener_width(line: str) -> int:
+    """Return the backtick width when the line opens a code fence, else zero."""
+    body = _fence_body(line)
+    width = len(body) - len(body.lstrip("`"))
+    if width < _MIN_FENCE_WIDTH:
+        return 0
+    return width if "`" not in body[width:] else 0
+
+
+def _is_fence_closer(line: str, width: int) -> bool:
+    """Return whether the line closes a backtick fence of the given width."""
+    body = _fence_body(line)
+    backticks = len(body) - len(body.lstrip("`"))
+    return backticks >= width and not body[backticks:].strip(" \t\r\n")
+
+
+def _mask_fenced(text: str) -> str:
+    """Blank fenced code blocks while preserving offsets and line structure."""
+    if "```" not in text:
+        return text
+    lines = text.splitlines(keepends=True)
+    offsets = [0] * len(lines)
+    for index in range(1, len(lines)):
+        offsets[index] = offsets[index - 1] + len(lines[index - 1])
+    masked = list(text)
+    index = 0
+    while index < len(lines):
+        width = _fence_opener_width(lines[index])
+        if not width:
+            index += 1
+            continue
+        start = offsets[index]
+        end = start + len(lines[index])
+        index += 1
+        while index < len(lines):
+            end = offsets[index] + len(lines[index])
+            closer = _is_fence_closer(lines[index], width)
+            index += 1
+            if closer:
+                break
+        for position in range(start, end):
+            if masked[position] != "\n":
+                masked[position] = " "
+    return "".join(masked)
+
+
+def _find_backtick_run(text: str, start: int, width: int) -> int:
+    """Return the next exact-width backtick run, else -1."""
+    index = start
+    while index < len(text):
+        if text[index] != "`":
+            index += 1
+            continue
+        end = index + 1
+        while end < len(text) and text[end] == "`":
+            end += 1
+        if end - index == width:
+            return index
+        index = end
+    return -1
+
+
+def _mask_code_width(text: str, width: int) -> str:
+    """Blank paired exact-width code spans while preserving offsets."""
+    if "`" * width not in text:
+        return text
+    masked = list(text)
+    start = _find_backtick_run(text, 0, width)
+    while start != -1:
+        close = _find_backtick_run(text, start + width, width)
+        if close == -1:
+            break
+        for position in range(start, close + width):
+            if masked[position] != "\n":
+                masked[position] = " "
+        start = _find_backtick_run(text, close + width, width)
+    return "".join(masked)
+
+
+def _mask_inline_code(text: str) -> str:
+    """Blank one- and two-backtick code spans while preserving offsets."""
+    return _mask_code_width(_mask_code_width(text, 2), 1)
+
+
+def _mask_examples(text: str) -> str:
+    """Blank fenced blocks, inline code, and quoted spans, preserving offsets."""
+    return _mask_quoted(_mask_inline_code(_mask_fenced(text)))
+
+
+def _file_token_end(text: str, at: int) -> int:
+    """Return the offset after a valid file token at ``at``, else -1, in one pass."""
+    end = at + 1
+    has_alnum = False
+    segment_open = False
+    for index in range(at + 1, len(text) + 1):
+        char = text[index] if index < len(text) else ""
+        if char in _AT_SEGMENT:
+            has_alnum = has_alnum or char in _AT_ALNUM
+            segment_open = True
+            end = index + 1
+        elif char == "/" and segment_open:
+            segment_open = False
+        else:
+            break
+    if end == at + 1 or not has_alnum:
+        return -1
+    return end if end == len(text) or _is_token_terminator(text[end]) else -1
+
+
+def _is_token_terminator(char: str) -> bool:
+    """Return whether the character ends a file token, Unicode whitespace included."""
+    return char in _AT_TERMINATORS or char.isspace() or char == "`"
+
+
+def _is_token_boundary(char: str) -> bool:
+    """Return whether the character continues a word or address before an at sign."""
+    return (
+        char in _AT_BOUNDARY_EXCLUDED
+        or char.isalnum()
+        or unicodedata.category(char).startswith("M")
+    )
+
+
+def _has_file_token(text: str) -> bool:
+    """Return whether text holds an at-prefixed file token, in linear time."""
+    at = text.find("@")
+    while at != -1:
+        if (at == 0 or not _is_token_boundary(text[at - 1])) and (
+            _file_token_end(text, at) != -1
+        ):
+            return True
+        at = text.find("@", at + 1)
+    return False
+
+
 def _is_explanatory(text: str, start: int) -> bool:
     """Return whether the matched phrase is directly negated or labeled as an example."""
     prefix = text[max(0, start - _MAX_PHRASE_CONTEXT) : start]
@@ -175,7 +338,7 @@ def _is_explanatory(text: str, start: int) -> bool:
 
 def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
     """Return reviewed rules found in unquoted, affirmative prompt text."""
-    scan_text = _mask_quoted(text)
+    scan_text = _mask_examples(text)
     matches: dict[tuple[str, str], str] = {}
     for rule in PROMPT_RULES:
         if any(
@@ -184,6 +347,24 @@ def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
         ):
             matches[(FIREWALL_FAMILY, rule.rule_id)] = rule.reminder
     return matches
+
+
+def _data_boundary_enabled(cfg: dict[str, object]) -> bool:
+    """Return true only for the exact central opt-in value."""
+    boundary = cfg.get("data_boundary")
+    if not operator.is_(type(boundary), dict):
+        return False
+    fields = payloads.exact_string_dict(boundary)
+    return operator.is_(fields.get("enabled"), True)
+
+
+def _data_boundary_findings(
+    text: str, cfg: dict[str, object]
+) -> dict[tuple[str, str], str]:
+    """Find unquoted literal file-reference tokens under the explicit opt-in."""
+    if not _data_boundary_enabled(cfg) or not _has_file_token(_mask_examples(text)):
+        return {}
+    return {DATA_BOUNDARY_FINDING: "Use the Read tool explicitly."}
 
 
 def _scanner_findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
@@ -219,6 +400,8 @@ def _family_state(family: str, cfg: dict[str, object]) -> str:
 def _findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
     """Compose reviewed phrase and scanner findings in stable identifier order."""
     combined = _phrase_findings(text)
+    for key, value in _data_boundary_findings(text, cfg).items():
+        combined.setdefault(key, value)
     for key, value in _scanner_findings(text, cfg).items():
         combined.setdefault(key, value)
     return dict(sorted(combined.items()))
@@ -240,6 +423,7 @@ def _record(
     """Persist standard decision metadata without prompt-derived values."""
     root = _config_root(cfg, "ledger_root")
     for family, rule in findings:
+        outcome = "block" if (family, rule) == DATA_BOUNDARY_FINDING else mode
         recorded = False
         with suppress(Exception):
             reporting.record_decision(
@@ -250,7 +434,7 @@ def _record(
                 rule=rule,
                 path=PROMPT_PATH,
                 tool_use_id="",
-                outcome=mode,
+                outcome=outcome,
                 duration_ms=duration_ms,
                 turn_id=session.turn_id,
                 root=root,
@@ -291,9 +475,12 @@ def _evaluate(
     duration_ms = int((time.monotonic() - started) * 1000)
     if not findings:
         return {}
+    boundary_block = DATA_BOUNDARY_FINDING in findings
     mode = _mode(cfg, selection)
     if session.session_id:
         _record(findings, mode, session, duration_ms, cfg)
+    if boundary_block:
+        return {"decision": "block", "reason": DATA_BOUNDARY_REASON}
     if mode == "block":
         names = ", ".join(f"{family}/{rule}" for family, rule in findings)
         return {
@@ -321,7 +508,11 @@ def run(payload: object, config: object = None) -> dict:
             FIREWALL_MODE_KEY in caller_fields,
             caller_fields.get(FIREWALL_MODE_KEY),
         )
-        cfg = _resolved_config(_safe_config(config), _cwd(payload))
+        boundary_supplied = _caller_mentions(config, "data_boundary")
+        safe_config = _safe_config(config)
+        cfg = _resolved_config(safe_config, _cwd(payload))
+        if boundary_supplied and "data_boundary" not in safe_config:
+            cfg["data_boundary"] = False
 
         evaluated = False
 
@@ -348,7 +539,7 @@ def run(payload: object, config: object = None) -> dict:
                 ledger_root=_config_root(cfg, "ledger_root"),
                 state_root=_config_root(cfg, "state_root"),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             sys.stderr.write("agent-discipline-watcher: prompt reporting failed\n")
             return gate("")
     except (OSError, ValueError, TypeError, RuntimeError, KeyError, re.error):
