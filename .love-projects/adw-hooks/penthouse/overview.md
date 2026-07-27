@@ -1,9 +1,9 @@
-<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
+<!-- love-render src=plan.json sha=6583ad64 do not hand-edit -->
 
 # ADW ecosystem hook integration
 
-> Do every act of your life as though it were the very last act of your life.
-> Marcus Aurelius
+> “I am richer than you, therefore my property is greater than yours;” “I am more eloquent than you, therefore my style is better than yours.” But you, after all, are neither property nor style.
+> Epictetus
 
 **Goal.** Integrate all 51 validated ADW-scoped ecosystem hook ideas into agent-discipline-watcher: 38 built across ten epics, 13 explicitly deferred with reasons. ADW stays a deterministic, blocking-or-injecting discipline layer across its four clients (Claude Code, Codex, OpenCode, Pi).
 

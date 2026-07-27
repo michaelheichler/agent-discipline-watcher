@@ -840,7 +840,7 @@
        ],
        "risk": "Aggressive when on, since it blocks a convenience feature. Hence default off and tied to the E7 data-boundary mode.",
        "craft_gate": "code-review",
-       "status": "todo",
+       "status": "done",
        "parallel": false,
        "ideas": [
         "Redaction Hooks: at-mention bypass blocker"

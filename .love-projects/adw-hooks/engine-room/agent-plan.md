@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
+<!-- love-render src=plan.json sha=6583ad64 do not hand-edit -->
 
 # ADW ecosystem hook integration agent brief
 
@@ -127,7 +127,7 @@ Honest limit: this worktree is a separate checkout, not an enforced sandbox. It 
   - no prompt text is persisted anywhere
 - Tasks:
   - [x] E3-S1-T1: prompt_submit.py firewall (inject-first)
-  - [ ] E3-S1-T2: At-mention bypass rule (config-gated)
+  - [x] E3-S1-T2: At-mention bypass rule (config-gated)
   - [ ] E3-S1-T3: Keyword-to-context injection map (config-gated)
 
 ## E3-S2 Just-in-time convention injection on edits

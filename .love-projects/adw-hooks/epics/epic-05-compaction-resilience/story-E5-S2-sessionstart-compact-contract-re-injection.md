@@ -1,4 +1,4 @@
-<!-- love-render src=plan.json sha=9a6a469f do not hand-edit -->
+<!-- love-render src=plan.json sha=6583ad64 do not hand-edit -->
 
 # E5-S2 SessionStart(compact) contract re-injection
 

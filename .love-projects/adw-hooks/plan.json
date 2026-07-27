@@ -658,7 +658,7 @@
             {
               "id": "E3-S1-T2",
               "t": "E3-S1-T2: At-mention bypass rule (config-gated)",
-              "done": false,
+              "done": true,
               "owner": "claude",
               "depends_on": [
                 "E3-S1-T1"
@@ -1900,8 +1900,8 @@
   ],
   "quick_stories": [],
   "epigraph": {
-    "text": "Do every act of your life as though it were the very last act of your life.",
-    "who": "Marcus Aurelius",
+    "text": "“I am richer than you, therefore my property is greater than yours;” “I am more eloquent than you, therefore my style is better than yours.” But you, after all, are neither property nor style.",
+    "who": "Epictetus",
     "source_url": "https://github.com/janthmueller/kathekon (offline fallback, tekloon API unreachable)"
   }
 }
