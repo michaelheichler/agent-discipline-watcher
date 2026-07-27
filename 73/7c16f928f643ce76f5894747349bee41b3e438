@@ -1,0 +1,80 @@
+hooks/prompt_submit.py
+  s_714cc14910fe91::t_b889ddfd62c7da 265,267-268
+  s_77e809bc06e0a8::t_cf31777591807f 511-515
+  s_ea26e62fa4dc9c::t_db7c9cee7ff5b3 62,240-241,250,256-258,261,263,266,269,271-275
+  s_714cc14910fe91::t_17c83d219cf6f0 188-190,192-193,196-197,200,205-207
+  s_77e809bc06e0a8::t_287809f71a4cb0 76
+  s_77e809bc06e0a8::t_3ef13a7d02e991 198
+  s_77e809bc06e0a8::t_184cfc9218f71b 194-195,199,201-204,208-239,259-260,262,264,270,276-299,301-302,317-320,322-328
+  s_714cc14910fe91::t_be547b05b5fec0 300,303-304,306-308,315-316,321
+  s_77e809bc06e0a8::t_c0900853a0cc83 80
+  s_77e809bc06e0a8::t_1e9ca84aae0130 437
+  s_77e809bc06e0a8::t_2392ce92188464 77-79
+  s_ea26e62fa4dc9c::t_41e57a5afa397c 9,81,191,242-249,251-255,305,309-314,542
+  s_714cc14910fe91::t_020bc1e3898c80 152-154
+  s_77e809bc06e0a8::t_a23ba6dc2a56b3 426
+  s_13a750a747e404::t_25c2e6e322e02d 26-29,352-364,366-369,403-404,478
+  s_77e809bc06e0a8::t_7d651e30e45778 147-151,155-157
+  s_77e809bc06e0a8::t_9792e12fd5ed4a 365
+  s_77e809bc06e0a8::t_317d71fce5d3d5 341
+  s_77e809bc06e0a8::t_d986bab0a27db8 482-483
+hooks/test_prompt_submit.py
+  s_ea26e62fa4dc9c::t_f588b6f06e3b82 12
+  s_91e6b1155a1d37::t_a3c66272ddf9bd 505-508
+  s_13a750a747e404::t_591d10fc1006fa 408-419
+  s_91e6b1155a1d37::t_bb1c642a5e3b5f 37-49
+  s_77e809bc06e0a8::t_04b6d1eb3cbb03 420-466,498-504,509-528,548-558
+  s_13a750a747e404::t_b78ffe7d86ab7d 261-302,305-310,312-337,339-377,379-407
+  s_77e809bc06e0a8::t_e030ae0741a68a 378
+  s_714cc14910fe91::t_025981e79381a4 467-497
+  s_ea26e62fa4dc9c::t_935189dc559275 311
+  s_ea26e62fa4dc9c::t_41e57a5afa397c 303-304,338,529-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "737c16f928f643ce76f5894747349bee41b3e438",
+  "prompts": {},
+  "sessions": {
+    "s_13a750a747e404": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05fc23d78ffeLuh3DpfXwVjinZ",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_714cc14910fe91": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05e3ddd7cffeuJe6MmJqmcIvCz",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_77e809bc06e0a8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05fb8d123ffeqw9Vhz8uOIqIyU",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_91e6b1155a1d37": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_05fa214eaffeqrAIQkS0avS67J",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_ea26e62fa4dc9c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0622562beffef7lF5LjbQROgyK",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
