@@ -64,17 +64,33 @@ def finding_key(finding: dict) -> tuple[str, str, str]:
     )
 
 
-def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
-    """Drop what the baseline already had, counting copies so that a repeated finding still reports its extras."""
-    budget = Counter(finding_key(row) for row in baseline)
+def rule_key(finding: dict) -> tuple[str, str]:
+    """Identify a finding by family and rule alone, ignoring the text it points at."""
+    return finding_key(finding)[:2]
+
+
+def _consume(findings: list[dict], budget: Counter, key_of) -> list[dict]:
+    """Spend one unit of budget per matching finding, returning whatever the budget could not cover."""
     kept = []
     for row in findings:
-        key = finding_key(row)
+        key = key_of(row)
         if budget[key]:
             budget[key] -= 1
             continue
         kept.append(row)
     return kept
+
+
+def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
+    """Drop the baseline's own findings, exact text first and rule alone second, because rewording an already offending line adds no debt."""
+    exact = Counter(finding_key(row) for row in baseline)
+    survivors = _consume(findings, exact, finding_key)
+    if not survivors:
+        return []
+    loose: Counter = Counter()
+    for key, remaining in exact.items():
+        loose[key[:2]] += remaining
+    return _consume(survivors, loose, rule_key)
 
 
 def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:

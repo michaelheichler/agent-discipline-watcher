@@ -152,7 +152,7 @@ An agent answers for the edit it made, not for the state of the file it opened. 
 
 Editing one line of a legacy file therefore reports nothing, while adding a new finding to that same file still blocks. A file with no committed version, an untracked file, or a path outside any repository has no baseline, so it is scanned whole.
 
-Findings match by family, rule, and snippet text rather than by line number, so an edit that shifts a file does not resurface its old debt. Repeats are counted, so a third copy of a finding that appeared twice in `HEAD` still reports.
+Matching runs in two passes. Exact family, rule, and snippet text first, so an edit that shifts a file does not resurface its old debt. Then family and rule alone, so rewording a line that already broke the same rule counts as the debt it always was rather than as something new. Both passes count copies, so an added occurrence still reports even when every earlier one is covered.
 
 ```json
 {

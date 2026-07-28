@@ -182,5 +182,30 @@ class BaselineRuntimeTests(unittest.TestCase):
         self.assertEqual(self._commit_gate(EXTRA_DEBT), "block")
 
 
+class RewordedFindingTests(unittest.TestCase):
+    """Renaming the text of a line that already broke the same rule adds no debt."""
+
+    def test_a_reworded_offender_is_not_new_debt(self):
+        before = [row("what_comment", "# Test 10: post-TeamDelete cleanup")]
+        after = [row("what_comment", "# Test 10: post-shutdown residual cleanup")]
+        self.assertEqual(baseline.subtract(after, before), [])
+
+    def test_an_added_offender_still_reports_alongside_a_reworded_one(self):
+        before = [row("what_comment", "# old one")]
+        after = [row("what_comment", "# reworded one"), row("what_comment", "# a brand new one")]
+        self.assertEqual(len(baseline.subtract(after, before)), 1)
+
+    def test_a_different_rule_is_never_covered_by_the_loose_pass(self):
+        before = [row("what_comment", "# old one")]
+        after = [row("banned_dash", "some other line")]
+        self.assertEqual(len(baseline.subtract(after, before)), 1)
+
+    def test_the_exact_pass_still_runs_first(self):
+        shared = row("what_comment", "# identical")
+        before = [shared, row("what_comment", "# other")]
+        after = [shared, row("what_comment", "# reworded other")]
+        self.assertEqual(baseline.subtract(after, before), [])
+
+
 if __name__ == "__main__":
     unittest.main()
