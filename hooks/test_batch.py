@@ -869,3 +869,59 @@ class BatchGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatchReadOnlyToolTests(unittest.TestCase):
+    """A file the agent only inspected must never reach the batch scan, whatever its content."""
+
+    DIRTY = "# increments the counter\nx = 1\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.cfg = {
+            "ledger_root": str(self.root / "ledger"),
+            "state_root": str(self.root / "state"),
+        }
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, name: str, text: str) -> Path:
+        path = self.root / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def _payload(self, calls: object) -> dict:
+        return {
+            "session_id": "s1",
+            "cwd": str(self.root),
+            "hook_event_name": "PostToolBatch",
+            "tool_calls": calls,
+        }
+
+    def _tool_call(self, tool_name: str, path: Path) -> dict:
+        return {
+            "tool_name": tool_name,
+            "tool_use_id": "tool-1",
+            "tool_input": {"file_path": str(path)},
+        }
+
+    def test_a_read_of_a_dirty_file_produces_no_batch_finding(self):
+        path = self._write("legacy.py", self.DIRTY)
+        for tool in ("Read", "Grep", "Glob", "NotebookRead", "Bash"):
+            with self.subTest(tool=tool):
+                payload = self._payload([self._tool_call(tool, path)])
+                self.assertEqual(batch.findings_for_batch(payload, self.cfg, "turn-4"), [])
+
+    def test_a_write_of_the_same_file_still_produces_a_finding(self):
+        path = self._write("legacy.py", self.DIRTY)
+        payload = self._payload([self._tool_call("Write", path)])
+        rules = [row["rule"] for row in batch.findings_for_batch(payload, self.cfg, "turn-4")]
+        self.assertIn("what_comment", rules)
+
+    def test_write_tool_names_match_the_post_tool_use_matcher(self):
+        config = json.loads((Path(__file__).resolve().parents[1] / "hooks" / "hooks.json").read_text())
+        groups = config["hooks"]["PostToolUse"]
+        matcher = {name.lower() for name in groups[0]["matcher"].split("|")}
+        self.assertEqual(matcher, set(batch.WRITE_TOOL_NAMES))

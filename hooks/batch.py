@@ -23,6 +23,10 @@ BATCH_EVENT = "PostToolBatch"
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
+# Mirrors the PostToolUse matcher in hooks/hooks.json, because PostToolBatch has no matcher of its own.
+WRITE_TOOL_NAMES = frozenset({
+    "write", "edit", "multiedit", "notebookedit", "apply_patch",
+})
 
 
 StatFingerprint = tuple[int, int, int, int, int]
@@ -229,6 +233,11 @@ def _canonical_value(value: object) -> Canonical | object:
     return state.values[0]
 
 
+def _is_write_tool(tool_name: str) -> bool:
+    """Report whether the call can change a file, so that a file the agent only read is never scanned as an edit."""
+    return tool_name.lower() in WRITE_TOOL_NAMES
+
+
 def _edited_paths(tool_input: dict) -> tuple[str, ...]:
     path = tool_input.get("file_path") or tool_input.get("path")
     if path:
@@ -290,7 +299,8 @@ def _normalized_call(call: dict, cwd: Path) -> _NormalizedCall:
         and canonical_value is not _INVALID
     )
     canonical = cast(Canonical, canonical_value) if valid else None
-    raw_paths = _edited_paths(cast(dict, tool_input)) if valid else ()
+    writes = valid and _is_write_tool(tool_name)
+    raw_paths = _edited_paths(cast(dict, tool_input)) if writes else ()
     signature = (
         call_id,
         tool_name,
