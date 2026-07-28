@@ -1,0 +1,21 @@
+hooks/batch.py
+  s_2197beb8592f89::t_5447ae5a69128a 26-29,236-240,302-303
+hooks/test_batch.py
+  s_2197beb8592f89::t_1c46142497d766 872-927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a781e1dfb79ab15efa3117c24c34aa79ac516abb",
+  "prompts": {},
+  "sessions": {
+    "s_2197beb8592f89": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8567170f-748a-47ab-a45c-e9a96e09b1e2",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
