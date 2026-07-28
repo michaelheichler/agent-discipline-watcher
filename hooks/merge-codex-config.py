@@ -11,6 +11,7 @@ except ModuleNotFoundError:
     tomllib = None
 
 
+# Only packages merged into this one belong here, because pruning a name we never absorbed deletes somebody else's hooks.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",
@@ -19,10 +20,7 @@ LEGACY = (
     "uncle-bobs-cc",
     "agent-discipline-watcher",
 )
-STALE_HOOK_COMMANDS = LEGACY + (
-    "knowledge-based-search",
-    "lean-ctx",
-)
+STALE_HOOK_COMMANDS = LEGACY
 HOOK_LIFECYCLES = {
     "ConfigChange",
     "InstructionsLoaded",
@@ -153,13 +151,23 @@ def read_snippet(skill_dir: Path) -> str:
     return snippet.read_text(encoding="utf-8").replace("__SKILL_DIR__", str(skill_dir))
 
 
+def require_toml_parser() -> None:
+    """Refuse to merge without a parser, because skipping validation would let a clobbered config install silently."""
+    if tomllib is None:
+        raise RuntimeError(
+            "Codex merge needs python3.11 or newer: tomllib is unavailable, so the merged "
+            "config cannot be validated and the merge is refused rather than risking your config."
+        )
+
+
 def validate_toml(text: str) -> None:
-    if tomllib is not None:
-        tomllib.loads(text)
+    require_toml_parser()
+    tomllib.loads(text)
 
 
 def validate_preserved_sections(before: str, after: str) -> None:
-    if tomllib is None or not before.strip():
+    require_toml_parser()
+    if not before.strip():
         return
     before_data = tomllib.loads(before)
     after_data = tomllib.loads(after)

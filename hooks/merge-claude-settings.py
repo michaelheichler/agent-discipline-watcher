@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 
+# Only packages merged into this one belong here, because pruning a name we never absorbed deletes somebody else's hooks.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",
@@ -12,10 +13,7 @@ LEGACY = (
     "agent-discipline-watcher",
     "uncle-bobs-cc",
 )
-STALE_HOOK_COMMANDS = LEGACY + (
-    "knowledge-based-search",
-    "lean-ctx",
-)
+STALE_HOOK_COMMANDS = LEGACY
 DROP = object()
 
 

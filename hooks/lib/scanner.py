@@ -103,6 +103,11 @@ DIRECTIVE_COMMENT_RE = re.compile(
     r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+)",
     re.IGNORECASE,
 )
+# Kept as an accepted alias because clean-coder-discipline was merged into this package and user shells still export it.
+LEGACY_ENV_NAMES = {
+    "ADW_FILE_BLOCK_LINES": "CLEANCODER_FILE_BLOCK_LINES",
+    "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
+}
 SUPPRESSION_MARKER = "craftsman" + "-ignore"
 SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b", re.IGNORECASE)
 
@@ -391,7 +396,7 @@ def _scan_docstrings(path: str, text: str) -> list[dict]:
 
 
 def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
-    hard = _int_setting(config, "file_block_lines", "CLEANCODER_FILE_BLOCK_LINES", 1000)
+    hard = _int_setting(config, "file_block_lines", "ADW_FILE_BLOCK_LINES", 1000)
     if count >= hard:
         return [_finding(
             "clean_code", "file_too_long", 1,
@@ -416,7 +421,7 @@ def _function_length_findings(path: str, text: str, config: dict) -> list[dict]:
         tree = ast.parse(text)
     except SyntaxError:
         return []
-    func_limit = _int_setting(config, "function_block_lines", "CLEANCODER_FUNC_BLOCK_LINES", 80)
+    func_limit = _int_setting(config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
     return [
         _finding(
             "clean_code", "function_too_long", node.lineno,
@@ -569,8 +574,16 @@ def _line_comment_slashes(line: str) -> int:
     return -1
 
 
+def _env_setting(env_name: str, default: int):
+    """Prefer the ADW name and accept the merged-package name, so that an existing user shell keeps working."""
+    for name in (env_name, LEGACY_ENV_NAMES.get(env_name)):
+        if name and name in os.environ:
+            return os.environ[name]
+    return default
+
+
 def _int_setting(config: dict, key: str, env_name: str, default: int) -> int:
-    raw = config.get(key, os.environ.get(env_name, default))
+    raw = config.get(key, _env_setting(env_name, default))
     try:
         return int(raw)
     except (TypeError, ValueError):

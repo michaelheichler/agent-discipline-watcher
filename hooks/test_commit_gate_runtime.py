@@ -137,6 +137,30 @@ class CommitCommandFormTests(unittest.TestCase):
     def test_repo_scoped_flag_reaches_the_gate(self):
         self.assertEqual(self.gate(f"git -C {self.repo} commit -m msg").get("decision"), "block")
 
+    def test_repo_redirecting_flags_resolve_to_the_named_work_tree(self):
+        elsewhere = self.root / "elsewhere"
+        elsewhere.mkdir()
+        outside = self.root / "outside"
+        outside.mkdir()
+        other = make_repo(elsewhere)
+        stage(other, "notes.md", DIRTY)
+        for command in [
+            f"git --work-tree {other} --git-dir {other}/.git commit -m msg",
+            f"git --work-tree={other} --git-dir={other}/.git commit -m msg",
+            f"git --git-dir {other}/.git commit -m msg",
+            f"git --git-dir={other}/.git commit -m msg",
+        ]:
+            with self.subTest(command=command):
+                payload = {"tool_input": {"command": command}, "cwd": str(outside)}
+                result = pre_commit.run(
+                    payload, None, ledger_root=self.root / "l2", state_root=self.root / "s2"
+                )
+                self.assertEqual(result.get("decision"), "block", command)
+                self.assertIn("notes.md", result["reason"])
+
+    def test_config_flag_consumes_its_value_without_moving_cwd(self):
+        self.assertEqual(self.gate("git -c core.hooksPath=/dev/null commit -m msg").get("decision"), "block")
+
     def test_non_commit_commands_are_ignored(self):
         for command in ["git log -n 5", "git status", "git commit-tree HEAD", "ls -la", "git push"]:
             with self.subTest(command=command):

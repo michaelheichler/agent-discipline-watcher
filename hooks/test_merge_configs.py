@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 CLAUDE = ROOT / "hooks" / "merge-claude-settings.py"
 CODEX = ROOT / "hooks" / "merge-codex-config.py"
-PI = ROOT / "hooks" / "merge-pi-settings.py"
+PI_MERGE = ROOT / "hooks" / "merge-pi-settings.py"
 CODEX_SNIPPET = ROOT / "hooks" / "codex-config.snippet.toml"
 README = ROOT / "README.md"
 
@@ -68,7 +68,7 @@ CLAUDE_SETTINGS = {
                     {"type": "command", "command": "python english-for-agents/hooks/post.py"},
                     {
                         "type": "command",
-                        "command": "python /x/knowledge-based-search/hooks/method_inject.py",
+                        "command": "python /x/unrelated-search-skill/hooks/method_inject.py",
                     },
                 ]
             }
@@ -98,15 +98,15 @@ UNCLE_BOBS_CC_SETTINGS = {
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/session_start.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/session_start.py"
                         ),
                     },
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_session_start.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/punct_session_start.py"
                         ),
                     },
                 ]
@@ -118,29 +118,29 @@ UNCLE_BOBS_CC_SETTINGS = {
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/gate.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/gate.py"
                         ),
                     },
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_gate.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/punct_gate.py"
                         ),
                     },
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/record.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/record.py"
                         ),
                     },
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_record.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/punct_record.py"
                         ),
                     },
                     {"type": "command", "command": "python /x/unrelated-stop.py"},
@@ -154,8 +154,8 @@ UNCLE_BOBS_CC_SETTINGS = {
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/pre_write.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/pre_write.py"
                         ),
                     },
                     {
@@ -170,8 +170,8 @@ UNCLE_BOBS_CC_SETTINGS = {
                     {
                         "type": "command",
                         "command": (
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh "
-                            "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/pre_commit_hook.py"
+                            "/x/uncle-bobs-cc/hooks/run.sh "
+                            "/x/uncle-bobs-cc/hooks/pre_commit_hook.py"
                         ),
                     }
                 ],
@@ -193,7 +193,7 @@ UserPromptSubmit = [{ command = "/x/professional-agent-helper/hooks/run.sh /x/pr
 [[hooks.UserPromptSubmit]]
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "python /x/knowledge-based-search/hooks/prompt_inject.py"
+command = "python /x/unrelated-search-skill/hooks/prompt_inject.py"
 
 # >>> agent-discipline-watcher >>>
 [[hooks.Stop]]
@@ -201,13 +201,13 @@ command = "python /x/knowledge-based-search/hooks/prompt_inject.py"
 type = "command"
 command = "/tmp/agent-discipline-watcher/hooks/run.sh Stop"
 
-[mcp_servers.knowledge-based-search]
-command = "/x/skill-model-loader/.venv/bin/python"
-args = ["/x/knowledge-based-search/server/mcp_server.py"]
+[mcp_servers.unrelated-search-skill]
+command = "/x/unrelated-runtime/.venv/bin/python"
+args = ["/x/unrelated-search-skill/server/mcp_server.py"]
 
-[mcp_servers.lean-ctx]
-command = "/x/lean-ctx/bin/lean-ctx"
-args = ["serve", "--config", "/x/lean-ctx/config.toml"]
+[mcp_servers.unrelated-context-skill]
+command = "/x/unrelated-context-skill/bin/unrelated-context-skill"
+args = ["serve", "--config", "/x/unrelated-context-skill/config.toml"]
 # <<< agent-discipline-watcher <<<
 
 [[hooks.Stop]]
@@ -223,18 +223,18 @@ CODEX_CONFIG_UNCLE_BOBS_CC = """
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/session_start.py"
+command = "/x/uncle-bobs-cc/hooks/run.sh /x/uncle-bobs-cc/hooks/session_start.py"
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_session_start.py"
+command = "/x/uncle-bobs-cc/hooks/run.sh /x/uncle-bobs-cc/hooks/punct_session_start.py"
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/gate.py"
+command = "/x/uncle-bobs-cc/hooks/run.sh /x/uncle-bobs-cc/hooks/gate.py"
 [[hooks.Stop.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/uncle-bobs-cc/hooks/run.sh /home/user/Development/skill-repos/uncle-bobs-cc/hooks/punct_gate.py"
+command = "/x/uncle-bobs-cc/hooks/run.sh /x/uncle-bobs-cc/hooks/punct_gate.py"
 [[hooks.Stop.hooks]]
 type = "command"
 command = "python /x/unrelated-stop.py"
@@ -245,27 +245,27 @@ CODEX_CONFIG_TRAILING_TABLES = """
 [[hooks.SessionStart]]
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/session_start.py"
+command = "/x/professional-agent-helper/hooks/run.sh /x/professional-agent-helper/hooks/session_start.py"
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/gate.py"
+command = "/x/professional-agent-helper/hooks/run.sh /x/professional-agent-helper/hooks/gate.py"
 
 [[hooks.UserPromptSubmit]]
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "/home/user/Development/skill-repos/professional-agent-helper/hooks/run.sh /home/user/Development/skill-repos/professional-agent-helper/hooks/prompt_inject.py"
+command = "/x/professional-agent-helper/hooks/run.sh /x/professional-agent-helper/hooks/prompt_inject.py"
 
 [[hooks.state.trusted_projects]]
-path = "/home/user/project1"
+path = "/x/project1"
 trust = "trusted"
 
 [[hooks.state.trusted_projects]]
-path = "/home/user/project2"
+path = "/x/project2"
 trust = "trusted"
 
-[projects."/home/user/project1"]
+[projects."/x/project1"]
 trust_level = "trusted"
 
 [tui.model_availability_nux]
@@ -337,8 +337,75 @@ def parse_parity_matrix(readme_text: str) -> list[dict[str, str]]:
 def assert_no_stale_hooks(text: str) -> None:
     assert "punctuation-discipline" not in text
     assert "english-for-agents" not in text
-    assert "knowledge-based-search/hooks" not in text
     assert "professional-agent-helper" not in text
+    assert "uncle-bobs-cc" not in text
+
+
+UNRELATED_SURVIVORS = ("unrelated-search-skill", "unrelated-context-skill", "unrelated-third-skill")
+UNRELATED_PACKAGE_SETTINGS = {
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {"type": "command", "command": "python /x/unrelated-search-skill/hooks/skill_gate.py"},
+                    {"type": "command", "command": "/x/unrelated-context-skill/bin/unrelated-context-skill serve"},
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "hooks": [
+                    {"type": "command", "command": "python /x/unrelated-third-skill/hooks/post.py"},
+                    {"type": "command", "command": "python punctuation-discipline/hooks/post.py"},
+                ]
+            }
+        ],
+    }
+}
+
+ARBITRARY_EVENT_SETTINGS = {
+    "hooks": {
+        "SubagentStop": [
+            {
+                "hooks": [
+                    {"type": "command", "command": f"{STALE_WATCHER_RUN_SH} SubagentStop"},
+                    {"type": "command", "command": "python /x/unrelated-subagent.py"},
+                ]
+            }
+        ],
+        "ConfigChange": [
+            {
+                "hooks": [
+                    {"type": "command", "command": "python punctuation-discipline/hooks/config.py"},
+                ]
+            }
+        ],
+    }
+}
+
+
+def merge_twice(script: Path, payload: dict) -> tuple[str, str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = Path(tmp) / "settings.json"
+        settings.write_text(json.dumps(payload))
+        run_merge(script, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+        once = settings.read_text()
+        run_merge(script, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+        return once, settings.read_text()
+
+
+def assert_arbitrary_event_prune(merged: dict) -> None:
+    text = json.dumps(merged)
+    assert "punctuation-discipline" not in text
+    assert "/stale/agent-discipline-watcher" not in text
+    subagent_entries = merged["hooks"]["SubagentStop"]
+    assert json.dumps(subagent_entries).count("run.sh SubagentStop") == 1, (
+        "SubagentStop must merge to exactly one watcher entry, re-running install must not stack"
+    )
+    assert "unrelated-subagent.py" in json.dumps(subagent_entries)
+    assert "ConfigChange" not in merged["hooks"] or "punctuation-discipline" not in json.dumps(
+        merged["hooks"]["ConfigChange"]
+    )
 
 
 CLAUDE_ROUTES = (
@@ -496,59 +563,67 @@ class MergeConfigTests(unittest.TestCase):
         for event in ("SessionStart", "PreToolUse", "PreCommit", "PostToolUse"):
             assert twice.count(f"run.sh {event}") == 1
 
-    def test_claude_prunes_watcher_entries_under_arbitrary_event_keys(self):
-        assert CLAUDE.exists()
-        settings_payload = {
-            "hooks": {
-                "SubagentStop": [
-                    {
-                        "hooks": [
-                            {"type": "command", "command": f"{STALE_WATCHER_RUN_SH} SubagentStop"},
-                            {"type": "command", "command": "python /x/unrelated-subagent.py"},
-                        ]
-                    }
-                ],
-                "ConfigChange": [
-                    {
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "python punctuation-discipline/hooks/config.py",
-                            },
-                        ]
-                    }
-                ],
-            }
+    def test_codex_merge_refuses_when_no_toml_parser_is_available(self):
+        merger = load_codex_merger()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(CODEX_CONFIG, encoding="utf-8")
+            before = config.read_text(encoding="utf-8")
+            with mock.patch.object(merger, "tomllib", None):
+                with self.assertRaises(RuntimeError) as caught:
+                    merger.merge(config, Path(SKILL_DIR))
+            assert "python3.11" in str(caught.exception)
+            assert config.read_text(encoding="utf-8") == before, (
+                "a refused merge must leave the original config untouched"
+            )
+
+    def test_pi_prunes_uncle_bobs_cc_and_keeps_unrelated_settings(self):
+        assert PI_MERGE.exists()
+        payload = {
+            "notes": "review the professional-agent-helper config style before the next release",
+            "unrelatedFlag": True,
+            "extensions": [
+                "/x/unrelated/index.ts",
+                "/x/uncle-bobs-cc/pi/extensions/uncle-bobs-cc/index.ts",
+                "/x/punctuation-discipline/pi/extensions/punctuation-discipline/index.ts",
+            ],
         }
         with tempfile.TemporaryDirectory() as tmp:
             settings = Path(tmp) / "settings.json"
-            settings.write_text(json.dumps(settings_payload))
-            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
-            once = settings.read_text()
-            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
-            twice = settings.read_text()
-        assert once == twice, "double merge must be idempotent under arbitrary event keys"
-        merged = json.loads(twice)
-        text = json.dumps(merged)
+            settings.write_text(json.dumps(payload), encoding="utf-8")
+            run_merge(PI_MERGE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            merged = json.loads(settings.read_text(encoding="utf-8"))
+        assert merged["notes"] == payload["notes"], "unrelated user text must survive the merge"
+        assert merged["unrelatedFlag"] is True
+        assert "uncle-bobs-cc" not in json.dumps(merged["extensions"])
+        assert "punctuation-discipline" not in json.dumps(merged["extensions"])
+        assert "/x/unrelated/index.ts" in merged["extensions"]
+
+    def test_claude_leaves_unrelated_package_hooks_alone(self):
+        assert CLAUDE.exists()
+        once, twice = merge_twice(CLAUDE, UNRELATED_PACKAGE_SETTINGS)
+        assert once == twice, "a second merge must not disturb unrelated hooks"
+        text = json.dumps(json.loads(twice))
+        for survivor in UNRELATED_SURVIVORS:
+            assert survivor in text, (
+                f"{survivor} was never merged into this package, so installing must leave its hooks alone"
+            )
         assert "punctuation-discipline" not in text
-        assert "/stale/agent-discipline-watcher" not in text
-        subagent_entries = merged["hooks"]["SubagentStop"]
-        assert json.dumps(subagent_entries).count("run.sh SubagentStop") == 1, (
-            "SubagentStop must merge to exactly one watcher entry, re-running install must not stack"
-        )
-        assert "unrelated-subagent.py" in json.dumps(subagent_entries)
-        assert "ConfigChange" not in merged["hooks"] or "punctuation-discipline" not in json.dumps(
-            merged["hooks"]["ConfigChange"]
-        )
+
+    def test_claude_prunes_watcher_entries_under_arbitrary_event_keys(self):
+        assert CLAUDE.exists()
+        once, twice = merge_twice(CLAUDE, ARBITRARY_EVENT_SETTINGS)
+        assert once == twice, "double merge must be idempotent under arbitrary event keys"
+        assert_arbitrary_event_prune(json.loads(twice))
 
     def test_pi_double_merge_keeps_single_extension(self):
-        assert PI.exists()
+        assert PI_MERGE.exists()
         with tempfile.TemporaryDirectory() as tmp:
             settings = Path(tmp) / "settings.json"
             settings.write_text(json.dumps(PI_SETTINGS))
-            run_merge(PI, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            run_merge(PI_MERGE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
             once = settings.read_text()
-            run_merge(PI, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            run_merge(PI_MERGE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
             twice = settings.read_text()
         assert once == twice
         merged = json.loads(twice)
@@ -579,11 +654,11 @@ class MergeConfigTests(unittest.TestCase):
         assert "supported, unwired" not in README.read_text()
 
     def test_pi_removes_legacy_extensions_and_adds_one_watcher_extension(self):
-        assert PI.exists()
+        assert PI_MERGE.exists()
         with tempfile.TemporaryDirectory() as tmp:
             settings = Path(tmp) / "settings.json"
             settings.write_text(json.dumps(PI_SETTINGS))
-            run_merge(PI, "--settings", str(settings), "--skill-dir", "/tmp/agent-discipline-watcher")
+            run_merge(PI_MERGE, "--settings", str(settings), "--skill-dir", "/tmp/agent-discipline-watcher")
             merged = json.loads(settings.read_text())
         assert_pi_merge(merged)
 
@@ -687,10 +762,10 @@ def assert_codex_merge(merged: str) -> None:
     assert "clean-coder-discipline" not in merged
     assert "unrelated-stop.py" in merged
     assert "unrelated-inline.py" in merged
-    assert "[mcp_servers.knowledge-based-search]" in merged
-    assert "/x/knowledge-based-search/server/mcp_server.py" in merged
-    assert "[mcp_servers.lean-ctx]" in merged
-    assert "/x/lean-ctx/config.toml" in merged
+    assert "[mcp_servers.unrelated-search-skill]" in merged
+    assert "/x/unrelated-search-skill/server/mcp_server.py" in merged
+    assert "[mcp_servers.unrelated-context-skill]" in merged
+    assert "/x/unrelated-context-skill/config.toml" in merged
     assert "\n[[hooks.UserPromptSubmit]]\n\n[[hooks.UserPromptSubmit]]" not in merged
     assert_watcher_hook_family(merged)
     assert 'matcher = "Bash"' in merged
@@ -700,7 +775,7 @@ def assert_codex_merge(merged: str) -> None:
 def assert_trailing_tables_survive(merged: str) -> None:
     assert "professional-agent-helper" not in merged
     assert merged.count("[[hooks.state.trusted_projects]]") == 2
-    assert '[projects."/home/user/project1"]' in merged
+    assert '[projects."/x/project1"]' in merged
     assert "[tui.model_availability_nux]" in merged
     for server in ("alpha", "beta", "gamma"):
         assert f"[mcp_servers.{server}]" in merged

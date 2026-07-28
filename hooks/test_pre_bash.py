@@ -159,6 +159,53 @@ def test_authorization_releases_the_bash_policy(tmp_path):
     assert rules("./install.sh -y", tmp_path, config) == []
 
 
+@pytest.mark.parametrize("command", [
+    "git commit -m 'document the -n flag behavior'",
+    'git commit -m "fix(cli): support -n for dry run"',
+    "git commit -m 'explain --no-verify in the docs'",
+])
+def test_no_verify_inside_a_quoted_message_is_not_a_bypass(command):
+    assert "commit_gate_bypass" not in rules(command)
+
+
+def test_short_flag_belonging_to_another_command_is_not_a_bypass():
+    assert "commit_gate_bypass" not in rules('git commit -m "fix" && npm test -n')
+
+
+@pytest.mark.parametrize("command", [
+    'echo "document that ADW_MAX_SCAN_BYTES=1 disables the cap" >> NOTES.md',
+    'grep -n "ADW_ALLOW_PROTECTED_EDIT=" hooks/lib/config.py',
+    "rg CLEANCODER_FUNC_BLOCK_LINES=500 docs/",
+])
+def test_cap_variable_named_in_text_is_not_an_override(command):
+    assert "cap_override" not in rules(command)
+
+
+def test_cap_variable_in_assignment_position_still_blocks():
+    assert "cap_override" in rules("ADW_MAX_SCAN_BYTES=1 python3 -m pytest -q")
+    assert "cap_override" in rules("cd repo && ADW_ALLOW_PROTECTED_EDIT=1 ./tool")
+
+
+def test_mutation_and_live_path_in_different_segments_do_not_combine(tmp_path):
+    settings = str(tmp_path / ".claude/settings.json")
+    assert rules(f"rm /tmp/junk && cat {settings}", tmp_path) == []
+    assert rules(f"cat {settings} && rm /tmp/junk", tmp_path) == []
+
+
+def test_mutation_and_live_path_in_the_same_segment_still_block(tmp_path):
+    settings = str(tmp_path / ".claude/settings.json")
+    assert "live_client_surface" in rules(f"ls /tmp && rm {settings}", tmp_path)
+
+
+def test_sandbox_home_in_any_segment_releases_the_installer_rule():
+    assert rules('HOME="$(mktemp -d)" ./install.sh -y') == []
+
+
+def test_redirect_text_inside_quotes_is_not_a_mutation(tmp_path):
+    settings = str(tmp_path / ".claude/settings.json")
+    assert rules(f"grep 'a > b' {settings}", tmp_path) == []
+
+
 def test_empty_command_is_allowed():
     assert rules("") == []
 

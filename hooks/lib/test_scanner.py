@@ -1,4 +1,27 @@
 import scanner
+
+
+def test_length_caps_read_the_adw_env_names(monkeypatch):
+    monkeypatch.setenv("ADW_FUNC_BLOCK_LINES", "2")
+    body = "def wide():\n" + "".join(f"    x{n} = {n}\n" for n in range(6))
+    rules = [row["rule"] for row in scanner.scan_all("a.py", body, {})]
+    assert "function_too_long" in rules
+
+
+def test_length_caps_still_accept_the_merged_package_env_names(monkeypatch):
+    monkeypatch.delenv("ADW_FUNC_BLOCK_LINES", raising=False)
+    monkeypatch.setenv("CLEANCODER_FUNC_BLOCK_LINES", "2")
+    body = "def wide():\n" + "".join(f"    x{n} = {n}\n" for n in range(6))
+    rules = [row["rule"] for row in scanner.scan_all("a.py", body, {})]
+    assert "function_too_long" in rules
+
+
+def test_adw_env_name_wins_over_the_legacy_alias(monkeypatch):
+    monkeypatch.setenv("ADW_FUNC_BLOCK_LINES", "500")
+    monkeypatch.setenv("CLEANCODER_FUNC_BLOCK_LINES", "2")
+    body = "def wide():\n" + "".join(f"    x{n} = {n}\n" for n in range(6))
+    rules = [row["rule"] for row in scanner.scan_all("a.py", body, {})]
+    assert "function_too_long" not in rules
 from scanner import scan_all
 from config import effective_config
 

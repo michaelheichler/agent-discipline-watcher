@@ -23,16 +23,15 @@ INSTALLER_NAMES = frozenset({
 INTERPRETERS = frozenset({
     "python", "python3", "sh", "bash", "zsh", "dash", "command", "env", "exec", "sudo", "time", "nohup",
 })
-SEPARATORS = frozenset({"&&", "||", ";", "|", "(", ")"})
-SANDBOX_HOME_RE = re.compile(r"\bHOME\s*=")
-NO_VERIFY_RE = re.compile(r"\bgit\s+commit\b[^\n]*?(?:--no-verify\b|\s-n(?=\s|$))")
-CAP_OVERRIDE_RE = re.compile(
-    r"\b(?:CLEANCODER_FUNC_BLOCK_LINES|CLEANCODER_FILE_BLOCK_LINES"
-    r"|ADW_MAX_SCAN_BYTES|ADW_ALLOW_PROTECTED_EDIT)\s*="
-)
-STATE_DELETE_RE = re.compile(
-    r"\b(?:rm|unlink|shred)\b[^\n]*?(?:\.agent-discipline\b|agent-discipline/(?:state|ledger))"
-)
+SEPARATORS = frozenset({"&&", "||", ";", "|", "&", "(", ")"})
+CAP_VARS = frozenset({
+    "CLEANCODER_FUNC_BLOCK_LINES", "CLEANCODER_FILE_BLOCK_LINES",
+    "ADW_FUNC_BLOCK_LINES", "ADW_FILE_BLOCK_LINES",
+    "ADW_MAX_SCAN_BYTES", "ADW_ALLOW_PROTECTED_EDIT",
+})
+NO_VERIFY_FLAGS = frozenset({"--no-verify", "-n"})
+STATE_DELETE_VERBS = frozenset({"rm", "unlink", "shred"})
+STATE_TARGET_RE = re.compile(r"\.agent-discipline\b|agent-discipline/(?:state|ledger)")
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
 # Strips the of= and if= style operands used by dd, because the path hides behind the key.
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -43,7 +42,7 @@ RULES = (
      "Re-run it with a sandbox HOME such as HOME=\"$(mktemp -d)\"."),
     ("commit_gate_bypass",
      "Commit skips the pre-commit gate",
-     "Drop --no-verify and repair the reported finding."),
+     "Drop the no-verify flag and repair the reported finding."),
     ("cap_override",
      "Discipline cap or escape overridden on the command line",
      "Fix the code shape instead of raising the cap."),
@@ -69,70 +68,130 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
-    """Return every blocking finding for one Bash command string."""
+    """Return every blocking finding for one Bash command string, judged per shell segment."""
     if not command or authorized(config):
         return []
+    segments = _segments(command)
+    sandboxed = any(_sets_home(segment) for segment in segments)
     hits = []
-    if _runs_installer(command) and not SANDBOX_HOME_RE.search(command):
+    if not sandboxed and any(_runs_installer(segment) for segment in segments):
         hits.append("install_without_sandbox_home")
-    if NO_VERIFY_RE.search(command):
+    if any(_skips_commit_gate(segment) for segment in segments):
         hits.append("commit_gate_bypass")
-    if CAP_OVERRIDE_RE.search(command):
+    if any(_overrides_cap(segment) for segment in segments):
         hits.append("cap_override")
-    if STATE_DELETE_RE.search(command):
+    if any(_deletes_state(segment) for segment in segments):
         hits.append("state_deletion")
-    if _mutates_live_client(command, home):
+    if any(_mutates_live_client(segment, home) for segment in segments):
         hits.append("live_client_surface")
     return [_finding(rule, command) for rule in hits]
 
 
-def _runs_installer(command: str) -> bool:
-    """Report an installer only when it sits in command position, so that a quoted mention never blocks."""
-    tokens = _shell_tokens(command)
-    for index, token in enumerate(tokens):
-        if _basename(token) not in INSTALLER_NAMES:
+def _segments(command: str) -> list[list[str]]:
+    """Split into shell segments of raw tokens, keeping quotes so that quoted text can be masked later."""
+    try:
+        lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        tokens = command.split()
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in SEPARATORS:
+            if current:
+                segments.append(current)
+            current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _is_quoted(token: str) -> bool:
+    return len(token) > 1 and token[0] in "\"'" and token[-1] == token[0]
+
+
+def _bare(token: str) -> str:
+    return token[1:-1] if _is_quoted(token) else token
+
+
+def _segment_text(segment: list[str]) -> str:
+    """Join a segment with quoted tokens blanked, because text inside quotes is data rather than shell syntax."""
+    return " ".join("''" if _is_quoted(token) else token for token in segment)
+
+
+def _leading_assignments(segment: list[str]) -> list[str]:
+    """Return the env assignments that prefix a command, stopping at the first real word."""
+    names = []
+    for token in segment:
+        if _is_quoted(token):
+            break
+        name, separator, _ = token.partition("=")
+        if not separator or not name:
+            break
+        names.append(name)
+    return names
+
+
+def _sets_home(segment: list[str]) -> bool:
+    return "HOME" in _leading_assignments(segment)
+
+
+def _overrides_cap(segment: list[str]) -> bool:
+    return any(name in CAP_VARS for name in _leading_assignments(segment))
+
+
+def _words(segment: list[str]) -> list[str]:
+    return [_bare(token) for token in segment]
+
+
+def _runs_installer(segment: list[str]) -> bool:
+    """Report an installer only in command position, so that a quoted mention never blocks."""
+    for index, token in enumerate(segment):
+        if _is_quoted(token) or _basename(token) not in INSTALLER_NAMES:
             continue
         if index == 0:
             return True
-        previous = tokens[index - 1]
-        if previous in SEPARATORS or _basename(previous) in INTERPRETERS:
+        if _basename(segment[index - 1]) in INTERPRETERS:
             return True
     return False
 
 
-def _basename(token: str) -> str:
-    return PurePosixPath(token.strip("\"',")).name
-
-
-def _shell_tokens(command: str) -> list[str]:
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
-        lexer.whitespace_split = True
-        return list(lexer)
-    except ValueError:
-        return command.split()
-
-
-def _mutates_live_client(command: str, home: str | os.PathLike[str] | None) -> bool:
-    """Require both a mutating form and a live client target, so that reading a live file stays allowed."""
-    if not (WRITE_REDIRECT_RE.search(command) or MUTATING_VERB_RE.search(command)):
+def _skips_commit_gate(segment: list[str]) -> bool:
+    """Match the no-verify flags only as bare argument tokens of a git commit in this segment."""
+    words = _words(segment)
+    if "git" not in words or "commit" not in words:
         return False
-    return any(is_live_client_path(token, home) for token in _path_tokens(command))
+    if words.index("git") > words.index("commit"):
+        return False
+    return any(token in NO_VERIFY_FLAGS for token in segment if not _is_quoted(token))
 
 
-def _path_tokens(command: str) -> list[str]:
-    """Split a command into candidate path tokens, falling back to whitespace splitting when quoting is unbalanced."""
-    try:
-        raw = shlex.split(command, posix=True)
-    except ValueError:
-        raw = re.split(r"[\s;&|<>()]+", command)
-    tokens = []
-    for token in raw:
-        for part in re.split(r"[<>|;&]+", token):
-            expanded = _expand_home(part.strip().strip("\"'"))
+def _deletes_state(segment: list[str]) -> bool:
+    words = _words(segment)
+    if not any(_basename(word) in STATE_DELETE_VERBS for word in words):
+        return False
+    return any(STATE_TARGET_RE.search(word) for word in words)
+
+
+def _mutates_live_client(segment: list[str], home: str | os.PathLike[str] | None) -> bool:
+    """Require the mutating form and the live client target inside the same segment, so that a read stays allowed."""
+    text = _segment_text(segment)
+    if not (WRITE_REDIRECT_RE.search(text) or MUTATING_VERB_RE.search(text)):
+        return False
+    return any(is_live_client_path(path, home) for path in _segment_paths(segment))
+
+
+def _segment_paths(segment: list[str]) -> list[str]:
+    paths = []
+    for token in segment:
+        for part in re.split(r"[<>|;&]+", _bare(token)):
+            expanded = _expand_home(part.strip())
             if expanded:
-                tokens.append(expanded)
-    return tokens
+                paths.append(expanded)
+    return paths
 
 
 def _expand_home(token: str) -> str:
@@ -141,6 +200,10 @@ def _expand_home(token: str) -> str:
     if not match:
         return token
     return "~" + token[match.end():]
+
+
+def _basename(token: str) -> str:
+    return PurePosixPath(_bare(token).strip(",")).name
 
 
 def _finding(rule: str, command: str) -> dict:

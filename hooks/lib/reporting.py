@@ -10,7 +10,11 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib import session_state
+try:
+    # Relative first because hook entry scripts import this as lib.reporting, where a bare name cannot resolve.
+    from . import session_state
+except ImportError:
+    import session_state
 
 LEDGER_FILENAME = "ledger.jsonl"
 ADJUDICATION_FILENAME = "adjudications.jsonl"

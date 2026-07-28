@@ -168,7 +168,7 @@ The `self_protection` family blocks routes around the gates. Its rules are built
 | `config_seal` | Editing an existing `.agent-discipline.json`. First creation is allowed, and a stat error counts as present so the seal fails closed. |
 | `install_without_sandbox_home` | Running `install.sh` or a merge script without setting `HOME`. |
 | `commit_gate_bypass` | A `git commit` carrying the no-verify flag, in either the long or the short form. |
-| `cap_override` | Setting `CLEANCODER_FUNC_BLOCK_LINES`, `CLEANCODER_FILE_BLOCK_LINES`, `ADW_MAX_SCAN_BYTES`, or `ADW_ALLOW_PROTECTED_EDIT` on a command line. |
+| `cap_override` | Setting `ADW_FUNC_BLOCK_LINES`, `ADW_FILE_BLOCK_LINES`, `ADW_MAX_SCAN_BYTES`, or `ADW_ALLOW_PROTECTED_EDIT` in command position, or one of the accepted `CLEANCODER_` aliases. |
 | `state_deletion` | Deleting watcher state or the gate config with `rm`, `unlink`, or `shred`. |
 
 Reading is never blocked. `cat`, `grep`, `git diff`, and `python3 -m json.tool` on a live client file all pass, and stderr handling such as `2>/dev/null`, `2>>log`, or `2>&1` is not treated as a write.
@@ -184,6 +184,8 @@ or `"protected_paths_authorized": true` in `.agent-discipline.json`. The agent c
 Scratch and transcript paths under the Claude home are not wiring, so `~/.claude/jobs`, `~/.claude/projects`, `~/.claude/plugins`, `~/.claude/todos`, and `~/.claude/shell-snapshots` stay writable.
 
 `max_rows` can be set in `.agent-discipline.json` to change how many compact report rows are shown before the full local report path.
+
+Length caps come from `.agent-discipline.json` first, then the environment. `function_block_lines` pairs with `ADW_FUNC_BLOCK_LINES` and defaults to 80. `file_block_lines` pairs with `ADW_FILE_BLOCK_LINES` and defaults to 1000. The older `CLEANCODER_FUNC_BLOCK_LINES` and `CLEANCODER_FILE_BLOCK_LINES` names stay accepted as aliases, because clean-coder-discipline was merged into this package and existing shells still export them. The `ADW_` name wins when both are set.
 
 `max_scan_bytes` can be set in `.agent-discipline.json`, or through the `ADW_MAX_SCAN_BYTES` environment variable, to cap how large a file the hooks will read. Files over the cap and files that look binary are skipped. The default is 1000000 bytes.
 

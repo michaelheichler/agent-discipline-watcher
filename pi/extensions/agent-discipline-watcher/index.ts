@@ -26,15 +26,17 @@ sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "hooks"))
 
 target = sys.argv[1]
+project_cwd = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
 text = Path(target).read_text(errors="replace")
-config = {"punctuation": True, "english": True, "clean_code": True}
 
 try:
+    from hooks.lib.config import effective_config
     from hooks.lib.scanner import scan_all
 except Exception:
+    from lib.config import effective_config
     from lib.scanner import scan_all
 
-print(json.dumps(scan_all(target, text, config) or []))
+print(json.dumps(scan_all(target, text, effective_config(None, project_cwd)) or []))
 `;
 
 type Finding = {
@@ -49,8 +51,24 @@ type Finding = {
   next_code?: string;
 };
 
-function editedPath(event: any): string | undefined {
+type PiEvent = {
+  systemPrompt?: string;
+  toolName?: unknown;
+  cwd?: string;
+  input?: { path?: string; file_path?: string; filename?: string; cwd?: string };
+  result?: { path?: string };
+};
+
+type PiHost = { on(name: string, handler: (event: PiEvent) => Promise<unknown>): void };
+
+class ScanFailure extends Error {}
+
+function editedPath(event: PiEvent): string | undefined {
   return event?.input?.path ?? event?.input?.file_path ?? event?.input?.filename ?? event?.result?.path;
+}
+
+function projectCwd(event: PiEvent, file: string): string {
+  return event?.input?.cwd ?? event?.cwd ?? path.dirname(file);
 }
 
 function isWriteTool(name: unknown): boolean {
@@ -58,18 +76,33 @@ function isWriteTool(name: unknown): boolean {
   return tool === "write" || tool === "edit" || tool === "multiedit";
 }
 
-async function scan(file: string): Promise<Finding[]> {
+function failureText(failure: unknown): string {
+  if (failure && typeof failure === "object") {
+    const record = failure as { stderr?: unknown; message?: unknown };
+    return String(record.stderr || record.message || "scanner did not run");
+  }
+  return String(failure ?? "scanner did not run");
+}
+
+async function scan(file: string, cwd: string): Promise<Finding[]> {
+  let stdout = "";
   try {
-    const { stdout } = await run("python3", ["-c", PY_SCAN, file, ROOT], {
+    ({ stdout } = await run("python3", ["-c", PY_SCAN, file, ROOT, cwd], {
       timeout: 30000,
       env: { ...process.env, PYTHONPATH: `${ROOT}${path.delimiter}${path.join(ROOT, "hooks")}` },
       maxBuffer: 1024 * 1024,
-    });
-    const findings = JSON.parse(stdout || "[]");
-    return Array.isArray(findings) ? findings : [];
-  } catch {
-    return [];
+    }));
+  } catch (failure: unknown) {
+    throw new ScanFailure(failureText(failure));
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout || "[]");
+  } catch {
+    throw new ScanFailure(`scanner returned non JSON output: ${short(stdout, "empty")}`);
+  }
+  if (!Array.isArray(parsed)) throw new ScanFailure("scanner returned a non list result");
+  return parsed as Finding[];
 }
 
 function short(text: unknown, fallback: string): string {
@@ -104,16 +137,26 @@ function compactReport(rows: Array<{ file: string; finding: Finding }>): string 
   return lines.join("\n");
 }
 
-export default function (pi: any) {
-  pi.on("before_agent_start", async (event: any) => {
+export default function (pi: PiHost) {
+  pi.on("before_agent_start", async (event: PiEvent) => {
     return { systemPrompt: `${event?.systemPrompt ?? ""}\n\n${POLICY}` };
   });
 
-  pi.on("tool_result", async (event: any) => {
+  pi.on("tool_result", async (event: PiEvent) => {
     if (!isWriteTool(event?.toolName)) return undefined;
     const file = editedPath(event);
     if (!file) return undefined;
-    const findings = await scan(file);
+    let findings: Finding[];
+    try {
+      findings = await scan(file, projectCwd(event, file));
+    } catch (failure: unknown) {
+      // Fails closed like the OpenCode adapter, because an unusable scanner must not read as a clean file.
+      const reason = failureText(failure);
+      return {
+        content: [{ type: "text", text: `Agent Discipline Watcher could not scan ${file}: ${reason}` }],
+        isError: true,
+      };
+    }
     if (findings.length) {
       const message = compactReport(findings.map((finding) => ({ file, finding })));
       return { content: [{ type: "text", text: message }], isError: true };

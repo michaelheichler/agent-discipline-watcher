@@ -92,11 +92,26 @@ def test_pi_extension_registers_one_combined_lifecycle():
 
 def test_pi_extension_shells_to_combined_python_scanner():
     source = read(EXTENSION)
-    assert 'run("python3", ["-c", PY_SCAN, file, ROOT]' in source
-    assert "scan_all(target, text, config)" in source
-    assert '"punctuation": True' in source
-    assert '"english": True' in source
-    assert '"clean_code": True' in source
+    assert 'run("python3", ["-c", PY_SCAN, file, ROOT, cwd]' in source
+    assert "scan_all(target, text, effective_config(None, project_cwd))" in source
+
+
+def test_pi_extension_resolves_project_config_from_the_edited_tree():
+    source = read(EXTENSION)
+    assert "def projectCwd" in source.replace("function ", "def ")
+    assert "effective_config(None, project_cwd)" in source, (
+        "the Pi surface must honour .agent-discipline.json like every other entry point"
+    )
+    assert '"punctuation": True' not in source, (
+        "hardcoding the families would override the project gate config"
+    )
+
+
+def test_pi_extension_fails_closed_when_the_scanner_breaks():
+    source = read(EXTENSION)
+    assert "class ScanFailure" in source
+    assert "could not scan" in source
+    assert "catch {\n    return [];" not in source, "a broken scanner must not read as a clean file"
 
 
 def test_pi_extension_scans_write_results_and_returns_one_error():

@@ -7,7 +7,7 @@ tool_matcher: Write|Edit|MultiEdit
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: (?:/(?:Users|home)/[^/]+|~)/(?:\.claude/(?:settings[\w.]*\.json|skills/|agents/|CLAUDE\.md)|\.codex/|\.pi/|\.agents/|\.local/bin/|\.config/opencode/)
+    pattern: (?:/(?:Users|home)/[^/]+|~)/(?:\.claude/(?:settings[\w.]*\.json|skills/|agents/|hooks/|commands/|CLAUDE\.md)|\.codex/|\.pi/|\.agents/|\.local/bin/|\.config/opencode/)
 ---
 
 **Blocked: write to an installed client surface.**

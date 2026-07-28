@@ -3,9 +3,8 @@
 Copy the prompt below into a fresh Claude Code session using Opus.
 
 ```text
-You are the primary implementation agent for this repository:
-
-/Users/michael/dev/skills/agent-discipline-watcher
+You are the primary implementation agent for the agent-discipline-watcher repository.
+Run this prompt from that repository's checkout. Do not paste an absolute path.
 
 Work autonomously through the entire task. Fix every confirmed defect, bypass, false positive, dead integration, and incomplete installation path described below. Do not stop after fixing only the first issue. Do not merely write a plan. Inspect, implement, test, document, and report the completed result.
 

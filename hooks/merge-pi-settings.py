@@ -4,13 +4,16 @@ import json
 from pathlib import Path
 
 
+# Only packages merged into this one belong here, because pruning a name we never absorbed deletes somebody else's extension.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",
     "clean-coder-discipline",
     "professional-agent-helper",
+    "uncle-bobs-cc",
     "agent-discipline-watcher",
 )
+EXTENSION_KEY = "extensions"
 
 
 def has_legacy(value):
@@ -18,16 +21,14 @@ def has_legacy(value):
 
 
 def prune(value):
-    if isinstance(value, list):
-        return [prune(item) for item in value if not has_legacy(item)]
-    if isinstance(value, dict):
-        cleaned = {}
-        for key, item in value.items():
-            pruned = prune(item)
-            if not has_legacy(pruned):
-                cleaned[key] = pruned
-        return cleaned
-    return value
+    """Drop watcher extension entries only, because unrelated settings that merely mention a name are user data."""
+    if not isinstance(value, dict):
+        return value
+    cleaned = dict(value)
+    entries = cleaned.get(EXTENSION_KEY)
+    if isinstance(entries, list):
+        cleaned[EXTENSION_KEY] = [item for item in entries if not has_legacy(item)]
+    return cleaned
 
 
 def load_json(path):

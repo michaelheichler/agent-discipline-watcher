@@ -82,6 +82,9 @@ def _record(payload: dict, findings: list[dict], turn_id: str, ledger_root, dura
     )
 
 
+PATH_FLAGS = frozenset({"-C", "--work-tree", "--git-dir"})
+
+
 def _bash_command(payload: dict) -> str:
     tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
     command = tool_input.get("command") or tool_input.get("cmd") or ""
@@ -135,18 +138,29 @@ def _segments(command: str) -> list[list[str]]:
     return segments
 
 
-def _skip_git_flag(segment: list[str], cursor: int, current: Path) -> tuple[int, Path] | None:
-    """Step over one leading git flag, returning (next_cursor, cwd) or None on a malformed -C."""
+def _flag_cwd(flag: str, current: Path, value: str) -> Path:
+    """Resolve one path-bearing git flag, mapping a .git directory back to its work tree."""
+    resolved = _resolve_cwd(current, value)
+    if flag == "--git-dir" and resolved.name == ".git":
+        return resolved.parent
+    return resolved
+
+
+def _skip_git_flag(segment: list[str], cursor: int, current: Path) -> tuple[int, Path, bool] | None:
+    """Step over one leading git flag, returning (next_cursor, cwd, pins_work_tree) or None when malformed."""
     token = segment[cursor]
-    if token == "-C":
+    if token.startswith("-C") and len(token) > 2:
+        return cursor + 1, _resolve_cwd(current, token[2:]), False
+    name, separator, inline = token.partition("=")
+    if separator and name in PATH_FLAGS:
+        return cursor + 1, _flag_cwd(name, current, inline), name == "--work-tree"
+    if token in PATH_FLAGS:
         if cursor + 1 >= len(segment):
             return None
-        return cursor + 2, _resolve_cwd(current, segment[cursor + 1])
-    if token.startswith("-C") and len(token) > 2:
-        return cursor + 1, _resolve_cwd(current, token[2:])
-    if token in {"-c", "--git-dir", "--work-tree"}:
-        return cursor + 2, current
-    return cursor + 1, current
+        return cursor + 2, _flag_cwd(token, current, segment[cursor + 1]), token == "--work-tree"
+    if token == "-c":
+        return cursor + 2, current, False
+    return cursor + 1, current, False
 
 
 def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
@@ -154,6 +168,7 @@ def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
     if not segment or segment[0] != "git":
         return None
     current = cwd
+    pinned = False
     cursor = 1
     while cursor < len(segment):
         token = segment[cursor]
@@ -161,7 +176,10 @@ def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
             step = _skip_git_flag(segment, cursor, current)
             if step is None:
                 return None
-            cursor, current = step
+            cursor, candidate, pins = step
+            if pins or not pinned:
+                current = candidate
+            pinned = pinned or pins
             continue
         return current if token == "commit" else None
     return None
