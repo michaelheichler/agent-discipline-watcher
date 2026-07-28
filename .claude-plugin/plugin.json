@@ -1,7 +1,7 @@
 {
   "name": "agent-discipline-watcher",
   "displayName": "Agent Discipline Watcher",
-  "version": "0.6.0",
+  "version": "0.5.2",
   "description": "Deterministic discipline gates for agent output: banned punctuation, inflated prose, deferred-work comments, hollow tests, oversized code, and routes around the gates.",
   "author": {
     "name": "Michael Heichler"
