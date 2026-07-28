@@ -53,11 +53,20 @@ def route_of(entry: dict) -> str:
 
 
 class PluginManifestTests(unittest.TestCase):
-    def test_manifest_names_the_hooks_file_that_exists(self):
+    def test_manifest_does_not_redeclare_the_auto_discovered_hooks_file(self):
         manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "agent-discipline-watcher")
-        self.assertEqual(manifest["hooks"], "./hooks/hooks.json")
-        self.assertTrue(HOOKS_JSON.is_file())
+        self.assertTrue(HOOKS_JSON.is_file(), "hooks/hooks.json is the documented default location")
+        declared = manifest.get("hooks")
+        if declared is None:
+            return
+        entries = [declared] if isinstance(declared, str) else list(declared)
+        for entry in entries:
+            with self.subTest(entry=entry):
+                self.assertNotEqual(
+                    (ROOT / str(entry)).resolve(), HOOKS_JSON.resolve(),
+                    "the standard hooks/hooks.json loads automatically, so naming it again fails the plugin load",
+                )
 
     def test_marketplace_entry_tracks_the_git_remote(self):
         catalog = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
@@ -169,6 +178,51 @@ class PluginCommandExecutionTests(unittest.TestCase):
         result = subprocess.run(command, shell=True, env=env, capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.strip().endswith("stop.py"), result.stdout)
+
+
+class PluginLoaderTests(unittest.TestCase):
+    """Exercises the real loader, because plugin validate and plugin install both accept a manifest the loader rejects."""
+
+    def setUp(self):
+        if shutil.which("claude") is None:
+            self.skipTest("claude CLI not on PATH")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name)
+        market = self.home / "market"
+        (market / ".claude-plugin").mkdir(parents=True)
+        (market / "plugin").symlink_to(ROOT)
+        catalog = {
+            "name": "adw-loader-probe",
+            "owner": {"name": "test"},
+            "plugins": [{
+                "name": "agent-discipline-watcher",
+                "source": "./plugin",
+                "description": "loader probe",
+            }],
+        }
+        (market / ".claude-plugin" / "marketplace.json").write_text(json.dumps(catalog), encoding="utf-8")
+        self.market = market
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _claude(self, *args: str) -> str:
+        env = dict(os.environ, HOME=str(self.home))
+        result = subprocess.run(
+            ["claude", "plugin", *args], capture_output=True, text=True,
+            check=False, timeout=180, env=env,
+        )
+        return result.stdout + result.stderr
+
+    def test_the_plugin_loads_without_error_in_a_sandbox_profile(self):
+        self._claude("marketplace", "add", str(self.market))
+        self._claude("install", "agent-discipline-watcher@adw-loader-probe")
+        listing = re.sub(r"\x1b\[[0-9;]*m", "", self._claude("list"))
+        block = listing.split("agent-discipline-watcher@adw-loader-probe", 1)
+        self.assertEqual(len(block), 2, listing)
+        detail = block[1][:400]
+        self.assertNotIn("failed to load", detail, detail)
+        self.assertIn("enabled", detail, detail)
 
 
 class PluginValidatorTests(unittest.TestCase):

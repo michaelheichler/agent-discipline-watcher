@@ -277,6 +277,16 @@ claude plugin validate . --strict
 claude plugin validate .claude-plugin/plugin.json --strict
 ```
 
+The validator checks schema only. It accepts manifests the loader rejects, so the load itself must be proven separately:
+
+```bash
+claude plugin list
+```
+
+Any entry reading `Status: failed to load` is a real break that `validate` and `install` both report as success. `hooks/test_plugin_wiring.py::PluginLoaderTests` runs that check against a sandbox profile with a local marketplace, so a manifest that cannot load fails the suite.
+
+The manifest deliberately omits a `hooks` key. `hooks/hooks.json` is the documented default location and loads automatically. The `hooks` field is for additional hook files only, so naming the standard path there loads it twice and the plugin fails.
+
 Prove the plugin install without touching the live profile:
 
 ```bash
