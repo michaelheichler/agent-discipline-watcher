@@ -1,0 +1,51 @@
+hooks/lib/reporting.py
+  s_2197beb8592f89::t_a676b586919160 13-17
+hooks/lib/scanner.py
+  s_2197beb8592f89::t_444c43ff378579 106-110,399,424,577-584,586
+hooks/merge-claude-settings.py
+  s_2197beb8592f89::t_7098bc6c6a17fc 7,16
+hooks/pre_bash.py
+  s_2197beb8592f89::t_d274b8f6a51963 26-34,45,71,74-75,77,79,81,83,85,90-153,157,162-169,172-176,179-182,184,187-191,193-194,205-208
+hooks/pre_commit.py
+  s_2197beb8592f89::t_49c263ee6c884c 85-87,141-150,152-157,160-163,171,179-182
+hooks/test_commit_gate_runtime.py
+  s_2197beb8592f89::t_52446f4e55eb49 140-163
+hooks/test_pre_bash.py
+  s_2197beb8592f89::t_f82b644f1d4876 162-208
+.claude/hookify.discipline-bypass.local.md
+  s_2197beb8592f89::t_d96afb1fe9d2fa 10,17-18
+.claude/hookify.live-client-config.local.md
+  s_2197beb8592f89::t_740b1bd33922d2 10
+OPUS_FIX_ALL_FINDINGS.md
+  s_2197beb8592f89::t_0af4f190b5004a 6-7
+README.md
+  s_2197beb8592f89::t_886fddf6c75b4d 171,188-189
+hooks/lib/test_pi_extension_contract.py
+  s_2197beb8592f89::t_b09407fa36943c 95-114
+hooks/lib/test_scanner.py
+  s_2197beb8592f89::t_83d02c5f1837ee 2-24
+hooks/merge-codex-config.py
+  s_2197beb8592f89::t_ab140fd01768ef 14,23,154-162,164-165,169-170
+hooks/merge-pi-settings.py
+  s_2197beb8592f89::t_476076b195f1fc 7,13,16,24-31
+hooks/test_merge_configs.py
+  s_2197beb8592f89::t_1a8dc3002f33aa 14,71,101-102,108-109,121-122,128-129,135-136,142-143,157-158,173-174,196,204-206,208-210,226,229,234,237,248,253,258,261,265,268,341-408,566-589,593-610,612-617,620,624,626,657,661,765-768,778
+pi/extensions/agent-discipline-watcher/index.ts
+  s_2197beb8592f89::t_36a44667a948aa 29,33,36,39,54-66,70-73,79-88,90,94-100,102,104-105,140-141,145,149-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "97c77fcb9fe8664c9a950fcde615f59967ecfe06",
+  "prompts": {},
+  "sessions": {
+    "s_2197beb8592f89": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8567170f-748a-47ab-a45c-e9a96e09b1e2",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
