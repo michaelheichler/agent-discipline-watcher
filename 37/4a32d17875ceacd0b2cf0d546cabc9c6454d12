@@ -1,0 +1,21 @@
+bin/agent-discipline
+  s_2197beb8592f89::t_1a85be16961f5b 66-77,80,82-83,88,108-134,161-170
+hooks/lib/test_config_cli.py
+  s_2197beb8592f89::t_ba5c8befa6adfe 65,172-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "374a32d17875ceacd0b2cf0d546cabc9c6454d12",
+  "prompts": {},
+  "sessions": {
+    "s_2197beb8592f89": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8567170f-748a-47ab-a45c-e9a96e09b1e2",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
