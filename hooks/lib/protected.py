@@ -102,22 +102,28 @@ def _relative_parts(path: Path, home: Path) -> list[str] | None:
     return [part.lower() for part in relative.parts]
 
 
+NESTED_CLIENT_DIRS = ([".agents", "skills"], [".config", "opencode"])
+
+
+def _reaches_into_a_client_home(parts: list[str]) -> bool:
+    """Report whether the path goes past the top directory of a client's home, which is where live wiring lives."""
+    if parts[0] in CLIENT_HOME_DIRS and len(parts) > 1:
+        return True
+    if len(parts) < 3:
+        return False
+    head = parts[:2]
+    if head == [".local", "bin"]:
+        return parts[2].startswith("agent-discipline")
+    return head in NESTED_CLIENT_DIRS
+
+
 def _live_client_rule(path: Path, home: Path) -> str | None:
     parts = _relative_parts(path, home)
     if not parts:
         return None
-    top = parts[0]
-    if top == ".claude":
+    if parts[0] == ".claude":
         return _claude_rule(parts)
-    if top in CLIENT_HOME_DIRS and len(parts) > 1:
-        return "live_client_surface"
-    if parts[:2] == [".agents", "skills"] and len(parts) > 2:
-        return "live_client_surface"
-    if parts[:2] == [".config", "opencode"] and len(parts) > 2:
-        return "live_client_surface"
-    if parts[:2] == [".local", "bin"] and len(parts) > 2 and parts[2].startswith("agent-discipline"):
-        return "live_client_surface"
-    return None
+    return "live_client_surface" if _reaches_into_a_client_home(parts) else None
 
 
 def _claude_rule(parts: list[str]) -> str | None:

@@ -17,7 +17,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint
+        pip install pylint pytest
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
+    - name: Running the hook test suite
+      run: |
+        git config --global user.email "ci@agent-discipline-watcher.test"
+        git config --global user.name "Agent Discipline Watcher CI"
+        git config --global init.defaultBranch main
+        cd hooks && python -m pytest . lib -q

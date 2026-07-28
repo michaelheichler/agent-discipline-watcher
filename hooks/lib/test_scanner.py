@@ -1,4 +1,6 @@
 import scanner
+from config import effective_config
+from scanner import scan_all
 
 
 def test_length_caps_read_the_adw_env_names(monkeypatch):
@@ -22,8 +24,6 @@ def test_adw_env_name_wins_over_the_legacy_alias(monkeypatch):
     body = "def wide():\n" + "".join(f"    x{n} = {n}\n" for n in range(6))
     rules = [row["rule"] for row in scanner.scan_all("a.py", body, {})]
     assert "function_too_long" not in rules
-from scanner import scan_all
-from config import effective_config
 
 
 def test_scan_all_normalizes_enabled_families():
