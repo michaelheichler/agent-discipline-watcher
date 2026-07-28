@@ -4,6 +4,7 @@ import re
 
 from lib.config import effective_config
 from lib.hookio import allow, deny, read_payload, write_payload
+from lib.protected import path_findings
 from lib.reporting import compact_block
 from lib.scanner import scan_all
 
@@ -54,7 +55,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
         cfg["session_id"] = payload["session_id"]
     findings = []
     for path, text in pending_writes(payload):
-        for finding in scan_all(path, text, cfg):
+        for finding in list(path_findings(path, cfg)) + scan_all(path, text, cfg):
             item = dict(finding)
             item["path"] = path
             findings.append(item)

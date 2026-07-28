@@ -15,7 +15,13 @@ ALWAYS_ON_RULES = (
     "Turning clean_code off still leaves what_comment blocking on every scanned code file."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
-ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch", "what_comment"})
+SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch", "what_comment"})
+# Kept apart from the scanner set because protected.py and pre_bash.py emit these from a path and a command, not from file content.
+SELF_PROTECTION_RULES = frozenset({
+    "live_client_surface", "config_seal", "install_without_sandbox_home",
+    "commit_gate_bypass", "cap_override", "state_deletion",
+})
+ALWAYS_BLOCKING_RULES = SCANNER_ALWAYS_BLOCKING_RULES | SELF_PROTECTION_RULES
 
 GATE_STATES = ("off", "observe", "enforce")
 

@@ -1,0 +1,19 @@
+{
+  "name": "agent-discipline-watcher",
+  "displayName": "Agent Discipline Watcher",
+  "version": "0.2.0",
+  "description": "Deterministic discipline gates for agent output: banned punctuation, inflated prose, deferred-work comments, hollow tests, oversized code, and routes around the gates.",
+  "author": {
+    "name": "Michael Heichler"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/michaelheichler/agent-discipline-watcher",
+  "repository": "https://github.com/michaelheichler/agent-discipline-watcher",
+  "keywords": [
+    "hooks",
+    "code-quality",
+    "discipline",
+    "linting"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

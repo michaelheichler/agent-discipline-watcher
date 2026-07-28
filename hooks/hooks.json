@@ -1,4 +1,5 @@
 {
+  "description": "Agent Discipline Watcher: deterministic discipline gates on writes, commits, prompts, and turn end.",
   "hooks": {
     "SessionStart": [
       {
@@ -6,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh SessionStart"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SessionStart"
           }
         ]
       }
@@ -16,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh UserPromptSubmit"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh UserPromptSubmit"
           }
         ]
       }
@@ -27,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreToolUse"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreToolUse"
           }
         ]
       },
@@ -37,11 +38,11 @@
           {
             "type": "command",
             "if": "Bash(git *)",
-            "command": "__SKILL_DIR__/hooks/run.sh PreCommit"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreCommit"
           },
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreBash"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreBash"
           }
         ]
       },
@@ -50,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreMcp"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreMcp"
           }
         ]
       }
@@ -61,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolUse"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse"
           }
         ]
       }
@@ -71,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolBatch"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolBatch"
           }
         ]
       }
@@ -81,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolUseFailure"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUseFailure"
           }
         ]
       }
@@ -91,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh SubagentStop"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStop"
           }
         ]
       }
@@ -101,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh Stop"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh Stop"
           }
         ]
       }

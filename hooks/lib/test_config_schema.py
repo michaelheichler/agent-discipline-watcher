@@ -118,10 +118,28 @@ class ResolveOutcomeTests(unittest.TestCase):
         always_on = [f for f in findings if f["rule"] in config.ALWAYS_BLOCKING_RULES]
         self.assertEqual(
             {f["rule"] for f in always_on},
-            set(config.ALWAYS_BLOCKING_RULES),
+            set(config.SCANNER_ALWAYS_BLOCKING_RULES),
         )
         for finding in always_on:
             self.assertEqual(config.resolve_outcome(finding, defeat), "block")
+
+    def test_self_protection_rules_block_under_full_defeat(self):
+        defeat = {
+            "gates": {f: "off" for f in config.GATE_FAMILIES},
+            "kill_switches": dict.fromkeys(config.GATE_FAMILIES, True),
+            "self_protection": False,
+            "clean_code": False,
+            "exempt_paths": ["a.py"],
+        }
+        defeat["kill_switches"]["self_protection"] = True
+        for rule in sorted(config.SELF_PROTECTION_RULES):
+            with self.subTest(rule=rule):
+                finding = self._finding("self_protection", rule)
+                self.assertEqual(config.resolve_outcome(finding, defeat), "block")
+
+    def test_self_protection_rules_are_all_always_blocking(self):
+        self.assertTrue(config.SELF_PROTECTION_RULES <= config.ALWAYS_BLOCKING_RULES)
+        self.assertFalse(config.SELF_PROTECTION_RULES & config.SCANNER_ALWAYS_BLOCKING_RULES)
 
 
 class StateTransitionTests(unittest.TestCase):

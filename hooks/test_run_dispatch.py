@@ -12,15 +12,21 @@ RUN_SH = ROOT / "hooks" / "run.sh"
 
 DISPATCH = {
     "SessionStart": "session_start.py",
+    "UserPromptSubmit": "prompt_submit.py",
     "PreToolUse": "pre_write.py",
     "PreCommit": "pre_commit.py",
+    "PreBash": "pre_bash.py",
+    "PreMcp": "pre_mcp.py",
     "PostToolUse": "record.py",
+    "PostToolBatch": "batch.py",
+    "PostToolUseFailure": "failure.py",
+    "SubagentStop": "subagent_stop.py",
+    "Stop": "stop.py",
 }
 
-EXPECTED_USAGE = "usage: run.sh " + "|".join(list(DISPATCH) + ["Stop"])
+EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)
 
-# The stub answers only when run.sh resolves its interpreter through PATH, so hardcoding an
-# absolute interpreter would run the real hook and drop this marker instead of passing quietly.
+# The stub answers only through PATH resolution, because an absolute interpreter would run the real hook and drop this marker.
 STUB_MARKER = "adw-stub"
 
 
@@ -54,10 +60,17 @@ class RunDispatchTests(unittest.TestCase):
                 self.assertTrue(result.stdout.startswith(STUB_MARKER), result.stdout)
                 self.assertTrue(result.stdout.strip().endswith(script), result.stdout)
 
-    def test_stop_is_a_wired_no_op(self):
-        result = self._run("Stop")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+    def test_every_dispatched_script_exists(self):
+        for event, script in DISPATCH.items():
+            with self.subTest(event=event):
+                self.assertTrue((ROOT / "hooks" / script).is_file(), f"{event} routes to a missing {script}")
+
+    def test_no_event_routes_to_an_empty_script(self):
+        dispatch = RUN_SH.read_text(encoding="utf-8").split('DISPATCH="', 1)[1].split('"', 1)[0]
+        pairs = dict(pair.split(":", 1) for pair in dispatch.split())
+        self.assertEqual(pairs, DISPATCH)
+        for event, script in pairs.items():
+            self.assertTrue(script, f"{event} is registered but routes nowhere")
 
     def test_unknown_event_exits_2_and_names_supported_events(self):
         result = self._run("Nope")

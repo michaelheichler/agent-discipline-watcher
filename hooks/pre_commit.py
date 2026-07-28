@@ -3,38 +3,83 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import time
 from pathlib import Path
 
 from lib.config import effective_config
 from lib.hookio import allow, deny, read_payload, write_payload
-from lib.reporting import compact_block
+from lib.reporting import compact_block, record_decision, run_with_ledger
 from lib.scanner import scan_all, scannable_text
 
 
-def run(payload: dict, config: dict | None = None) -> dict:
+def run(
+    payload: dict,
+    config: dict | None = None,
+    ledger_root: str | os.PathLike[str] | None = None,
+    state_root: str | os.PathLike[str] | None = None,
+) -> dict:
+    """Scan the staged tree behind a pending git commit, recording the decision so the gate leaves ledger evidence."""
+    return run_with_ledger(
+        hook="pre_commit",
+        payload=payload,
+        gate=lambda turn_id: _gate(payload, config, turn_id, ledger_root),
+        ledger_root=ledger_root,
+        state_root=state_root,
+    )
+
+
+def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict:
+    started = time.monotonic()
     command = _bash_command(payload)
     cwd = Path(payload.get("cwd") or os.getcwd())
     commit_cwds = _commit_cwds(command, cwd)
     if not commit_cwds:
         return allow()
+    cfg = effective_config(config, cwd)
+    findings = _staged_findings(commit_cwds, config)
+    if not findings:
+        return allow()
+    reason, _ = compact_block(findings, cfg)
+    _record(payload, findings, turn_id, ledger_root, int((time.monotonic() - started) * 1000))
+    return deny(reason)
+
+
+def _staged_findings(commit_cwds: list[Path], config: dict | None) -> list[dict]:
     findings = []
     for commit_cwd in commit_cwds:
         repo = _repo_root(commit_cwd)
         if repo is None:
             continue
         cfg = effective_config(config, commit_cwd)
-        for path in _staged(repo):
-            text = _staged_text(repo, path)
-            if text is None or scannable_text(text, cfg) is None:
-                continue
-            for finding in scan_all(path, text, cfg):
-                item = dict(finding)
-                item["path"] = path
-                findings.append(item)
-    if not findings:
-        return allow()
-    reason, _ = compact_block(findings, cfg)
-    return deny(reason)
+        findings.extend(_repo_findings(repo, cfg))
+    return findings
+
+
+def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
+    findings = []
+    for path in _staged(repo):
+        text = _staged_text(repo, path)
+        if text is None or scannable_text(text, cfg) is None:
+            continue
+        for finding in scan_all(path, text, cfg):
+            item = dict(finding)
+            item["path"] = path
+            findings.append(item)
+    return findings
+
+
+def _record(payload: dict, findings: list[dict], turn_id: str, ledger_root, duration_ms: int) -> None:
+    """Log the first blocking finding, because one row per commit attempt is enough to prove the gate ran."""
+    session_id = str(payload.get("session_id") or "")
+    if not session_id:
+        return
+    first = findings[0]
+    record_decision(
+        session_id=session_id, hook="pre_commit", event="PreCommit",
+        family=str(first.get("family", "")), rule=str(first.get("rule", "")),
+        path=str(first.get("path", "")), tool_use_id=str(payload.get("tool_use_id") or ""),
+        outcome="block", duration_ms=duration_ms, turn_id=turn_id, root=ledger_root,
+    )
 
 
 def _bash_command(payload: dict) -> str:

@@ -7,6 +7,7 @@ install_codex=1
 install_opencode=1
 install_pi=1
 assume_yes=0
+claude_legacy=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -18,6 +19,7 @@ while [ "$#" -gt 0 ]; do
     --no-codex) install_codex=0 ;;
     --no-opencode) install_opencode=0 ;;
     --no-pi) install_pi=0 ;;
+    --claude-legacy) install_claude=1; claude_legacy=1 ;;
     -y) assume_yes=1 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -41,13 +43,31 @@ backup_file() {
 mkdir -p "$HOME/.agents/skills"
 ln -snf "$skill_dir" "$HOME/.agents/skills/agent-discipline-watcher"
 
-if [ "$install_claude" -eq 1 ]; then
+if [ "$install_claude" -eq 1 ] && [ "$claude_legacy" -eq 1 ]; then
   mkdir -p "$HOME/.claude/skills"
   ln -snf "$skill_dir" "$HOME/.claude/skills/agent-discipline-watcher"
   backup_file "$HOME/.claude/settings.json"
   python3 "$skill_dir/hooks/merge-claude-settings.py" \
     --settings "$HOME/.claude/settings.json" \
     --skill-dir "$skill_dir"
+  echo "Claude installed through the legacy path-based wiring. Moving the checkout breaks it."
+elif [ "$install_claude" -eq 1 ]; then
+  backup_file "$HOME/.claude/settings.json"
+  python3 "$skill_dir/hooks/merge-claude-settings.py" \
+    --settings "$HOME/.claude/settings.json" \
+    --remove-legacy
+  legacy_link="$HOME/.claude/skills/agent-discipline-watcher"
+  if [ -L "$legacy_link" ] && [ "$(readlink "$legacy_link")" = "$skill_dir" ]; then
+    rm -f "$legacy_link"
+  fi
+  cat <<'EOF'
+Claude is installed as a plugin, not by this script. Legacy watcher hooks were removed.
+Run these commands inside Claude Code, then reload:
+
+  /plugin marketplace add michaelheichler/agent-discipline-watcher
+  /plugin install agent-discipline-watcher@agent-discipline-watcher
+  /reload-plugins
+EOF
 fi
 
 if [ "$install_codex" -eq 1 ]; then

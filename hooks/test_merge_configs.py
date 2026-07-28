@@ -341,13 +341,21 @@ def assert_no_stale_hooks(text: str) -> None:
     assert "professional-agent-helper" not in text
 
 
-def assert_watcher_hook_family(text: str, stop_wired: bool = False) -> None:
+CLAUDE_ROUTES = (
+    "SessionStart", "UserPromptSubmit", "PreToolUse", "PreCommit", "PreBash", "PreMcp",
+    "PostToolUse", "PostToolBatch", "PostToolUseFailure", "SubagentStop", "Stop",
+)
+# Listed separately because Codex wires a reduced set and must not gain Claude-only routes.
+CODEX_ROUTES = ("SessionStart", "PreToolUse", "PreCommit", "PostToolUse")
+
+
+def assert_watcher_hook_family(text: str, routes: tuple[str, ...] = CODEX_ROUTES) -> None:
     for event in ("PreToolUse", "PostToolUse", "SessionStart"):
         assert event in text
-    for event in ("PreToolUse", "PreCommit", "PostToolUse", "SessionStart"):
-        assert f"run.sh {event}" in text
-    assert ("run.sh Stop" in text) is stop_wired
-    assert "run.sh UserPromptSubmit" not in text
+    for route in routes:
+        assert f"run.sh {route}" in text, f"{route} route missing from the merged config"
+    for route in set(CLAUDE_ROUTES) - set(routes):
+        assert f"run.sh {route}" not in text, f"{route} must not appear on this surface"
 
 
 class MergeConfigTests(unittest.TestCase):
@@ -525,7 +533,9 @@ class MergeConfigTests(unittest.TestCase):
         assert "punctuation-discipline" not in text
         assert "/stale/agent-discipline-watcher" not in text
         subagent_entries = merged["hooks"]["SubagentStop"]
-        assert json.dumps(subagent_entries).count("run.sh SubagentStop") == 0
+        assert json.dumps(subagent_entries).count("run.sh SubagentStop") == 1, (
+            "SubagentStop must merge to exactly one watcher entry, re-running install must not stack"
+        )
         assert "unrelated-subagent.py" in json.dumps(subagent_entries)
         assert "ConfigChange" not in merged["hooks"] or "punctuation-discipline" not in json.dumps(
             merged["hooks"]["ConfigChange"]
@@ -582,11 +592,10 @@ def assert_claude_merge(merged: dict) -> None:
     text = json.dumps(merged)
     assert_no_stale_hooks(text)
     assert "unrelated-stop.py" in text
-    assert_watcher_hook_family(text, stop_wired=True)
+    assert_watcher_hook_family(text, CLAUDE_ROUTES)
     assert_claude_stop_entry(merged)
     assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
     assert "compact" in merged["hooks"]["SessionStart"][0]["matcher"]
-    assert "run.sh UserPromptSubmit" not in text
 
 
 def assert_claude_stop_entry(merged: dict) -> None:
@@ -607,12 +616,16 @@ def assert_claude_bash_if_filter(merged: dict) -> None:
     ]
     assert len(bash_entries) == 1, "Bash matcher must be unique after merge"
     commands = bash_entries[0]["hooks"]
-    assert len(commands) == 1, "Bash matcher must own exactly one watcher command"
-    assert commands[0].get("if") == "Bash(git commit *)", (
-        "if filter must use the documented word-boundary form so it matches git commit "
-        "with args but not git commit-tree, and a wrong literal disables the gate silently"
+    assert len(commands) == 2, "Bash matcher owns the commit route and the command-policy route"
+    by_route = {entry["command"].rsplit(" ", 1)[1]: entry for entry in commands}
+    assert set(by_route) == {"PreCommit", "PreBash"}
+    assert by_route["PreCommit"].get("if") == "Bash(git *)", (
+        "the commit route filters on git broadly because pre_commit.py resolves the real commit, "
+        "including forms like git -c key=value commit that a narrower literal would hide"
     )
-    assert "run.sh PreCommit" in commands[0]["command"]
+    assert "if" not in by_route["PreBash"], (
+        "the command-policy route carries no if filter because it must see every Bash call"
+    )
 
 
 def assert_no_async_flags(merged: dict) -> None:
@@ -635,11 +648,14 @@ def assert_no_async_flags(merged: dict) -> None:
 
 def assert_claude_pretool_shape(entries: list[dict]) -> None:
     watcher_entries = [entry for entry in entries if "agent-discipline-watcher" in json.dumps(entry)]
-    assert len(watcher_entries) == 2
+    assert len(watcher_entries) == 3, "PreToolUse owns the write matcher, the Bash matcher, and the MCP matcher"
     by_matcher = {entry["matcher"]: entry for entry in watcher_entries}
     assert "Bash" in by_matcher
     assert "run.sh PreCommit" in json.dumps(by_matcher["Bash"])
-    write_matcher = next(matcher for matcher in by_matcher if matcher != "Bash")
+    assert "run.sh PreBash" in json.dumps(by_matcher["Bash"])
+    assert "mcp__.*" in by_matcher
+    assert "run.sh PreMcp" in json.dumps(by_matcher["mcp__.*"])
+    write_matcher = next(name for name in by_matcher if name not in {"Bash", "mcp__.*"})
     assert "NotebookEdit" in write_matcher
     assert "apply_patch" in write_matcher
 
@@ -661,7 +677,7 @@ def assert_uncle_bobs_cc_merge(merged: dict) -> None:
     assert "pre_commit_hook.py" not in text
     assert "unrelated-stop.py" in text
     assert "/stale/agent-discipline-watcher" not in text
-    assert_watcher_hook_family(text, stop_wired=True)
+    assert_watcher_hook_family(text, CLAUDE_ROUTES)
     assert_claude_stop_entry(merged)
     assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
 

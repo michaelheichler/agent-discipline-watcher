@@ -367,7 +367,7 @@ def test_run_sh_routes_precommit_non_commit():
     assert json.loads(result.stdout) == {}
 
 
-def test_run_sh_rejects_user_prompt_submit():
+def test_run_sh_routes_user_prompt_submit_to_the_firewall():
     payload = json.dumps({"prompt": "Add a cache to this function."})
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "UserPromptSubmit"],
@@ -376,11 +376,11 @@ def test_run_sh_rejects_user_prompt_submit():
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 2
-    assert "UserPromptSubmit" not in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout or "{}").get("decision") != "block"
 
 
-def test_run_sh_ignores_stale_stop():
+def test_run_sh_routes_stop_to_the_stop_gate():
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "Stop"],
         input="{}",
@@ -388,9 +388,8 @@ def test_run_sh_ignores_stale_stop():
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert result.stderr == ""
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout or "{}").get("decision") != "block"
 
 
 def _ledger_path():

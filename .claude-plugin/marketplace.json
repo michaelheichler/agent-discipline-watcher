@@ -1,0 +1,23 @@
+{
+  "name": "agent-discipline-watcher",
+  "owner": {
+    "name": "Michael Heichler"
+  },
+  "metadata": {
+    "description": "Single-plugin marketplace for the Agent Discipline Watcher hook package."
+  },
+  "plugins": [
+    {
+      "name": "agent-discipline-watcher",
+      "source": {
+        "source": "github",
+        "repo": "michaelheichler/agent-discipline-watcher"
+      },
+      "description": "Deterministic discipline gates for agent output and edits.",
+      "version": "0.2.0",
+      "license": "MIT",
+      "category": "productivity",
+      "homepage": "https://github.com/michaelheichler/agent-discipline-watcher"
+    }
+  ]
+}
