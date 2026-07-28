@@ -326,19 +326,23 @@ HEADER_BLOCK_MIN_LINES = 2
 
 
 def _header_block_end(lines: list[str]) -> int:
-    """Return the last line of a leading banner, requiring several comment lines so a lone remark above code stays narration."""
+    """Return the last line of a leading banner, which needs a divider, blank comment, or tag line, so that plain stacked sentences stay narration."""
     end = 0
     counted = 0
+    structural = 0
     for number, line in enumerate(lines, 1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#!"):
             continue
-        if COMMENT_RE.match(line):
-            end = number
-            counted += 1
-            continue
-        break
-    return end if counted >= HEADER_BLOCK_MIN_LINES else 0
+        body = COMMENT_RE.match(line)
+        if not body:
+            break
+        end = number
+        counted += 1
+        structural += 0 if _narrates_code(body.group(1).strip()) else 1
+    if counted < HEADER_BLOCK_MIN_LINES or not structural:
+        return 0
+    return end
 
 
 def _narrates_code(text: str) -> bool:
@@ -407,14 +411,16 @@ def _scan_clean_code_file(path: str, text: str, config: dict) -> list[dict]:
 def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
     findings: list[dict] = []
     run: list[tuple[int, str]] = []
-    for number, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    header_end = _header_block_end(lines)
+    for number, line in enumerate(lines, 1):
         body = COMMENT_RE.match(line)
         if body and body.group(1).strip() and not DIRECTIVE_COMMENT_RE.match(line.strip()):
             run.append((number, line))
             continue
-        _flush_comment_run(path, run, findings)
+        _flush_comment_run(path, run, findings, header_end)
         run = []
-    _flush_comment_run(path, run, findings)
+    _flush_comment_run(path, run, findings, header_end)
     return findings
 
 
@@ -553,10 +559,12 @@ def _test_block(lines: list[str], start: int) -> tuple[list[str], int]:
     return body, index
 
 
-def _flush_comment_run(path: str, run: list[tuple[int, str]], findings: list[dict]) -> None:
+def _flush_comment_run(
+    path: str, run: list[tuple[int, str]], findings: list[dict], header_end: int = 0
+) -> None:
     if len(run) < 2:
         return
-    if _is_header_run(run):
+    if run[-1][0] <= header_end or _is_header_run(run):
         return
     line_number, line = run[0]
     findings.append(_finding(
