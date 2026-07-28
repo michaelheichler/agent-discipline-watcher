@@ -1,13 +1,18 @@
 """Ledger, wrapper, edit journal, and observe-report tests."""
 from __future__ import annotations
 
+import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import reporting
+import session_state
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 class LedgerRootTests(unittest.TestCase):
@@ -362,3 +367,57 @@ class CompactBlockRegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreGateEvidenceTests(unittest.TestCase):
+    """The edit and command gates must leave rows, because a block nobody can count cannot be reviewed."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.cfg = {"ledger_root": str(root / "l"), "state_root": str(root / "s")}
+        session_state.write_state("probe", {"turn_id": "turn-9"}, root / "s")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _rows(self):
+        path = Path(self.cfg["ledger_root"]) / reporting.LEDGER_FILENAME
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+    def _decisions(self, hook):
+        return [r for r in self._rows() if r.get("hook") == hook and r.get("rule")]
+
+    def test_pre_write_records_a_protected_path_block(self):
+        import pre_write
+        payload = {"session_id": "probe", "tool_use_id": "w1",
+                   "tool_input": {"file_path": str(Path.home() / ".claude" / "settings.json"), "content": "{}"}}
+        pre_write.run(payload, dict(self.cfg))
+        rows = self._decisions("pre_write")
+        self.assertEqual([r["rule"] for r in rows], ["live_client_surface"])
+        self.assertEqual(rows[0]["outcome"], "block")
+        self.assertEqual(rows[0]["turn_id"], "turn-9")
+
+    def test_pre_bash_records_a_commit_gate_bypass(self):
+        import pre_bash
+        command = "git commit " + "--no-" + "verify -m x"
+        pre_bash.run({"session_id": "probe", "tool_use_id": "b1",
+                      "tool_input": {"command": command}}, dict(self.cfg))
+        rows = self._decisions("pre_bash")
+        self.assertEqual([r["rule"] for r in rows], ["commit_gate_bypass"])
+        self.assertEqual(rows[0]["outcome"], "block")
+
+    def test_an_observed_finding_is_recorded_as_would_block(self):
+        import pre_write
+        payload = {"session_id": "probe", "tool_use_id": "w2",
+                   "tool_input": {"file_path": "a.py", "content": "# increments the counter\nx = 1\n"}}
+        pre_write.run(payload, dict(self.cfg))
+        rows = self._decisions("pre_write")
+        self.assertEqual([(r["rule"], r["outcome"]) for r in rows], [("what_comment", "would_block")])
+
+    def test_both_gates_emit_a_heartbeat(self):
+        import pre_bash
+        pre_bash.run({"session_id": "probe", "tool_input": {"command": "ls"}}, dict(self.cfg))
+        self.assertTrue([r for r in self._rows() if r.get("hook") == "pre_bash" and r.get("event") == "observed"])

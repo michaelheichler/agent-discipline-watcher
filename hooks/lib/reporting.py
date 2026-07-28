@@ -147,6 +147,42 @@ def record_heartbeat(
     )
 
 
+def _resolve_outcome(finding: dict, config: dict | None) -> str:
+    """Import config late, because config imports this module and a top-level import would cycle."""
+    try:
+        from .config import resolve_outcome
+    except ImportError:
+        from config import resolve_outcome
+    return resolve_outcome(finding, config)
+
+
+def record_findings(
+    *,
+    session_id: str,
+    hook: str,
+    event: str,
+    findings: list[dict],
+    turn_id: str,
+    tool_use_id: str = "",
+    duration_ms: int = 0,
+    root: str | os.PathLike[str] | None = None,
+    config: dict | None = None,
+) -> list[tuple[dict, str]]:
+    """Write one decision row per finding and return the verdicts, so a gate leaves countable evidence."""
+    decisions = [(finding, _resolve_outcome(finding, config)) for finding in findings]
+    if not session_id:
+        return decisions
+    for finding, outcome in decisions:
+        record_decision(
+            session_id=session_id, hook=hook, event=event,
+            family=str(finding.get("family", "")), rule=str(finding.get("rule", "")),
+            path=str(finding.get("path", "")), tool_use_id=tool_use_id,
+            outcome=outcome, duration_ms=duration_ms,
+            turn_id=turn_id, root=root,
+        )
+    return decisions
+
+
 def run_with_ledger(
     *,
     hook: str,

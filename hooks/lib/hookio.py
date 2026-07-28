@@ -38,3 +38,11 @@ def stop_block(reason: str) -> dict:
 
 def system_message(message: str) -> dict:
     return {"systemMessage": message}
+
+
+def advise(message: str, event: str) -> dict:
+    """Report without stopping the call, so an observed finding must be considered rather than scrolling past."""
+    return {
+        "systemMessage": message,
+        "hookSpecificOutput": {"hookEventName": event, "additionalContext": message},
+    }

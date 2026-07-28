@@ -178,9 +178,29 @@ That example stops the plain-English style rules on the Stop hook's chat buffer 
 
 An unknown family name is ignored rather than rejected, so a typo scans more rather than less. `exempt_families` cannot reach `suppression_escape_hatch` or `what_comment`, which are emitted before the exemption check.
 
-The Craftsman suppression marker is always blocked on every scanned file. Project check switches and path exemptions cannot disable this rule. Fix the reported issue instead.
+### Per-rule gate states
 
-The `what_comment` rule is also unconditional on code files. Neither `clean_code: false` nor `exempt_paths` suppresses it. State a WHY or delete the comment.
+`gates` sets a family to `off`, `observe`, or `enforce`. `rule_gates` does the same for one rule and wins over its family, so a single rule can burn in while the rest of the family keeps enforcing.
+
+```json
+{
+  "rule_gates": {
+    "what_comment": "enforce"
+  }
+}
+```
+
+`what_comment` ships in `observe`. Its WHY test is a ten-word marker list, not semantic analysis, so it must earn enforcement through the D7 burn-in like every other gate. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
+
+Promote it with the config above once `agent-discipline observe-report clean_code` shows a false-signal rate you accept.
+
+`rule_gates` cannot release a rule in the always-blocking set.
+
+The Craftsman suppression marker is always blocked on every scanned file. Project check switches, path exemptions, and rule gates cannot disable this rule. Fix the reported issue instead.
+
+The `what_comment` rule still runs on every code file whatever `clean_code` and `exempt_paths` say, because the scanner emits it before the exemption check. What those switches cannot do is silence it. Its outcome now comes from `rule_gates`, which ships it in `observe`.
+
+It skips three things a comment can be without narrating code: a leading banner of two or more comment lines, a line with no letters such as a divider or a bare `#`, and a tag line such as `Args:` or `TRIGGERS:`.
 
 Supported checks:
 

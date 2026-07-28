@@ -66,6 +66,9 @@ APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(?:" + APOLOGY_WORDS + r")\b", re.I
 COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)")
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
+LETTER_RE = re.compile(r"[^\W\d_]")
+# Matched so that a structured block such as Args or TRIGGERS is read as interface documentation, not as narration.
+TAG_LINE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 _/-]{0,24}:(?:\s|$)")
 WHY_RULE_IS_HEURISTIC = (
     "The WHY and WHAT split is a lexical heuristic, not semantic analysis. "
     "A WHAT comment with a marker can pass, and a genuine WHY comment without one can be blocked. "
@@ -319,11 +322,40 @@ def _has_why_marker(text: str) -> bool:
     return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
 
 
+HEADER_BLOCK_MIN_LINES = 2
+
+
+def _header_block_end(lines: list[str]) -> int:
+    """Return the last line of a leading banner, requiring several comment lines so a lone remark above code stays narration."""
+    end = 0
+    counted = 0
+    for number, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#!"):
+            continue
+        if COMMENT_RE.match(line):
+            end = number
+            counted += 1
+            continue
+        break
+    return end if counted >= HEADER_BLOCK_MIN_LINES else 0
+
+
+def _narrates_code(text: str) -> bool:
+    """Report whether the comment makes a claim about the code, so dividers, spacers, and tag lines stay out of scope."""
+    if not text or not LETTER_RE.search(text):
+        return False
+    return not TAG_LINE_RE.match(text)
+
+
 def _what_comment_rows(path: str, lines: list[str]) -> list[dict]:
     rows = []
+    header_end = _header_block_end(lines)
     for line_number, line in enumerate(lines, 1):
+        if line_number <= header_end:
+            continue
         text = _comment_text(line)
-        if text is None or _has_why_marker(text):
+        if text is None or not _narrates_code(text) or _has_why_marker(text):
             continue
         rows.append(_finding(
             "clean_code", "what_comment", line_number,

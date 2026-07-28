@@ -357,3 +357,38 @@ class ProductionImportPathTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RuleGateTests(unittest.TestCase):
+    """A single rule can hold its own state, so one lexical rule burns in without demoting its family."""
+
+    WHAT = {"family": "clean_code", "rule": "what_comment"}
+    DASH = {"family": "punctuation", "rule": "banned_dash"}
+    HATCH = {"family": "clean_code", "rule": "suppression_escape_hatch"}
+
+    def test_what_comment_ships_in_observe_by_default(self):
+        self.assertEqual(config.resolve_outcome(self.WHAT, {}), "would_block")
+
+    def test_its_family_keeps_enforcing_around_it(self):
+        self.assertEqual(config.gate_state("clean_code", {}), "enforce")
+        self.assertEqual(config.resolve_outcome({"family": "clean_code", "rule": "hollow_test"}, {}), "block")
+
+    def test_the_punctuation_rules_still_block(self):
+        self.assertEqual(config.resolve_outcome(self.DASH, {}), "block")
+
+    def test_a_rule_state_overrides_its_family(self):
+        cfg = {"gates": {"punctuation": "enforce"}, "rule_gates": {"banned_dash": "observe"}}
+        self.assertEqual(config.resolve_outcome(self.DASH, cfg), "would_block")
+
+    def test_enforce_restores_blocking_for_one_rule(self):
+        self.assertEqual(
+            config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "enforce"}}), "block")
+
+    def test_an_unknown_rule_state_falls_back_to_the_family(self):
+        self.assertEqual(config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "sometimes"}}), "block")
+
+    def test_a_rule_gate_cannot_release_an_always_blocking_rule(self):
+        for state in ("off", "observe"):
+            with self.subTest(state=state):
+                cfg = {"rule_gates": {"suppression_escape_hatch": state}}
+                self.assertEqual(config.resolve_outcome(self.HATCH, cfg), "block")

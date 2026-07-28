@@ -63,30 +63,43 @@ def test_pre_write_denies_prose_comment_block():
     assert "clean_code/prose_comment_block" in response["reason"]
 
 
-def test_pre_write_blocks_what_comment_and_allows_why_comment():
-    config = {"ledger_path": _ledger_path(), "clean_code": True}
-    what_payload = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
-    response = pre_write.run(what_payload, config)
+WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
+
+
+def test_pre_write_observes_what_comment_without_stopping_the_write():
+    response = pre_write.run(WHAT_PAYLOAD, {"ledger_path": _ledger_path(), "clean_code": True})
+    assert "decision" not in response
+    assert "clean_code/what_comment" in response["systemMessage"]
+    assert WHAT_COMMENT_ACTION in response["hookSpecificOutput"]["additionalContext"]
+    assert response["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+
+
+def test_pre_write_blocks_what_comment_once_the_rule_is_enforced():
+    config = {"ledger_path": _ledger_path(), "clean_code": True,
+              "rule_gates": {"what_comment": "enforce"}}
+    response = pre_write.run(WHAT_PAYLOAD, config)
     assert response["decision"] == "block"
     assert "clean_code/what_comment" in response["reason"]
-    assert WHAT_COMMENT_ACTION in response["reason"]
 
+
+def test_pre_write_allows_a_why_comment():
     why_payload = {
         "tool_input": {
             "file_path": "a.py",
             "content": "# Keep this check because stale entries break ordering\nvalidate()\n",
         }
     }
-    assert pre_write.run(why_payload, config) == {}
+    assert pre_write.run(why_payload, {"ledger_path": _ledger_path(), "clean_code": True}) == {}
 
+
+def test_what_comment_survives_the_clean_code_switch_and_path_exemption():
     disabled_and_exempt = {
         "ledger_path": _ledger_path(),
         "clean_code": False,
         "exempt_paths": ["a.py"],
     }
-    response = pre_write.run(what_payload, disabled_and_exempt)
-    assert response["decision"] == "block"
-    assert "clean_code/what_comment" in response["reason"]
+    response = pre_write.run(WHAT_PAYLOAD, disabled_and_exempt)
+    assert "clean_code/what_comment" in response["systemMessage"]
 
 
 def test_pre_write_enforces_vue_comment_contract():

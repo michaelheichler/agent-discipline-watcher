@@ -15,7 +15,7 @@ ALWAYS_ON_RULES = (
     "Turning clean_code off still leaves what_comment blocking on every scanned code file."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
-SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch", "what_comment"})
+SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
 # Kept apart from the scanner set because protected.py and pre_bash.py emit these from a path and a command, not from file content.
 SELF_PROTECTION_RULES = frozenset({
     "live_client_surface", "config_seal", "install_without_sandbox_home",
@@ -40,6 +40,8 @@ DEFAULTS = {
     "baseline": "git",
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
+    # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
+    "rule_gates": {"what_comment": "observe"},
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
     # Inert without the trust grant (D12) because command-bearing config must not run before a user-owned grant exists.
@@ -97,18 +99,30 @@ def gate_state(family: str, config: dict | None = None) -> str:
     return "enforce" if cfg.get(family, True) else "off"
 
 
+def rule_state(rule: str, config: dict | None = None) -> str | None:
+    """Return a rule's own state when one is configured, so a single rule can burn in inside an enforcing family."""
+    if not rule:
+        return None
+    state = (effective_config(config).get("rule_gates") or {}).get(rule)
+    return state if state in GATE_STATES else None
+
+
+def _outcome_for(state: str) -> str:
+    if state == "enforce":
+        return "block"
+    return "would_block" if state == "observe" else "release"
+
+
 def resolve_outcome(finding: dict, config: dict | None = None) -> str:
     """Return what a finding does: block, would_block, or release."""
     rule = finding.get("rule", "") if isinstance(finding, dict) else ""
     if rule in ALWAYS_BLOCKING_RULES:
         return "block"
+    own = rule_state(rule, config)
+    if own is not None:
+        return _outcome_for(own)
     family = finding.get("family", "") if isinstance(finding, dict) else ""
-    state = gate_state(family, config)
-    if state == "enforce":
-        return "block"
-    if state == "observe":
-        return "would_block"
-    return "release"
+    return _outcome_for(gate_state(family, config))
 
 
 def record_state_transitions(

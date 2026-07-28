@@ -4,12 +4,13 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import time
 from pathlib import PurePosixPath
 
 from lib.config import effective_config
 from lib.hookio import allow, deny, read_payload, write_payload
 from lib.protected import authorized, is_live_client_path
-from lib.reporting import compact_block
+from lib.reporting import compact_block, record_findings, run_with_ledger
 
 # The lookbehind drops 2> and the tail of 2>>, because a stderr redirect writes no target file.
 WRITE_REDIRECT_RE = re.compile(r"(?<![2>])>")
@@ -56,14 +57,33 @@ RULES = (
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
+    """Judge a pending Bash command, recording the decision so a self-protection block is countable."""
+    cfg = effective_config(config, payload.get("cwd") or None)
+    return run_with_ledger(
+        hook="pre_bash",
+        payload=payload,
+        gate=lambda turn_id: _gate(payload, cfg, turn_id),
+        ledger_root=cfg.get("ledger_root"),
+        state_root=cfg.get("state_root"),
+    )
+
+
+def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
+    started = time.monotonic()
     command = _command(payload)
     if not command:
         return allow()
-    cfg = effective_config(config, payload.get("cwd") or None)
     findings = command_findings(command, cfg)
     if not findings:
         return allow()
     reason, _ = compact_block(findings, cfg)
+    record_findings(
+        session_id=str(payload.get("session_id") or ""), hook="pre_bash",
+        event="PreToolUse", findings=findings, turn_id=turn_id,
+        tool_use_id=str(payload.get("tool_use_id") or ""),
+        duration_ms=int((time.monotonic() - started) * 1000),
+        root=cfg.get("ledger_root"), config=cfg,
+    )
     return deny(reason)
 
 
