@@ -14,7 +14,7 @@
         "repo": "michaelheichler/agent-discipline-watcher"
       },
       "description": "Deterministic discipline gates for agent output and edits.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "license": "MIT",
       "category": "productivity",
       "homepage": "https://github.com/michaelheichler/agent-discipline-watcher"
