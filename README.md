@@ -243,6 +243,8 @@ PreCommit parses the shell command with a shell-aware parser that resolves `git 
 
 PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a completed write, so a forced finding returns a blocking error that requires the agent to repair the file before continuing.
 
+PostToolBatch reports and never halts. Its findings leave the entry script with exit 0, carried as `systemMessage` and `additionalContext`, because `record.py` is the canonical per-edit gate and has already blocked anything it shares. The batch layer exists for cross-file findings such as duplicated content, and an agent that cannot finish its turn cannot act on one.
+
 Both gate paths write ledger rows. A blocked commit appends one `pre_commit` decision row with `event` set to `PreCommit`, so an empty ledger means the gate never ran rather than the gate finding nothing.
 
 ## Cross-Client Event Parity

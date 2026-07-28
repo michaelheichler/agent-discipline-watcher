@@ -7,7 +7,6 @@ import math
 import operator
 import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import TypeGuard, TypeVar, cast
 
 from lib import payloads, reporting
 from lib.config import effective_config, resolve_outcome
-from lib.hookio import read_payload, write_payload
+from lib.hookio import read_payload, system_message, write_payload
 from lib.reporting import compact_block, run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
@@ -410,39 +409,47 @@ def _duplicate_file_findings(
 ) -> list[dict]:
     contents: dict[str, dict[tuple[int, int], str]] = {}
     for _call_id, _raw_path, path in sorted(entries, key=lambda item: str(item[2])):
-        try:
-            if not path.exists() or not path.is_file():
-                continue
-            file_stat = path.stat()
-            fingerprint = _stat_fingerprint(file_stat)
-            file_id = fingerprint[:2]
-        except (OSError, ValueError):
+        read = _stable_read(path, cfg)
+        if read is None:
             continue
-        text = _read_path(path, cfg)
-        try:
-            current_stat = path.stat()
-        except OSError:
-            continue
-        if _stat_fingerprint(current_stat) != fingerprint:
-            continue
-        if text is None or len("".join(text.split())) < MIN_DUPLICATE_NONSPACE:
-            continue
+        file_id, text = read
         contents.setdefault(text, {}).setdefault(file_id, str(path))
     groups = (sorted(group.values()) for group in contents.values() if len(group) > 1)
-    return [
-        {
-            "family": "clean_code",
-            "rule": "duplicate_file_content",
-            "line": 1,
-            "detail": "Exact substantive content is duplicated across batch files.",
-            "force": True,
-            "snippet": ", ".join(paths)[:180],
-            "action": "Keep one implementation and remove or extract the duplicate.",
-            "path": ", ".join(paths),
-            "_tool_use_id": "",
-        }
-        for paths in sorted(groups)
-    ]
+    return [_duplicate_row(paths) for paths in sorted(groups)]
+
+
+def _stable_read(path: Path, cfg: dict) -> tuple[tuple[int, int], str] | None:
+    """Read the file and prove it did not change under us, so a mid-batch rewrite cannot forge a duplicate pair."""
+    try:
+        if not path.exists() or not path.is_file():
+            return None
+        fingerprint = _stat_fingerprint(path.stat())
+    except (OSError, ValueError):
+        return None
+    text = _read_path(path, cfg)
+    try:
+        if _stat_fingerprint(path.stat()) != fingerprint:
+            return None
+    except OSError:
+        return None
+    if text is None or len("".join(text.split())) < MIN_DUPLICATE_NONSPACE:
+        return None
+    return fingerprint[:2], text
+
+
+def _duplicate_row(paths: list[str]) -> dict:
+    joined = ", ".join(paths)
+    return {
+        "family": "clean_code",
+        "rule": "duplicate_file_content",
+        "line": 1,
+        "detail": "Exact substantive content is duplicated across batch files.",
+        "force": True,
+        "snippet": joined[:180],
+        "action": "Keep one implementation and remove or extract the duplicate.",
+        "path": joined,
+        "_tool_use_id": "",
+    }
 
 
 def _stat_fingerprint(file_stat: os.stat_result) -> StatFingerprint:
@@ -515,65 +522,71 @@ def findings_for_batch(
     return findings
 
 
-def run(payload: dict, config: dict | None = None) -> dict:
-    payload = _sanitized_payload(payload)
-    cfg = effective_config(config, payloads.cwd(payload) or None)
-    session_id = payloads.session_id(payload)
+def _record_batch_row(session_id: str, cfg: dict, turn_id: str, duration_ms: int, **fields) -> None:
+    reporting.record_decision(
+        session_id=session_id, hook="batch", event=BATCH_EVENT,
+        duration_ms=duration_ms, turn_id=turn_id, root=cfg.get("ledger_root"),
+        **fields,
+    )
 
+
+def _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload) -> None:
+    """Write one row per decision, plus the degraded marker when the batch cannot be correlated by id."""
+    for finding, outcome in decisions:
+        _record_batch_row(
+            session_id, cfg, turn_id, duration_ms,
+            family=finding["family"], rule=finding["rule"], path=finding["path"],
+            tool_use_id=finding.get("_tool_use_id", ""), outcome=outcome,
+        )
+    if _has_nonempty_raw_batch(payload) and not _has_complete_unique_ids(payload, turn_id):
+        _record_batch_row(
+            session_id, cfg, turn_id, duration_ms,
+            family="", rule=DEGRADED_RULE, path="", tool_use_id="", outcome="release",
+        )
+
+
+def _batch_gate(payload: dict, cfg: dict, session_id: str):
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
         findings = findings_for_batch(payload, cfg, turn_id)
         decisions = [(finding, resolve_outcome(finding, cfg)) for finding in findings]
         duration_ms = int((time.monotonic() - started) * 1000)
         if session_id:
-            for finding, outcome in decisions:
-                reporting.record_decision(
-                    session_id=session_id,
-                    hook="batch",
-                    event=BATCH_EVENT,
-                    family=finding["family"],
-                    rule=finding["rule"],
-                    path=finding["path"],
-                    tool_use_id=finding.get("_tool_use_id", ""),
-                    outcome=outcome,
-                    duration_ms=duration_ms,
-                    turn_id=turn_id,
-                    root=cfg.get("ledger_root"),
-                )
-            if _has_nonempty_raw_batch(payload) and not _has_complete_unique_ids(
-                payload, turn_id
-            ):
-                reporting.record_decision(
-                    session_id=session_id,
-                    hook="batch",
-                    event=BATCH_EVENT,
-                    family="",
-                    rule=DEGRADED_RULE,
-                    path="",
-                    tool_use_id="",
-                    outcome="release",
-                    duration_ms=duration_ms,
-                    turn_id=turn_id,
-                    root=cfg.get("ledger_root"),
-                )
+            _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload)
         blocking = [finding for finding, outcome in decisions if outcome == "block"]
         if not blocking:
             return {}
         reason, _ = compact_block(blocking, cfg)
         return {"decision": "block", "reason": reason}
 
+    return gate
+
+
+def run(payload: dict, config: dict | None = None) -> dict:
+    payload = _sanitized_payload(payload)
+    cfg = effective_config(config, payloads.cwd(payload) or None)
     return run_with_ledger(
         hook="batch",
         payload=payload,
-        gate=gate,
+        gate=_batch_gate(payload, cfg, payloads.session_id(payload)),
         ledger_root=cfg.get("ledger_root"),
         state_root=cfg.get("state_root"),
     )
 
 
+def cli_response(response: dict) -> dict:
+    """Downgrade a batch block to a message, because D13 makes record.py canonical and a halted turn cannot be reworked."""
+    reason = response.get("reason", "")
+    if response.get("decision") != "block" or not reason:
+        return response
+    return {
+        **system_message(reason),
+        "hookSpecificOutput": {
+            "hookEventName": BATCH_EVENT,
+            "additionalContext": reason,
+        },
+    }
+
+
 if __name__ == "__main__":
-    response = run(read_payload())
-    if response.get("decision") == "block":
-        sys.stderr.write(response["reason"] + "\n")
-        raise SystemExit(2)
-    write_payload(response)
+    write_payload(cli_response(run(read_payload())))
