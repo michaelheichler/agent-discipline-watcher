@@ -62,6 +62,7 @@ class ConfigCliTests(unittest.TestCase):
                     "english": False,
                     "clean_code": True,
                 },
+                "exempt_families": {},
             }
 
     def test_status_finds_parent_project_config(self):
@@ -166,6 +167,56 @@ class ConfigCliTests(unittest.TestCase):
 
             assert '"checks"' in result.stdout
             assert "configure" in result.stdout
+
+
+class ExemptFamilyCliTests(unittest.TestCase):
+    def run_cli(self, *args, check=True):
+        return subprocess.run(
+            [sys.executable, str(CLI), *args],
+            check=check, text=True, capture_output=True,
+        )
+
+    def _project(self, tmp):
+        project = Path(tmp) / "project"
+        project.mkdir()
+        return project
+
+    def _config(self, project):
+        return json.loads((project / ".agent-discipline.json").read_text())
+
+    def test_it_writes_the_family_exemption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(tmp)
+            self.run_cli("exempt-family", "last_assistant_message.md", str(project),
+                         "--families", "english")
+            written = self._config(project)["exempt_families"]
+            self.assertEqual(written, {"last_assistant_message.md": ["english"]})
+
+    def test_clear_removes_one_pattern_and_keeps_the_rest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(tmp)
+            self.run_cli("exempt-family", "a.md", str(project), "--families", "english")
+            self.run_cli("exempt-family", "b.md", str(project), "--families", "punctuation")
+            self.run_cli("exempt-family", "a.md", str(project), "--clear")
+            self.assertEqual(self._config(project)["exempt_families"], {"b.md": ["punctuation"]})
+
+    def test_an_unknown_family_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(tmp)
+            result = self.run_cli("exempt-family", "a.md", str(project),
+                                  "--families", "englsh", check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown family", result.stderr)
+            self.assertFalse((project / ".agent-discipline.json").exists())
+
+    def test_configure_preserves_an_existing_exemption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(tmp)
+            self.run_cli("exempt-family", "a.md", str(project), "--families", "english")
+            self.run_cli("configure", str(project), "--checks", "punctuation")
+            config = self._config(project)
+            self.assertEqual(config["exempt_families"], {"a.md": ["english"]})
+            self.assertFalse(config["checks"]["english"])
 
 
 if __name__ == "__main__":

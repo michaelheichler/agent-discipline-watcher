@@ -63,16 +63,29 @@ def parse_selected_checks(raw, current):
     return {name: name in selected for name in CHECKS}
 
 
+def read_raw(path):
+    """Return the whole config object, so that a rewrite preserves keys this CLI does not own."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    return data if isinstance(data, dict) else {}
+
+
+def write_raw(root, data):
+    config_path(root).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
 def load_config(root):
     path = find_config(root)
+    data = read_raw(path)
     checks = dict(DEFAULT_CHECKS)
-    if path.exists():
-        data = json.loads(path.read_text())
-        checks.update(data.get("checks", {}))
+    checks.update(data.get("checks") or {})
+    families = data.get("exempt_families")
     return {
         "project": str(root),
         "config_path": str(path),
         "checks": {name: bool(checks.get(name, True)) for name in CHECKS},
+        "exempt_families": families if isinstance(families, dict) else {},
     }
 
 
@@ -92,8 +105,33 @@ def choose_checks(root):
 def configure(args):
     root = project_root(args.project)
     checks = choose_checks(root) if args.checks is None else parse_checks(args.checks)
-    data = {"checks": checks}
-    config_path(root).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    data = read_raw(config_path(root))
+    data["checks"] = checks
+    write_raw(root, data)
+    print(json.dumps(load_config(root), indent=2, sort_keys=True))
+
+
+def parse_families(raw):
+    names = {part for part in raw.replace(",", " ").split() if part}
+    unknown = sorted(names - set(CHECKS))
+    if unknown:
+        raise SystemExit(f"unknown family: {', '.join(unknown)}")
+    if not names:
+        raise SystemExit("name at least one family, or pass --clear")
+    return sorted(names)
+
+
+def exempt_family(args):
+    root = project_root(args.project)
+    data = read_raw(config_path(root))
+    current = data.get("exempt_families")
+    mapping = dict(current) if isinstance(current, dict) else {}
+    if args.clear:
+        mapping.pop(args.pattern, None)
+    else:
+        mapping[args.pattern] = parse_families(args.families or "")
+    data["exempt_families"] = mapping
+    write_raw(root, data)
     print(json.dumps(load_config(root), indent=2, sort_keys=True))
 
 
@@ -119,6 +157,16 @@ def main(argv=None):
         help="comma list: punctuation,english,clean_code",
     )
     configure_parser.set_defaults(func=configure)
+
+    exempt_parser = sub.add_parser("exempt-family")
+    exempt_parser.add_argument("pattern")
+    exempt_parser.add_argument("project", nargs="?", default=".")
+    exempt_parser.add_argument(
+        "--families",
+        help="comma list of families to drop on this path: punctuation,english,clean_code",
+    )
+    exempt_parser.add_argument("--clear", action="store_true")
+    exempt_parser.set_defaults(func=exempt_family)
 
     status_parser = sub.add_parser("status")
     status_parser.add_argument("project", nargs="?", default=".")
