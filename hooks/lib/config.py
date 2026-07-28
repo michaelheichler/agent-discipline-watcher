@@ -36,6 +36,8 @@ DEFAULTS = {
     "exempt_paths": [],
     # Path glob to family list, so that one surface drops one family instead of exempt_paths silencing them all.
     "exempt_families": {},
+    # git subtracts findings the committed file already had, because an agent must answer for its own edit only.
+    "baseline": "git",
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.

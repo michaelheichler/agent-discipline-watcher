@@ -17,6 +17,7 @@ from lib import payloads, reporting
 from lib.config import effective_config, resolve_outcome
 from lib.hookio import read_payload, write_payload
 from lib.reporting import compact_block, run_with_ledger
+from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
 
 BATCH_EVENT = "PostToolBatch"
@@ -459,7 +460,7 @@ def _scan_path(path: Path, cfg: dict) -> list[dict]:
     if text is None:
         return []
     findings = []
-    for finding in scan_all(str(path), text, cfg):
+    for finding in strip_committed(path, scan_all(str(path), text, cfg), cfg):
         item = dict(finding)
         item["path"] = str(path)
         findings.append(item)

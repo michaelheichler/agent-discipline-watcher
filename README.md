@@ -146,6 +146,22 @@ Project configuration lives in `.agent-discipline.json` at the project root:
 
 The hook code searches upward from the current working directory for `.agent-discipline.json`. If no file is found, punctuation, English, and clean-code checks are enabled.
 
+### Committed baseline
+
+An agent answers for the edit it made, not for the state of the file it opened. Before reporting, the PostToolUse scan, the batch scan, and the commit gate subtract whatever the same file already carried in `HEAD`.
+
+Editing one line of a legacy file therefore reports nothing, while adding a new finding to that same file still blocks. A file with no committed version, an untracked file, or a path outside any repository has no baseline, so it is scanned whole.
+
+Findings match by family, rule, and snippet text rather than by line number, so an edit that shifts a file does not resurface its old debt. Repeats are counted, so a third copy of a finding that appeared twice in `HEAD` still reports.
+
+```json
+{
+  "baseline": "none"
+}
+```
+
+`none` restores whole-file scanning. The default is `git`.
+
 ### Per-path family exemptions
 
 `exempt_paths` silences every configurable family on a path at once. `exempt_families` is the narrow form: it drops named families on matching paths and leaves the rest enforcing.

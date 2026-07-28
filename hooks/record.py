@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
 from lib.config import effective_config
 from lib.hookio import read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
+from lib.baseline import strip_committed
 from lib.reporting import append_row, compact_block, now_iso, run_with_ledger
 from lib.scanner import read_scannable, scan_all
 
@@ -69,59 +71,83 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> list[dict]:
         text = read_scannable(path, cfg)
         if text is None:
             continue
-        for finding in scan_all(str(path), text, cfg):
+        owned = strip_committed(path, scan_all(str(path), text, cfg), cfg)
+        for finding in owned:
             item = dict(finding)
             item["path"] = str(path)
             findings.append(item)
     return findings
 
 
-def _run_record(payload: dict, config: dict | None) -> dict:
-    """Run the record hook after its public fail-safe boundary."""
+def _projected_payload(payload: dict) -> RecordPayload:
+    """Overlay the validated identity fields onto the event projection."""
     projected = record_payload(payload)
     identity = normalize_payload(payload)
-    projected["session_id"] = identity["session_id"]
-    projected["cwd"] = identity["cwd"]
-    projected["tool_name"] = identity["tool_name"]
-    projected["tool_use_id"] = identity["tool_use_id"]
-    trusted_config = exact_string_dict(config)
-    state_root, ledger_root = _config_roots(trusted_config)
+    for field in ("session_id", "cwd", "tool_name", "tool_use_id"):
+        projected[field] = identity[field]
+    return projected
+
+
+def _scan_config(trusted_config: dict) -> dict:
+    """Strip the storage roots, because they steer the ledger rather than the scan."""
     scan_config = dict(trusted_config)
     scan_config.pop("state_root", None)
     scan_config.pop("ledger_root", None)
-    cwd_text = projected["cwd"]
+    return scan_config
+
+
+def _resolved_config(scan_config: dict, cwd_text: str) -> dict:
+    """Resolve project config, falling back to defaults so that an unreadable cwd never fails the hook."""
     try:
-        cfg = effective_config(scan_config, cwd_text or None)
+        return effective_config(scan_config, cwd_text or None)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError):
-        cfg = effective_config(scan_config, None)
-    if projected["session_id"]:
-        cfg["session_id"] = projected["session_id"]
-        record_success(
-            {
-                "session_id": projected["session_id"],
-                "cwd": projected["cwd"],
-                "tool_name": projected["tool_name"],
-                "tool_use_id": projected["tool_use_id"],
-                "tool_input": {"file_path": projected["file_path"]},
-            },
-            trusted_config,
-        )
-    cwd = Path(cwd_text or ".")
-    paths = _edited_paths(projected)
+        return effective_config(scan_config, None)
+
+
+def _note_success(projected: RecordPayload, trusted_config: dict) -> None:
+    record_success(
+        {
+            "session_id": projected["session_id"],
+            "cwd": projected["cwd"],
+            "tool_name": projected["tool_name"],
+            "tool_use_id": projected["tool_use_id"],
+            "tool_input": {"file_path": projected["file_path"]},
+        },
+        trusted_config,
+    )
+
+
+def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, ledger_root) -> Callable[[str], dict]:
+    """Build the per-turn gate closure, kept at module level so the caller stays inside the length cap."""
 
     def gate(turn_id: str) -> dict:
         if projected["session_id"]:
             _journal_edits(projected, paths, ledger_root, turn_id)
         findings = _scan_paths(paths, cwd, cfg)
-        if findings:
-            reason, _ = compact_block(findings, cfg)
-            return {"decision": "block", "reason": reason}
-        return {}
+        if not findings:
+            return {}
+        reason, _ = compact_block(findings, cfg)
+        return {"decision": "block", "reason": reason}
 
+    return gate
+
+
+def _run_record(payload: dict, config: dict | None) -> dict:
+    """Run the record hook after its public fail-safe boundary."""
+    projected = _projected_payload(payload)
+    trusted_config = exact_string_dict(config)
+    state_root, ledger_root = _config_roots(trusted_config)
+    cwd_text = projected["cwd"]
+    cfg = _resolved_config(_scan_config(trusted_config), cwd_text)
+    if projected["session_id"]:
+        cfg["session_id"] = projected["session_id"]
+        _note_success(projected, trusted_config)
+    cwd = Path(cwd_text or ".")
+    paths = _edited_paths(projected)
     return run_with_ledger(
         hook="record",
         payload=dict(projected),
-        gate=gate,
+        gate=_gate_for(projected, paths, cwd, cfg, ledger_root),
         ledger_root=ledger_root,
         state_root=state_root,
     )

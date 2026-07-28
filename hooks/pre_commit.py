@@ -6,6 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from lib.baseline import strip_against
 from lib.config import effective_config
 from lib.hookio import allow, deny, read_payload, write_payload
 from lib.reporting import compact_block, record_decision, run_with_ledger
@@ -61,11 +62,24 @@ def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
         text = _staged_text(repo, path)
         if text is None or scannable_text(text, cfg) is None:
             continue
-        for finding in scan_all(path, text, cfg):
+        owned = strip_against(_head_text(repo, path), path, scan_all(path, text, cfg), cfg)
+        for finding in owned:
             item = dict(finding)
             item["path"] = path
             findings.append(item)
     return findings
+
+
+def _head_text(repo: Path, path: str) -> str | None:
+    """Return the committed version of a staged path, so the gate judges the change and not the file's history."""
+    try:
+        result = subprocess.run(
+            ["git", "show", "HEAD:" + path], cwd=repo, text=True,
+            capture_output=True, check=True, timeout=30, errors="replace",
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout
 
 
 def _record(payload: dict, findings: list[dict], turn_id: str, ledger_root, duration_ms: int) -> None:
