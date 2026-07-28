@@ -146,6 +146,22 @@ Project configuration lives in `.agent-discipline.json` at the project root:
 
 The hook code searches upward from the current working directory for `.agent-discipline.json`. If no file is found, punctuation, English, and clean-code checks are enabled.
 
+### Per-path family exemptions
+
+`exempt_paths` silences every configurable family on a path at once. `exempt_families` is the narrow form: it drops named families on matching paths and leaves the rest enforcing.
+
+```json
+{
+  "exempt_families": {
+    "last_assistant_message.md": ["english"]
+  }
+}
+```
+
+That example stops the plain-English style rules on the Stop hook's chat buffer while punctuation keeps blocking em dashes, double hyphens, and spaced hyphens there. Patterns match the same way as `exempt_paths`, so a bare filename also matches it inside any directory.
+
+An unknown family name is ignored rather than rejected, so a typo scans more rather than less. `exempt_families` cannot reach `suppression_escape_hatch` or `what_comment`, which are emitted before the exemption check.
+
 The Craftsman suppression marker is always blocked on every scanned file. Project check switches and path exemptions cannot disable this rule. Fix the reported issue instead.
 
 The `what_comment` rule is also unconditional on code files. Neither `clean_code: false` nor `exempt_paths` suppresses it. State a WHY or delete the comment.

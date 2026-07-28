@@ -34,6 +34,8 @@ DEFAULTS = {
     "clean_code": True,
     "max_rows": 8,
     "exempt_paths": [],
+    # Path glob to family list, so that one surface drops one family instead of exempt_paths silencing them all.
+    "exempt_families": {},
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.

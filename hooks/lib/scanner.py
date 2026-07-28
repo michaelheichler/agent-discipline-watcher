@@ -7,9 +7,9 @@ import re
 from pathlib import PurePath
 
 try:
-    from .config import effective_config
+    from .config import GATE_FAMILIES, effective_config
 except ImportError:
-    from config import effective_config
+    from config import GATE_FAMILIES, effective_config
 
 
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
@@ -114,7 +114,35 @@ SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b"
 
 def _is_exempt(path: str, cfg: dict) -> bool:
     patterns = cfg.get("exempt_paths") or []
-    return any(fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, "*/" + pat) for pat in patterns)
+    return any(_path_matches(path, pat) for pat in patterns)
+
+
+def _path_matches(path: str, pattern: object) -> bool:
+    if not isinstance(pattern, str):
+        return False
+    return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, "*/" + pattern)
+
+
+def _exempt_families(path: str, cfg: dict) -> frozenset[str]:
+    """Return the families this path drops, ignoring unknown names so that a typo scans more rather than less."""
+    mapping = cfg.get("exempt_families")
+    if not isinstance(mapping, dict):
+        return frozenset()
+    dropped = {
+        name
+        for pattern, families in mapping.items()
+        if _path_matches(path, pattern) and isinstance(families, (list, tuple, set, frozenset))
+        for name in families
+    }
+    return frozenset(dropped & set(GATE_FAMILIES))
+
+
+def _active_families(path: str, cfg: dict) -> frozenset[str]:
+    """Return the configurable families that run for this path, after its own family exemptions."""
+    dropped = _exempt_families(path, cfg)
+    return frozenset(
+        name for name in GATE_FAMILIES if cfg.get(name, True) and name not in dropped
+    )
 
 
 def read_scannable(path, config: dict) -> str | None:
@@ -162,17 +190,18 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
         return findings
     punct_lines = _strip_punctuation_blocks(text).splitlines() or [""]
     english_lines = _strip_english_hidden(text).splitlines() or [""]
+    active = _active_families(path, cfg)
     code_file = _is_code(path)
-    if cfg["clean_code"] and code_file:
+    if "clean_code" in active and code_file:
         findings.extend(_scan_clean_code_file(path, text, cfg))
     for number, line in enumerate(lines, 1):
-        if cfg["punctuation"]:
+        if "punctuation" in active:
             scan_line = punct_lines[number - 1] if number <= len(punct_lines) else ""
             findings.extend(_scan_punctuation(path, number, line, scan_line))
-        if cfg["english"] and _is_prose(path):
+        if "english" in active and _is_prose(path):
             scan_line = english_lines[number - 1] if number <= len(english_lines) else ""
             findings.extend(_scan_english(path, number, line, scan_line))
-        if cfg["clean_code"] and code_file:
+        if "clean_code" in active and code_file:
             findings.extend(_scan_clean_code(path, number, line))
     return findings
 

@@ -406,3 +406,51 @@ def test_what_comment_does_not_fire_on_a_named_config_dotfile():
 def test_what_comment_still_fires_on_code():
     rules = [row["rule"] for row in scan_all("a.py", "# increments the counter\nx = 1\n", {})]
     assert "what_comment" in rules
+
+
+EM_DASH_LINE = "A prose line broken by an " + chr(0x2014) + " dash character.\n"
+ENGLISH_LINE = "We utilize the parser here.\n"
+CHAT_PATH = "last_assistant_message.md"
+DROP_ENGLISH = {"exempt_families": {CHAT_PATH: ["english"]}}
+
+
+def _rules(path, text, cfg):
+    return [row["rule"] for row in scan_all(path, text, cfg)]
+
+
+def test_exempt_families_drops_only_the_named_family():
+    rules = _rules(CHAT_PATH, ENGLISH_LINE, DROP_ENGLISH)
+    assert "utilize" not in rules
+
+
+def test_exempt_families_keeps_punctuation_on_the_same_path():
+    rules = _rules(CHAT_PATH, EM_DASH_LINE, DROP_ENGLISH)
+    assert "banned_dash" in rules
+
+
+def test_exempt_families_leaves_other_paths_alone():
+    assert "utilize" in _rules("docs/guide.md", ENGLISH_LINE, DROP_ENGLISH)
+
+
+def test_exempt_families_matches_a_bare_name_inside_a_directory():
+    assert "utilize" not in _rules("/tmp/session/" + CHAT_PATH, ENGLISH_LINE, DROP_ENGLISH)
+
+
+def test_exempt_families_cannot_silence_an_always_blocking_rule():
+    cfg = {"exempt_families": {"a.py": ["clean_code", "punctuation", "english"]}}
+    assert "what_comment" in _rules("a.py", "# increments the counter\nx = 1\n", cfg)
+
+
+def test_exempt_families_ignores_an_unknown_family_name():
+    cfg = {"exempt_families": {"docs/guide.md": ["typo_family"]}}
+    assert "utilize" in _rules("docs/guide.md", ENGLISH_LINE, cfg)
+
+
+def test_exempt_families_ignores_a_malformed_entry():
+    for broken in ({"docs/guide.md": "english"}, {"docs/guide.md": None}, ["english"], "english"):
+        assert "utilize" in _rules("docs/guide.md", ENGLISH_LINE, {"exempt_families": broken})
+
+
+def test_exempt_families_defaults_to_scanning_everything():
+    assert effective_config({})["exempt_families"] == {}
+    assert "utilize" in _rules("docs/guide.md", ENGLISH_LINE, {})
