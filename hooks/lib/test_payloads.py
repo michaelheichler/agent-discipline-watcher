@@ -149,21 +149,6 @@ class ToolUseIdTests(unittest.TestCase):
         self.assertEqual(payloads.tool_use_id({"tool_name": "Write"}), "")
 
 
-class LastAssistantMessageTests(unittest.TestCase):
-    def test_reads_documented_stop_message(self):
-        payload = {
-            "session_id": "sess-1",
-            "hook_event_name": "Stop",
-            "last_assistant_message": "Done. All tests pass.",
-        }
-        self.assertEqual(
-            payloads.last_assistant_message(payload), "Done. All tests pass."
-        )
-
-    def test_absent_returns_empty_string(self):
-        self.assertEqual(payloads.last_assistant_message({}), "")
-
-
 class StopHookActiveTests(unittest.TestCase):
     def test_compatibility_name_is_direct_alias(self):
         self.assertIs(payloads.stop_hook_active, payloads.is_stop_hook_active)
@@ -178,24 +163,6 @@ class StopHookActiveTests(unittest.TestCase):
 
     def test_string_false_does_not_coerce_to_true(self):
         self.assertIs(payloads.stop_hook_active({"stop_hook_active": "false"}), False)
-
-
-class AgentIdTests(unittest.TestCase):
-    def test_reads_documented_subagent_id(self):
-        payload = {"hook_event_name": "SubagentStop", "agent_id": "agent-7"}
-        self.assertEqual(payloads.agent_id(payload), "agent-7")
-
-    def test_absent_on_non_subagent_event(self):
-        self.assertEqual(payloads.agent_id(PRE_TOOL_USE), "")
-
-
-class AgentTypeTests(unittest.TestCase):
-    def test_reads_documented_subagent_type(self):
-        payload = {"hook_event_name": "SubagentStop", "agent_type": "python-engineer"}
-        self.assertEqual(payloads.agent_type(payload), "python-engineer")
-
-    def test_absent_on_non_subagent_event(self):
-        self.assertEqual(payloads.agent_type(PRE_TOOL_USE), "")
 
 
 class AgentTranscriptPathTests(unittest.TestCase):

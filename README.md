@@ -169,12 +169,14 @@ Matching runs in two passes. Exact family, rule, and snippet text first, so an e
 ```json
 {
   "exempt_families": {
-    "last_assistant_message.md": ["english"]
+    "CHANGELOG.md": ["english"]
   }
 }
 ```
 
-That example stops the plain-English style rules on the Stop hook's chat buffer while punctuation keeps blocking em dashes, double hyphens, and spaced hyphens there. Patterns match the same way as `exempt_paths`, so a bare filename also matches it inside any directory.
+That example stops the plain-English style rules on `CHANGELOG.md` while punctuation keeps blocking em dashes, double hyphens, and spaced hyphens there. Patterns match the same way as `exempt_paths`, so a bare filename also matches it inside any directory.
+
+Chat replies are not in scope for either form: `Stop` and `SubagentStop` no longer scan `last_assistant_message` at all, so there is nothing to exempt there. Every file a `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, or `apply_patch` call touches is still scanned exactly as before.
 
 An unknown family name is ignored rather than rejected, so a typo scans more rather than less. `exempt_families` cannot reach `suppression_escape_hatch` or `what_comment`, which are emitted before the exemption check.
 
@@ -256,8 +258,8 @@ Every Claude route in `hooks/run.sh` is registered in `hooks/hooks.json` and rea
 | `PostToolUse` | PostToolUse | `record.py` | Rescans written files and immediately blocks agent continuation when findings remain. |
 | `PostToolBatch` | PostToolBatch | `batch.py` | Additive cross-file scan after the canonical per-call scans. |
 | `PostToolUseFailure` | PostToolUseFailure | `failure.py` | Records tool failures and opens session-scoped MCP backoff windows. |
-| `SubagentStop` | SubagentStop | `subagent_stop.py` | Scans a subagent's final message without ending the parent turn. |
-| `Stop` | Stop | `stop.py` | Scans the final assistant message for unproved done claims and closes out the turn. |
+| `SubagentStop` | SubagentStop | `subagent_stop.py` | Records a heartbeat for the delegated turn. Chat replies are not scanned. |
+| `Stop` | Stop | `stop.py` | Advances the turn counter and closes out the turn. Chat replies are not scanned. |
 
 PreCommit parses the shell command with a shell-aware parser that resolves `git -c`, `git -C`, `env`, `command`, and compound segments. The `if` filter is deliberately the broad `Bash(git *)` rather than `Bash(git commit *)`, because a narrower literal hides forms such as `git -c user.name=x commit` before the parser ever sees them. Commits launched through `sh -c`, `xargs`, shell aliases, or wrapper scripts are still not scanned.
 
@@ -285,8 +287,8 @@ Cells use the state word alone or as `state: note`. The note carries any unwired
 | `SessionStart` | wired | wired | wired: `session.created` | degraded: `before_agent_start` injects the policy prompt only, no session payload contract | No injection that session. Edit-time gates still fire. | unknown |
 | `PreToolUse` | wired | wired | wired: `tool.execute.before`, write and edit tools only | degraded: blocking `tool_call` documented in current Pi, ADW adapter unwired, post-hoc today | PostToolUse rescan blocks continuation after the write lands. | unknown |
 | `PostToolUse` | wired | wired | wired: `tool.execute.after` | wired: `tool_result`, findings return as an error result | PreCommit scans staged files at commit time. | unknown |
-| `Stop` | wired: `stop.py` scans the final message for unproved done claims | not-available: Codex documents Stop with continuation, ADW unwired | degraded: pseudo-Stop on `session.idle` is injection-only through `promptAsync`, it cannot block | not-available: `turn_end` is observation-only | Per-edit `record.py` (PostToolUse) scanning. | unknown |
-| `SubagentStop` | wired: `subagent_stop.py` gates each agent without ending the parent turn | not-available: Codex documents SubagentStop, ADW unwired | not-available | not-available | Subagent edits still hit the per-edit PostToolUse scans. | unknown |
+| `Stop` | wired: `stop.py` advances the turn counter, chat replies are not scanned | not-available: Codex documents Stop with continuation, ADW unwired | degraded: pseudo-Stop on `session.idle` is injection-only through `promptAsync`, it cannot block | not-available: `turn_end` is observation-only | Per-edit `record.py` (PostToolUse) scanning. | unknown |
+| `SubagentStop` | wired: `subagent_stop.py` records a heartbeat without ending the parent turn, chat replies are not scanned | not-available: Codex documents SubagentStop, ADW unwired | not-available | not-available | Subagent edits still hit the per-edit PostToolUse scans. | unknown |
 | `TaskCompleted` | not-available: Claude documents TaskCompleted, ADW has no module yet (E2-S3) | not-available | not-available | not-available | The full suite runs at Stop or commit instead. | unknown |
 | `PostToolBatch` | wired: `batch.py` runs the additive cross-file scan | not-available | not-available | not-available | Per-call `record.py` scanning is canonical. Nothing is buffered, so nothing is lost. | unknown |
 | `PostToolUseFailure` | wired: `failure.py` tracks failure streaks and MCP backoff | degraded: no dedicated failure event, PostToolUse fires after failed Bash calls, ADW matcher covers edit tools only | unknown: docs list no failure event and do not say whether `tool.execute.after` fires on tool error | degraded: `tool_result` exposes `isError` and ADW subscribes to it, MCP-health handling unwired | MCP health substate stays empty and the PreToolUse consult allows every call. Degraded but harmless. | unknown |

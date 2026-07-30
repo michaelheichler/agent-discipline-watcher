@@ -148,27 +148,12 @@ def tool_use_id(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "tool_use_id")
 
 
-def last_assistant_message(payload: object) -> str:
-    """Return the final assistant text for Stop or SubagentStop, or ''."""
-    return _exact_string(exact_string_dict(payload), "last_assistant_message")
-
-
 def is_stop_hook_active(payload: object) -> bool:
     """Return the Stop flag set when a prior Stop hook already blocked, or False."""
     return _read_exact_bool(exact_string_dict(payload), "stop_hook_active")
 
 
 stop_hook_active = is_stop_hook_active
-
-
-def agent_id(payload: object) -> str:
-    """Return the subagent id, or '' for non-subagent events."""
-    return _exact_string(exact_string_dict(payload), "agent_id")
-
-
-def agent_type(payload: object) -> str:
-    """Return the subagent type, or '' for non-subagent events."""
-    return _exact_string(exact_string_dict(payload), "agent_type")
 
 
 def agent_transcript_path(payload: object) -> str:
