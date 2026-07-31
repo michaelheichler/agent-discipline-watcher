@@ -8,9 +8,8 @@ description: >-
   possessive decades. english-for-agents keeps reader-facing English plain by
   removing filler, dead metaphor, AI tells, inflated diction, wordiness, buried
   subjects, and empty intensifiers. clean-coder-discipline keeps code reviewable
-  by rejecting narration comments, dead/commented-out/speculative code,
-  deferred-work markers, hollow tests, skipped tests, long functions/files, and
-  unproved done claims.
+  by rejecting narration comments, dead/commented-out code, deferred-work
+  markers, hollow tests, and long functions/files.
 ---
 
 # Agent Discipline Watcher
@@ -32,8 +31,7 @@ discipline layer for Codex, Claude Code, and Pi.
 - Code: make intent live in names, structure, and tests. Delete comments that
   narrate what the code does, label bug cases, apologize for the code, record
   change history, or hide deferred work. Do not ship commented-out code,
-  speculative one-use abstractions, skipped tests, hollow tests, long functions,
-  oversized files, or claims of success without a run or test.
+  narrating docstrings, hollow tests, long functions, or oversized files.
 - Response stance: be skeptical and direct. Verify changeable facts before
   claiming them. Challenge weak assumptions and overbuilt solutions. Do not open
   with empty validators such as agreement, praise, or filler.
