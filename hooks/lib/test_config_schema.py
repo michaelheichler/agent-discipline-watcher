@@ -307,8 +307,14 @@ class SchemaDefaultsTests(unittest.TestCase):
         cfg = config.effective_config()
         self.assertEqual(cfg["gates"], {})
         self.assertEqual(cfg["kill_switches"], {})
-        self.assertEqual(cfg["verify"], {})
         self.assertEqual(cfg["data_boundary"], {"enabled": False})
+
+    def test_defaults_carry_no_key_nothing_reads(self):
+        """The contract bans speculative schema, so a key with no reader must not ship."""
+        self.assertNotIn("verify", config.effective_config())
+
+    def test_baseline_defaults_to_report(self):
+        self.assertEqual(config.effective_config()["baseline"], "report")
 
     def test_defaults_not_shared_between_calls(self):
         first = config.effective_config()

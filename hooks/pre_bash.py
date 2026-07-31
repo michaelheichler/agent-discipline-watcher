@@ -8,12 +8,26 @@ import time
 from pathlib import PurePosixPath
 
 from lib.config import effective_config
-from lib.hookio import allow, deny, read_payload, write_payload
-from lib.protected import authorized, is_live_client_path
+from lib.hookio import advise, allow, deny, read_payload, write_payload
+from lib.protected import authorized, is_live_client_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
+from lib.scanner import scan_all, scannable_text
 
 # The lookbehind drops 2> and the tail of 2>>, because a stderr redirect writes no target file.
 WRITE_REDIRECT_RE = re.compile(r"(?<![2>])>")
+REDIRECT_HEAD_RE = re.compile(r"^\d*>>?")
+HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([A-Za-z_][A-Za-z0-9_]*))")
+DYNAMIC_RE = re.compile(r"[$`]")
+LITERAL_PRODUCERS = frozenset({"echo", "printf"})
+ECHO_FLAGS = frozenset({"-n", "-e", "-E", "-ne", "-en"})
+UNDECIDABLE = (
+    "agent-discipline-watcher could not evaluate this command and blocked it rather than letting it through. "
+    "Repair the gate config and retry. Cause: "
+)
+OBSERVE_PREFIX = (
+    "agent-discipline-watcher is observing these, not blocking. "
+    "Judge each one and either repair it or state why it stands.\n"
+)
 MUTATING_VERB_RE = re.compile(
     r"\b(?:tee|cp|mv|ln|rm|truncate|chmod|chown|dd|shred|unlink)\b|\bsed\s+-i", re.IGNORECASE
 )
@@ -57,7 +71,15 @@ RULES = (
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Judge a pending Bash command, recording the decision so a self-protection block is countable."""
+    """Judge a pending Bash command, blocking rather than passing it through when the gate itself cannot decide."""
+    try:
+        return _run(payload, config)
+    except Exception as exc:
+        return deny(UNDECIDABLE + str(exc))
+
+
+def _run(payload: dict, config: dict | None) -> dict:
+    """Record the decision so a self-protection block is countable."""
     cfg = effective_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_bash",
@@ -73,18 +95,38 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     command = _command(payload)
     if not command:
         return allow()
-    findings = command_findings(command, cfg)
-    if not findings:
+    findings = command_findings(command, cfg) + target_findings(command, cfg)
+    if findings:
+        reason, _ = compact_block(findings, cfg)
+        _record(payload, cfg, turn_id, findings, started)
+        return deny(reason)
+    content = write_findings(command, cfg)
+    if not content:
         return allow()
-    reason, _ = compact_block(findings, cfg)
-    record_findings(
+    return _verdict(_record(payload, cfg, turn_id, content, started), cfg)
+
+
+def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float) -> list[tuple[dict, str]]:
+    return record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_bash",
         event="PreToolUse", findings=findings, turn_id=turn_id,
         tool_use_id=str(payload.get("tool_use_id") or ""),
         duration_ms=int((time.monotonic() - started) * 1000),
         root=cfg.get("ledger_root"), config=cfg,
     )
-    return deny(reason)
+
+
+def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
+    """Content findings answer to gate state, unlike the self-protection rules above, so an observed family only reports."""
+    blocking = [finding for finding, outcome in decisions if outcome == "block"]
+    if blocking:
+        reason, _ = compact_block(blocking, cfg)
+        return deny(reason)
+    observed = [finding for finding, outcome in decisions if outcome == "would_block"]
+    if not observed:
+        return allow()
+    reason, _ = compact_block(observed, cfg)
+    return advise(OBSERVE_PREFIX + reason, "PreToolUse")
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
@@ -105,6 +147,180 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
     if any(_mutates_live_client(segment, home) for segment in segments):
         hits.append("live_client_surface")
     return [_finding(rule, command) for rule in hits]
+
+
+def target_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
+    """Apply the protected-path policy to shell writes, because a redirect reaches the same files the Write tool does."""
+    findings = []
+    for path, text in _shell_targets(command).items():
+        for finding in path_findings(path, config, home, text):
+            item = dict(finding)
+            item["path"] = path
+            findings.append(item)
+    return findings
+
+
+def _shell_targets(command: str) -> dict[str, str | None]:
+    """Pair every write target with its text, holding the targets whose text is unknowable at None rather than dropping them."""
+    targets: dict[str, str | None] = {path: None for path in _mutation_paths(command)}
+    targets.update({path: None for path in write_paths(command)})
+    targets.update(dict(write_targets(command)))
+    return targets
+
+
+def write_paths(command: str) -> list[str]:
+    """Return every literal write target, including those whose content this parser cannot read."""
+    return [
+        path
+        for line, _ in _logical_lines(command)
+        for segment in _segments(line)
+        for path in _write_paths(segment)
+    ]
+
+
+def _mutation_paths(command: str) -> list[str]:
+    """Return the paths a mutating segment names, so copies and in-place edits reach the policy a redirect already reaches."""
+    return [path for segment in _segments(command) if _is_mutating(segment) for path in _segment_paths(segment)]
+
+
+def write_findings(command: str, config: dict | None = None) -> list[dict]:
+    """Scan literal shell writes, because PostToolUse never matches Bash and this content would otherwise land unread."""
+    findings = []
+    for path, text in write_targets(command):
+        body = scannable_text(text, config)
+        if body is None:
+            continue
+        for finding in scan_all(path, body, config):
+            item = dict(finding)
+            item["path"] = path
+            findings.append(item)
+    return findings
+
+
+def write_targets(command: str) -> list[tuple[str, str]]:
+    """Pair each shell write target with the literal text it receives, skipping any write whose text is not knowable here."""
+    rows: list[tuple[str, str]] = []
+    for line, bodies in _logical_lines(command):
+        rows.extend(_line_writes(line, bodies))
+    return rows
+
+
+def _logical_lines(command: str) -> list[tuple[str, list[str | None]]]:
+    """Lift heredoc bodies out of the command text first, so the shell tokenizer never reads document text as syntax."""
+    lines = command.splitlines()
+    rows: list[tuple[str, list[str | None]]] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        bodies: list[str | None] = []
+        for match in HEREDOC_RE.finditer(line):
+            body, index = _heredoc_body(lines, index, match)
+            bodies.append(body)
+        rows.append((line, bodies))
+    return rows
+
+
+def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str | None, int]:
+    """Collect one heredoc body, returning None when it never closes or when an unquoted delimiter lets the shell expand it."""
+    strip, delimiter = match.group(1) == "-", match.group(2) or match.group(3) or match.group(4)
+    collected: list[str] = []
+    while index < len(lines):
+        raw = lines[index]
+        index += 1
+        line = raw.lstrip("\t") if strip else raw
+        if line.rstrip() == delimiter:
+            body = "\n".join(collected)
+            expandable = match.group(4) is not None
+            return (None if expandable and DYNAMIC_RE.search(body) else body), index
+        collected.append(line)
+    return None, index
+
+
+def _line_writes(line: str, bodies: list[str | None]) -> list[tuple[str, str]]:
+    """Pair targets with contents only at an unambiguous count, so a shape this parser misreads stays silent."""
+    segments = _segments(line)
+    targets = [path for segment in segments for path in _write_paths(segment)]
+    if not targets:
+        return []
+    contents = list(bodies) if bodies else _literal_contents(segments)
+    if not contents or None in contents:
+        return []
+    if len(contents) == 1:
+        return [(path, contents[0]) for path in targets]
+    if len(contents) == len(targets):
+        return list(zip(targets, contents))
+    return []
+
+
+def _write_paths(segment: list[str]) -> list[str]:
+    paths = _redirect_paths(segment)
+    index = _command_word_index(segment)
+    if index < len(segment) and _basename(segment[index]) == "tee":
+        paths.extend(_bare(token) for token in segment[index + 1:] if not _bare(token).startswith("-"))
+    return [path for path in paths if _is_file_target(path)]
+
+
+def _redirect_paths(segment: list[str]) -> list[str]:
+    """Read the operand of a write redirect, honoring the stderr exclusion the write regex already encodes."""
+    paths = []
+    for index, token in enumerate(segment):
+        match = REDIRECT_HEAD_RE.match(token)
+        if _is_quoted(token) or not match or not WRITE_REDIRECT_RE.search(token):
+            continue
+        rest = token[match.end():]
+        if not rest and index + 1 < len(segment):
+            rest = segment[index + 1]
+        paths.append(_bare(rest))
+    return paths
+
+
+def _is_file_target(path: str) -> bool:
+    return bool(path) and not path.startswith("&") and not path.startswith("/dev/")
+
+
+def _command_word_index(segment: list[str]) -> int:
+    """Step past env assignments and wrapper interpreters, because the word after them is what actually runs."""
+    index = 0
+    while index < len(segment):
+        token = segment[index]
+        if _is_quoted(token):
+            return index
+        name, separator, _ = token.partition("=")
+        if (separator and name) or _basename(token) in INTERPRETERS:
+            index += 1
+            continue
+        return index
+    return len(segment)
+
+
+def _literal_contents(segments: list[str]) -> list[str | None]:
+    contents = []
+    for segment in segments:
+        index = _command_word_index(segment)
+        if index < len(segment) and _basename(segment[index]) in LITERAL_PRODUCERS:
+            contents.append(_producer_text(segment[index + 1:]))
+    return contents
+
+
+def _producer_text(args: list[str]) -> str | None:
+    """Return the emitted text, or None once a token proves the text is assembled at runtime rather than written here."""
+    words: list[str] = []
+    skip = False
+    for token in args:
+        if skip:
+            skip = False
+            continue
+        match = REDIRECT_HEAD_RE.match(token)
+        if match and not _is_quoted(token):
+            skip = not token[match.end():]
+            continue
+        if DYNAMIC_RE.search(token) and not (token.startswith("'") and token.endswith("'")):
+            return None
+        if not words and _bare(token) in ECHO_FLAGS:
+            continue
+        words.append(_bare(token))
+    return " ".join(words).replace("\\n", "\n").replace("\\t", "\t")
 
 
 def _segments(command: str) -> list[list[str]]:
@@ -196,10 +412,15 @@ def _deletes_state(segment: list[str]) -> bool:
     return any(STATE_TARGET_RE.search(word) for word in words)
 
 
+def _is_mutating(segment: list[str]) -> bool:
+    """Report the mutating shell forms, so that a read of a protected path stays allowed."""
+    text = _segment_text(segment)
+    return bool(WRITE_REDIRECT_RE.search(text) or MUTATING_VERB_RE.search(text))
+
+
 def _mutates_live_client(segment: list[str], home: str | os.PathLike[str] | None) -> bool:
     """Require the mutating form and the live client target inside the same segment, so that a read stays allowed."""
-    text = _segment_text(segment)
-    if not (WRITE_REDIRECT_RE.search(text) or MUTATING_VERB_RE.search(text)):
+    if not _is_mutating(segment):
         return False
     return any(is_live_client_path(path, home) for path in _segment_paths(segment))
 

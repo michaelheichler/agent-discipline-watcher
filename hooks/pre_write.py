@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import re
 import time
+from pathlib import Path
 
+from lib.baseline import split_committed
 from lib.config import effective_config
 from lib.hookio import advise, allow, deny, read_payload, write_payload
 from lib.protected import path_findings
-from lib.reporting import compact_block, record_findings, run_with_ledger
+from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scanner import scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
-OBSERVE_PREFIX = (
-    "agent-discipline-watcher is observing these, not blocking. "
-    "Judge each one and either repair it or state why it stands.\n"
+UNDECIDABLE = (
+    "agent-discipline-watcher could not evaluate this write and blocked it rather than letting it through. "
+    "Repair the gate config and retry. Cause: "
 )
 
 
+def _tool_input(payload: dict) -> dict:
+    value = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
+    return value if isinstance(value, dict) else {}
+
+
 def pending_writes(payload: dict) -> list[tuple[str, str]]:
-    tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
+    tool_input = _tool_input(payload)
     path = tool_input.get("file_path") or tool_input.get("path") or "<pending>"
     if "content" in tool_input:
         return [(path, str(tool_input.get("content") or ""))]
@@ -55,7 +62,15 @@ def split_patch(patch: str) -> list[tuple[str, str]]:
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Scan a pending write, recording the decision so the edit gate leaves the same evidence the commit gate does."""
+    """Scan a pending write, blocking rather than passing the call through when the gate itself cannot decide."""
+    try:
+        return _run(payload, config)
+    except Exception as exc:
+        return deny(UNDECIDABLE + str(exc))
+
+
+def _run(payload: dict, config: dict | None) -> dict:
+    """Record the decision so the edit gate leaves the same evidence the commit gate does."""
     cfg = effective_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_write",
@@ -70,8 +85,8 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     started = time.monotonic()
     if payload.get("session_id"):
         cfg["session_id"] = payload["session_id"]
-    findings = _pending_findings(payload, cfg)
-    if not findings:
+    findings, inherited = _pending_findings(payload, cfg)
+    if not findings and not inherited:
         return allow()
     decisions = record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_write",
@@ -80,30 +95,38 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         duration_ms=int((time.monotonic() - started) * 1000),
         root=cfg.get("ledger_root"), config=cfg,
     )
-    return _verdict(decisions, cfg)
+    return _verdict(decisions, inherited, cfg)
 
 
-def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
-    """Deny on an enforced finding, otherwise report an observed one so the agent must weigh it before moving on."""
-    blocking = [finding for finding, outcome in decisions if outcome == "block"]
-    if blocking:
-        reason, _ = compact_block(blocking, cfg)
-        return deny(reason)
-    observed = [finding for finding, outcome in decisions if outcome == "would_block"]
-    if not observed:
-        return allow()
-    reason, _ = compact_block(observed, cfg)
-    return advise(OBSERVE_PREFIX + reason, "PreToolUse")
+def _verdict(decisions: list[tuple[dict, str]], inherited: list[dict], cfg: dict) -> dict:
+    """Deny on an enforced finding, otherwise report so the agent must weigh the rest before moving on."""
+    kind, message = verdict_message(decisions, cfg)
+    joined = "\n".join(part for part in (message, inherited_advice(inherited, cfg)) if part)
+    if kind == "block":
+        return deny(joined)
+    return advise(joined, "PreToolUse") if joined else allow()
 
 
-def _pending_findings(payload: dict, cfg: dict) -> list[dict]:
-    findings = []
+def _stamped(findings: list[dict], path: str) -> list[dict]:
+    """Stamp the target path onto each finding, because the scanner works from text and the report names files."""
+    return [{**finding, "path": path} for finding in findings]
+
+
+def _pending_findings(payload: dict, cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Split whole-file content against its committed version, because only Write carries debt the edit did not create."""
+    whole_file = "content" in _tool_input(payload)
+    owned_rows: list[dict] = []
+    inherited_rows: list[dict] = []
     for path, text in pending_writes(payload):
-        for finding in list(path_findings(path, cfg)) + scan_all(path, text, cfg):
-            item = dict(finding)
-            item["path"] = path
-            findings.append(item)
-    return findings
+        owned_rows.extend(_stamped(path_findings(path, cfg, content=text), path))
+        scanned = _stamped(scan_all(path, text, cfg), path)
+        if not whole_file:
+            owned_rows.extend(scanned)
+            continue
+        owned, inherited = split_committed(Path(path), scanned, cfg)
+        owned_rows.extend(owned)
+        inherited_rows.extend(inherited)
+    return owned_rows, inherited_rows
 
 
 if __name__ == "__main__":

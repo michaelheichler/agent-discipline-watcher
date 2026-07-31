@@ -11,14 +11,15 @@ except ImportError:
     from scanner import scan_all
 
 
-BASELINE_MODES = ("git", "none")
+BASELINE_MODES = ("git", "report", "none")
+DEFAULT_BASELINE_MODE = "report"
 GIT_TIMEOUT_SECONDS = 10
 
 
 def baseline_mode(cfg: dict) -> str:
-    """Resolve the mode, defaulting to git so that a legacy file never blocks an unrelated edit."""
+    """Resolve the mode, defaulting to report so inherited debt is named instead of vanishing without a trace."""
     mode = cfg.get("baseline")
-    return mode if mode in BASELINE_MODES else "git"
+    return mode if mode in BASELINE_MODES else DEFAULT_BASELINE_MODE
 
 
 def _git(args: list[str], cwd: Path) -> str | None:
@@ -93,18 +94,41 @@ def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
     return _consume(survivors, loose, rule_key)
 
 
-def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:
-    """Return the findings this edit owns, leaving whatever HEAD already carried to the file's own history."""
+def partition(findings: list[dict], baseline: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split into what the edit owns and what it inherited, so a caller can surface the second without blocking on it."""
+    owned = subtract(findings, baseline)
+    kept = {id(row) for row in owned}
+    return owned, [row for row in findings if id(row) not in kept]
+
+
+def _halves(findings: list[dict], baseline: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Withhold the inherited half outside report mode, because git mode promises silence about committed debt."""
+    owned, inherited = partition(findings, baseline)
+    return owned, inherited if baseline_mode(cfg) == "report" else []
+
+
+def split_committed(path: Path, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Return the owned and inherited halves against HEAD, so an edit answers for its own debt and hears about the rest."""
     if not findings or baseline_mode(cfg) == "none":
-        return findings
+        return findings, []
     text = committed_text(path)
     if text is None:
-        return findings
-    return subtract(findings, scan_all(str(path), text, cfg))
+        return findings, []
+    return _halves(findings, scan_all(str(path), text, cfg), cfg)
+
+
+def split_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Split against an already-resolved baseline text, for callers that read the old version themselves."""
+    if not findings or text is None or baseline_mode(cfg) == "none":
+        return findings, []
+    return _halves(findings, scan_all(path, text, cfg), cfg)
+
+
+def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:
+    """Return the owned half alone, kept for callers that have no use for the inherited one."""
+    return split_committed(path, findings, cfg)[0]
 
 
 def strip_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> list[dict]:
-    """Subtract an already-resolved baseline text, for callers that read the old version themselves."""
-    if not findings or text is None or baseline_mode(cfg) == "none":
-        return findings
-    return subtract(findings, scan_all(path, text, cfg))
+    """Return the owned half alone, kept for callers that have no use for the inherited one."""
+    return split_against(text, path, findings, cfg)[0]

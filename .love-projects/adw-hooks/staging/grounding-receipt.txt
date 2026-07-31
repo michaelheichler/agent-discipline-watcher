@@ -1,9 +1,0 @@
-grounding receipt for architect-plan.json (review-closure revision 13, instants everywhere)
-generated: 2026-07-25 07:34:21 CEST
-
-$ shasum -a 256 /Users/michael/dev/skills/agent-discipline-watcher/.love-projects/adw-hooks/staging/architect-plan.json
-83633f378d7eaff5fbd97d2f769bce0caa43dae34d5d8f40c36ccfe2edefc164  /Users/michael/dev/skills/agent-discipline-watcher/.love-projects/adw-hooks/staging/architect-plan.json
-
-$ python3 "/Users/michael/.claude/agentic-love/love-projects/grounding.py" validate-plan architect-plan.json
-grounding valid: /Users/michael/.claude/agentic-love/love-projects/resources/docs/sources/planning-backend.toml
-exit status: 0

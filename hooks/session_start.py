@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from lib.hookio import read_payload, system_message, write_payload
+from lib.hookio import CONTRACT, read_payload, write_payload
 
+SESSION_START_EVENT = "SessionStart"
 
 PROMPT = (
     "agent-discipline-watcher: keep punctuation ASCII, prefer plain English, "
@@ -10,7 +11,14 @@ PROMPT = (
 
 
 def run(payload: dict | None = None, config: dict | None = None) -> dict:
-    return system_message(PROMPT)
+    """Send the short line to the transcript and the full contract to the model, because systemMessage alone never reaches the model."""
+    return {
+        "systemMessage": PROMPT,
+        "hookSpecificOutput": {
+            "hookEventName": SESSION_START_EVENT,
+            "additionalContext": CONTRACT,
+        },
+    }
 
 
 if __name__ == "__main__":

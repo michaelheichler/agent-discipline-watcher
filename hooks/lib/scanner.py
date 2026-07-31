@@ -116,7 +116,10 @@ SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b"
 
 
 def _is_exempt(path: str, cfg: dict) -> bool:
-    patterns = cfg.get("exempt_paths") or []
+    """Exempt only against a real sequence of patterns, so a wrong type scans more rather than raising."""
+    patterns = cfg.get("exempt_paths")
+    if not isinstance(patterns, (list, tuple, set, frozenset)):
+        return False
     return any(_path_matches(path, pat) for pat in patterns)
 
 

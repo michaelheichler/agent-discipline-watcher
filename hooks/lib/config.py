@@ -7,12 +7,20 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
+    from .payloads import exact_string_dict
+except ImportError:
+    from payloads import exact_string_dict
+
 
 ALWAYS_ON_RULES = (
     "Two rules ignore every switch below: suppression_escape_hatch and what_comment. "
     "Neither clean_code nor exempt_paths suppresses them, because scanner.scan_all emits both "
     "from _unconditional_findings, before the exemption check and outside the clean_code guard. "
-    "Turning clean_code off still leaves what_comment blocking on every scanned code file."
+    "Emission is not the outcome. suppression_escape_hatch sits in ALWAYS_BLOCKING_RULES and blocks. "
+    "what_comment resolves through rule_gates, which ships it in observe, so turning clean_code off "
+    "leaves it reporting on every scanned code file rather than blocking."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
@@ -36,34 +44,37 @@ DEFAULTS = {
     "exempt_paths": [],
     # Path glob to family list, so that one surface drops one family instead of exempt_paths silencing them all.
     "exempt_families": {},
-    # git subtracts findings the committed file already had, because an agent must answer for its own edit only.
-    "baseline": "git",
+    # report holds an agent to its own edit while still naming the debt it inherited, because silent removal is how old files stay broken.
+    "baseline": "report",
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
     # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
     "rule_gates": {"what_comment": "observe"},
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
-    # Inert without the trust grant (D12) because command-bearing config must not run before a user-owned grant exists.
-    "verify": {},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
 }
 CONFIG_NAME = ".agent-discipline.json"
 
 
-def _project_settings(cwd: str | os.PathLike[str]) -> dict:
-    """Flatten the nearest project config, treating an absent or non-object file as no settings."""
-    path = _find_project_config(Path(cwd))
-    if not path.exists():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return {}
-    checks = data.get("checks")
-    settings = dict(checks) if isinstance(checks, dict) else {}
-    settings.update({key: value for key, value in data.items() if key != "checks"})
+def flatten_settings(data: object) -> dict:
+    """Lift the checks block into one namespace, shared so a reader of config text judges it the way a loader would."""
+    fields = exact_string_dict(data)
+    settings = exact_string_dict(fields.get("checks"))
+    settings.update({key: value for key, value in fields.items() if key != "checks"})
     return settings
+
+
+def _project_settings(cwd: str | os.PathLike[str]) -> dict:
+    """Flatten the nearest project config, degrading an unreadable or malformed file to the enforcing defaults."""
+    try:
+        path = _find_project_config(Path(cwd))
+        if not path.exists():
+            return {}
+        return flatten_settings(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        return {}
 
 
 def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> dict:
@@ -88,12 +99,17 @@ def _find_project_config(cwd: Path) -> Path:
     return current / CONFIG_NAME
 
 
+def gate_map(cfg: dict, key: str) -> dict:
+    """Project a gate map to exact string keys, so a wrong type reads as empty and the family falls back to enforcing."""
+    return exact_string_dict(cfg.get(key))
+
+
 def gate_state(family: str, config: dict | None = None) -> str:
     """Resolve a family to off, observe, or enforce, honoring kill switch then gates then the legacy boolean."""
     cfg = effective_config(config)
-    if (cfg.get("kill_switches") or {}).get(family):
+    if gate_map(cfg, "kill_switches").get(family):
         return "off"
-    state = (cfg.get("gates") or {}).get(family)
+    state = gate_map(cfg, "gates").get(family)
     if state in GATE_STATES:
         return state
     return "enforce" if cfg.get(family, True) else "off"
@@ -103,7 +119,7 @@ def rule_state(rule: str, config: dict | None = None) -> str | None:
     """Return a rule's own state when one is configured, so a single rule can burn in inside an enforcing family."""
     if not rule:
         return None
-    state = (effective_config(config).get("rule_gates") or {}).get(rule)
+    state = gate_map(effective_config(config), "rule_gates").get(rule)
     return state if state in GATE_STATES else None
 
 

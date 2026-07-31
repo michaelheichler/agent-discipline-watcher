@@ -8,9 +8,18 @@ from pathlib import Path
 
 from lib.baseline import strip_against
 from lib.config import effective_config
-from lib.hookio import allow, deny, read_payload, write_payload
-from lib.reporting import compact_block, record_decision, run_with_ledger
+from lib.hookio import advise, allow, deny, read_payload, write_payload
+from lib.reporting import record_findings, run_with_ledger, verdict_message
 from lib.scanner import scan_all, scannable_text
+
+# Suffixed so that scanner._is_prose treats the message as prose and the english family reaches it.
+COMMIT_MESSAGE_PATH = "commit_message.md"
+
+
+UNDECIDABLE = (
+    "agent-discipline-watcher could not evaluate this commit and blocked it rather than letting it through. "
+    "Repair the gate config and retry. Cause: "
+)
 
 
 def run(
@@ -19,7 +28,20 @@ def run(
     ledger_root: str | os.PathLike[str] | None = None,
     state_root: str | os.PathLike[str] | None = None,
 ) -> dict:
-    """Scan the staged tree behind a pending git commit, recording the decision so the gate leaves ledger evidence."""
+    """Scan the staged tree behind a pending commit, blocking rather than letting it through when the gate cannot decide."""
+    try:
+        return _run(payload, config, ledger_root, state_root)
+    except Exception as exc:
+        return deny(UNDECIDABLE + str(exc))
+
+
+def _run(
+    payload: dict,
+    config: dict | None,
+    ledger_root: str | os.PathLike[str] | None,
+    state_root: str | os.PathLike[str] | None,
+) -> dict:
+    """Record the decision so the commit gate leaves ledger evidence."""
     return run_with_ledger(
         hook="pre_commit",
         payload=payload,
@@ -38,11 +60,20 @@ def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict
         return allow()
     cfg = effective_config(config, cwd)
     findings = _staged_findings(commit_cwds, config)
+    findings.extend(_message_findings(command, cfg))
     if not findings:
         return allow()
-    reason, _ = compact_block(findings, cfg)
-    _record(payload, findings, turn_id, ledger_root, int((time.monotonic() - started) * 1000))
-    return deny(reason)
+    decisions = record_findings(
+        session_id=str(payload.get("session_id") or ""), hook="pre_commit",
+        event="PreCommit", findings=findings, turn_id=turn_id,
+        tool_use_id=str(payload.get("tool_use_id") or ""),
+        duration_ms=int((time.monotonic() - started) * 1000),
+        root=ledger_root, config=cfg,
+    )
+    kind, message = verdict_message(decisions, cfg)
+    if kind == "block":
+        return deny(message)
+    return advise(message, "PreToolUse") if kind == "observe" else allow()
 
 
 def _staged_findings(commit_cwds: list[Path], config: dict | None) -> list[dict]:
@@ -82,18 +113,47 @@ def _head_text(repo: Path, path: str) -> str | None:
     return result.stdout
 
 
-def _record(payload: dict, findings: list[dict], turn_id: str, ledger_root, duration_ms: int) -> None:
-    """Log the first blocking finding, because one row per commit attempt is enough to prove the gate ran."""
-    session_id = str(payload.get("session_id") or "")
-    if not session_id:
-        return
-    first = findings[0]
-    record_decision(
-        session_id=session_id, hook="pre_commit", event="PreCommit",
-        family=str(first.get("family", "")), rule=str(first.get("rule", "")),
-        path=str(first.get("path", "")), tool_use_id=str(payload.get("tool_use_id") or ""),
-        outcome="block", duration_ms=duration_ms, turn_id=turn_id, root=ledger_root,
-    )
+def _message_findings(command: str, cfg: dict) -> list[dict]:
+    """Scan the message the agent typed, because a commit's prose ships with the same authority as its code."""
+    # Blank line between parts, because git itself joins repeated -m values as paragraphs.
+    text = "\n\n".join(_commit_messages(command))
+    if not text:
+        return []
+    return [
+        {**finding, "path": COMMIT_MESSAGE_PATH}
+        for finding in scan_all(COMMIT_MESSAGE_PATH, text, cfg)
+    ]
+
+
+def _commit_messages(command: str) -> list[str]:
+    """Collect every inline message across the parsed commit segments, ignoring the -F and editor forms nothing can read here."""
+    messages: list[str] = []
+    for segment in _segments(command):
+        tokens = _unwrap_command(_strip_group_tokens(segment))
+        if len(tokens) < 2 or tokens[0] != "git" or "commit" not in tokens:
+            continue
+        messages.extend(_message_values(tokens[tokens.index("commit") + 1:]))
+    return messages
+
+
+def _message_values(tokens: list[str]) -> list[str]:
+    """Read the -m, --message, and attached-value spellings git accepts for an inline message."""
+    values: list[str] = []
+    cursor = 0
+    while cursor < len(tokens):
+        token = tokens[cursor]
+        if token in {"-m", "--message"}:
+            if cursor + 1 < len(tokens):
+                values.append(tokens[cursor + 1])
+            cursor += 2
+            continue
+        name, separator, inline = token.partition("=")
+        if separator and name == "--message":
+            values.append(inline)
+        elif token.startswith("-m") and len(token) > 2:
+            values.append(token[2:])
+        cursor += 1
+    return values
 
 
 PATH_FLAGS = frozenset({"-C", "--work-tree", "--git-dir"})

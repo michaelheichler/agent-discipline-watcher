@@ -1,8 +1,17 @@
 """Protected-path policy so an agent cannot edit a live client install or seal off the project gate config."""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+
+try:
+    # Relative first because every hook entry script imports this module as lib.protected, where a bare name cannot resolve.
+    from .config import ALWAYS_BLOCKING_RULES, flatten_settings
+    from .payloads import exact_string_dict
+except ImportError:
+    from config import ALWAYS_BLOCKING_RULES, flatten_settings
+    from payloads import exact_string_dict
 
 CONFIG_SEAL_BASENAME = ".agent-discipline.json"
 AUTH_ENV = "ADW_ALLOW_PROTECTED_EDIT"
@@ -19,24 +28,52 @@ CLIENT_HOME_DIRS = frozenset({".codex", ".pi"})
 
 LIVE_ACTION = "Change the repo source and reinstall instead of editing the live install."
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
+GRANT_ACTION = (
+    "The config key no longer grants anything. Ask the human to export "
+    + AUTH_ENV
+    + " in the hook environment, which is the only supported escape."
+)
+
+
+def _env_authorized() -> bool:
+    """Read the escape only from the environment, which no tool call can set for the hook process."""
+    return os.environ.get(AUTH_ENV, "").strip().lower() in TRUTHY
 
 
 def authorized(config: dict | None = None) -> bool:
-    """Return whether a human granted the protected-path escape, checked before any finding so that the grant stays outside gate state."""
-    if os.environ.get(AUTH_ENV, "").strip().lower() in TRUTHY:
+    """Return whether a human granted the escape. The config argument is inert because a config file is a file the agent can write."""
+    del config
+    return _env_authorized()
+
+
+def grants_escape(text: str | None) -> bool:
+    """Report whether gate-config text would release a self-protection rule, the one edit no config may authorize."""
+    if not text:
+        return False
+    try:
+        settings = flatten_settings(json.loads(text))
+    except (ValueError, TypeError):
+        return False
+    if settings.get(AUTH_KEY):
         return True
-    return bool((config or {}).get(AUTH_KEY))
+    gates = exact_string_dict(settings.get("rule_gates"))
+    return any(rule in ALWAYS_BLOCKING_RULES and state != "enforce" for rule, state in gates.items())
 
 
-def path_findings(path: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
-    """Return blocking findings for a pending write target, empty when the path carries no policy."""
+def path_findings(
+    path: str,
+    config: dict | None = None,
+    home: str | os.PathLike[str] | None = None,
+    content: str | None = None,
+) -> list[dict]:
+    """Return blocking findings for a pending write target, with config inert because only the environment can release these rules."""
     if not path or path == "<pending>":
         return []
-    if authorized(config):
-        return []
     resolved = _resolve(path, home)
-    if resolved is None:
+    if resolved is None or _env_authorized():
         return []
+    if _is_gate_config(resolved) and grants_escape(content):
+        return [_finding("config_seal", path, "Self-granted gate escape in " + path, GRANT_ACTION)]
     root = Path(home).expanduser() if home is not None else Path.home()
     rule = _live_client_rule(resolved, _normalize(root))
     if rule is not None:
@@ -141,9 +178,13 @@ def _claude_rule(parts: list[str]) -> str | None:
     return None
 
 
+def _is_gate_config(path: Path) -> bool:
+    return path.name.lower() == CONFIG_SEAL_BASENAME
+
+
 def _is_config_seal(path: Path) -> bool:
     """Seal an existing gate config, allowing first creation, and treat a stat error as present so that the gate fails closed."""
-    if path.name.lower() != CONFIG_SEAL_BASENAME:
+    if not _is_gate_config(path):
         return False
     try:
         return path.exists()

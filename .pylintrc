@@ -22,6 +22,9 @@ disable =
     consider-using-with,
 # Disabled because a ledger or state write must never fail a hook, so those sites catch everything by design.
     broad-exception-caught,
+# Disabled because config and reporting depend on each other and both already defer the import to
+# break the cycle at runtime, which pylint cannot see because it reads the import statically.
+    cyclic-import,
     unnecessary-lambda,
     import-outside-toplevel,
     use-implicit-booleaness-not-comparison,

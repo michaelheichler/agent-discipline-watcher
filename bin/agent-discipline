@@ -5,6 +5,12 @@ import sys
 from pathlib import Path
 
 
+# Resolve through the script's real path, because install.sh symlinks this file into ~/.local/bin.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
+
+from lib import reporting  # noqa: E402
+
+
 CHECKS = ("punctuation", "english", "clean_code")
 DEFAULT_CHECKS = {name: True for name in CHECKS}
 CONFIG_NAME = ".agent-discipline.json"
@@ -140,6 +146,73 @@ def status(args):
     print(json.dumps(load_config(root), indent=2, sort_keys=True))
 
 
+def ledger_rows(family, root):
+    """Read the ledger through reporting, turning an absent or unreadable file into an exit instead of a traceback."""
+    directory = reporting._ledger_dir(root)
+    path = directory / reporting.LEDGER_FILENAME
+    if not path.exists():
+        raise SystemExit(f"no ledger at {path}")
+    try:
+        return reporting.observe_report(family, root)
+    except OSError as exc:
+        raise SystemExit(f"cannot read ledger at {path}: {exc}")
+
+
+def observe_report(args):
+    project_root(args.project)
+    rows = ledger_rows(args.family, args.root)
+    if not rows:
+        print(f"{args.family}: no would_block rows recorded")
+        return
+    for row in sorted(rows, key=lambda item: str(item.get("ts", ""))):
+        print(
+            f"{row.get('ts')}\tturn={row.get('turn_id')}\t"
+            f"{row.get('rule')}\t{row.get('path')}"
+        )
+
+
+def false_signal_rate(args):
+    project_root(args.project)
+    ledger_rows(args.family, args.root)
+    rate = reporting.false_signal_rate(args.family, args.root)
+    if rate is None:
+        print(f"{args.family}: below the 20-turn floor, no rate yet")
+        return
+    print(f"{args.family}: false-signal rate per 20 turns = {rate:.2f}")
+
+
+def adjudicate(args):
+    project_root(args.project)
+    reporting.adjudicate(args.family, args.ref_ts, args.justified, args.root)
+    verdict = "justified" if args.justified else "false-signal"
+    print(f"adjudicated {args.family} {args.ref_ts} as {verdict}")
+
+
+def add_reporting_parsers(sub):
+    """Keep the three burn-in subcommands together, so main() stays under the function length gate."""
+    observe = sub.add_parser("observe-report")
+    observe.add_argument("family")
+    observe.add_argument("project", nargs="?", default=".")
+    observe.add_argument("--root", help="ledger directory")
+    observe.set_defaults(func=observe_report)
+
+    rate = sub.add_parser("false-signal-rate")
+    rate.add_argument("family")
+    rate.add_argument("project", nargs="?", default=".")
+    rate.add_argument("--root", help="ledger directory")
+    rate.set_defaults(func=false_signal_rate)
+
+    judge = sub.add_parser("adjudicate")
+    judge.add_argument("family")
+    judge.add_argument("ref_ts")
+    judge.add_argument("project", nargs="?", default=".")
+    judge.add_argument("--root", help="ledger directory")
+    label = judge.add_mutually_exclusive_group(required=True)
+    label.add_argument("--justified", dest="justified", action="store_true")
+    label.add_argument("--false-signal", dest="justified", action="store_false")
+    judge.set_defaults(func=adjudicate)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -171,6 +244,8 @@ def main(argv=None):
     status_parser = sub.add_parser("status")
     status_parser.add_argument("project", nargs="?", default=".")
     status_parser.set_defaults(func=status)
+
+    add_reporting_parsers(sub)
 
     args = parser.parse_args(argv)
     args.func(args)

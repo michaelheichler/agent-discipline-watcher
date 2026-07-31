@@ -219,5 +219,125 @@ class ExemptFamilyCliTests(unittest.TestCase):
             self.assertFalse(config["checks"]["english"])
 
 
+class ReportingCliTests(unittest.TestCase):
+    def run_cli(self, *args, cli=None, check=True):
+        return subprocess.run(
+            [sys.executable, str(cli or CLI), *args],
+            check=check, text=True, capture_output=True,
+        )
+
+    def _ledger(self, tmp, rows, adjudications=()):
+        directory = Path(tmp) / "ledger"
+        directory.mkdir()
+        (directory / "ledger.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in rows)
+        )
+        if adjudications:
+            (directory / "adjudications.jsonl").write_text(
+                "".join(json.dumps(row) + "\n" for row in adjudications)
+            )
+        return directory
+
+    def _would_block(self, ts, turn_id, rule):
+        return {"ts": ts, "turn_id": turn_id, "outcome": "would_block",
+                "family": "clean_code", "rule": rule, "path": "a.py"}
+
+    def test_observe_report_prints_would_block_rows_oldest_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._ledger(tmp, [
+                self._would_block("2026-01-02T00:00:00+00:00", "t2", "long_comment"),
+                self._would_block("2026-01-01T00:00:00+00:00", "t1", "what_comment"),
+                {"ts": "2026-01-03T00:00:00+00:00", "turn_id": "t3", "outcome": "block",
+                 "family": "clean_code", "rule": "hollow_test", "path": "b.py"},
+                {"ts": "2026-01-04T00:00:00+00:00", "turn_id": "t4",
+                 "outcome": "would_block", "family": "english",
+                 "rule": "banned_dash", "path": "c.md"},
+            ])
+            result = self.run_cli("observe-report", "clean_code", tmp,
+                                  "--root", str(directory))
+            lines = result.stdout.splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertIn("what_comment", lines[0])
+            self.assertIn("turn=t1", lines[0])
+            self.assertIn("long_comment", lines[1])
+            self.assertNotIn("hollow_test", result.stdout)
+
+    def test_observe_report_says_so_when_the_family_has_no_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._ledger(tmp, [
+                self._would_block("2026-01-01T00:00:00+00:00", "t1", "what_comment"),
+            ])
+            result = self.run_cli("observe-report", "english", tmp,
+                                  "--root", str(directory))
+            self.assertIn("no would_block rows recorded", result.stdout)
+
+    def test_a_missing_ledger_exits_non_zero_without_a_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.run_cli("observe-report", "clean_code", tmp,
+                                  "--root", str(Path(tmp) / "absent"), check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("no ledger at", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_false_signal_rate_reports_the_floor_instead_of_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._ledger(tmp, [
+                self._would_block(f"2026-01-01T00:00:0{n}+00:00", f"t{n}", "what_comment")
+                for n in range(5)
+            ])
+            result = self.run_cli("false-signal-rate", "clean_code", tmp,
+                                  "--root", str(directory))
+            self.assertIn("below the 20-turn floor", result.stdout)
+            self.assertNotIn("None", result.stdout)
+
+    def test_false_signal_rate_prints_the_rate_above_the_floor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._ledger(
+                tmp,
+                [self._would_block("2026-01-01T00:00:00+00:00", f"t{n}", "what_comment")
+                 for n in range(40)],
+                adjudications=[
+                    {"family": "clean_code", "ref_ts": "x", "label": False},
+                    {"family": "clean_code", "ref_ts": "y", "label": False},
+                    {"family": "clean_code", "ref_ts": "z", "label": True},
+                    {"family": "english", "ref_ts": "w", "label": False},
+                ],
+            )
+            result = self.run_cli("false-signal-rate", "clean_code", tmp,
+                                  "--root", str(directory))
+            self.assertIn("= 1.00", result.stdout)
+
+    def test_adjudicate_records_one_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._ledger(tmp, [
+                self._would_block("2026-01-01T00:00:00+00:00", "t1", "what_comment"),
+            ])
+            self.run_cli("adjudicate", "clean_code", "2026-01-01T00:00:00+00:00", tmp,
+                         "--root", str(directory), "--false-signal")
+            written = [json.loads(line) for line in
+                       (directory / "adjudications.jsonl").read_text().splitlines()]
+            self.assertEqual(len(written), 1)
+            self.assertEqual(written[0]["family"], "clean_code")
+            self.assertEqual(written[0]["ref_ts"], "2026-01-01T00:00:00+00:00")
+            self.assertIs(written[0]["label"], False)
+
+    def test_adjudicate_requires_a_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.run_cli("adjudicate", "clean_code", "ts", tmp, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--justified", result.stderr)
+
+    def test_a_symlinked_entry_point_still_resolves_its_imports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            link = Path(tmp) / "agent-discipline"
+            link.symlink_to(CLI)
+            directory = self._ledger(tmp, [
+                self._would_block("2026-01-01T00:00:00+00:00", "t1", "what_comment"),
+            ])
+            result = self.run_cli("observe-report", "clean_code", tmp,
+                                  "--root", str(directory), cli=link)
+            self.assertIn("what_comment", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

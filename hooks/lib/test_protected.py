@@ -1,13 +1,17 @@
 """Protected-path policy tests: live client surfaces, the gate-config seal, and the authorization escape."""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 import protected
 
+GRANT = json.dumps({protected.AUTH_KEY: True})
 
-def rules(path, home, config=None):
-    return [finding["rule"] for finding in protected.path_findings(path, config, home)]
+
+def rules(path, home, config=None, content=None):
+    return [finding["rule"] for finding in protected.path_findings(path, config, home, content)]
 
 
 @pytest.mark.parametrize("relative", [
@@ -87,9 +91,14 @@ def test_env_authorization_releases_every_rule(tmp_path, monkeypatch):
     assert rules(str(tmp_path / ".claude/settings.json"), tmp_path) == []
 
 
-def test_config_authorization_releases_every_rule(tmp_path):
+def test_a_config_key_does_not_release_the_path_rules(tmp_path):
     config = {protected.AUTH_KEY: True}
-    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path, config) == []
+    assert protected.authorized(config) is False
+    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path, config) == ["live_client_surface"]
+    sealed = tmp_path / "project" / protected.CONFIG_SEAL_BASENAME
+    sealed.parent.mkdir(parents=True)
+    sealed.write_text("{}", encoding="utf-8")
+    assert rules(str(sealed), tmp_path, config) == ["config_seal"]
 
 
 def test_unset_authorization_env_does_not_release(tmp_path, monkeypatch):
@@ -102,6 +111,65 @@ def test_findings_carry_the_scanner_shape(tmp_path):
     assert set(finding) == {"family", "rule", "line", "detail", "force", "snippet", "action"}
     assert finding["force"] is True
     assert finding["family"] == "self_protection"
+
+
+def _config(tmp_path):
+    return tmp_path / "project" / protected.CONFIG_SEAL_BASENAME
+
+
+@pytest.mark.parametrize("payload", [
+    {protected.AUTH_KEY: True},
+    {"checks": {protected.AUTH_KEY: True}},
+    {"rule_gates": {"suppression_escape_hatch": "off"}},
+    {"rule_gates": {"config_seal": "observe"}},
+    {"rule_gates": {"cap_override": "off"}},
+    {"checks": {"rule_gates": {"state_deletion": "off"}}},
+])
+def test_a_config_that_releases_a_self_protection_rule_blocks_on_creation(tmp_path, payload):
+    assert rules(str(_config(tmp_path)), tmp_path, None, json.dumps(payload)) == ["config_seal"]
+
+
+@pytest.mark.parametrize("payload", [
+    {},
+    {"clean_code": False},
+    {"rule_gates": {"what_comment": "off"}},
+    {"rule_gates": {"suppression_escape_hatch": "enforce"}},
+    {protected.AUTH_KEY: False},
+])
+def test_a_config_that_releases_nothing_protected_still_creates(tmp_path, payload):
+    assert rules(str(_config(tmp_path)), tmp_path, None, json.dumps(payload)) == []
+
+
+@pytest.mark.parametrize("text", ["", "not json", "[]", "null", '{"gates": ["off"]}'])
+def test_unreadable_config_text_grants_nothing(text):
+    assert protected.grants_escape(text) is False
+
+
+def test_a_self_granted_config_cannot_authorize_its_own_grant(tmp_path):
+    granted = {protected.AUTH_KEY: True}
+    assert rules(str(_config(tmp_path)), tmp_path, granted, GRANT) == ["config_seal"]
+
+
+def test_the_grant_block_survives_an_existing_authorizing_config(tmp_path):
+    target = _config(tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text(GRANT, encoding="utf-8")
+    assert rules(str(target), tmp_path, {protected.AUTH_KEY: True}, GRANT) == ["config_seal"]
+
+
+def test_the_grant_block_names_the_environment_escape(tmp_path):
+    finding = protected.path_findings(str(_config(tmp_path)), None, tmp_path, GRANT)[0]
+    assert protected.AUTH_ENV in finding["action"]
+
+
+def test_the_human_env_escape_still_releases_the_grant_block(tmp_path, monkeypatch):
+    monkeypatch.setenv(protected.AUTH_ENV, "1")
+    assert rules(str(_config(tmp_path)), tmp_path, None, GRANT) == []
+
+
+def test_a_non_dict_config_argument_does_not_raise(tmp_path):
+    assert protected.authorized(["authorized"]) is False
+    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path, ["x"]) == ["live_client_surface"]
 
 
 def test_is_live_client_path_matches_the_finding_rule(tmp_path):

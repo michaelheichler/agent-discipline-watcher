@@ -1,6 +1,0 @@
-{
-  "migration_approval": "Lead approved closing this run as shipped: E1-S1-T1 is done=true in plan.json and its work is committed (f05ce31 and predecessors). Drift block receipt retained as evidence. Run closed rather than resumed because the task itself is complete. Recovery confirmed no work remains.",
-  "approved_by": "lead",
-  "block_receipt_retained": true,
-  "date": "2026-07-26"
-}

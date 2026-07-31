@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
 from lib.config import effective_config
-from lib.hookio import read_payload, write_payload
+from lib.hookio import advise, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
-from lib.baseline import strip_committed
-from lib.reporting import append_row, compact_block, now_iso, run_with_ledger
+from lib.baseline import split_committed
+from lib.reporting import (
+    append_row,
+    inherited_advice,
+    now_iso,
+    record_findings,
+    run_with_ledger,
+    verdict_message,
+)
 from lib.scanner import read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
@@ -59,9 +67,15 @@ def _journal_edits(
         )
 
 
-def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> list[dict]:
-    """Scan each edited path and return findings."""
-    findings = []
+def _stamped(findings: list[dict], path: Path) -> list[dict]:
+    """Stamp the resolved path onto each finding, because the scanner works from text and the report names files."""
+    return [{**finding, "path": str(path)} for finding in findings]
+
+
+def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Scan each edited path and return the owned and inherited findings apart, since only the first may block."""
+    owned_rows: list[dict] = []
+    inherited_rows: list[dict] = []
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
@@ -71,12 +85,10 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> list[dict]:
         text = read_scannable(path, cfg)
         if text is None:
             continue
-        owned = strip_committed(path, scan_all(str(path), text, cfg), cfg)
-        for finding in owned:
-            item = dict(finding)
-            item["path"] = str(path)
-            findings.append(item)
-    return findings
+        owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
+        owned_rows.extend(_stamped(owned, path))
+        inherited_rows.extend(_stamped(inherited, path))
+    return owned_rows, inherited_rows
 
 
 def _projected_payload(payload: dict) -> RecordPayload:
@@ -100,7 +112,7 @@ def _resolved_config(scan_config: dict, cwd_text: str) -> dict:
     """Resolve project config, falling back to defaults so that an unreadable cwd never fails the hook."""
     try:
         return effective_config(scan_config, cwd_text or None)
-    except (OSError, ValueError, TypeError, RuntimeError, KeyError):
+    except Exception:
         return effective_config(scan_config, None)
 
 
@@ -117,17 +129,36 @@ def _note_success(projected: RecordPayload, trusted_config: dict) -> None:
     )
 
 
+def _joined(*parts: str) -> str:
+    return "\n".join(part for part in parts if part)
+
+
+def _response(decisions: list[tuple[dict, str]], inherited: list[dict], cfg: dict) -> dict:
+    """Block only on an enforced finding, so that observe means the same thing after a write as it does before one."""
+    kind, message = verdict_message(decisions, cfg)
+    notice = inherited_advice(inherited, cfg)
+    if kind == "block":
+        return {"decision": "block", "reason": _joined(message, notice)}
+    advisory = _joined(message, notice)
+    return advise(advisory, "PostToolUse") if advisory else {}
+
+
 def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, ledger_root) -> Callable[[str], dict]:
     """Build the per-turn gate closure, kept at module level so the caller stays inside the length cap."""
 
     def gate(turn_id: str) -> dict:
+        started = time.monotonic()
         if projected["session_id"]:
             _journal_edits(projected, paths, ledger_root, turn_id)
-        findings = _scan_paths(paths, cwd, cfg)
-        if not findings:
-            return {}
-        reason, _ = compact_block(findings, cfg)
-        return {"decision": "block", "reason": reason}
+        owned, inherited = _scan_paths(paths, cwd, cfg)
+        decisions = record_findings(
+            session_id=projected["session_id"], hook="record",
+            event="PostToolUse", findings=owned, turn_id=turn_id,
+            tool_use_id=projected["tool_use_id"],
+            duration_ms=int((time.monotonic() - started) * 1000),
+            root=ledger_root, config=cfg,
+        )
+        return _response(decisions, inherited, cfg)
 
     return gate
 
@@ -154,10 +185,10 @@ def _run_record(payload: dict, config: dict | None) -> dict:
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Scan edited paths, persisting only for one validated session identity."""
+    """Scan edited paths, swallowing every exception class so that a broken config cannot take the hook process down."""
     try:
         return _run_record(payload, config)
-    except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
+    except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: record hook failed: {exc}\n")
         return {}
 

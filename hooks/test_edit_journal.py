@@ -76,6 +76,49 @@ class EditJournalTests(unittest.TestCase):
         self.assertEqual(response["decision"], "block")
         self.assertEqual(len(self._journal_rows()), 1)
 
+    def test_an_observed_finding_advises_and_is_recorded_as_would_block(self):
+        target = self.root / "a.py"
+        target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_use_id": "toolu_2",
+            "tool_input": {"file_path": str(target)},
+        }
+        response = record.run(payload, self.cfg)
+        self.assertNotIn("decision", response)
+        self.assertIn("clean_code/what_comment", response["systemMessage"])
+        decisions = [row for row in self._ledger_rows() if row["event"] == "PostToolUse"]
+        self.assertEqual([(row["rule"], row["outcome"]) for row in decisions],
+                         [("what_comment", "would_block")])
+        self.assertEqual(decisions[0]["tool_use_id"], "toolu_2")
+
+    def test_a_blocked_finding_is_recorded_as_block(self):
+        target = self.root / "a.py"
+        target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        record.run(payload, self.cfg)
+        outcomes = {
+            row["rule"]: row["outcome"]
+            for row in self._ledger_rows() if row["event"] == "PostToolUse"
+        }
+        self.assertEqual(outcomes["deferred_work_comment"], "block")
+
+    def test_a_clean_edit_records_no_decision_row(self):
+        target = self.root / "a.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        record.run(payload, self.cfg)
+        self.assertEqual([row for row in self._ledger_rows() if row["event"] == "PostToolUse"], [])
+
     def test_journal_write_failure_does_not_fail_hook(self):
         read_only = self.root / "ro"
         read_only.mkdir()

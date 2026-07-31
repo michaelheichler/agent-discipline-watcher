@@ -154,9 +154,20 @@ def test_multiple_rules_report_together(tmp_path):
     assert rules(command, tmp_path) == ["cap_override", "commit_gate_bypass"]
 
 
-def test_authorization_releases_the_bash_policy(tmp_path):
+@pytest.mark.parametrize("command,rule", [
+    ("./install.sh -y", "install_without_sandbox_home"),
+    ("git commit --no-verify -m 'x'", "commit_gate_bypass"),
+    ("ADW_MAX_SCAN_BYTES=1 pytest", "cap_override"),
+    ("rm -f .agent-discipline.json", "state_deletion"),
+])
+def test_a_config_key_does_not_release_the_bash_policy(tmp_path, command, rule):
     config = {"protected_paths_authorized": True}
-    assert rules("./install.sh -y", tmp_path, config) == []
+    assert rules(command, tmp_path, config) == [rule]
+
+
+def test_the_environment_escape_still_releases_the_bash_policy(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADW_ALLOW_PROTECTED_EDIT", "1")
+    assert rules("./install.sh -y", tmp_path) == []
 
 
 @pytest.mark.parametrize("command", [

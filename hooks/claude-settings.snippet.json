@@ -86,6 +86,16 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__SKILL_DIR__/hooks/run.sh SubagentStart"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [

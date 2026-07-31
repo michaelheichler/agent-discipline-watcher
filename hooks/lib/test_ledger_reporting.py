@@ -217,8 +217,6 @@ class TurnIdStampingTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def _write_turn(self, session_id: str, turn_id: str) -> None:
-        import session_state
-
         session_state.write_state(session_id, {"turn_id": turn_id}, root=self.root)
 
     def test_wrapper_reads_turn_id_from_session_state(self):
@@ -363,6 +361,80 @@ class CompactBlockRegressionTests(unittest.TestCase):
         reason, report = reporting.compact_block([finding], {"max_rows": 4})
         self.assertIn("Full report:", reason)
         self.assertEqual(oct(os.stat(report).st_mode & 0o777), "0o600")
+
+    @staticmethod
+    def _finding(rule: str = "utilize") -> dict:
+        return {
+            "path": "a.txt", "family": "english", "rule": rule,
+            "line": 1, "force": True, "action": "Use 'use'.",
+            "snippet": "a source line",
+        }
+
+    def test_the_default_lead_line_is_byte_for_byte_unchanged(self):
+        reason, _ = reporting.compact_block([self._finding()], {"max_rows": 4})
+        self.assertTrue(reason.startswith("agent-discipline-watcher blocked findings:\n"), reason)
+
+    def test_a_caller_supplied_lead_replaces_only_the_first_line(self):
+        rows = [self._finding()]
+        default, _ = reporting.compact_block(rows, {"max_rows": 4})
+        custom, _ = reporting.compact_block(rows, {"max_rows": 4}, lead="lead line:")
+        self.assertTrue(custom.startswith("lead line:\n"))
+        self.assertEqual(
+            custom.split("\n")[1:-1], default.split("\n")[1:-1],
+        )
+
+    def test_max_rows_still_caps_the_listing(self):
+        reason, _ = reporting.compact_block([self._finding()] * 5, {"max_rows": 2}, lead="x:")
+        self.assertIn("... 3 more", reason)
+
+
+class VerdictMessageTests(unittest.TestCase):
+    """One reading of gate state for every hook, so observe cannot mean two different things."""
+
+    @staticmethod
+    def _row(rule: str) -> dict:
+        return {"path": "a.py", "family": "clean_code", "rule": rule, "line": 1,
+                "action": "fix", "snippet": "x"}
+
+    def test_a_blocking_decision_wins_over_an_observed_one(self):
+        kind, message = reporting.verdict_message(
+            [(self._row("a"), "would_block"), (self._row("b"), "block")], {}
+        )
+        self.assertEqual(kind, "block")
+        self.assertIn("blocked findings:", message)
+        self.assertNotIn("a.py:1 clean_code/a:", message)
+
+    def test_an_observed_decision_uses_the_observe_lead(self):
+        kind, message = reporting.verdict_message([(self._row("a"), "would_block")], {})
+        self.assertEqual(kind, "observe")
+        self.assertTrue(message.startswith(reporting.OBSERVE_LEAD))
+        self.assertNotIn("blocked findings", message)
+
+    def test_released_decisions_say_nothing(self):
+        self.assertEqual(reporting.verdict_message([(self._row("a"), "release")], {}), ("release", ""))
+
+    def test_no_decisions_release(self):
+        self.assertEqual(reporting.verdict_message([], {}), ("release", ""))
+
+
+class InheritedAdviceTests(unittest.TestCase):
+    @staticmethod
+    def _row(line: int) -> dict:
+        return {"path": "old.py", "family": "clean_code", "rule": "what_comment",
+                "line": line, "action": "fix", "snippet": "x"}
+
+    def test_it_counts_the_inherited_findings(self):
+        message = reporting.inherited_advice([self._row(1), self._row(2)], {})
+        self.assertIn("already carried 2 findings you did not write", message)
+        self.assertIn("old.py:1 clean_code/what_comment", message)
+
+    def test_an_empty_list_says_nothing(self):
+        self.assertEqual(reporting.inherited_advice([], {}), "")
+
+    def test_max_rows_keeps_a_legacy_file_from_flooding_the_response(self):
+        message = reporting.inherited_advice([self._row(1)] * 12, {"max_rows": 3})
+        self.assertIn("... 9 more", message)
+        self.assertEqual(message.count("old.py:1"), 3)
 
 
 if __name__ == "__main__":

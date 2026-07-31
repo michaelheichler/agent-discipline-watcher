@@ -1,4 +1,0 @@
-{
-  "critic_verdict": "PASS (lead re-verification, 2026-07-26): E1-S1-T1 acceptance confirmed against the committed tree. run.sh dispatches from a data-driven table, test_run_dispatch.py proves the dispatch stub ran (f05ce31), and the full hook suite passes: 229 passed, 16 subtests passed. Original linux-critic loop ran in the prior session. This receipt records the independent lead re-check closing the recovered run.",
-  "verdict": "PASS"
-}

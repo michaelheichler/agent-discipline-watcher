@@ -1,9 +1,11 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
+from lib import hookio
 import pre_commit
 import pre_write
 import record
@@ -354,6 +356,34 @@ def test_session_start_injects_policy():
     assert "systemMessage" in response
     assert "Professional Agent Helper" not in response["systemMessage"]
     assert "agent-discipline-watcher: keep punctuation ASCII" in response["systemMessage"]
+
+
+def test_session_start_reaches_the_model_channel():
+    injected = session_start.run({})["hookSpecificOutput"]
+    assert injected["hookEventName"] == "SessionStart"
+    assert injected["additionalContext"] == hookio.CONTRACT
+    assert "override the agent definition" in injected["additionalContext"]
+    assert "Professional Agent Helper" not in injected["additionalContext"]
+
+
+def test_read_payload_parses_good_input():
+    result = subprocess.run(
+        [sys.executable, "-c", "from lib.hookio import read_payload; print(read_payload()['a'])"],
+        input='{"a": 7}', text=True, capture_output=True, cwd=str(Path(__file__).parent), check=True,
+    )
+    assert result.stdout.strip() == "7"
+
+
+def test_read_payload_fails_soft_on_malformed_input():
+    result = subprocess.run(
+        [sys.executable, "-c", "from lib.hookio import read_payload; print(read_payload())"],
+        input="{not json", text=True, capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == "{}"
+    assert result.stderr.strip().startswith("agent-discipline-watcher: unreadable hook payload")
+    assert len(result.stderr.strip().splitlines()) == 1
+    assert "Traceback" not in result.stderr
 
 
 def test_run_sh_routes_pretooluse():

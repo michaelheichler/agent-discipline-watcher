@@ -32,9 +32,17 @@ def write_full_report(findings: list[dict]) -> str:
     return str(path)
 
 
+BLOCK_LEAD = "agent-discipline-watcher blocked findings:"
+OBSERVE_LEAD = (
+    "agent-discipline-watcher is observing these, not blocking. "
+    "Judge each one and either repair it or state why it stands."
+)
+
+
 def compact_block(
     findings: list[dict],
     config: dict | None = None,
+    lead: str = BLOCK_LEAD,
 ) -> tuple[str, str]:
     max_rows = int((config or {}).get("max_rows", 8))
     report = write_full_report(findings)
@@ -42,9 +50,33 @@ def compact_block(
     extra = len(findings) - len(rows)
     if extra > 0:
         rows.append(f"... {extra} more")
-    reason = "agent-discipline-watcher blocked findings:\n" + "\n".join(rows)
+    reason = lead + "\n" + "\n".join(rows)
     reason += "\nFull report: " + report
     return reason, report
+
+
+def verdict_message(
+    decisions: list[tuple[dict, str]], config: dict | None = None
+) -> tuple[str, str]:
+    """Read gate state once for every hook, because a hook that judges findings on its own makes observe mean two things."""
+    blocking = [finding for finding, outcome in decisions if outcome == "block"]
+    if blocking:
+        return "block", compact_block(blocking, config)[0]
+    observed = [finding for finding, outcome in decisions if outcome == "would_block"]
+    if not observed:
+        return "release", ""
+    return "observe", compact_block(observed, config, lead=OBSERVE_LEAD)[0]
+
+
+def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
+    """Name debt the edit did not write, because dropping it in silence is what lets an old file stay broken."""
+    if not findings:
+        return ""
+    lead = (
+        f"agent-discipline-watcher: this file already carried {len(findings)} findings "
+        "you did not write. Fix them while you are in here."
+    )
+    return compact_block(findings, config, lead=lead)[0]
 
 
 def format_row(item: dict) -> str:

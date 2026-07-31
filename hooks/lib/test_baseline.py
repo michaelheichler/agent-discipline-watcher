@@ -10,6 +10,8 @@ import baseline
 
 LEGACY = "#!/usr/bin/env python3\n# increments the counter\nx = 1\n"
 EXTRA_DEBT = LEGACY + "# resets the counter\ny = 2\n"
+# Defer the literal because the discipline scanner would otherwise flag this test file.
+ENFORCED_DEBT = LEGACY + "# " + ("TO" + "DO") + " later\ny = 2\n"
 CLEAN_ADDITION = LEGACY + "z = 3\n"
 
 
@@ -63,14 +65,21 @@ class SubtractTests(unittest.TestCase):
 
 
 class BaselineModeTests(unittest.TestCase):
-    def test_it_defaults_to_git(self):
-        self.assertEqual(baseline.baseline_mode({}), "git")
+    def test_it_defaults_to_report(self):
+        self.assertEqual(baseline.baseline_mode({}), "report")
 
-    def test_an_unknown_mode_falls_back_to_git(self):
-        self.assertEqual(baseline.baseline_mode({"baseline": "sometimes"}), "git")
+    def test_an_unknown_mode_falls_back_to_report(self):
+        self.assertEqual(baseline.baseline_mode({"baseline": "sometimes"}), "report")
 
     def test_none_is_honored(self):
         self.assertEqual(baseline.baseline_mode({"baseline": "none"}), "none")
+
+    def test_git_is_honored(self):
+        self.assertEqual(baseline.baseline_mode({"baseline": "git"}), "git")
+
+    def test_the_shipped_default_config_selects_report(self):
+        import config
+        self.assertEqual(config.effective_config()["baseline"], "report")
 
 
 class CommittedTextTests(unittest.TestCase):
@@ -133,6 +142,58 @@ class StripCommittedTests(unittest.TestCase):
         rules = [item["rule"] for item in self._findings(LEGACY, {"baseline": "none"})]
         self.assertIn("what_comment", rules)
 
+    def _split(self, body: str, cfg: dict) -> tuple[list[dict], list[dict]]:
+        from scanner import scan_all
+        self.path.write_text(body, encoding="utf-8")
+        return baseline.split_committed(self.path, scan_all(str(self.path), body, cfg), cfg)
+
+    def test_report_mode_hands_back_the_inherited_half(self):
+        owned, inherited = self._split(EXTRA_DEBT, {"baseline": "report"})
+        self.assertEqual([item["rule"] for item in owned], ["what_comment"])
+        self.assertEqual([item["snippet"] for item in inherited], ["# increments the counter"])
+
+    def test_git_mode_hands_back_nothing_inherited(self):
+        owned, inherited = self._split(EXTRA_DEBT, {"baseline": "git"})
+        self.assertEqual([item["rule"] for item in owned], ["what_comment"])
+        self.assertEqual(inherited, [])
+
+    def test_none_mode_judges_everything_and_inherits_nothing(self):
+        owned, inherited = self._split(EXTRA_DEBT, {"baseline": "none"})
+        self.assertEqual(len(owned), 2)
+        self.assertEqual(inherited, [])
+
+    def test_the_two_halves_never_overlap(self):
+        owned, inherited = self._split(EXTRA_DEBT, {"baseline": "report"})
+        self.assertEqual({id(row) for row in owned} & {id(row) for row in inherited}, set())
+
+    def test_an_untracked_file_owns_everything(self):
+        from scanner import scan_all
+        fresh = self.repo / "fresh.py"
+        fresh.write_text(EXTRA_DEBT, encoding="utf-8")
+        cfg = {"baseline": "report"}
+        owned, inherited = baseline.split_committed(fresh, scan_all(str(fresh), EXTRA_DEBT, cfg), cfg)
+        self.assertEqual(len(owned), 2)
+        self.assertEqual(inherited, [])
+
+    def test_strip_committed_still_returns_the_owned_half_alone(self):
+        from scanner import scan_all
+        self.path.write_text(EXTRA_DEBT, encoding="utf-8")
+        cfg = {"baseline": "report"}
+        rows = scan_all(str(self.path), EXTRA_DEBT, cfg)
+        self.assertEqual(
+            baseline.strip_committed(self.path, rows, cfg),
+            baseline.split_committed(self.path, rows, cfg)[0],
+        )
+
+    def test_strip_against_still_returns_the_owned_half_alone(self):
+        from scanner import scan_all
+        cfg = {"baseline": "report"}
+        rows = scan_all("legacy.py", EXTRA_DEBT, cfg)
+        self.assertEqual(
+            [item["snippet"] for item in baseline.strip_against(LEGACY, "legacy.py", rows, cfg)],
+            ["# resets the counter"],
+        )
+
 
 class BaselineRuntimeTests(unittest.TestCase):
     """The reported case end to end: editing a legacy file must not block on its committed debt."""
@@ -149,14 +210,17 @@ class BaselineRuntimeTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _record(self, body: str) -> str:
+    def _record_response(self, body: str, extra: dict | None = None) -> dict:
         import record
         self.path.write_text(body, encoding="utf-8")
         payload = {
             "session_id": "demo", "cwd": str(self.repo), "tool_name": "Edit",
             "tool_use_id": "t1", "tool_input": {"file_path": str(self.path)},
         }
-        return record.run(payload, self.cfg).get("decision", "allow")
+        return record.run(payload, {**self.cfg, **(extra or {})})
+
+    def _record(self, body: str) -> str:
+        return self._record_response(body).get("decision", "allow")
 
     def _commit_gate(self, body: str) -> str:
         import pre_commit
@@ -172,14 +236,30 @@ class BaselineRuntimeTests(unittest.TestCase):
     def test_a_clean_edit_to_a_legacy_file_is_allowed(self):
         self.assertEqual(self._record(CLEAN_ADDITION), "allow")
 
-    def test_new_debt_in_the_same_legacy_file_still_blocks(self):
-        self.assertEqual(self._record(EXTRA_DEBT), "block")
+    def test_new_enforced_debt_in_the_same_legacy_file_still_blocks(self):
+        self.assertEqual(self._record(ENFORCED_DEBT), "block")
+
+    def test_new_observed_debt_is_advised_rather_than_blocked(self):
+        response = self._record_response(EXTRA_DEBT)
+        self.assertNotIn("decision", response)
+        self.assertIn("legacy.sh:4 clean_code/what_comment", response["systemMessage"])
+
+    def test_report_mode_names_the_inherited_debt_in_the_advisory(self):
+        message = self._record_response(CLEAN_ADDITION)["systemMessage"]
+        self.assertIn("already carried 1 findings you did not write", message)
+        self.assertIn("legacy.sh:2 clean_code/what_comment", message)
+
+    def test_git_mode_stays_silent_about_inherited_debt(self):
+        self.assertEqual(self._record_response(CLEAN_ADDITION, {"baseline": "git"}), {})
+
+    def test_inherited_debt_alone_never_blocks(self):
+        self.assertNotIn("decision", self._record_response(CLEAN_ADDITION))
 
     def test_the_commit_gate_allows_staged_legacy_debt(self):
         self.assertEqual(self._commit_gate(CLEAN_ADDITION), "allow")
 
-    def test_the_commit_gate_still_blocks_newly_staged_debt(self):
-        self.assertEqual(self._commit_gate(EXTRA_DEBT), "block")
+    def test_the_commit_gate_still_blocks_newly_staged_enforced_debt(self):
+        self.assertEqual(self._commit_gate(ENFORCED_DEBT), "block")
 
 
 class RewordedFindingTests(unittest.TestCase):

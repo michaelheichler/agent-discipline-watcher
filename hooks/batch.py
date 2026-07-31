@@ -562,7 +562,21 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str):
     return gate
 
 
+UNDECIDABLE = (
+    "agent-discipline-watcher could not evaluate this batch. Treat the turn as unscanned and rerun the check "
+    "after repairing the gate config. Cause: "
+)
+
+
 def run(payload: dict, config: dict | None = None) -> dict:
+    """Judge a finished batch, reporting rather than dying when the gate itself cannot decide."""
+    try:
+        return _run(payload, config)
+    except Exception as exc:
+        return {"decision": "block", "reason": UNDECIDABLE + str(exc)}
+
+
+def _run(payload: dict, config: dict | None) -> dict:
     payload = _sanitized_payload(payload)
     cfg = effective_config(config, payloads.cwd(payload) or None)
     return run_with_ledger(

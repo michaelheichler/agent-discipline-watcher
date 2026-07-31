@@ -20,6 +20,7 @@ SKILL_DIR = "/tmp/agent-discipline-watcher"  # noqa: S108 (placeholder path, nev
 
 MATRIX_EVENTS = (
     "SessionStart",
+    "SubagentStart",
     "PreToolUse",
     "PostToolUse",
     "Stop",
@@ -410,7 +411,7 @@ def assert_arbitrary_event_prune(merged: dict) -> None:
 
 CLAUDE_ROUTES = (
     "SessionStart", "UserPromptSubmit", "PreToolUse", "PreCommit", "PreBash", "PreMcp",
-    "PostToolUse", "PostToolBatch", "PostToolUseFailure", "SubagentStop", "Stop",
+    "PostToolUse", "PostToolBatch", "PostToolUseFailure", "SubagentStart", "SubagentStop", "Stop",
 )
 # Listed separately because Codex wires a reduced set and must not gain Claude-only routes.
 CODEX_ROUTES = ("SessionStart", "PreToolUse", "PreCommit", "PostToolUse")
