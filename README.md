@@ -10,7 +10,9 @@ The always-on rules in [`skills/readable-output/SKILL.md`](skills/readable-outpu
 
 The rules are adapted from [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) under its MIT license. Loosely based on The Adult ADHD Tool Kit by J. Russell Ramsay and Anthony L. Rostain. Adapted for how an LLM should respond, not how a human should organize their day.
 
-The paired quality checks live in [`evals/`](evals/), with the runner in [`scripts/run_evals.py`](scripts/run_evals.py).
+The paired quality checks live in [`evals/`](evals/), with the runner in [`scripts/run_evals.py`](scripts/run_evals.py). The case file carries 16 prompts, and `evals/rubric.md` deviates from upstream by two split semicolons so the repository does not ship a file its own enforce gate blocks.
+
+The mechanically checkable subset of the contract is enforced by the scanner since 0.9.0. Six rules ship in `observe`: `ai_closer`, `greeting_opener`, `hedge_stack`, and `corporate_idiom` as literal patterns on prose files and code comments, plus the structural `long_sentence` and `oversized_list` checks on prose files. Observe means they report and write ledger rows without blocking anyone, and each rule earns `enforce` individually through the burn-in flow described under Usage.
 
 The evidence tiers keep usability conventions separate from research findings:
 
@@ -238,7 +240,7 @@ An unknown family name is ignored rather than rejected, so a typo scans more rat
 }
 ```
 
-`what_comment` ships in `observe`. Its WHY test is a ten-word marker list, not semantic analysis, so it must earn enforcement through the D7 burn-in like every other gate. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
+Seven rules ship in `observe` by default: `what_comment` and the six readability rules from 0.9.0 (`ai_closer`, `greeting_opener`, `hedge_stack`, `corporate_idiom`, `long_sentence`, `oversized_list`). `what_comment`'s WHY test is a ten-word marker list, not semantic analysis, so it must earn enforcement through the D7 burn-in like every other gate. The readability rules follow the same path. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
 
 Every gate reads state through one resolver. The four paths are `pre_write.py` before a write, `pre_bash.py` on shell write content, `record.py` after a write, and `pre_commit.py` at commit time. A rule set to `observe` reports on all four paths and blocks on none of them.
 
@@ -257,8 +259,8 @@ Supported checks:
 | Check | Purpose |
 | --- | --- |
 | `punctuation` | Blocks banned dash marks, double hyphen breaks, semicolon splices, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
-| `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and empty intensifiers. Its rules are literal patterns, not a style model, so coverage is narrower than the rule names suggest. `delve into` matches and `delves into` does not. `it's worth noting` matches and `it is worth noting` does not. Treat a clean scan as the absence of a known pattern rather than as proof the prose is plain. |
-| `clean_code` | Toggles deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. It does not toggle the always-on `what_comment` rule described above. |
+| `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and empty intensifiers. Since 0.9.0 it also carries the observe-gated readability rules: `ai_closer`, `greeting_opener`, `hedge_stack`, `corporate_idiom`, `long_sentence`, and `oversized_list`. Its rules are literal patterns, not a style model, so coverage is narrower than the rule names suggest. `delve into` matches and `delves into` does not. `it's worth noting` matches and `it is worth noting` does not. Treat a clean scan as the absence of a known pattern rather than as proof the prose is plain. |
+| `clean_code` | Toggles deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. The four lexical readability rules above also run on extracted comment text in code files under this family, observe-gated with the same rule ids. It does not toggle the always-on `what_comment` rule described above. |
 
 Narrow patterns cut both ways, so a rule sometimes fires on prose that is fine as written. The escape for that is `exempt_families` above: name the path and the one family to drop, and the other families keep enforcing there. Reach for `exempt_paths` only when every family is wrong on that path.
 
@@ -291,7 +293,7 @@ Scratch and transcript paths under the Claude home are not wiring, so `~/.claude
 
 `max_rows` can be set in `.agent-discipline.json` to change how many compact report rows are shown before the full local report path.
 
-Length caps come from `.agent-discipline.json` first, then the environment. `function_block_lines` pairs with `ADW_FUNC_BLOCK_LINES` and defaults to 80. `file_block_lines` pairs with `ADW_FILE_BLOCK_LINES` and defaults to 1000. The older `CLEANCODER_FUNC_BLOCK_LINES` and `CLEANCODER_FILE_BLOCK_LINES` names stay accepted as aliases, because clean-coder-discipline was merged into this package and existing shells still export them. The `ADW_` name wins when both are set.
+Length caps come from `.agent-discipline.json` first, then the environment. `function_block_lines` pairs with `ADW_FUNC_BLOCK_LINES` and defaults to 80. `file_block_lines` pairs with `ADW_FILE_BLOCK_LINES` and defaults to 1000. `sentence_word_cap` pairs with `ADW_SENTENCE_WORD_CAP` and defaults to 40. `list_item_cap` pairs with `ADW_LIST_ITEM_CAP` and defaults to 8. The older `CLEANCODER_FUNC_BLOCK_LINES` and `CLEANCODER_FILE_BLOCK_LINES` names stay accepted as aliases, because clean-coder-discipline was merged into this package and existing shells still export them. The `ADW_` name wins when both are set.
 
 `max_scan_bytes` can be set in `.agent-discipline.json`, or through the `ADW_MAX_SCAN_BYTES` environment variable, to cap how large a file the hooks will read. Files over the cap and files that look binary are skipped. The default is 1000000 bytes.
 
