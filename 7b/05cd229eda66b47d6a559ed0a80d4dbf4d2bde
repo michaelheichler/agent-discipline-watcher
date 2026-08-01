@@ -1,0 +1,22 @@
+README.md
+  s_a5b23944ca246d::t_bc6b649cab63d3 296
+  s_a5b23944ca246d::t_65de8be6f6a84b 243
+  s_a5b23944ca246d::t_9ac50bc31d2a3c 262-263
+  s_a5b23944ca246d::t_7a321e3f4229fb 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "7b05cd229eda66b47d6a559ed0a80d4dbf4d2bde",
+  "prompts": {},
+  "sessions": {
+    "s_a5b23944ca246d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "525d380e-724f-4543-b216-0401fa6794a8",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
