@@ -239,10 +239,10 @@ class BaselineRuntimeTests(unittest.TestCase):
     def test_new_enforced_debt_in_the_same_legacy_file_still_blocks(self):
         self.assertEqual(self._record(ENFORCED_DEBT), "block")
 
-    def test_new_observed_debt_is_advised_rather_than_blocked(self):
+    def test_new_what_comment_debt_is_blocked_by_default(self):
         response = self._record_response(EXTRA_DEBT)
-        self.assertNotIn("decision", response)
-        self.assertIn("legacy.sh:4 clean_code/what_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("legacy.sh:4 clean_code/what_comment", response["reason"])
 
     def test_report_mode_names_the_inherited_debt_in_the_advisory(self):
         message = self._record_response(CLEAN_ADDITION)["systemMessage"]

@@ -68,12 +68,11 @@ def test_pre_write_denies_prose_comment_block():
 WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
 
 
-def test_pre_write_observes_what_comment_without_stopping_the_write():
+def test_pre_write_enforces_what_comment_by_default():
     response = pre_write.run(WHAT_PAYLOAD, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert "decision" not in response
-    assert "clean_code/what_comment" in response["systemMessage"]
-    assert WHAT_COMMENT_ACTION in response["hookSpecificOutput"]["additionalContext"]
-    assert response["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+    assert response["decision"] == "block"
+    assert "clean_code/what_comment" in response["reason"]
+    assert WHAT_COMMENT_ACTION in response["reason"]
 
 
 def test_pre_write_blocks_what_comment_once_the_rule_is_enforced():
@@ -101,7 +100,8 @@ def test_what_comment_survives_the_clean_code_switch_and_path_exemption():
         "exempt_paths": ["a.py"],
     }
     response = pre_write.run(WHAT_PAYLOAD, disabled_and_exempt)
-    assert "clean_code/what_comment" in response["systemMessage"]
+    assert response["decision"] == "block"
+    assert "clean_code/what_comment" in response["reason"]
 
 
 def test_pre_write_enforces_vue_comment_contract():
@@ -176,7 +176,7 @@ def test_pre_write_still_denies_prose_splice_in_html_body():
     payload = {"tool_input": {"file_path": "a.html", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
     assert response["decision"] == "block"
-    assert "punctuation/semicolon_splice" in response["reason"]
+    assert "punctuation/prose_semicolon" in response["reason"]
 
 
 def test_pre_commit_blocks_staged_forced_findings(tmp_path):

@@ -1,3 +1,7 @@
+import json
+from pathlib import Path
+
+import escalate
 import scanner
 from config import effective_config
 from scanner import scan_all
@@ -56,7 +60,7 @@ def test_punctuation_rules_cover_diagnosed_marks():
     ])
     findings = scan_all("sample.md", text, {"english": False, "clean_code": False})
     rules = {item["rule"] for item in findings}
-    assert {"dash_break", "semicolon_splice", "pronoun_apostrophe", "decade_apostrophe", "spaced_hyphen"} <= rules
+    assert {"dash_break", "prose_semicolon", "pronoun_apostrophe", "decade_apostrophe", "spaced_hyphen"} <= rules
     assert all(item["force"] is True for item in findings)
 
 
@@ -82,11 +86,11 @@ def test_punctuation_url_scheme_slashes_are_not_a_comment_marker():
         '|| die "reach https://${REG} (insecure? try FLAG=true' + sep + ' down? escape)."',
     ])
     findings = scan_all("deploy.sh", shell, {"english": False, "clean_code": False})
-    assert not [item for item in findings if item["rule"] == "semicolon_splice"]
+    assert not [item for item in findings if item["rule"] == "prose_semicolon"]
 
     comment_splice = "// first clause here" + sep + " second clause follows on"
     real = scan_all("app.js", comment_splice, {"english": False, "clean_code": False})
-    assert [item for item in real if item["rule"] == "semicolon_splice"]
+    assert [item for item in real if item["rule"] == "prose_semicolon"]
 
 
 def test_english_rules_cover_filler_and_inflation():
@@ -589,3 +593,293 @@ def test_exempt_families_ignores_a_malformed_entry():
 def test_exempt_families_defaults_to_scanning_everything():
     assert effective_config({})["exempt_families"] == {}
     assert "utilize" in _rules("docs/guide.md", ENGLISH_LINE, {})
+
+
+def test_private_single_line_docstrings_are_what_docstrings():
+    samples = (
+        'def _bounded_text():\n    """Return bounded control-free built-in text."""\n',
+        'def _scan_pending(payload, config):\n    """Scan a pending write and block an undecidable result."""\n',
+    )
+    for text in samples:
+        assert "what_docstring" in _rules("sample.py", text, {}), text
+
+
+def test_what_opener_prevents_an_incidental_weak_marker_bypass():
+    text = (
+        'def _run(payload, config):\n'
+        '    """Scan a pending write, blocking rather than passing the call through when the gate itself cannot decide."""\n'
+    )
+    assert "what_docstring" in _rules("sample.py", text, {})
+
+
+def test_public_identifier_echo_is_a_what_docstring():
+    snake = 'def validate_cache_entry():\n    """Validate the cache entry."""\n'
+    camel = 'def copyCacheRecord():\n    """Copy cache record."""\n'
+    assert "what_docstring" in _rules("sample.py", snake, {})
+    assert "what_docstring" in _rules("sample.py", camel, {})
+
+
+def test_public_first_line_summary_that_does_not_echo_is_allowed():
+    text = 'def fetch_record():\n    """Load one stable row from storage."""\n'
+    assert "what_docstring" not in _rules("sample.py", text, {})
+
+
+def test_docstring_why_markers_allow_private_lines_and_public_details():
+    private = 'def _fetch():\n    """Keep the local copy because callers rely on object identity."""\n'
+    public = (
+        'def fetch_record():\n'
+        '    """Load one stable row from storage.\n'
+        '    Keep the local copy because callers rely on object identity.\n'
+        '    """\n'
+    )
+    assert "what_docstring" not in _rules("sample.py", private, {})
+    assert "what_docstring" not in _rules("sample.py", public, {})
+
+
+def test_public_later_docstring_line_without_why_is_blocked():
+    text = (
+        'def fetch_record():\n'
+        '    """Load one stable row from storage.\n'
+        '    Returns the cached row.\n'
+        '    """\n'
+    )
+    assert "what_docstring" in _rules("sample.py", text, {})
+
+
+def test_numeric_budget_comment_is_an_accepted_false_negative():
+    assert _what_rows("sample.py", "# 5ms budget") == []
+
+
+def test_extended_why_markers_allow_comments():
+    lines = (
+        "# skip unless the lock is held",
+        "# retry except when the response is final",
+        "# use bytes instead of text",
+        "# preserve order rather than sorting",
+        "# " + "work" + "around for the platform parser",
+        "# works around a bug in sqlite",
+        "# keep the object because callers rely on identity",
+        "# reject empty input because callers must retry",
+        "# preserve this hook because it is relied on by plugins",
+        "# invariant: the queue is never empty",
+        "# assumes the caller holds the lock",
+        "# requires an absolute path",
+        "# guarantees stable ordering",
+        "# must return a value or raise",
+    )
+    for line in lines:
+        assert _what_rows("sample.py", line) == [], line
+
+
+def test_what_opener_covers_inflections_without_becoming_a_rule():
+    for text in ("Returns a row", "Scanning entries", "Checks input", "Looping through rows", "Copies data"):
+        assert scanner.WHAT_OPENER_RE.match(text), text
+    assert not scanner.WHAT_OPENER_RE.match("A stable storage row")
+
+
+def test_identifier_echo_uses_camel_snake_params_and_jaccard_threshold():
+    assert scanner._identifier_echo(("validateCacheEntry",), (), "Validate the cache entry")
+    assert scanner._identifier_echo(("copy_record",), ("source_id",), "Copy record source id")
+    assert not scanner._identifier_echo(("fetch_record",), (), "Load one stable row from storage")
+
+
+def test_middle_band_docstring_uses_escalation(monkeypatch):
+    calls = []
+    monkeypatch.setattr(scanner, "classify_what", lambda text, fallback, config: calls.append((text, fallback)) or True)
+    text = 'def validate_cache_item():\n    """Cache item validator."""\n'
+    assert "what_docstring" in _rules("sample.py", text, {"escalation": {"enabled": True}})
+    assert calls == [("Cache item validator.", False)]
+
+
+def test_prose_semicolon_fires_in_prose_and_comments():
+    mark = chr(59)
+    prose = _rules("notes.md", "One reason" + mark + " another reason.\n", {"english": False, "clean_code": False})
+    comment = _rules("sample.py", "# Keep this because input is unstable" + mark + " retries are bounded.\n", {})
+    assert "prose_semicolon" in prose
+    assert "prose_semicolon" in comment
+
+
+def test_prose_semicolon_spares_code_inline_code_and_entities():
+    config = {"english": False, "clean_code": False}
+    mark = chr(59)
+    assert "prose_semicolon" not in _rules("sample.py", "left = 1" + mark + " right = 2\n", config)
+    python_string = 'value = "# reason' + mark + ' detail"\n'
+    slash_string = 'const value = "// reason' + mark + ' detail"\n'
+    assert "prose_semicolon" not in _rules("sample.py", python_string, config)
+    assert "prose_semicolon" not in _rules("sample.js", slash_string, config)
+    assert "prose_semicolon" not in _rules("notes.md", "Use `left" + mark + "right` here.\n", config)
+    assert "prose_semicolon" not in _rules("notes.md", "Use &semi" + mark + " as an entity.\n", config)
+
+
+def test_prose_semicolon_spares_css_private_fields_and_config_values():
+    mark = chr(59)
+    cases = (
+        ("style.css", "a { color: #fff" + mark + " }\n"),
+        ("sample.js", "class A { #count = 0" + mark + " }\n"),
+        ("settings.json", '{"path": "/a' + mark + '/b"}\n'),
+        ("database.conf", "Server=x" + mark + "Database=y\n"),
+        ("settings.ini", mark + " comment\n"),
+    )
+    for path, text in cases:
+        assert "prose_semicolon" not in _rules(path, text, {}), (path, text)
+
+
+def test_prose_semicolon_spares_markdown_code_tables_and_urls():
+    mark = chr(59)
+    fenced = "```js\nconst value = 1" + mark + "\n```\n"
+    table = "| Name | Code |\n| --- | --- |\n| value | x = 1" + mark + " |\n"
+    url = "https://example.com/a" + mark + "b\n"
+    for text in (fenced, table, url):
+        assert "prose_semicolon" not in _rules("README.md", text, {}), text
+    prose = "The pipe | stays visible" + mark + " rewrite this clause.\n"
+    assert "prose_semicolon" in _rules("README.md", prose, {})
+
+
+def test_google_style_public_docstring_is_structured_not_narration():
+    text = (
+        'def fetch(items):\n'
+        '    """Load stable rows from storage.\n\n'
+        '    Args:\n'
+        '        items: the rows\n'
+        '    Returns:\n'
+        '        The rows.\n'
+        '    """\n'
+        '    return items\n'
+    )
+    assert scan_all("sample.py", text, {}) == []
+
+
+def test_self_and_cls_do_not_dilute_identifier_echo():
+    for receiver in ("self", "cls"):
+        text = f'class A:\n    def scan({receiver}):\n        """Scan."""\n'
+        assert "what_docstring" in _rules("sample.py", text, {}), receiver
+
+
+def test_weak_why_markers_do_not_bypass_a_what_opener():
+    lines = (
+        "# Returns the row unless the cache is empty",
+        "# Returns the row instead of raising",
+        "# Returns the row rather than None",
+        "# Returns the row and assumes valid input",
+        "# Returns the row and requires a key",
+        "# Returns the row and must cache or raise",
+        "# Returns the row, or None instead of raising",
+    )
+    for line in lines:
+        assert _what_rows("sample.py", line), line
+
+
+def test_strong_causal_markers_clear_a_what_opener():
+    lines = (
+        "# Returns the cached row because callers need stable identity",
+        "# Returns the cached row so that retries preserve ordering",
+        "# Returns the cached row in order to avoid another read",
+        "# Returns the cached row due to a remote outage",
+        "# Returns the cached row to prevent duplicate work",
+    )
+    for line in lines:
+        assert _what_rows("sample.py", line) == [], line
+
+
+def test_dunder_scope_is_public_and_budget_docstring_is_exempt():
+    dunder = 'class A:\n    def __repr__(self):\n        """Render one diagnostic form."""\n'
+    budget = 'def _wait():\n    """5ms budget"""\n'
+    assert "what_docstring" not in _rules("sample.py", dunder, {})
+    assert "what_docstring" not in _rules("sample.py", budget, {})
+
+
+def test_what_docstring_survives_family_and_path_switches():
+    text = 'def _scan():\n    """Scan."""\n'
+    config = {"clean_code": False, "exempt_paths": ["sample.py"]}
+    assert "what_docstring" in _rules("sample.py", text, config)
+
+
+def test_identifier_split_keeps_acronym_before_digits():
+    assert scanner._identifier_tokens("SHA256_digest") == {"sha", "256", "digest"}
+
+
+def test_python_ast_is_parsed_once_and_non_python_is_not_parsed(monkeypatch):
+    calls = []
+    original = scanner.ast.parse
+    monkeypatch.setattr(scanner.ast, "parse", lambda text: calls.append(text) or original(text))
+    scan_all("sample.py", 'def _f():\n    """Scan."""\n', {})
+    scan_all("sample.js", "const value = 1\n", {})
+    assert len(calls) == 1
+
+
+def test_escalation_is_capped_on_cache_misses(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: calls.append(text) or False)
+    comments = ["Cache item validator."] * 3
+    comments.extend(f"Cache item validator {suffix}." for suffix in ("alpha", "beta", "gamma", "delta", "epsilon", "zeta"))
+    text = "\n".join(
+        f'def validate_cache_item():\n    """{comment}"""'
+        for comment in comments
+    )
+    config = {"escalation": {"enabled": True}, "state_root": str(tmp_path)}
+    scan_all("sample.py", text, config)
+    assert calls == [
+        "Cache item validator.",
+        "Cache item validator alpha.",
+        "Cache item validator beta.",
+        "Cache item validator gamma.",
+        "Cache item validator delta.",
+    ]
+
+
+def _corpus_source(row):
+    if "source" in row:
+        return row["path"], row["source"]
+    if row["kind"] == "comment":
+        return "sample.py", "# " + row["text"] + "\n"
+    name = row.get("name", "_helper")
+    return "sample.py", f'def {name}():\n    """{row["text"]}"""\n'
+
+
+def test_what_comment_corpus_precision_and_recall_stay_above_floor():
+    corpus = Path(__file__).with_name("corpus_what_comments.jsonl")
+    rows = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line]
+    predicted = []
+    target_rules = {"what_comment", "what_docstring", "prose_semicolon"}
+    for index, row in enumerate(rows):
+        path, source = _corpus_source(row)
+        hit = bool(target_rules & set(_rules(path, source, {})))
+        predicted.append((index, row["label"] == "what", hit))
+    true_positive = sum(expected and actual for _index, expected, actual in predicted)
+    false_positive = sum(not expected and actual for _index, expected, actual in predicted)
+    false_negative = sum(expected and not actual for _index, expected, actual in predicted)
+    precision = true_positive / (true_positive + false_positive)
+    recall = true_positive / (true_positive + false_negative)
+    assert precision >= 0.9, predicted
+    assert recall >= 0.9, predicted
+
+
+def test_escalation_defaults_off_and_uses_configured_model():
+    settings = effective_config({})["escalation"]
+    assert settings == {"enabled": False, "model": "claude-haiku-4-5-20251001"}
+
+
+def test_escalation_failure_preserves_heuristic_verdict(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: None)
+    config = {"escalation": {"enabled": True}, "state_root": str(tmp_path)}
+    assert escalate.classify_what("Validate cached item.", True, config) is True
+    assert escalate.classify_what("Validate cached item.", False, config) is False
+
+
+def test_escalation_caches_success_by_comment_hash(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: calls.append(text) or True)
+    config = {
+        "escalation": {"enabled": True},
+        "state_root": str(tmp_path),
+        "_escalation_remaining": 1,
+    }
+    assert escalate.classify_what("Validate cached item.", False, config) is True
+    assert escalate.classify_what("Validate cached item.", False, config) is True
+    assert calls == ["Validate cached item."]
+    assert config["_escalation_remaining"] == 0
+    cached = list((tmp_path / "escalation").glob("*.json"))
+    assert len(cached) == 1

@@ -87,8 +87,8 @@ class VerdictParityTests(unittest.TestCase):
     def test_an_enforced_family_still_blocks_in_both_gates(self):
         self.assertEqual(self._both(ENFORCED, {}), ("block", "block"))
 
-    def test_the_shipped_default_observes_what_comment_in_both_gates(self):
-        self.assertEqual(self._both(OBSERVED, {}), ("advise", "advise"))
+    def test_the_shipped_default_enforces_what_comment_in_both_gates(self):
+        self.assertEqual(self._both(OBSERVED, {}), ("block", "block"))
 
 
 class DefaultBaselineParityTests(unittest.TestCase):
@@ -188,14 +188,10 @@ class RecordExitCodeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("clean_code/deferred_work_comment", result.stderr)
 
-    def test_an_observed_finding_exits_zero_with_a_posttooluse_advisory(self):
+    def test_default_what_comment_exits_two_on_stderr(self):
         result = self._run(OBSERVED)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        response = json.loads(result.stdout)
-        self.assertIn("clean_code/what_comment", response["systemMessage"])
-        self.assertEqual(response["hookSpecificOutput"]["hookEventName"], "PostToolUse")
-        self.assertIn("clean_code/what_comment", response["hookSpecificOutput"]["additionalContext"])
-        self.assertNotIn("decision", response)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("clean_code/what_comment", result.stderr)
 
     def test_a_clean_file_exits_zero_with_no_advisory(self):
         result = self._run("x = 1\n")
@@ -226,10 +222,11 @@ class CommitGateStateTests(unittest.TestCase):
         return reporting._read_jsonl(reporting.LEDGER_FILENAME, self.ledger)
 
     def test_an_enforced_finding_blocks_the_commit(self):
-        self.assertEqual(verdict_class(self._gate(ENFORCED)), "block")
+        config = {"rule_gates": {"what_comment": "off"}}
+        self.assertEqual(verdict_class(self._gate(ENFORCED, config)), "block")
 
     def test_a_blocked_commit_still_writes_its_precommit_row(self):
-        self._gate(ENFORCED)
+        self._gate(ENFORCED, {"rule_gates": {"what_comment": "off"}})
         rows = [row for row in self._rows() if row.get("event") == "PreCommit"]
         blocked = [row for row in rows if row["outcome"] == "block"]
         self.assertEqual([row["rule"] for row in blocked], ["deferred_work_comment"])
@@ -237,12 +234,13 @@ class CommitGateStateTests(unittest.TestCase):
         self.assertEqual(blocked[0]["path"], "a.py")
 
     def test_an_observed_finding_advises_instead_of_blocking(self):
-        response = self._gate(OBSERVED)
+        config = {"rule_gates": {"what_comment": "observe"}}
+        response = self._gate(OBSERVED, config)
         self.assertEqual(verdict_class(response), "advise")
         self.assertIn("clean_code/what_comment", response["systemMessage"])
 
     def test_an_observed_finding_is_recorded_as_would_block(self):
-        self._gate(OBSERVED)
+        self._gate(OBSERVED, {"rule_gates": {"what_comment": "observe"}})
         rows = [row for row in self._rows() if row.get("event") == "PreCommit"]
         self.assertEqual([row["outcome"] for row in rows], ["would_block"])
 

@@ -28,7 +28,6 @@ PRE_TOOL_EVENT = "PreToolUse"
 
 
 def _active_backoff(state: dict, server: str, now: float) -> tuple[int, float] | None:
-    """Return count and deadline only for a complete active health entry."""
     trusted_state = _exact_string_dict(state)
     health = _exact_string_dict(trusted_state.get(MCP_HEALTH_KEY))
     if not health:
@@ -54,7 +53,6 @@ def _run_pre_mcp(
     ledger_root: str | None,
     current_time: float | None,
 ) -> dict:
-    """Run the hook after boundary normalization."""
     session_id = payload["session_id"]
     parsed = parse_mcp_tool(payload["tool_name"])
 

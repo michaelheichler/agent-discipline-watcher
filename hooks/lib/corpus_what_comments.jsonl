@@ -1,0 +1,49 @@
+{"label":"what","kind":"comment","text":"increments the retry counter"}
+{"label":"what","kind":"comment","text":"returns the cached record"}
+{"label":"what","kind":"comment","text":"scans every pending entry"}
+{"label":"what","kind":"comment","text":"validates the request body"}
+{"label":"what","kind":"comment","text":"stores the response by key"}
+{"label":"what","kind":"comment","text":"loops through active sessions"}
+{"label":"what","kind":"comment","text":"copies the source record"}
+{"label":"what","kind":"comment","text":"reports malformed payloads"}
+{"label":"why","kind":"comment","text":"keep the cache because callers rely on stable identity"}
+{"label":"why","kind":"comment","text":"skip unless the lock is held"}
+{"label":"why","kind":"comment","text":"retry except when the response is final"}
+{"label":"why","kind":"comment","text":"preserve insertion order rather than sorting"}
+{"label":"why","kind":"comment","text":"invariant: the queue is never empty"}
+{"label":"why","kind":"comment","text":"requires an absolute path"}
+{"label":"why","kind":"comment","text":"5ms budget"}
+{"label":"why","kind":"comment","text":"skip since the file is locked"}
+{"label":"what","kind":"docstring","name":"_bounded_text","text":"Return bounded control-free built-in text."}
+{"label":"what","kind":"docstring","name":"_scan_rows","text":"Scan pending rows."}
+{"label":"what","kind":"docstring","name":"_validate_entry","text":"Validate one cache entry."}
+{"label":"what","kind":"docstring","name":"_copy_record","text":"Copy the source record."}
+{"label":"what","kind":"docstring","name":"_report_failure","text":"Report the failed request."}
+{"label":"what","kind":"docstring","name":"validate_cache_entry","text":"Validate the cache entry."}
+{"label":"what","kind":"docstring","name":"copy_source_record","text":"Copy the source record."}
+{"label":"what","kind":"docstring","name":"report_failed_request","text":"Report the failed request."}
+{"label":"why","kind":"docstring","name":"_cache_record","text":"Keep one object because callers rely on stable identity."}
+{"label":"why","kind":"docstring","name":"_retry_request","text":"Retry unless the response is final."}
+{"label":"why","kind":"docstring","name":"_preserve_order","text":"Keep insertion order rather than sorting."}
+{"label":"why","kind":"docstring","name":"_absolute_path","text":"Requires an absolute path."}
+{"label":"why","kind":"docstring","name":"fetch_record","text":"Load one stable row from storage."}
+{"label":"why","kind":"docstring","name":"open_session","text":"Provide a bounded session handle."}
+{"label":"why","kind":"docstring","name":"parse_payload","text":"Decode one trusted transport envelope."}
+{"label":"why","kind":"docstring","name":"write_report","text":"Persist one atomic result file."}
+{"label":"why","kind":"surface","path":"style.css","source":"a { color: #fff; }\n"}
+{"label":"why","kind":"surface","path":"sample.js","source":"class A { #count = 0; }\n"}
+{"label":"why","kind":"surface","path":"README.md","source":"```js\nconst value = 1;\n```\n"}
+{"label":"why","kind":"surface","path":"settings.ini","source":"; comment\nServer=x;Database=y\n"}
+{"label":"why","kind":"surface","path":"README.md","source":"https://example.com/a;b\n"}
+{"label":"why","kind":"surface","path":"sample.py","source":"def fetch(items):\n    \"\"\"Load stable rows.\n    Args:\n        items: the rows\n    Returns:\n        items: the rows\n    \"\"\"\n    return items\n"}
+{"label":"what","kind":"surface","path":"sample.py","source":"class A:\n    def scan(self):\n        \"\"\"Scan.\"\"\"\n"}
+{"label":"why","kind":"surface","path":"sample.py","source":"class A:\n    def __repr__(self):\n        \"\"\"Render one diagnostic form.\"\"\"\n"}
+{"label":"why","kind":"surface","path":"sample.py","source":"def _wait():\n    \"\"\"5ms budget\"\"\"\n"}
+{"label":"what","kind":"comment","text":"Returns the row unless the cache is empty"}
+{"label":"what","kind":"comment","text":"Returns the row instead of raising"}
+{"label":"what","kind":"comment","text":"Returns the row rather than None"}
+{"label":"what","kind":"comment","text":"Returns the row and assumes valid input"}
+{"label":"what","kind":"comment","text":"Returns the row and requires a key"}
+{"label":"what","kind":"comment","text":"Returns the row and must cache or raise"}
+{"label":"what","kind":"comment","text":"Returns the row, or None instead of raising"}
+{"label":"what","kind":"surface","path":"sample.py","source":"def fetch(key):\n    \"\"\"Fetch.\"\"\"\n"}

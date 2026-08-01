@@ -36,7 +36,6 @@ GRANT_ACTION = (
 
 
 def _env_authorized() -> bool:
-    """Read the escape only from the environment, which no tool call can set for the hook process."""
     return os.environ.get(AUTH_ENV, "").strip().lower() in TRUTHY
 
 
@@ -143,7 +142,6 @@ NESTED_CLIENT_DIRS = ([".agents", "skills"], [".config", "opencode"])
 
 
 def _reaches_into_a_client_home(parts: list[str]) -> bool:
-    """Report whether the path goes past the top directory of a client's home, which is where live wiring lives."""
     if parts[0] in CLIENT_HOME_DIRS and len(parts) > 1:
         return True
     if len(parts) < 3:

@@ -41,7 +41,6 @@ def _run(
     ledger_root: str | os.PathLike[str] | None,
     state_root: str | os.PathLike[str] | None,
 ) -> dict:
-    """Record the decision so the commit gate leaves ledger evidence."""
     return run_with_ledger(
         hook="pre_commit",
         payload=payload,
@@ -102,7 +101,6 @@ def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
 
 
 def _head_text(repo: Path, path: str) -> str | None:
-    """Return the committed version of a staged path, so the gate judges the change and not the file's history."""
     try:
         result = subprocess.run(
             ["git", "show", "HEAD:" + path], cwd=repo, text=True,
@@ -126,7 +124,6 @@ def _message_findings(command: str, cfg: dict) -> list[dict]:
 
 
 def _commit_messages(command: str) -> list[str]:
-    """Collect every inline message across the parsed commit segments, ignoring the -F and editor forms nothing can read here."""
     messages: list[str] = []
     for segment in _segments(command):
         tokens = _unwrap_command(_strip_group_tokens(segment))
@@ -137,7 +134,6 @@ def _commit_messages(command: str) -> list[str]:
 
 
 def _message_values(tokens: list[str]) -> list[str]:
-    """Read the -m, --message, and attached-value spellings git accepts for an inline message."""
     values: list[str] = []
     cursor = 0
     while cursor < len(tokens):
@@ -213,7 +209,6 @@ def _segments(command: str) -> list[list[str]]:
 
 
 def _flag_cwd(flag: str, current: Path, value: str) -> Path:
-    """Resolve one path-bearing git flag, mapping a .git directory back to its work tree."""
     resolved = _resolve_cwd(current, value)
     if flag == "--git-dir" and resolved.name == ".git":
         return resolved.parent
@@ -221,7 +216,6 @@ def _flag_cwd(flag: str, current: Path, value: str) -> Path:
 
 
 def _skip_git_flag(segment: list[str], cursor: int, current: Path) -> tuple[int, Path, bool] | None:
-    """Step over one leading git flag, returning (next_cursor, cwd, pins_work_tree) or None when malformed."""
     token = segment[cursor]
     if token.startswith("-C") and len(token) > 2:
         return cursor + 1, _resolve_cwd(current, token[2:]), False

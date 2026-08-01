@@ -15,12 +15,10 @@ except ImportError:
 
 
 ALWAYS_ON_RULES = (
-    "Two rules ignore every switch below: suppression_escape_hatch and what_comment. "
-    "Neither clean_code nor exempt_paths suppresses them, because scanner.scan_all emits both "
-    "from _unconditional_findings, before the exemption check and outside the clean_code guard. "
-    "Emission is not the outcome. suppression_escape_hatch sits in ALWAYS_BLOCKING_RULES and blocks. "
-    "what_comment resolves through rule_gates, which ships it in observe, so turning clean_code off "
-    "leaves it reporting on every scanned code file rather than blocking."
+    "Three rules ignore the family and path switches below: suppression_escape_hatch, "
+    "what_comment, and what_docstring. scanner.scan_all emits them from _unconditional_findings "
+    "before exemptions and outside the clean_code guard. suppression_escape_hatch sits in "
+    "ALWAYS_BLOCKING_RULES. The two WHAT rules ship with enforcing rule_gates."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
@@ -52,7 +50,8 @@ DEFAULTS = {
     "gates": {},
     # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
     "rule_gates": {
-        "what_comment": "observe",
+        "what_comment": "enforce",
+        "what_docstring": "enforce",
         "ai_closer": "observe",
         "greeting_opener": "observe",
         "hedge_stack": "observe",
@@ -62,6 +61,7 @@ DEFAULTS = {
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
+    "escalation": {"enabled": False, "model": "claude-haiku-4-5-20251001"},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
 }
@@ -77,7 +77,6 @@ def flatten_settings(data: object) -> dict:
 
 
 def _project_settings(cwd: str | os.PathLike[str]) -> dict:
-    """Flatten the nearest project config, degrading an unreadable or malformed file to the enforcing defaults."""
     try:
         path = _find_project_config(Path(cwd))
         if not path.exists():
@@ -98,7 +97,6 @@ def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | N
 
 
 def _find_project_config(cwd: Path) -> Path:
-    """Return the nearest project config path, existing or not, walking from cwd upward."""
     current = cwd.resolve()
     if current.is_file():
         current = current.parent
@@ -184,7 +182,6 @@ def _record_transitions(
     state_root: str | os.PathLike[str] | None,
     ledger_root: str | os.PathLike[str] | None,
 ) -> list[dict]:
-    """Diff the current gate states against the session snapshot and persist the new snapshot."""
     reporting, session_state = _ledger_modules()
     cfg = effective_config(config)
     current = {family: gate_state(family, cfg) for family in GATE_FAMILIES}
@@ -203,7 +200,6 @@ def _record_transitions(
 
 
 def _transition_rows(session_id: str, previous: dict, current: dict) -> list[dict]:
-    """Return one row per family whose state differs from the recorded snapshot."""
     reporting, _ = _ledger_modules()
     rows: list[dict] = []
     # Only a previously recorded state counts as a change, because the first resolution seeds the baseline silently.

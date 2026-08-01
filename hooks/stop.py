@@ -33,7 +33,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def _advance_turn(session_id: str, state_root: str | os.PathLike[str] | None) -> None:
-    """Move the session to the next turn, swallowing state errors so the hook never fails."""
     try:
         session_state.update_state(session_id, _next_turn, state_root)
     except Exception as exc:  # noqa: BLE001 (a state write must never fail a hook)

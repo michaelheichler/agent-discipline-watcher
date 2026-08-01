@@ -15,12 +15,10 @@ LOCK_FILENAME = ".lock"
 
 
 def _default_root() -> Path:
-    """Return the production state root under the user home directory."""
     return Path.home() / ".agent-discipline" / "state"
 
 
 def _validate_session_id(session_id: str) -> None:
-    """Reject session_id values that could escape the state root as a directory name."""
     if not isinstance(session_id, str) or not session_id or session_id in (".", ".."):
         raise ValueError(f"unsafe session_id: {session_id!r}")
     if "/" in session_id or "\\" in session_id or "\x00" in session_id:
@@ -30,7 +28,6 @@ def _validate_session_id(session_id: str) -> None:
 def _session_directory(
     session_id: str, root: str | os.PathLike[str] | None
 ) -> Path:
-    """Resolve the session directory after validating the id and confirming the resolved path stays inside the root."""
     _validate_session_id(session_id)
     base = Path(root) if root is not None else _default_root()
     candidate = base / session_id
@@ -116,7 +113,6 @@ def cleanup_session(
 
 
 def _remove_if_stale(entry: Path, cutoff: float) -> bool:
-    """Delete one session directory when its mtime predates cutoff, returning True if removed."""
     try:
         mtime = entry.stat().st_mtime
     except OSError:

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest import mock
 
 import config
@@ -198,7 +199,7 @@ class StateTransitionTests(unittest.TestCase):
             state_root=self.state_root, ledger_root=self.ledger_root,
         )
         self.assertEqual(len(rows), 2)
-        self.assertEqual({r["family"] for r in rows}, {"punctuation", "english"})
+        self.assertEqual({row["family"] for row in rows}, {"punctuation", "english"})
 
     def test_kill_switch_change_is_a_transition(self):
         config.record_state_transitions(
@@ -246,11 +247,11 @@ class StateTransitionTests(unittest.TestCase):
             results.append(rows)
 
         threads = [threading.Thread(target=worker) for _ in range(4)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        total_rows = sum(len(r) for r in results)
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        total_rows = sum(len(result) for result in results)
         self.assertEqual(total_rows, 1)
 
 
@@ -368,12 +369,14 @@ if __name__ == "__main__":
 class RuleGateTests(unittest.TestCase):
     """A single rule can hold its own state, so one lexical rule burns in without demoting its family."""
 
-    WHAT = {"family": "clean_code", "rule": "what_comment"}
-    DASH = {"family": "punctuation", "rule": "banned_dash"}
-    HATCH = {"family": "clean_code", "rule": "suppression_escape_hatch"}
+    WHAT: ClassVar[dict] = {"family": "clean_code", "rule": "what_comment"}
+    DOC: ClassVar[dict] = {"family": "clean_code", "rule": "what_docstring"}
+    DASH: ClassVar[dict] = {"family": "punctuation", "rule": "banned_dash"}
+    HATCH: ClassVar[dict] = {"family": "clean_code", "rule": "suppression_escape_hatch"}
 
-    def test_what_comment_ships_in_observe_by_default(self):
-        self.assertEqual(config.resolve_outcome(self.WHAT, {}), "would_block")
+    def test_what_rules_ship_enforced_and_ignore_the_family_switch(self):
+        for finding in (self.WHAT, self.DOC):
+            self.assertEqual(config.resolve_outcome(finding, {"clean_code": False}), "block")
 
     def test_its_family_keeps_enforcing_around_it(self):
         self.assertEqual(config.gate_state("clean_code", {}), "enforce")

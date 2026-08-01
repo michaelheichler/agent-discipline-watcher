@@ -85,7 +85,7 @@ class UnwritableLedgerTests(unittest.TestCase):
         with mock.patch.object(reporting.sys, "stderr") as fake_stderr:
             fake_stderr.write.side_effect = lambda message: captured.append(message)
             reporting.append_row({"a": 1}, read_only)
-        self.assertTrue(any("ledger append failed" in m for m in captured))
+        self.assertTrue(any("ledger append failed" in message for message in captured))
 
     def test_unwritable_ledger_does_not_raise_in_gate(self):
         read_only = self.root / "ro"
@@ -161,7 +161,7 @@ class RecordDecisionTests(unittest.TestCase):
                     duration_ms=0, root=self.root,
                 )
         rows = reporting._read_jsonl(reporting.LEDGER_FILENAME, self.root)
-        self.assertEqual([r["outcome"] for r in rows], list(reporting.OUTCOMES))
+        self.assertEqual([row["outcome"] for row in rows], list(reporting.OUTCOMES))
 
     def test_unknown_outcome_raises_before_any_write(self):
         with self.assertRaises(ValueError):
@@ -264,7 +264,7 @@ class ObserveReportTests(unittest.TestCase):
         for row in rows:
             reporting.append_row(row, self.root)
         result = reporting.observe_report("english", self.root)
-        self.assertEqual([r["turn_id"] for r in result], ["t1"])
+        self.assertEqual([row["turn_id"] for row in result], ["t1"])
 
 
 class FalseSignalRateTests(unittest.TestCase):
@@ -348,7 +348,7 @@ class AdjudicateTests(unittest.TestCase):
         with mock.patch.object(reporting.sys, "stderr") as fake_stderr:
             fake_stderr.write.side_effect = lambda message: captured.append(message)
             reporting.adjudicate("english", "ref", False, read_only)
-        self.assertTrue(any("adjudication write failed" in m for m in captured))
+        self.assertTrue(any("adjudication write failed" in message for message in captured))
 
 
 class CompactBlockRegressionTests(unittest.TestCase):
@@ -460,7 +460,7 @@ class PreGateEvidenceTests(unittest.TestCase):
         return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
     def _decisions(self, hook):
-        return [r for r in self._rows() if r.get("hook") == hook and r.get("rule")]
+        return [row for row in self._rows() if row.get("hook") == hook and row.get("rule")]
 
     def test_pre_write_records_a_protected_path_block(self):
         import pre_write
@@ -468,7 +468,7 @@ class PreGateEvidenceTests(unittest.TestCase):
                    "tool_input": {"file_path": str(Path.home() / ".claude" / "settings.json"), "content": "{}"}}
         pre_write.run(payload, dict(self.cfg))
         rows = self._decisions("pre_write")
-        self.assertEqual([r["rule"] for r in rows], ["live_client_surface"])
+        self.assertEqual([row["rule"] for row in rows], ["live_client_surface"])
         self.assertEqual(rows[0]["outcome"], "block")
         self.assertEqual(rows[0]["turn_id"], "turn-9")
 
@@ -478,18 +478,19 @@ class PreGateEvidenceTests(unittest.TestCase):
         pre_bash.run({"session_id": "probe", "tool_use_id": "b1",
                       "tool_input": {"command": command}}, dict(self.cfg))
         rows = self._decisions("pre_bash")
-        self.assertEqual([r["rule"] for r in rows], ["commit_gate_bypass"])
+        self.assertEqual([row["rule"] for row in rows], ["commit_gate_bypass"])
         self.assertEqual(rows[0]["outcome"], "block")
 
     def test_an_observed_finding_is_recorded_as_would_block(self):
         import pre_write
         payload = {"session_id": "probe", "tool_use_id": "w2",
                    "tool_input": {"file_path": "a.py", "content": "# increments the counter\nx = 1\n"}}
-        pre_write.run(payload, dict(self.cfg))
+        config = {**self.cfg, "rule_gates": {"what_comment": "observe"}}
+        pre_write.run(payload, config)
         rows = self._decisions("pre_write")
-        self.assertEqual([(r["rule"], r["outcome"]) for r in rows], [("what_comment", "would_block")])
+        self.assertEqual([(row["rule"], row["outcome"]) for row in rows], [("what_comment", "would_block")])
 
     def test_both_gates_emit_a_heartbeat(self):
         import pre_bash
         pre_bash.run({"session_id": "probe", "tool_input": {"command": "ls"}}, dict(self.cfg))
-        self.assertTrue([r for r in self._rows() if r.get("hook") == "pre_bash" and r.get("event") == "observed"])
+        self.assertTrue([row for row in self._rows() if row.get("hook") == "pre_bash" and row.get("event") == "observed"])

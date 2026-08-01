@@ -235,32 +235,36 @@ An unknown family name is ignored rather than rejected, so a typo scans more rat
 ```json
 {
   "rule_gates": {
-    "what_comment": "enforce"
+    "what_comment": "observe"
   }
 }
 ```
 
-Seven rules ship in `observe` by default: `what_comment` and the six readability rules from 0.9.0 (`ai_closer`, `greeting_opener`, `hedge_stack`, `corporate_idiom`, `long_sentence`, `oversized_list`). `what_comment`'s WHY test is a ten-word marker list, not semantic analysis, so it must earn enforcement through the D7 burn-in like every other gate. The readability rules follow the same path. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
+Six readability rules ship in `observe` by default: `ai_closer`, `greeting_opener`, `hedge_stack`, `corporate_idiom`, `long_sentence`, and `oversized_list`. `what_comment` and `what_docstring` ship with enforcing rule overrides, so the `clean_code` family switch cannot silence them. Their WHY test is a lexical heuristic rather than semantic analysis, so a project can use the config above to demote `what_comment` while tuning local examples. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
 
 Every gate reads state through one resolver. The four paths are `pre_write.py` before a write, `pre_bash.py` on shell write content, `record.py` after a write, and `pre_commit.py` at commit time. A rule set to `observe` reports on all four paths and blocks on none of them.
 
-Promote it with the config above once `agent-discipline observe-report clean_code` shows you what the rule actually fired on and `agent-discipline false-signal-rate clean_code` reports a rate you accept.
+Remove the override once `agent-discipline observe-report clean_code` shows what the rule fired on and `agent-discipline false-signal-rate clean_code` reports a rate you accept.
 
 `rule_gates` cannot release a rule in the always-blocking set.
 
 The Craftsman suppression marker is always blocked on every scanned file. Project check switches, path exemptions, and rule gates cannot disable this rule. Fix the reported issue instead.
 
-The `what_comment` rule still runs on every code file whatever `clean_code` and `exempt_paths` say, because the scanner emits it before the exemption check. What those switches cannot do is silence it. Its outcome now comes from `rule_gates`, which ships it in `observe`.
+The scanner emits `what_comment` on every code file and `what_docstring` on every parsed Python file before family and path exemptions. Their enforcing rule overrides make both findings block even when `clean_code` is off. An explicit `rule_gates` entry can still change either outcome.
 
-It skips three things a comment can be without narrating code: a leading banner of two or more comment lines, a line with no letters such as a divider or a bare `#`, and a tag line such as `Args:` or `TRIGGERS:`.
+It skips a leading banner of two or more comment lines and any line with no letters, such as a divider or a bare `#`. It also skips tag lines such as `Args:` or `TRIGGERS:` and terse numeric budgets such as `5ms budget`.
+
+Python docstrings use the related `what_docstring` rule. A public module, class, or function may keep one first-line summary when it does not merely echo the identifier. Private scopes and later lines require a WHY marker.
+
+Borderline comments and docstrings can be sent to Haiku when `escalation.enabled` is true. The model call uses a three-second timeout, caches successful verdicts under the state root, and preserves the heuristic verdict on any API or cache failure. Escalation is off by default.
 
 Supported checks:
 
 | Check | Purpose |
 | --- | --- |
-| `punctuation` | Blocks banned dash marks, double hyphen breaks, semicolon splices, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
+| `punctuation` | Blocks banned dash marks, double hyphen breaks, any prose semicolon, incorrect apostrophe forms, and related punctuation tells. HTML `code`, `pre`, `script`, and `style` blocks are exempt, so inline CSS and generated markup never read as prose. |
 | `english` | Blocks or reports inflated diction, filler, wordiness, AI tells, and empty intensifiers. Since 0.9.0 it also carries the observe-gated readability rules: `ai_closer`, `greeting_opener`, `hedge_stack`, `corporate_idiom`, `long_sentence`, and `oversized_list`. Its rules are literal patterns, not a style model, so coverage is narrower than the rule names suggest. `delve into` matches and `delves into` does not. `it's worth noting` matches and `it is worth noting` does not. Treat a clean scan as the absence of a known pattern rather than as proof the prose is plain. |
-| `clean_code` | Toggles deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. The four lexical readability rules above also run on extracted comment text in code files under this family, observe-gated with the same rule ids. It does not toggle the always-on `what_comment` rule described above. |
+| `clean_code` | Toggles deferred-work comments, explicit narration comments, prose comment blocks, commented-out code, hollow tests, and hard length caps. The four lexical readability rules above also run on extracted comment text in code files under this family, observe-gated with the same rule ids. `what_comment` and `what_docstring` run before this family switch and ship with enforcing rule overrides. |
 
 Narrow patterns cut both ways, so a rule sometimes fires on prose that is fine as written. The escape for that is `exempt_families` above: name the path and the one family to drop, and the other families keep enforcing there. Reach for `exempt_paths` only when every family is wrong on that path.
 

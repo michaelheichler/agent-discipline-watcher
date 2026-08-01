@@ -75,17 +75,14 @@ class StreakData(TypedDict):
 
 
 def _exact_string_dict(value: object) -> dict[str, object]:
-    """Copy exact string keys from one exact built-in dict."""
     return exact_string_dict(value)
 
 
 def _has_exact_type(value: object, expected: type) -> bool:
-    """Return whether value has one exact built-in type."""
     return operator.is_(type(value), expected)
 
 
 def _bounded_text(value: object, maximum: int) -> str:
-    """Return exact bounded text without control characters."""
     if not _has_exact_type(value, str):
         return ""
     text = cast(str, value)
@@ -100,7 +97,6 @@ def _bounded_text(value: object, maximum: int) -> str:
 
 
 def _normalized_error(value: object) -> str:
-    """Return bounded single-line error text."""
     if not _has_exact_type(value, str):
         return ""
     clipped = cast(str, value)[:_MAX_ERROR_INPUT_LENGTH]
@@ -114,22 +110,18 @@ def _normalized_error(value: object) -> str:
 
 
 def _is_exact_number(value: object) -> TypeGuard[int | float]:
-    """Return whether value is a built-in non-boolean number."""
     return _has_exact_type(value, int) or _has_exact_type(value, float)
 
 
 def _is_exact_int(value: object) -> TypeGuard[int]:
-    """Return whether value is a built-in integer."""
     return _has_exact_type(value, int)
 
 
 def _is_exact_bool(value: object) -> TypeGuard[bool]:
-    """Return whether value is a built-in boolean."""
     return _has_exact_type(value, bool)
 
 
 def _canonical_duration(value: object) -> int:
-    """Return a bounded nonnegative integer duration."""
     if not _is_exact_int(value):
         return 0
     if value < 0 or value > _MAX_DURATION_MS:
@@ -138,7 +130,6 @@ def _canonical_duration(value: object) -> int:
 
 
 def _valid_now(value: object) -> float | None:
-    """Return one finite bounded clock value."""
     if not _is_exact_number(value):
         return None
     if not math.isfinite(value) or value < 0 or value > _MAX_NOW:
@@ -147,7 +138,6 @@ def _valid_now(value: object) -> float | None:
 
 
 def _target(raw_target: str, cwd: str) -> str:
-    """Return one bounded lexical target."""
     target = _bounded_text(raw_target, _MAX_TARGET_LENGTH)
     if not target:
         return ""
@@ -180,7 +170,6 @@ def normalize_payload(payload: object) -> TrustedPayload:
 
 
 def _safe_config(config: object) -> dict[str, object]:
-    """Project only safe path roots from caller config."""
     source = _exact_string_dict(config)
     result: dict[str, object] = {}
     for key in ("state_root", "ledger_root"):
@@ -191,7 +180,6 @@ def _safe_config(config: object) -> dict[str, object]:
 
 
 def _config_roots(config: dict[str, object]) -> tuple[str | None, str | None]:
-    """Return exact configured state and ledger roots."""
     state_root = _bounded_text(config.get("state_root"), _MAX_CWD_LENGTH) or None
     ledger_root = _bounded_text(config.get("ledger_root"), _MAX_CWD_LENGTH) or None
     return state_root, ledger_root
@@ -212,7 +200,6 @@ def parse_mcp_tool(tool_name: str) -> tuple[str, str] | None:
 
 
 def _is_valid_mcp_part(value: str, maximum: int) -> bool:
-    """Accept an ASCII identifier whose separators cannot alter state paths."""
     if not value or len(value) > maximum:
         return False
     return all(character in _MCP_PART_CHARACTERS for character in value)
@@ -224,14 +211,12 @@ def failure_target(payload: dict) -> str:
 
 
 def _safe_tool_name(payload: dict) -> str:
-    """Return a bounded tool name suitable for a state-map key."""
     return str(normalize_payload(payload)["tool_name"])
 
 
 def _next_streak(
     previous: object, error: str, *, interrupt: bool, duration_ms: int
 ) -> StreakData:
-    """Return the next streak, resetting when the failure signature changes."""
     count = 1
     prior = _exact_string_dict(previous)
     if prior:
@@ -252,21 +237,18 @@ def _next_streak(
 
 
 def _backoff_seconds(failure_count: int) -> int:
-    """Return 30, 60, 120, 240, 480, then 600 without a large shift."""
     if failure_count >= _BACKOFF_CAP_COUNT:
         return MCP_MAX_BACKOFF_SECONDS
     return MCP_BASE_BACKOFF_SECONDS * (1 << max(failure_count - 1, 0))
 
 
 def _valid_nonnegative_int(value: object) -> int:
-    """Return a stored nonnegative integer, or zero for legacy corruption."""
     if _is_exact_int(value) and value >= 0:
         return value
     return 0
 
 
 def _valid_timestamp(value: object, default: float) -> float:
-    """Return a finite stored timestamp, or the supplied safe default."""
     if _is_exact_number(value):
         converted = float(value)
         if 0 <= converted <= _MAX_TIMESTAMP and math.isfinite(converted):
@@ -277,7 +259,6 @@ def _valid_timestamp(value: object, default: float) -> float:
 def _updated_streaks(
     state: dict, event: FailureEventData, captured: FailureCounts
 ) -> dict:
-    """Return updated tool and target streak maps and capture their counts."""
     raw_streaks = state.get(FAILURE_STREAKS_KEY)
     streaks = _exact_string_dict(raw_streaks)
     raw_tools = streaks.get("tools")
@@ -313,7 +294,6 @@ def _updated_streaks(
 
 
 def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
-    """Return the advanced MCP health map, or None for non-provider failures."""
     parsed = parse_mcp_tool(event["tool"])
     if parsed is None or event["interrupt"]:
         return None
@@ -340,7 +320,6 @@ def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
 def _record_failure(
     state: dict, event: FailureEventData, captured: FailureCounts
 ) -> dict:
-    """Atomically update streak and health substates and expose the new counts."""
     trusted_state = _exact_string_dict(state)
     updated = dict(trusted_state)
     updated[FAILURE_STREAKS_KEY] = _updated_streaks(trusted_state, event, captured)
@@ -351,7 +330,6 @@ def _record_failure(
 
 
 def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
-    """Return one exact string-key map without key, preserving invalid values."""
     if not key or not _has_exact_type(mapping, dict):
         return mapping, False
     copied = _exact_string_dict(mapping)
@@ -362,7 +340,6 @@ def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
 
 
 def _record_success(state: dict, payload: TrustedPayload) -> dict:
-    """Remove only failure state matched by one successful tool event."""
     if not _has_exact_type(state, dict):
         return state
     trusted_state = _exact_string_dict(state)
@@ -413,7 +390,6 @@ def record_success(payload: dict, config: dict | None = None) -> None:
 
 
 def _guidance(event: FailureEventData, captured: FailureCounts) -> str:
-    """Return guidance only at the first actionable repeat threshold."""
     if event["interrupt"] or not event["error"]:
         return ""
     tool_hit = captured.get("tool_count", 0) == GUIDANCE_THRESHOLD
@@ -433,7 +409,6 @@ def _guidance(event: FailureEventData, captured: FailureCounts) -> str:
 
 
 def _failure_event(payload: TrustedPayload, now: float) -> FailureEventData:
-    """Build one event from the trusted payload projection."""
     return {
         "tool": payload["tool_name"],
         "target": payload["target"],
@@ -450,7 +425,6 @@ def _run_failure(
     ledger_root: str | None,
     current_time: float | None,
 ) -> dict:
-    """Run the hook after boundary normalization."""
     session_id = payload["session_id"]
 
     def gate(turn_id: str) -> dict:

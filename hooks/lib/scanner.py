@@ -8,8 +8,10 @@ from pathlib import PurePath
 
 try:
     from .config import GATE_FAMILIES, effective_config
+    from .escalate import classify_what
 except ImportError:
     from config import GATE_FAMILIES, effective_config
+    from escalate import classify_what
 
 
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
@@ -21,7 +23,8 @@ CONFIG_BASENAMES = frozenset({
 })
 DASH_BREAK_RE = re.compile(r"\w-{2,} ?\w|\w -{2,} \w")
 SPACED_HYPHEN_RE = re.compile(r"\w +- +\w")
-SEMICOLON_SPLICE_RE = re.compile(r"[a-z]\s*;\s+[a-z]", re.IGNORECASE)
+PROSE_SEMICOLON_RE = re.compile(r";")
+URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 PRONOUN_APOS_RE = re.compile(r"\b(your|their|her|our|its)'s\b", re.IGNORECASE)
 ITS_APOS_RE = re.compile(r"(?<![\w\"'])its" + chr(39) + r"(?!\w)", re.IGNORECASE)
 DECADE_APOS_RE = re.compile(r"(?:\b\d{3}0|'\d0)'s\b")
@@ -100,12 +103,33 @@ WHY_RULE_IS_HEURISTIC = (
     "A WHAT comment with a marker can pass, and a genuine WHY comment without one can be blocked. "
     "Its deliberate bias toward over-blocking matches the hard-block policy with no exceptions."
 )
-WHY_COMMENT_RE = re.compile(
+STRONG_WHY_COMMENT_RE = re.compile(
     r"(?:^why:\s*\S|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
     r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
     re.IGNORECASE,
 )
+WHY_COMMENT_RE = re.compile(
+    r"(?:^why:\s*\S|\b(?:because|otherwise|unless|assumes|requires|guarantees)\b|"
+    r"\bdue to\b|\bso that\b|\bin order to\b|\bexcept when\b|\binstead of\b|"
+    r"\brather than\b|\bwork(?:around for|s around)\b|\bbug in\b|"
+    r"\bcallers (?:rely on|must)\b|\brelied on by\b|\binvariant:\s*\S|"
+    r"\bmust\b.{0,80}\bor\b|\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
+    re.IGNORECASE,
+)
 SINCE_RE = re.compile(r"\bsince\s+\S", re.IGNORECASE)
+WHAT_OPENER_RE = re.compile(
+    r"^(?:Returns?|Returning|Scans?|Scanning|Checks?|Checking|Validates?|Validating|"
+    r"Handles?|Handling|Processes?|Processing|Gets?|Getting|Sets?|Setting|Creates?|Creating|"
+    r"Initializes?|Initializing|Iterates?|Iterating|Loops? through|Looping through|"
+    r"Copy|Copies|Copying|Reports?|Reporting)\b",
+    re.IGNORECASE,
+)
+IDENTIFIER_PART_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|\b)|[A-Z]?[a-z]+|\d+")
+CONTENT_STOPWORDS = frozenset({
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "is", "it",
+    "of", "on", "or", "the", "this", "to", "with",
+})
+IMPLICIT_BUDGET_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:ms|s|us|ns)\s+budget\b", re.IGNORECASE)
 TEMPORAL_SINCE_RE = re.compile(
     r"\bsince\s+(?:the\s+)?(?:(?:last\s+)?release\b|v(?:ersion)?\.?\s*\d|\d)",
     re.IGNORECASE,
@@ -113,6 +137,10 @@ TEMPORAL_SINCE_RE = re.compile(
 WHAT_COMMENT_ACTION = (
     "Only WHY comments are allowed. WHAT comments are never allowed. "
     "State the reason the code is this way, or delete the comment."
+)
+WHAT_DOCSTRING_ACTION = (
+    WHAT_COMMENT_ACTION
+    + " A public scope may keep one genuine first-line summary that does not echo its identifier."
 )
 VC_COMMENT_RE = re.compile(
     r"^\s*(changed?|renamed?|moved?|removed?|added?|replaced?|refactored?|"
@@ -170,7 +198,6 @@ def _exempt_families(path: str, cfg: dict) -> frozenset[str]:
 
 
 def _active_families(path: str, cfg: dict) -> frozenset[str]:
-    """Return the configurable families that run for this path, after its own family exemptions."""
     dropped = _exempt_families(path, cfg)
     return frozenset(
         name for name in GATE_FAMILIES if cfg.get(name, True) and name not in dropped
@@ -202,7 +229,17 @@ def _max_scan_bytes(config: dict) -> int:
     return _int_setting(config, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", 1_000_000)
 
 
-def _unconditional_findings(path: str, lines: list[str]) -> list[dict]:
+def _python_tree(path: str, text: str):
+    if not path.lower().endswith(".py"):
+        return None
+    try:
+        return ast.parse(text)
+    except SyntaxError:
+        return None
+
+
+def _unconditional_findings(path: str, text: str, config: dict, tree) -> list[dict]:
+    lines = text.splitlines() or [""]
     findings = [
         _finding("clean_code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + path, line,
@@ -210,22 +247,25 @@ def _unconditional_findings(path: str, lines: list[str]) -> list[dict]:
         for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
     ]
     if _is_code(path):
-        findings.extend(_what_comment_rows(path, lines))
+        findings.extend(_what_comment_rows(path, text, config, tree))
+    findings.extend(_what_docstring_findings(path, tree, config))
     return findings
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     cfg = effective_config(config)
+    cfg["_escalation_remaining"] = 5
+    tree = _python_tree(path, text)
     lines = text.splitlines() or [""]
-    findings = _unconditional_findings(path, lines)
+    findings = _unconditional_findings(path, text, cfg, tree)
     if _is_exempt(path, cfg):
         return findings
-    punct_lines = _strip_punctuation_blocks(text).splitlines() or [""]
+    punct_lines = _strip_punctuation_blocks(path, text).splitlines() or [""]
     english_lines = _strip_english_hidden(text).splitlines() or [""]
     active = _active_families(path, cfg)
     code_file = _is_code(path)
     if "clean_code" in active and code_file:
-        findings.extend(_scan_clean_code_file(path, text, cfg))
+        findings.extend(_scan_clean_code_file(path, text, cfg, tree))
     for number, line in enumerate(lines, 1):
         if "punctuation" in active:
             scan_line = punct_lines[number - 1] if number <= len(punct_lines) else ""
@@ -276,8 +316,8 @@ PUNCTUATION_RULES = (
      "Double hyphen clause break in ", "Use a comma, period, or parentheses."),
     ("prose", (SPACED_HYPHEN_RE,), "spaced_hyphen",
      "Spaced hyphen acts as a dash in ", "Use a comma, period, parentheses, or close up the hyphen."),
-    ("prose", (SEMICOLON_SPLICE_RE,), "semicolon_splice",
-     "Semicolon joins two clauses in ", "Use two sentences."),
+    ("semicolon", (PROSE_SEMICOLON_RE,), "prose_semicolon",
+     "Semicolon appears in prose in ", "Use a comma, period, or parentheses."),
     ("clean", (PRONOUN_APOS_RE, ITS_APOS_RE), "pronoun_apostrophe",
      "Possessive pronoun has an apostrophe in ", "Use the possessive pronoun without apostrophe."),
     ("clean", (DECADE_APOS_RE,), "decade_apostrophe",
@@ -288,7 +328,8 @@ PUNCTUATION_RULES = (
 def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str) -> list[dict]:
     clean = _strip_inline_code(scan_line)
     prose = _punctuation_prose_part(path, clean)
-    texts = {"clean": clean, "prose": prose}
+    semicolon = "" if _is_config(path) else URL_RE.sub("", prose)
+    texts = {"clean": clean, "prose": prose, "semicolon": semicolon}
     rows = [
         _finding("punctuation", rule, line_number, detail + path, line, action)
         for target, regexes, rule, detail, action in PUNCTUATION_RULES
@@ -353,6 +394,12 @@ def _has_why_marker(text: str) -> bool:
     return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
 
 
+def _has_strong_why_marker(text: str) -> bool:
+    if STRONG_WHY_COMMENT_RE.search(text):
+        return True
+    return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
+
+
 HEADER_BLOCK_MIN_LINES = 2
 
 
@@ -377,20 +424,96 @@ def _header_block_end(lines: list[str]) -> int:
 
 
 def _narrates_code(text: str) -> bool:
-    """Report whether the comment makes a claim about the code, so dividers, spacers, and tag lines stay out of scope."""
     if not text or not LETTER_RE.search(text):
         return False
     return not TAG_LINE_RE.match(text)
 
 
-def _what_comment_rows(path: str, lines: list[str]) -> list[dict]:
+def _identifier_tokens(parts) -> frozenset[str]:
+    if isinstance(parts, str):
+        parts = (parts,)
+    return frozenset(
+        token.lower()
+        for part in parts
+        for token in IDENTIFIER_PART_RE.findall(str(part).replace("_", " "))
+        if token.lower() not in CONTENT_STOPWORDS
+    )
+
+
+def _identifier_overlap(name_tokens, param_tokens, text: str) -> float:
+    identifiers = _identifier_tokens(name_tokens) | _identifier_tokens(param_tokens)
+    content = _identifier_tokens(text)
+    if not identifiers or not content:
+        return 0.0
+    return len(identifiers & content) / len(identifiers | content)
+
+
+def _identifier_echo(name_tokens, param_tokens, text: str) -> bool:
+    return _identifier_overlap(name_tokens, param_tokens, text) >= 0.6
+
+
+def _scope_identity(scope, path: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if isinstance(scope, ast.Module):
+        return (PurePath(path).stem,), ()
+    args = getattr(scope, "args", None)
+    if args is None:
+        return (scope.name,), ()
+    params = [
+        arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+        if arg.arg not in ("self", "cls")
+    ]
+    params.extend(arg.arg for arg in (args.vararg, args.kwarg) if arg is not None)
+    return (scope.name,), tuple(params)
+
+
+def _scope_identities(path: str, text: str, tree) -> list[tuple[int, int, tuple[str, ...], tuple[str, ...]]]:
+    if tree is None:
+        return [(1, len(text.splitlines()) + 1, (PurePath(path).stem,), ())]
+    scopes = [tree]
+    scopes.extend(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+    rows = []
+    for scope in scopes:
+        start = getattr(scope, "lineno", 1)
+        end = getattr(scope, "end_lineno", len(text.splitlines()) + 1)
+        names, params = _scope_identity(scope, path)
+        rows.append((start, end, names, params))
+    return rows
+
+
+def _identity_at_line(identities, line_number: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    matches = [row for row in identities if row[0] <= line_number <= row[1]]
+    if not matches:
+        return (), ()
+    _start, _end, names, params = min(matches, key=lambda row: row[1] - row[0])
+    return names, params
+
+
+def _comment_is_what(text: str, names, params, config: dict) -> bool:
+    opener = bool(WHAT_OPENER_RE.match(text))
+    why = _has_why_marker(text)
+    if opener:
+        if _has_strong_why_marker(text):
+            return False
+        return classify_what(text, True, config) if why else True
+    ratio = _identifier_overlap(names, params, text)
+    if why:
+        return False
+    return classify_what(text, True, config) if 0.4 <= ratio < 0.6 else True
+
+
+def _what_comment_rows(path: str, text: str, config: dict, tree) -> list[dict]:
+    lines = text.splitlines() or [""]
     rows = []
     header_end = _header_block_end(lines)
+    identities = _scope_identities(path, text, tree)
     for line_number, line in enumerate(lines, 1):
         if line_number <= header_end:
             continue
-        text = _comment_text(line)
-        if text is None or not _narrates_code(text) or _has_why_marker(text):
+        comment = _comment_text(line)
+        if comment is None or not _narrates_code(comment) or IMPLICIT_BUDGET_RE.match(comment):
+            continue
+        names, params = _identity_at_line(identities, line_number)
+        if not _comment_is_what(comment, names, params, config):
             continue
         rows.append(_finding(
             "clean_code", "what_comment", line_number,
@@ -439,11 +562,11 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
     return rows
 
 
-def _scan_clean_code_file(path: str, text: str, config: dict) -> list[dict]:
+def _scan_clean_code_file(path: str, text: str, config: dict, tree) -> list[dict]:
     lines = text.splitlines()
     findings = _scan_clean_code_blocks(path, text)
-    findings.extend(_scan_docstrings(path, text))
-    findings.extend(_scan_lengths(path, text, lines, config))
+    findings.extend(_scan_docstrings(path, tree))
+    findings.extend(_scan_lengths(path, lines, config, tree))
     findings.extend(_scan_hollow_test_blocks(path, lines))
     return findings
 
@@ -464,8 +587,7 @@ def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
     return findings
 
 
-def _narrating_docstring(scope) -> tuple[int, str] | None:
-    """Return (line, text) of a scope's multi-line docstring, or None."""
+def _scope_docstring(scope) -> tuple[int, str] | None:
     body = getattr(scope, "body", [])
     first = body[0] if body else None
     if not isinstance(first, ast.Expr):
@@ -473,30 +595,85 @@ def _narrating_docstring(scope) -> tuple[int, str] | None:
     value = first.value
     if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
         return None
-    if "\n" not in value.value.strip():
-        return None
     return getattr(first, "lineno", 1), value.value
 
 
-def _scan_docstrings(path: str, text: str) -> list[dict]:
-    if not path.lower().endswith(".py"):
+def _narrating_docstring(scope) -> tuple[int, str] | None:
+    hit = _scope_docstring(scope)
+    if not hit or "\n" not in hit[1].strip():
+        return None
+    lines = [line.strip() for line in hit[1].splitlines() if line.strip()]
+    return None if any(TAG_LINE_RE.match(line) for line in lines[1:]) else hit
+
+
+def _public_scope(scope) -> bool:
+    if isinstance(scope, ast.Module):
+        return True
+    return not scope.name.startswith("_") or (scope.name.startswith("__") and scope.name.endswith("__"))
+
+
+def _docstring_line_is_what(scope, path: str, line: str, first_line: bool, config: dict) -> bool:
+    names, params = _scope_identity(scope, path)
+    ratio = _identifier_overlap(names, params, line)
+    echo = _identifier_echo(names, params, line)
+    if _public_scope(scope) and first_line and not echo:
+        return classify_what(line, False, config) if 0.4 <= ratio < 0.6 else False
+    opener = bool(WHAT_OPENER_RE.match(line))
+    why = _has_why_marker(line)
+    if opener:
+        if _has_strong_why_marker(line):
+            return False
+        return classify_what(line, True, config) if why else True
+    return not why
+
+
+def _what_docstring_rows(path: str, scope, hit: tuple[int, str], config: dict) -> list[dict]:
+    start, value = hit
+    rows = []
+    content_index = 0
+    structured = False
+    for offset, raw_line in enumerate(value.splitlines()):
+        line = raw_line.strip()
+        if not _narrates_code(line):
+            structured = structured or bool(TAG_LINE_RE.match(line))
+            continue
+        if structured or IMPLICIT_BUDGET_RE.match(line):
+            continue
+        first_line = content_index == 0
+        content_index += 1
+        if not _docstring_line_is_what(scope, path, line, first_line, config):
+            continue
+        rows.append(_finding(
+            "clean_code", "what_docstring", start + offset,
+            "Docstring states what the code does in " + path,
+            line, WHAT_DOCSTRING_ACTION,
+        ))
+    return rows
+
+
+def _docstring_scopes(tree) -> list:
+    if tree is None:
         return []
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return []
-    scopes = [tree]
-    scopes.extend(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
-    findings: list[dict] = []
-    for scope in scopes:
-        hit = _narrating_docstring(scope)
+    return [tree, *(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))]
+
+
+def _what_docstring_findings(path: str, tree, config: dict) -> list[dict]:
+    findings = []
+    for scope in _docstring_scopes(tree):
+        hit = _scope_docstring(scope)
         if hit:
+            findings.extend(_what_docstring_rows(path, scope, hit, config))
+    return findings
+
+
+def _scan_docstrings(path: str, tree) -> list[dict]:
+    findings: list[dict] = []
+    for scope in _docstring_scopes(tree):
+        narration = _narrating_docstring(scope)
+        if narration:
             findings.append(_finding(
-                "clean_code",
-                "docstring_narration",
-                hit[0],
-                "Multi-line docstring narrates in " + path,
-                hit[1],
+                "clean_code", "docstring_narration", narration[0],
+                "Multi-line docstring narrates in " + path, narration[1],
                 "Move the explanation to a wiki page. Create one or update the existing page.",
             ))
     return findings
@@ -521,12 +698,8 @@ def _long_functions(tree, func_limit: int):
                 yield node
 
 
-def _function_length_findings(path: str, text: str, config: dict) -> list[dict]:
-    if not path.lower().endswith(".py"):
-        return []
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
+def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
+    if tree is None:
         return []
     func_limit = _int_setting(config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
     return [
@@ -653,9 +826,9 @@ def _scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:
     return findings
 
 
-def _scan_lengths(path: str, text: str, lines: list[str], config: dict) -> list[dict]:
+def _scan_lengths(path: str, lines: list[str], config: dict, tree) -> list[dict]:
     findings = _file_length_findings(path, len(lines), config)
-    findings.extend(_function_length_findings(path, text, config))
+    findings.extend(_function_length_findings(path, config, tree))
     return findings
 
 
@@ -750,9 +923,18 @@ def _is_header_run(run: list[tuple[int, str]]) -> bool:
     return True
 
 
-def _strip_punctuation_blocks(text: str) -> str:
+def _strip_punctuation_blocks(path: str, text: str) -> str:
     text = HTML_CODE_RE.sub(_blank_keep_newlines, text)
-    return HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
+    text = HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
+    if not _is_prose(path):
+        return text
+    visible = []
+    fence = None
+    for line in text.splitlines():
+        fence, marker = _next_fence(line, fence)
+        hidden = marker or fence or line.strip().startswith("|")
+        visible.append("" if hidden else line)
+    return "\n".join(visible)
 
 
 def _strip_english_hidden(text: str) -> str:
@@ -775,26 +957,13 @@ def _strip_quoted(text: str) -> str:
 
 
 def _punctuation_prose_part(path: str, line: str) -> str:
-    if _is_config(path) and SHELL_IN_CONFIG_RE.search(line):
-        return ""
-    if _is_prose(path) or _is_config(path):
+    if _is_config(path):
+        return "" if SHELL_IN_CONFIG_RE.search(line) else line
+    if _is_prose(path):
         return line
+    # Ignore trailing comments because quote-unaware hash detection misreads CSS colors and JS private fields.
     leading = COMMENT_RE.match(line)
-    if leading:
-        return leading.group(1)
-    positions = [pos for pos in (line.find("#"), _line_comment_slashes(line)) if pos >= 0]
-    if not positions:
-        return ""
-    pos = min(positions)
-    return line[pos + (2 if line.startswith("//", pos) else 1):]
-
-
-def _line_comment_slashes(line: str) -> int:
-    # Ignore URL schemes because their :// token is not a comment marker.
-    for match in re.finditer(r"//", line):
-        if match.start() == 0 or line[match.start() - 1] != ":":
-            return match.start()
-    return -1
+    return leading.group(1) if leading else ""
 
 
 def _env_setting(env_name: str, default: int):

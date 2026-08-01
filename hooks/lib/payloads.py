@@ -124,7 +124,6 @@ def record_payload(payload: object) -> RecordPayload:
 
 
 def _tool_input(payload: object) -> dict[str, object]:
-    """Resolve the tool-arguments slot tolerating the three observed key names."""
     return _tool_input_from(exact_string_dict(payload))
 
 

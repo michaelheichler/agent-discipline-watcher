@@ -88,7 +88,6 @@ _DELETE_CODEPOINT = 127
 
 
 def _exact_text(value: object, maximum: int) -> str:
-    """Return bounded control-free built-in text."""
     if not operator.is_(type(value), str):
         return ""
     text = cast(str, value)
@@ -103,7 +102,6 @@ def _exact_text(value: object, maximum: int) -> str:
 
 
 def _safe_value(value: object, depth: int = 0) -> object | None:
-    """Copy a bounded JSON-like config value without invoking subclass methods."""
     if depth > _MAX_CONFIG_DEPTH:
         return None
     if operator.is_(type(value), str):
@@ -119,7 +117,6 @@ def _safe_value(value: object, depth: int = 0) -> object | None:
 
 
 def _safe_sequence(source: list[object], depth: int) -> list[object] | None:
-    """Return a bounded recursive copy of an exact built-in list."""
     if len(source) > _MAX_CONFIG_ITEMS:
         return None
     copied = [_safe_value(item, depth + 1) for item in source]
@@ -127,7 +124,6 @@ def _safe_sequence(source: list[object], depth: int) -> list[object] | None:
 
 
 def _safe_mapping(source: dict[str, object], depth: int) -> dict[str, object] | None:
-    """Return a bounded recursive copy of an exact built-in mapping."""
     if len(source) > _MAX_CONFIG_ITEMS:
         return None
     result: dict[str, object] = {}
@@ -139,13 +135,11 @@ def _safe_mapping(source: dict[str, object], depth: int) -> dict[str, object] | 
 
 
 def _safe_config(config: object) -> dict[str, object]:
-    """Return an inert built-in config projection."""
     copied = _safe_value(config)
     return cast(dict[str, object], copied) if operator.is_(type(copied), dict) else {}
 
 
 def _caller_mentions(config: object, key: str) -> bool:
-    """Return whether a caller mapping literally holds key, bypassing its methods."""
     if not isinstance(config, dict):
         return False
     with suppress(Exception):
@@ -156,7 +150,6 @@ def _caller_mentions(config: object, key: str) -> bool:
 
 
 def _resolved_config(config: dict[str, object], cwd: str) -> dict[str, object]:
-    """Merge safe caller and project config, falling back when project I/O fails."""
     try:
         return effective_config(config, cwd or None)
     except (OSError, ValueError, TypeError, RuntimeError):
@@ -164,35 +157,29 @@ def _resolved_config(config: dict[str, object], cwd: str) -> dict[str, object]:
 
 
 def _prompt(payload: object) -> str:
-    """Project the exact prompt field and enforce the scan bound."""
     text = payloads.prompt(payload)
     return text if len(text) <= MAX_PROMPT_CHARS else ""
 
 
 def _cwd(payload: object) -> str:
-    """Project a path safe to pass to project-config resolution."""
     return _exact_text(payloads.cwd(payload), _MAX_CONFIG_TEXT)
 
 
 def _session_id(payload: object) -> str:
-    """Return a bounded session id safe for state and ledger helpers."""
     session_id = payloads.session_id(payload)
     return session_id if _SESSION_RE.fullmatch(session_id) else ""
 
 
 def _mask_quoted(text: str) -> str:
-    """Blank quoted examples while preserving match positions."""
     return _QUOTED_RE.sub(lambda match: " " * len(match.group(0)), text)
 
 
 def _fence_body(line: str) -> str:
-    """Return the line past up to three spaces of CommonMark fence indentation."""
     indent = len(line) - len(line.lstrip(" "))
     return line[indent:] if indent <= _MAX_FENCE_INDENT else ""
 
 
 def _fence_opener_width(line: str) -> int:
-    """Return the backtick width when the line opens a code fence, else zero."""
     body = _fence_body(line)
     width = len(body) - len(body.lstrip("`"))
     if width < _MIN_FENCE_WIDTH:
@@ -201,14 +188,12 @@ def _fence_opener_width(line: str) -> int:
 
 
 def _is_fence_closer(line: str, width: int) -> bool:
-    """Return whether the line closes a backtick fence of the given width."""
     body = _fence_body(line)
     backticks = len(body) - len(body.lstrip("`"))
     return backticks >= width and not body[backticks:].strip(" \t\r\n")
 
 
 def _mask_fenced(text: str) -> str:
-    """Blank fenced code blocks while preserving offsets and line structure."""
     if "```" not in text:
         return text
     lines = text.splitlines(keepends=True)
@@ -238,7 +223,6 @@ def _mask_fenced(text: str) -> str:
 
 
 def _find_backtick_run(text: str, start: int, width: int) -> int:
-    """Return the next exact-width backtick run, else -1."""
     index = start
     while index < len(text):
         if text[index] != "`":
@@ -254,7 +238,6 @@ def _find_backtick_run(text: str, start: int, width: int) -> int:
 
 
 def _mask_code_width(text: str, width: int) -> str:
-    """Blank paired exact-width code spans while preserving offsets."""
     if "`" * width not in text:
         return text
     masked = list(text)
@@ -271,17 +254,14 @@ def _mask_code_width(text: str, width: int) -> str:
 
 
 def _mask_inline_code(text: str) -> str:
-    """Blank one- and two-backtick code spans while preserving offsets."""
     return _mask_code_width(_mask_code_width(text, 2), 1)
 
 
 def _mask_examples(text: str) -> str:
-    """Blank fenced blocks, inline code, and quoted spans, preserving offsets."""
     return _mask_quoted(_mask_inline_code(_mask_fenced(text)))
 
 
 def _file_token_end(text: str, at: int) -> int:
-    """Return the offset after a valid file token at ``at``, else -1, in one pass."""
     end = at + 1
     has_alnum = False
     segment_open = False
@@ -301,12 +281,10 @@ def _file_token_end(text: str, at: int) -> int:
 
 
 def _is_token_terminator(char: str) -> bool:
-    """Return whether the character ends a file token, Unicode whitespace included."""
     return char in _AT_TERMINATORS or char.isspace() or char == "`"
 
 
 def _is_token_boundary(char: str) -> bool:
-    """Return whether the character continues a word or address before an at sign."""
     return (
         char in _AT_BOUNDARY_EXCLUDED
         or char.isalnum()
@@ -315,7 +293,6 @@ def _is_token_boundary(char: str) -> bool:
 
 
 def _has_file_token(text: str) -> bool:
-    """Return whether text holds an at-prefixed file token, in linear time."""
     at = text.find("@")
     while at != -1:
         if (at == 0 or not _is_token_boundary(text[at - 1])) and (
@@ -327,7 +304,6 @@ def _has_file_token(text: str) -> bool:
 
 
 def _is_explanatory(text: str, start: int) -> bool:
-    """Return whether the matched phrase is directly negated or labeled as an example."""
     prefix = text[max(0, start - _MAX_PHRASE_CONTEXT) : start]
     chain = _NEGATION_CHAIN_RE.search(prefix)
     negated = bool(
@@ -337,7 +313,6 @@ def _is_explanatory(text: str, start: int) -> bool:
 
 
 def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
-    """Return reviewed rules found in unquoted, affirmative prompt text."""
     scan_text = _mask_examples(text)
     matches: dict[tuple[str, str], str] = {}
     for rule in PROMPT_RULES:
@@ -350,7 +325,6 @@ def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
 
 
 def _data_boundary_enabled(cfg: dict[str, object]) -> bool:
-    """Return true only for the exact central opt-in value."""
     boundary = cfg.get("data_boundary")
     if not operator.is_(type(boundary), dict):
         return False
@@ -361,14 +335,12 @@ def _data_boundary_enabled(cfg: dict[str, object]) -> bool:
 def _data_boundary_findings(
     text: str, cfg: dict[str, object]
 ) -> dict[tuple[str, str], str]:
-    """Find unquoted literal file-reference tokens under the explicit opt-in."""
     if not _data_boundary_enabled(cfg) or not _has_file_token(_mask_examples(text)):
         return {}
     return {DATA_BOUNDARY_FINDING: "Use the Read tool explicitly."}
 
 
 def _scanner_findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
-    """Convert enabled scanner findings to static rule identifiers and reminders."""
     raw_findings: list[dict[str, object]] | None = None
     with suppress(Exception):
         if scannable_text(text, cfg) is None:
@@ -389,7 +361,6 @@ def _scanner_findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str]
 
 
 def _family_state(family: str, cfg: dict[str, object]) -> str:
-    """Resolve a scanner family safely; invalid state defaults to enabled injection."""
     try:
         state = gate_state(family, cfg)
     except (AttributeError, TypeError, ValueError):
@@ -398,7 +369,6 @@ def _family_state(family: str, cfg: dict[str, object]) -> str:
 
 
 def _findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
-    """Compose reviewed phrase and scanner findings in stable identifier order."""
     combined = _phrase_findings(text)
     for key, value in _data_boundary_findings(text, cfg).items():
         combined.setdefault(key, value)
@@ -408,7 +378,6 @@ def _findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
 
 
 def _mode(cfg: dict[str, object], selection: ModeSelection) -> str:
-    """Resolve caller authority before project mode, defaulting every invalid value to inject."""
     value = selection.value if selection.caller_supplied else cfg.get(FIREWALL_MODE_KEY)
     return "block" if operator.is_(type(value), str) and value == "block" else "inject"
 
@@ -420,7 +389,6 @@ def _record(
     duration_ms: int,
     cfg: dict[str, object],
 ) -> None:
-    """Persist standard decision metadata without prompt-derived values."""
     root = _config_root(cfg, "ledger_root")
     for family, rule in findings:
         outcome = "block" if (family, rule) == DATA_BOUNDARY_FINDING else mode
@@ -445,7 +413,6 @@ def _record(
 
 
 def _message(findings: dict[tuple[str, str], str]) -> str:
-    """Build bounded guidance solely from static identifiers and reminders."""
     rows = [
         f"- {family}/{rule}: {reminder}"
         for (family, rule), reminder in findings.items()
@@ -457,7 +424,6 @@ def _message(findings: dict[tuple[str, str], str]) -> str:
 
 
 def _config_root(cfg: dict[str, object], key: str) -> str | None:
-    """Return a bounded exact root path or the helper default."""
     return _exact_text(cfg.get(key), _MAX_CONFIG_TEXT) or None
 
 
@@ -467,7 +433,6 @@ def _evaluate(
     selection: ModeSelection,
     session: SessionContext,
 ) -> dict:
-    """Scan one bounded prompt and record each static finding."""
     if not text:
         return {}
     started = time.monotonic()

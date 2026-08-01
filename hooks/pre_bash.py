@@ -80,7 +80,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def _run(payload: dict, config: dict | None) -> dict:
-    """Record the decision so a self-protection block is countable."""
     cfg = effective_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_bash",
@@ -118,7 +117,6 @@ def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], starte
 
 
 def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
-    """Content findings answer to gate state, unlike the self-protection rules above, so an observed family only reports."""
     blocking = [finding for finding, outcome in decisions if outcome == "block"]
     if blocking:
         reason, _ = compact_block(blocking, cfg)
@@ -180,7 +178,6 @@ def write_paths(command: str) -> list[str]:
 
 
 def _mutation_paths(command: str) -> list[str]:
-    """Return the paths a mutating segment names, so copies and in-place edits reach the policy a redirect already reaches."""
     return [path for segment in _segments(command) if _is_mutating(segment) for path in _segment_paths(segment)]
 
 
@@ -207,7 +204,6 @@ def write_targets(command: str) -> list[tuple[str, str]]:
 
 
 def _logical_lines(command: str) -> list[tuple[str, list[str | None]]]:
-    """Lift heredoc bodies out of the command text first, so the shell tokenizer never reads document text as syntax."""
     lines = command.splitlines()
     rows: list[tuple[str, list[str | None]]] = []
     index = 0
@@ -223,7 +219,6 @@ def _logical_lines(command: str) -> list[tuple[str, list[str | None]]]:
 
 
 def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str | None, int]:
-    """Collect one heredoc body, returning None when it never closes or when an unquoted delimiter lets the shell expand it."""
     strip, delimiter = match.group(1) == "-", match.group(2) or match.group(3) or match.group(4)
     collected: list[str] = []
     while index < len(lines):
@@ -239,7 +234,6 @@ def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str | 
 
 
 def _line_writes(line: str, bodies: list[str | None]) -> list[tuple[str, str]]:
-    """Pair targets with contents only at an unambiguous count, so a shape this parser misreads stays silent."""
     segments = _segments(line)
     targets = [path for segment in segments for path in _write_paths(segment)]
     if not targets:
@@ -263,7 +257,6 @@ def _write_paths(segment: list[str]) -> list[str]:
 
 
 def _redirect_paths(segment: list[str]) -> list[str]:
-    """Read the operand of a write redirect, honoring the stderr exclusion the write regex already encodes."""
     paths = []
     for index, token in enumerate(segment):
         match = REDIRECT_HEAD_RE.match(token)
@@ -305,7 +298,6 @@ def _literal_contents(segments: list[str]) -> list[str | None]:
 
 
 def _producer_text(args: list[str]) -> str | None:
-    """Return the emitted text, or None once a token proves the text is assembled at runtime rather than written here."""
     words: list[str] = []
     skip = False
     for token in args:
@@ -360,7 +352,6 @@ def _segment_text(segment: list[str]) -> str:
 
 
 def _leading_assignments(segment: list[str]) -> list[str]:
-    """Return the env assignments that prefix a command, stopping at the first real word."""
     names = []
     for token in segment:
         if _is_quoted(token):
@@ -397,7 +388,6 @@ def _runs_installer(segment: list[str]) -> bool:
 
 
 def _skips_commit_gate(segment: list[str]) -> bool:
-    """Match the no-verify flags only as bare argument tokens of a git commit in this segment."""
     words = _words(segment)
     if "git" not in words or "commit" not in words:
         return False

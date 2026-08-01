@@ -71,7 +71,6 @@ def rule_key(finding: dict) -> tuple[str, str]:
 
 
 def _consume(findings: list[dict], budget: Counter, key_of) -> list[dict]:
-    """Spend one unit of budget per matching finding, returning whatever the budget could not cover."""
     kept = []
     for row in findings:
         key = key_of(row)

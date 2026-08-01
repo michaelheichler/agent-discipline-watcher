@@ -70,7 +70,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def _run(payload: dict, config: dict | None) -> dict:
-    """Record the decision so the edit gate leaves the same evidence the commit gate does."""
     cfg = effective_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_write",

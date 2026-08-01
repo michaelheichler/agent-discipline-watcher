@@ -85,7 +85,8 @@ class EditJournalTests(unittest.TestCase):
             "tool_use_id": "toolu_2",
             "tool_input": {"file_path": str(target)},
         }
-        response = record.run(payload, self.cfg)
+        config = {**self.cfg, "rule_gates": {"what_comment": "observe"}}
+        response = record.run(payload, config)
         self.assertNotIn("decision", response)
         self.assertIn("clean_code/what_comment", response["systemMessage"])
         decisions = [row for row in self._ledger_rows() if row["event"] == "PostToolUse"]

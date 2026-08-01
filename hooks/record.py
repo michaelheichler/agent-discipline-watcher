@@ -46,7 +46,6 @@ def _journal_edits(
     root: str | Path | None,
     turn_id: str = "",
 ) -> None:
-    """Record one journal row per edited path, swallowing write errors."""
     stamp = now_iso()
     for path in paths:
         append_row(
@@ -92,7 +91,6 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
 
 
 def _projected_payload(payload: dict) -> RecordPayload:
-    """Overlay the validated identity fields onto the event projection."""
     projected = record_payload(payload)
     identity = normalize_payload(payload)
     for field in ("session_id", "cwd", "tool_name", "tool_use_id"):
@@ -144,7 +142,6 @@ def _response(decisions: list[tuple[dict, str]], inherited: list[dict], cfg: dic
 
 
 def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, ledger_root) -> Callable[[str], dict]:
-    """Build the per-turn gate closure, kept at module level so the caller stays inside the length cap."""
 
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
@@ -164,7 +161,6 @@ def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, 
 
 
 def _run_record(payload: dict, config: dict | None) -> dict:
-    """Run the record hook after its public fail-safe boundary."""
     projected = _projected_payload(payload)
     trusted_config = exact_string_dict(config)
     state_root, ledger_root = _config_roots(trusted_config)

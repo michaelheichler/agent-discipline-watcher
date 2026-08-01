@@ -38,7 +38,6 @@ def _is_exact_type(value: object, expected: type[ExactType]) -> TypeGuard[ExactT
 
 
 class _CanonicalNode:
-    """Hashable exact JSON value whose equality ignores container aliasing."""
 
     __slots__ = ("children", "keys", "kind", "scalar", "structural_hash")
     children: tuple[_CanonicalNode, ...]
@@ -211,7 +210,6 @@ def _schedule_dict(mapping: dict[object, object], state: _CanonicalTraversal) ->
 
 
 def _canonical_value(value: object) -> Canonical | object:
-    """Return an exact DAG normal form; each unique container is completed once."""
     state = _CanonicalTraversal([("visit", value, None)], [], set(), {})
     while state.tasks:
         action, item, metadata = state.tasks.pop()
@@ -419,7 +417,6 @@ def _duplicate_file_findings(
 
 
 def _stable_read(path: Path, cfg: dict) -> tuple[tuple[int, int], str] | None:
-    """Read the file and prove it did not change under us, so a mid-batch rewrite cannot forge a duplicate pair."""
     try:
         if not path.exists() or not path.is_file():
             return None
@@ -531,7 +528,6 @@ def _record_batch_row(session_id: str, cfg: dict, turn_id: str, duration_ms: int
 
 
 def _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload) -> None:
-    """Write one row per decision, plus the degraded marker when the batch cannot be correlated by id."""
     for finding, outcome in decisions:
         _record_batch_row(
             session_id, cfg, turn_id, duration_ms,

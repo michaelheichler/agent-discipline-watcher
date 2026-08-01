@@ -154,7 +154,6 @@ def _pairing_mismatch(
 
 
 def _check_pairing(grouped: dict[str, list[dict[str, Any]]]) -> None:
-    """Conditions are only comparable when judged on identical rows."""
     coverage = _score_coverage(grouped)
     _check_duplicate_scores(coverage)
     baseline = coverage["baseline"]

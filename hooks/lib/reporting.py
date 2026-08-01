@@ -89,12 +89,10 @@ def format_row(item: dict) -> str:
 
 
 def _default_ledger_root() -> Path:
-    """Return the production ledger root."""
     return Path.home() / ".agent-discipline" / "ledger"
 
 
 def _ledger_dir(root: str | os.PathLike[str] | None) -> Path:
-    """Resolve the ledger directory, falling back to the production root."""
     return Path(root) if root is not None else _default_ledger_root()
 
 
@@ -104,7 +102,6 @@ def now_iso() -> str:
 
 
 def _ledger_row(**fields) -> dict:
-    """Return a ledger row stamped with the current timestamp."""
     return {"ts": now_iso(), **fields}
 
 
@@ -123,7 +120,6 @@ def append_row(row: dict, root: str | os.PathLike[str] | None = None) -> None:
 def _read_turn_id(
     session_id: str, state_root: str | os.PathLike[str] | None = None
 ) -> str:
-    """Return the current turn_id for the session, or '' when unset or unreadable."""
     if not session_id:
         return ""
     try:
@@ -240,7 +236,6 @@ def run_with_ledger(
 
 
 def _read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> list[dict]:
-    """Return every parsed JSONL row, skipping blank or unparseable lines."""
     path = _ledger_dir(root) / filename
     if not path.exists():
         return []
@@ -308,7 +303,6 @@ def false_signal_rate(
 
 
 def _observe_report_command(argv: list[str]) -> int:
-    """Run the observe-report subcommand."""
     if len(argv) != 3:
         sys.stderr.write("usage: python3 -m lib.reporting observe-report <family>\n")
         return 2
@@ -327,7 +321,6 @@ def _observe_report_command(argv: list[str]) -> int:
 
 
 def _adjudicate_command(argv: list[str]) -> int:
-    """Run the adjudicate subcommand."""
     if len(argv) != 5 or argv[4] not in ("true", "false"):
         sys.stderr.write(
             "usage: python3 -m lib.reporting adjudicate <family> <ts> <true|false>\n"
@@ -343,7 +336,6 @@ def _adjudicate_command(argv: list[str]) -> int:
 
 
 def _main(argv: list[str]) -> int:
-    """Dispatch the observe-report and adjudicate subcommands."""
     if len(argv) < 2:
         sys.stderr.write(
             "usage: python3 -m lib.reporting observe-report <family> | "
