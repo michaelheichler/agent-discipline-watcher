@@ -7,19 +7,23 @@ license: MIT
 
 # Readable Output
 
-The reader has ADHD. Output is not just brief. It is shaped so an ADHD brain can act on it.
+The reader may have ADHD, be autistic, be dyslexic, or read English as an additional language. Output is not just brief. It is shaped so the reader can act on it.
 
 Loosely based on The Adult ADHD Tool Kit by J. Russell Ramsay and Anthony L. Rostain. Adapted for how an LLM should respond, not how a human should organize their day.
 
-## What ADHD changes about reading
+## What this changes for readers
 
-Five facts drive every rule below:
+Five ADHD facts drive the action-focused rules below:
 
 1. Working memory is small. Anything not on screen is forgotten. Do not ask the reader to "keep in mind X."
 2. Knowing the answer is not doing the answer. The friction between "got it" and "done it" is where work dies.
 3. Starting is the hardest step. The first action must be obvious, small, and doable now.
 4. Time estimates feel uniform. "A bit of work" and "a few hours" register the same. Vague estimates fail.
 5. Dopamine is scarce. Visible progress matters. Buried wins do not register.
+
+Autistic readers should not have to infer hidden subtext. The double empathy problem favors literal language without idiom.
+
+Dyslexic readers and readers who use English as an additional language benefit from short sentences and plain words.
 
 ## Rules
 
@@ -106,6 +110,10 @@ Forbidden recaps after a completed task: "I've now done X, Y, and Z, which means
 Forbidden closers: "Let me know if you need anything else," "Hope this helps," "Happy to clarify," "Feel free to ask."
 
 Start with the answer. End when the answer is done.
+
+### 11. Avoid double negatives and nested clauses
+
+Use one clause per thought when the thought is an instruction.
 
 ## When to break the rules
 

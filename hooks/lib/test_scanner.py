@@ -109,6 +109,141 @@ def test_english_strips_inline_code_quotes_and_hidden_html():
     assert scan_all("sample.md", text, {"punctuation": False, "clean_code": False}) == []
 
 
+def test_readability_regex_rules_cover_closers_openers_stacked_hedges_and_idioms():
+    text = "\n".join([
+        "Hope this helps.",
+        "Great question, the answer is six.",
+        "This might perhaps fail.",
+        "We can circle back tomorrow.",
+    ])
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert {"ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom"} <= rules
+
+
+def test_readability_regex_rules_spare_plain_prose_and_single_hedges():
+    text = "\n".join([
+        "The answer might change.",
+        "Perhaps the answer will change.",
+        "The team will meet tomorrow.",
+        "That was a great question from the survey.",
+    ])
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert not rules & {"ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom"}
+
+
+def test_readability_regex_rules_scan_code_comments_under_clean_code():
+    text = "\n".join([
+        "x = 1",
+        "# Hope this helps.",
+        "x = 2",
+        "# Great question, this value is two.",
+        "x = 3",
+        "# This might perhaps change because the input is unstable.",
+        "x = 4",
+        "# Circle back because the remote service is offline.",
+    ])
+    rows = scan_all("sample.py", text, {"punctuation": False, "english": False})
+    readability = [row for row in rows if row["rule"] in {
+        "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom",
+    }]
+    assert {row["rule"] for row in readability} == {
+        "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom",
+    }
+    assert {row["family"] for row in readability} == {"clean_code"}
+
+
+def test_readability_rules_default_to_observe():
+    gates = effective_config({})["rule_gates"]
+    for rule in (
+        "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom",
+        "long_sentence", "oversized_list",
+    ):
+        assert gates[rule] == "observe"
+
+
+def test_long_sentence_uses_a_generous_default_cap():
+    forty_words = "This " + " ".join("word" for _ in range(39)) + "."
+    forty_one_words = "This " + " ".join("word" for _ in range(40)) + "."
+    assert "long_sentence" not in {row["rule"] for row in scan_all("sample.md", forty_words)}
+    assert "long_sentence" in {row["rule"] for row in scan_all("sample.md", forty_one_words)}
+
+
+def test_long_sentence_splits_on_punctuation_before_uppercase():
+    first = "First " + " ".join("word" for _ in range(20)) + "."
+    second = "Second " + " ".join("word" for _ in range(20)) + "."
+    rules = {row["rule"] for row in scan_all("sample.md", first + " " + second)}
+    assert "long_sentence" not in rules
+
+
+def test_oversized_list_uses_eight_item_default_cap():
+    eight_items = "\n".join(f"- item {number}" for number in range(8))
+    nine_items = "\n".join(f"- item {number}" for number in range(9))
+    assert "oversized_list" not in {row["rule"] for row in scan_all("sample.md", eight_items)}
+    assert "oversized_list" in {row["rule"] for row in scan_all("sample.md", nine_items)}
+
+
+def test_prose_structure_thresholds_accept_config():
+    sentence = "One two three four."
+    configured = {row["rule"] for row in scan_all("sample.md", sentence, {"sentence_word_cap": 3})}
+    assert "long_sentence" in configured
+
+
+def test_int_setting_uses_environment_without_config(monkeypatch):
+    monkeypatch.setenv("ADW_LIST_ITEM_CAP", "1")
+    assert scanner._int_setting({}, "list_item_cap", "ADW_LIST_ITEM_CAP", 8) == 1
+
+
+def test_explicit_config_wins_over_environment(monkeypatch):
+    monkeypatch.setenv("ADW_SENTENCE_WORD_CAP", "1")
+    text = "One two three four."
+    rules = {row["rule"] for row in scan_all("sample.md", text, {"sentence_word_cap": 10})}
+    assert "long_sentence" not in rules
+
+
+def test_prose_structure_skips_both_fence_styles():
+    long_line = "Sentence " + " ".join("word" for _ in range(45)) + "."
+    long_list = "\n".join(f"- item {number}" for number in range(10))
+    for marker in ("```", "~~~"):
+        text = f"{marker}\n{long_line}\n{long_list}\n{marker}\n"
+        rules = {row["rule"] for row in scan_all("sample.md", text)}
+        assert not rules & {"long_sentence", "oversized_list"}, marker
+
+
+def test_prose_structure_skips_markdown_tables():
+    long_cell = " ".join("word" for _ in range(45))
+    text = f"| Heading |\n| --- |\n| {long_cell} |\n"
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert "long_sentence" not in rules
+    assert list(scanner._markdown_prose_lines("Heading | Detail\n--- | ---"))[-1] == (2, "")
+
+
+def test_prose_structure_scans_long_sentences_containing_pipes():
+    long_prefix = "This " + " ".join("word" for _ in range(40))
+    for suffix in ("input | output.", "Value = Left | Right."):
+        rules = {row["rule"] for row in scan_all("sample.md", long_prefix + " " + suffix)}
+        assert "long_sentence" in rules
+
+
+def test_prose_structure_counts_list_items_containing_pipes():
+    items = [f"- item {number}" for number in range(9)]
+    items[4] += " | alternative"
+    rules = {row["rule"] for row in scan_all("sample.md", "\n".join(items))}
+    assert "oversized_list" in rules
+
+
+def test_prose_structure_skips_blockquotes():
+    text = "> Quoted " + " ".join("word" for _ in range(45)) + "."
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert "long_sentence" not in rules
+
+
+def test_prose_structure_skips_link_reference_lines():
+    long_target = "".join(f"part{number}/" for number in range(45))
+    text = f"[source]: https://example.com/{long_target}\n"
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert "long_sentence" not in rules
+
+
 def test_clean_code_rules_cover_common_comment_faults():
     text = "\n".join([
         "# Bug" + " A: bad path",

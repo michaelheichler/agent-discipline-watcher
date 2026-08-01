@@ -41,6 +41,8 @@ DEFAULTS = {
     "english": True,
     "clean_code": True,
     "max_rows": 8,
+    "sentence_word_cap": 40,
+    "list_item_cap": 8,
     "exempt_paths": [],
     # Path glob to family list, so that one surface drops one family instead of exempt_paths silencing them all.
     "exempt_families": {},
@@ -49,7 +51,15 @@ DEFAULTS = {
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
     # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
-    "rule_gates": {"what_comment": "observe"},
+    "rule_gates": {
+        "what_comment": "observe",
+        "ai_closer": "observe",
+        "greeting_opener": "observe",
+        "hedge_stack": "observe",
+        "corporate_idiom": "observe",
+        "long_sentence": "observe",
+        "oversized_list": "observe",
+    },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.

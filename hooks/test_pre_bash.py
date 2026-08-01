@@ -78,6 +78,8 @@ def test_ordinary_git_and_shell_work_passes(command):
     "CLEANCODER_FUNC_BLOCK_LINES=500 python3 -m pytest -q",
     "CLEANCODER_FILE_BLOCK_LINES=9000 pytest",
     "ADW_MAX_SCAN_BYTES=1 pytest",
+    "ADW_SENTENCE_WORD_CAP=500 pytest",
+    "ADW_LIST_ITEM_CAP=500 pytest",
     "ADW_ALLOW_PROTECTED_EDIT=1 python3 hooks/pre_write.py",
 ])
 def test_cap_and_escape_overrides_block(command):

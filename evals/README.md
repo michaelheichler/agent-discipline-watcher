@@ -2,6 +2,8 @@
 
 The harness compares response quality, not just length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.
 
+The rubric preserves the upstream scoring and meaning. Its two semicolon splices are split into separate sentences because this repository enforces that punctuation rule.
+
 ## Validate and plan
 
 ```bash

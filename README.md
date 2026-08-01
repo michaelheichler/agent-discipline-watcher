@@ -12,6 +12,20 @@ The rules are adapted from [ayghri/i-have-adhd](https://github.com/ayghri/i-have
 
 The paired quality checks live in [`evals/`](evals/), with the runner in [`scripts/run_evals.py`](scripts/run_evals.py).
 
+The evidence tiers keep usability conventions separate from research findings:
+
+| Rule | Basis | Tier | Citation |
+| --- | --- | --- | --- |
+| Working-memory framing | Short-term storage often holds about four chunks. That finding does not set a fixed list limit. | Peer-reviewed | [Cowan, 2001](https://doi.org/10.1017/S0140525X01003922) |
+| Clear words and simple instructions | Familiar words, short sentences, and one instruction per step reduce comprehension barriers. | Government and standards usability | [W3C COGA, Making Content Usable](https://www.w3.org/TR/coga-usable/) |
+| Literal language without hidden subtext | Direct language reduces the inference burden created by the double empathy problem. | Convention | Nyck Walsh, *Neurodivergent Somatics in Therapy*, chapter 3 |
+| Rule 11: double negatives and nested clauses | Direct sentence structure lowers the effort needed to understand instructions. | Government and standards usability | [W3C COGA, Making Content Usable](https://www.w3.org/TR/coga-usable/) |
+| `long_sentence` at 40 words | The numeric cap catches clear overruns. Research does not establish 40 words as a cognitive constant. | Convention | W3C COGA guidance above |
+| `oversized_list` at 8 items | The scanner uses a generous heuristic, not a claim that readers can remember exactly eight items. | Convention | [Nielsen Norman Group, Short-Term Memory and Web Usability](https://www.nngroup.com/articles/short-term-memory-and-web-usability/) |
+| Reply openers, closers, and stacked hedges | These checks encode this repository's direct-answer style. | Convention | Repository policy |
+
+We rejected passive-voice regexes because the evidence is equivocal and adjectival participles create false positives. We rejected nominalization suffix hunting because it turns a writing convention into claimed research. We rejected paragraph-length caps because no universal threshold fits every document structure. We rejected Flesch-Kincaid gating because formulas cannot judge organization, meaning, prior knowledge, or usability, as [Redish (2000)](https://doi.org/10.1145/344599.344637) explains.
+
 A finding blocks or reports according to its gate state. An `enforce` family stops the write, the shell write, or the commit. An `observe` family runs the same check in full, records a `would_block` ledger row, and hands the finding back as non-blocking context the agent still has to answer. The `self_protection` rules block unconditionally, whatever the configuration says.
 
 ## What It Installs
@@ -148,7 +162,9 @@ agent-discipline adjudicate clean_code 2026-07-31T09:12:44Z --justified
 agent-discipline adjudicate clean_code 2026-07-31T09:12:44Z --false-signal
 ```
 
-`observe-report <family>` prints one line per recorded `would_block` row: timestamp, turn id, rule, path. `false-signal-rate <family>` prints the rate per 20 turns, or says the ledger is still below the 20-turn floor. `adjudicate <family> <ref_ts>` labels one recorded row using the timestamp `observe-report` printed, and exactly one of the two verdict flags shown above is required. Each of the three takes an optional project path after its other positionals, plus a `root` flag to read a ledger directory other than the default. A missing or unreadable ledger exits with a message rather than a traceback.
+The `observe-report <family>` command prints one line per recorded `would_block` row: timestamp, turn id, rule, and path. The `false-signal-rate <family>` command prints the rate per 20 turns, or says the ledger is below the 20-turn floor. The `adjudicate <family> <ref_ts>` command labels one recorded row using the timestamp from `observe-report`. It requires exactly one verdict flag shown above.
+
+Each command takes an optional project path after its other positionals. A `root` flag reads a ledger directory other than the default. A missing or unreadable ledger exits with a message rather than a traceback.
 
 ## Configuration
 
@@ -190,7 +206,7 @@ Three modes decide what happens to the subtracted half:
 
 The default is `report`. Working in an old codebase is where this matters most: opening a legacy file to change one line now returns a line reading `this file already carried 2 findings you did not write. Fix them while you are in here.`, followed by the same compact rows the blocking path uses and the full report path. It arrives on `systemMessage` and `additionalContext` with exit 0, so the edit stands and the turn continues. Nothing forces the repair, which is the point: the debt gets named instead of vanishing, and the agent decides whether this is the moment to pay it.
 
-`git` keeps the older behavior for anyone who wants the quiet version, and it is the mode to set when a repository carries so much inherited debt that the advisory would drown the real finding. `none` restores whole-file scanning, which makes every legacy finding blocking again.
+The `git` mode keeps the older behavior for anyone who wants the quiet version. Use it when inherited debt would drown the real finding. The `none` mode restores whole-file scanning, which makes every legacy finding blocking again.
 
 ### Per-path family exemptions
 
@@ -224,7 +240,7 @@ An unknown family name is ignored rather than rejected, so a typo scans more rat
 
 `what_comment` ships in `observe`. Its WHY test is a ten-word marker list, not semantic analysis, so it must earn enforcement through the D7 burn-in like every other gate. In `observe` the check still runs in full, the ledger records a `would_block` row, and the finding is reported to the agent as context rather than as a block. It has to be judged and answered, but it does not stop the work.
 
-Every gate resolves the same way: `pre_write.py` before a write, `pre_bash.py` on shell write content, `record.py` after a write, and `pre_commit.py` at commit time all read the state through one resolver, so a rule set to `observe` reports on all four paths and blocks on none of them.
+Every gate reads state through one resolver. The four paths are `pre_write.py` before a write, `pre_bash.py` on shell write content, `record.py` after a write, and `pre_commit.py` at commit time. A rule set to `observe` reports on all four paths and blocks on none of them.
 
 Promote it with the config above once `agent-discipline observe-report clean_code` shows you what the rule actually fired on and `agent-discipline false-signal-rate clean_code` reports a rate you accept.
 
@@ -256,7 +272,7 @@ The `self_protection` family blocks routes around the gates. Its rules are built
 | `config_seal` | Editing an existing `.agent-discipline.json`, and creating or editing one whose content would release a self-protection rule, either through the removed `protected_paths_authorized` key or a `rule_gates` entry that downgrades one. A first creation that releases nothing protected is allowed, and a stat error counts as present so the seal fails closed. |
 | `install_without_sandbox_home` | Running `install.sh` or a merge script without setting `HOME`. |
 | `commit_gate_bypass` | A `git commit` carrying the no-verify flag, in either the long or the short form. |
-| `cap_override` | Setting `ADW_FUNC_BLOCK_LINES`, `ADW_FILE_BLOCK_LINES`, `ADW_MAX_SCAN_BYTES`, or `ADW_ALLOW_PROTECTED_EDIT` in command position, or one of the accepted `CLEANCODER_` aliases. |
+| `cap_override` | Setting `ADW_FUNC_BLOCK_LINES`, `ADW_FILE_BLOCK_LINES`, `ADW_SENTENCE_WORD_CAP`, `ADW_LIST_ITEM_CAP`, `ADW_MAX_SCAN_BYTES`, or `ADW_ALLOW_PROTECTED_EDIT` in command position, or one of the accepted `CLEANCODER_` aliases. |
 | `state_deletion` | Deleting watcher state or the gate config with `rm`, `unlink`, or `shred`. |
 
 Reading is never blocked. `cat`, `grep`, `git diff`, and `python3 -m json.tool` on a live client file all pass, and stderr handling such as `2>/dev/null`, `2>>log`, or `2>&1` is not treated as a write.
@@ -323,7 +339,7 @@ The contract is one 1,752 character text in `hooks/lib/hookio.py`, and two event
 
 ### Shell writes
 
-`PostToolUse` never matches a Bash call, so content written through the shell would otherwise land unscanned. `pre_bash.py` extracts the literal text a command is about to write and scans it against the target path, which is what makes the right rule families apply to a `.md` target and a `.py` target.
+`PostToolUse` never matches a Bash call, so content written through the shell would otherwise land unscanned. The `pre_bash.py` hook extracts the literal text a command is about to write. It scans that text against the target path, so the right rule families apply to `.md` and `.py` targets.
 
 Three forms are covered. Heredocs in every spelling: `<<EOF`, `<<'EOF'`, `<<"EOF"`, `<<-EOF`, and any other delimiter. `echo` and `printf` redirects, including the appending `>>`. And `tee`, with or without `-a`. Self-protection rules keep precedence and stay unconditionally blocking. Content findings obey gate state like any other finding.
 
@@ -375,9 +391,13 @@ Cells use the state word alone or as `state: note`. The note carries any unwired
 
 `PreCommit`, `PreBash`, and `PreMcp` are ADW-internal routes on PreToolUse matchers, not client events, so they have no matrix rows. `PreMcp` consults the backoff windows that `PostToolUseFailure` opens, so the two are wired together or not at all.
 
-No client publishes per-event minimum versions in its primary docs, so every version cell reads unknown. Per the fail-safe registration rule, an unknown event key can break config parsing rather than no-op, so each new wiring proves the merged config in a sandbox HOME before any live install. `hooks/test_plugin_wiring.py` enforces this statically: every event key in `hooks/hooks.json` must appear in the documented event list, and an `if` filter may only sit on an event the docs say evaluates one.
+No client publishes per-event minimum versions in its primary docs, so every version cell reads unknown. An unknown event key can break config parsing rather than no-op. The fail-safe registration rule therefore requires each new wiring to prove the merged config in a sandbox HOME before any live install.
 
-Primary sources: [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [OpenCode plugins](https://opencode.ai/docs/plugins/), [Pi extension docs](https://github.com/badlogic/pi-mono/blob/HEAD/packages/coding-agent/docs/extensions.md). Repo evidence for what ADW wires today: `hooks/claude-settings.snippet.json`, `hooks/codex-config.snippet.toml`, `opencode/agent-discipline-watcher.ts`, `pi/extensions/agent-discipline-watcher/index.ts`.
+The `hooks/test_plugin_wiring.py` test enforces this statically. Every event key in `hooks/hooks.json` must appear in the documented event list. An `if` filter may only sit on an event whose docs say it evaluates one.
+
+Primary sources are the [Claude Code hooks reference](https://docs.anthropic.com/en/docs/claude-code/hooks) and [Codex hooks](https://learn.chatgpt.com/docs/hooks). The other client sources are [OpenCode plugins](https://opencode.ai/docs/plugins/) and [Pi extension docs](https://github.com/badlogic/pi-mono/blob/HEAD/packages/coding-agent/docs/extensions.md).
+
+Repository evidence for current wiring lives in `hooks/claude-settings.snippet.json` and `hooks/codex-config.snippet.toml`. The client adapters are `opencode/agent-discipline-watcher.ts` and `pi/extensions/agent-discipline-watcher/index.ts`.
 
 ## Pi Behavior
 
