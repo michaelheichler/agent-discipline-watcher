@@ -1,0 +1,69 @@
+evals/rubric.md
+  s_a5b23944ca246d::t_1ccb3a06a998b1 7
+  s_a5b23944ca246d::t_1d0ab74afa1475 11
+hooks/pre_bash.py
+  s_a5b23944ca246d::t_45ad263d061ee3 45
+.requirements/20260801T161227Z_readability-scanner-rules/REQUIREMENTS.md
+  s_a5b23944ca246d::t_46552dfe5d3094 1-48
+hooks/lib/test_scanner.py
+  s_a5b23944ca246d::t_9377d057b9f21b 112-154,164-168,176-184,186-188,192,201-213,238-246
+  s_a5b23944ca246d::t_3eb212df8fade6 185,189-191,193-200
+  s_a5b23944ca246d::t_61ee7b1483a652 155-163,169-175
+  s_a5b23944ca246d::t_110378f4d0f326 217
+  s_a5b23944ca246d::t_481923475e73eb 214-216,218-237
+evals/cases.jsonl
+  s_a5b23944ca246d::t_ba5af5bd041d14 15-16
+evals/README.md
+  s_a5b23944ca246d::t_cd17213d9d287d 5-6
+hooks/lib/config.py
+  s_a5b23944ca246d::t_8d19d1cbc97a24 44-45
+  s_a5b23944ca246d::t_fd919f0d9cd711 54-62
+skills/readable-output/SKILL.md
+  s_a5b23944ca246d::t_1ff91386d6e640 114-117
+  s_a5b23944ca246d::t_d311602fde15e1 10,14,16,24-26
+  s_a5b23944ca246d::t_b998271a2a59cf 27
+hooks/test_pre_bash.py
+  s_a5b23944ca246d::t_657cbc6d316de8 81-82
+README.md
+  s_a5b23944ca246d::t_e10e68833079b6 22
+  s_a5b23944ca246d::t_f069c9fece65da 243
+  s_a5b23944ca246d::t_ea404270f96f84 165-167
+  s_a5b23944ca246d::t_316fc7de097ba0 342
+  s_a5b23944ca246d::t_f3b9404c195641 394-396
+  s_a5b23944ca246d::t_91da7aa8a915d5 15-19,23-26,28
+  s_a5b23944ca246d::t_fd68caae198ad1 275
+  s_a5b23944ca246d::t_0f8d05cb6ea620 398,400
+  s_a5b23944ca246d::t_c43e8e50b3e2ad 20-21
+  s_a5b23944ca246d::t_2a718a2506f013 209
+  s_a5b23944ca246d::t_162bccb0dc0de5 27
+  s_a5b23944ca246d::t_ab37adb05449ac 397
+hooks/lib/scanner.py
+  s_a5b23944ca246d::t_3c06adc5ac4fb7 557-558
+  s_a5b23944ca246d::t_7809bd97c3f168 605-617,621
+  s_a5b23944ca246d::t_0a760d1968846d 75
+  s_a5b23944ca246d::t_9895428989eb44 238-239
+  s_a5b23944ca246d::t_524c1d825dc02d 34-40,42-53
+  s_a5b23944ca246d::t_a673127d1828ef 73-74,76-78
+  s_a5b23944ca246d::t_83036b57a8be15 41
+  s_a5b23944ca246d::t_0adf8c249e3c60 542-551,555
+  s_a5b23944ca246d::t_4a8ce5b5d8834f 556,559-560
+  s_a5b23944ca246d::t_1d02289736760f 72
+  s_a5b23944ca246d::t_2f4c2092e87229 407,412-420
+  s_a5b23944ca246d::t_c5d9b72c581f18 552-554,561-604,618-620,622-655
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "a1df6bd39e7e8f3b08c4511a655d49d480de0b6a",
+  "prompts": {},
+  "sessions": {
+    "s_a5b23944ca246d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "525d380e-724f-4543-b216-0401fa6794a8",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
