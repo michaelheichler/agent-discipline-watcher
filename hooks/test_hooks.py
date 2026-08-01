@@ -361,7 +361,8 @@ def test_session_start_injects_policy():
 def test_session_start_reaches_the_model_channel():
     injected = session_start.run({})["hookSpecificOutput"]
     assert injected["hookEventName"] == "SessionStart"
-    assert injected["additionalContext"] == hookio.CONTRACT
+    assert injected["additionalContext"].startswith(hookio.CONTRACT)
+    assert session_start.READABLE_OUTPUT_HEADING in injected["additionalContext"]
     assert "override the agent definition" in injected["additionalContext"]
     assert "Professional Agent Helper" not in injected["additionalContext"]
 

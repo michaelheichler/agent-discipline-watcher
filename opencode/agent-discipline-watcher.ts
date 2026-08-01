@@ -6,6 +6,9 @@ export type WatcherResult = {
 	decision?: string;
 	reason?: string;
 	systemMessage?: string;
+	hookSpecificOutput?: {
+		additionalContext?: string;
+	};
 };
 
 type WatcherEvent = "SessionStart" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -110,8 +113,16 @@ export function createHooks({ directory, client, run = runWatcher }: AdapterOpti
 		},
 		async event({ event }: { event: { type: string; properties: Record<string, unknown> } }) {
 			if (event.type === "session.created") {
-				const info = event.properties.info as { id?: string } | undefined;
-				if (info?.id) run("SessionStart", payload(info.id));
+				const info = event.properties.info as { id?: string; parentID?: string } | undefined;
+				if (!info?.id || info.parentID) return;
+				const result = run("SessionStart", payload(info.id));
+				const context = result.hookSpecificOutput?.additionalContext;
+				if (context) {
+					await client.session.promptAsync({
+						sessionID: info.id,
+						parts: [{ type: "text", text: `[System: ${context}]` }],
+					});
+				}
 				return;
 			}
 			if (event.type !== "session.idle") return;

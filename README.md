@@ -4,6 +4,14 @@ Agent Discipline Watcher is one hook package for keeping agent output and edits 
 
 It exists to catch deterministic low-level drift before it lands in files: banned punctuation, inflated prose, deferred-work comments, noisy code comments, hollow tests, and oversized code shapes.
 
+## Readable output rules
+
+The always-on rules in [`skills/readable-output/SKILL.md`](skills/readable-output/SKILL.md) shape the main agent's user-facing replies around clear actions, bounded steps, and visible progress. Session start injects the file body into the main agent only. `SubagentStart` still receives the discipline contract without these reply-shaping rules.
+
+The rules are adapted from [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) under its MIT license. Loosely based on The Adult ADHD Tool Kit by J. Russell Ramsay and Anthony L. Rostain. Adapted for how an LLM should respond, not how a human should organize their day.
+
+The paired quality checks live in [`evals/`](evals/), with the runner in [`scripts/run_evals.py`](scripts/run_evals.py).
+
 A finding blocks or reports according to its gate state. An `enforce` family stops the write, the shell write, or the commit. An `observe` family runs the same check in full, records a `would_block` ledger row, and hands the finding back as non-blocking context the agent still has to answer. The `self_protection` rules block unconditionally, whatever the configuration says.
 
 ## What It Installs
@@ -277,7 +285,7 @@ Every Claude route in `hooks/run.sh` is registered in `hooks/hooks.json` and rea
 
 | Event | Route | Module | Behavior |
 | --- | --- | --- | --- |
-| `SessionStart` | SessionStart | `session_start.py` | Injects the full discipline contract as `additionalContext`, plus a one-line reminder as `systemMessage`. |
+| `SessionStart` | SessionStart | `session_start.py` | Injects the full discipline contract and readable output rules as `additionalContext`, plus a one-line reminder as `systemMessage`. |
 | `SubagentStart` | SubagentStart | `subagent_start.py` | Injects the same contract into every spawned subagent. No matcher, so every agent type is covered. |
 | `UserPromptSubmit` | UserPromptSubmit | `prompt_submit.py` | Scans the user's own prompt and reports the matched rule ids back as context. Blocks prompt-level bypass attempts. It injects no contract. |
 | `PreToolUse` | PreToolUse | `pre_write.py` | Scans pending write or patch content, and blocks protected-path targets, before the write runs. |
@@ -307,9 +315,11 @@ PreToolUse prevents a direct write before it runs. PostToolUse cannot undo a com
 
 ### Contract injection
 
-The contract is one 1,752 character text in `hooks/lib/hookio.py`, and two events deliver it: `SessionStart` and `SubagentStart`. Both send it as `hookSpecificOutput.additionalContext`, which is the channel the model reads. `systemMessage` is transcript chrome and reaches the user rather than the model, so `SessionStart` sends the one-line reminder there and the contract through the other channel.
+The contract is one 1,752 character text in `hooks/lib/hookio.py`, and two events deliver it: `SessionStart` and `SubagentStart`. Both send it as `hookSpecificOutput.additionalContext`, which is the channel the model reads. `systemMessage` is transcript chrome and reaches the user rather than the model, so `SessionStart` sends the one-line reminder there and the full context through the other channel.
 
-`SubagentStart` closes a real gap. A subagent gets neither `SessionStart` nor `UserPromptSubmit`, so a subagent spawned by `/coderabbit:code-review`, `/feature-dev:feature-dev`, or `/code-modernization:modernize-assess` used to write into gates it had never been shown. The hook carries no matcher, so every agent type receives the contract, and the text opens by stating that it overrides the agent definition the subagent was given.
+`SessionStart` also reads `skills/readable-output/SKILL.md` relative to the hook module, removes its YAML frontmatter, and appends the body under `READABLE OUTPUT RULES ACTIVE (main agent only)`. A missing or unreadable file leaves the discipline contract intact and does not block startup.
+
+`SubagentStart` closes a real gap. A subagent gets neither `SessionStart` nor `UserPromptSubmit`, so a subagent spawned by `/coderabbit:code-review`, `/feature-dev:feature-dev`, or `/code-modernization:modernize-assess` used to write into gates it had never been shown. The hook carries no matcher, so every agent type receives the contract, and the text opens by stating that it overrides the agent definition the subagent was given. It does not receive the readable output rules.
 
 ### Shell writes
 
@@ -348,7 +358,7 @@ Cells use the state word alone or as `state: note`. The note carries any unwired
 
 | Event | Claude | Codex | OpenCode | Pi | Fallback when the event never fires | Min client version |
 | --- | --- | --- | --- | --- | --- | --- |
-| `SessionStart` | wired | wired | wired: `session.created` | degraded: `before_agent_start` injects the policy prompt only, no session payload contract | No injection that session. Edit-time gates still fire. | unknown |
+| `SessionStart` | wired | wired | wired: `session.created` injects the returned context through `promptAsync` only when `parentID` is absent | degraded: `before_agent_start` injects the policy and readable output prompts but exposes no parent-session or agent-kind discriminator, so Pi cannot enforce main-agent-only injection | No injection that session. Edit-time gates still fire. | unknown |
 | `SubagentStart` | wired: `subagent_start.py` injects the contract, no matcher, so every agent type is covered | not-available: ADW wires no path, no documented equivalent established | not-available: ADW wires no path, no documented equivalent established | not-available: ADW wires no path, no documented equivalent established | The subagent runs without the contract. Its edits still hit the per-edit PreToolUse and PostToolUse gates. | unknown |
 | `PreToolUse` | wired | wired | wired: `tool.execute.before`, write and edit tools only | degraded: blocking `tool_call` documented in current Pi, ADW adapter unwired, post-hoc today | PostToolUse rescan blocks continuation after the write lands. | unknown |
 | `PostToolUse` | wired | wired | wired: `tool.execute.after` | wired: `tool_result`, findings return as an error result | PreCommit scans staged files at commit time. | unknown |
@@ -373,7 +383,7 @@ Primary sources: [Claude Code hooks reference](https://docs.anthropic.com/en/doc
 
 The Pi extension:
 
-1. Adds a short policy prompt before the agent starts.
+1. Adds the short policy and readable output rules before an agent loop starts. Pi exposes no parent-session or agent-kind discriminator on that event.
 2. Scans write, edit, and multiedit tool results through the Python scanner.
 3. Turns any finding into an immediate error result that requires correction.
 

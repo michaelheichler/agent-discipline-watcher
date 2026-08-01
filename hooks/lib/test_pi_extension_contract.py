@@ -88,6 +88,9 @@ def test_pi_extension_registers_one_combined_lifecycle():
     assert 'pi.on("agent_end"' not in source
     assert "const ledger =" not in source
     assert "const POLICY =" in source
+    assert '"skills", "readable-output", "SKILL.md"' in source
+    assert "READABLE OUTPUT RULES ACTIVE (main agent only)" in source
+    assert "${MAIN_AGENT_POLICY}" in source
 
 
 def test_pi_extension_shells_to_combined_python_scanner():

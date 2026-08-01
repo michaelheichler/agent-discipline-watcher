@@ -16,6 +16,26 @@ const POLICY = [
   "Let code names carry intent. Comments explain only hidden reasons.",
 ].join(" ");
 
+export function stripFrontmatter(skill: string): string {
+  const delimiter = "-".repeat(3);
+  const lines = skill.split("\n");
+  if (lines[0] !== delimiter) return skill;
+  const end = lines.indexOf(delimiter, 1);
+  return end < 0 ? "" : lines.slice(end + 1).join("\n");
+}
+
+export function readableOutputRules(): string {
+  try {
+    const skill = fs.readFileSync(path.join(ROOT, "skills", "readable-output", "SKILL.md"), "utf8");
+    const body = stripFrontmatter(skill).trim();
+    return body ? `READABLE OUTPUT RULES ACTIVE (main agent only)\n\n${body}` : "";
+  } catch {
+    return "";
+  }
+}
+
+const MAIN_AGENT_POLICY = [POLICY, readableOutputRules()].filter(Boolean).join("\n\n");
+
 const PY_SCAN = `
 import json
 import sys
@@ -139,7 +159,7 @@ function compactReport(rows: Array<{ file: string; finding: Finding }>): string 
 
 export default function (pi: PiHost) {
   pi.on("before_agent_start", async (event: PiEvent) => {
-    return { systemPrompt: `${event?.systemPrompt ?? ""}\n\n${POLICY}` };
+    return { systemPrompt: `${event?.systemPrompt ?? ""}\n\n${MAIN_AGENT_POLICY}` };
   });
 
   pi.on("tool_result", async (event: PiEvent) => {
