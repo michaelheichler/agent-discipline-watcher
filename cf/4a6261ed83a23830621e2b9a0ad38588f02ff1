@@ -1,0 +1,35 @@
+hooks/test_hooks.py
+  s_555214e4779501::t_eb70f561523bf8 90
+  s_555214e4779501::t_fcdd7ec5c825c6 119-121
+  s_555214e4779501::t_95b84d7ef2af5c 88-89,91-110
+  s_555214e4779501::t_1bd2b6f39c031c 47-52,54,57-64,66,68-74,76-77,80-87,111-113,116-118,122-123
+  s_555214e4779501::t_aa40d1364bdfd1 53,55-56,65,67,75,78-79,114-115
+hooks/pre_write.py
+  s_555214e4779501::t_bd3ff1d85a55a4 154
+  s_555214e4779501::t_2db35e792c256f 179
+  s_555214e4779501::t_3ed03a4aea5494 114-120,132-153,155-159,161,163-164,172-173,176-178,180-181,188
+  s_555214e4779501::t_e11a40ee41801f 121-131
+  s_555214e4779501::t_905aeea05222be 160,162
+  s_555214e4779501::t_0fba4c1141807d 7
+  s_555214e4779501::t_bf9064a726d170 165-171
+hooks/lib/baseline.py
+  s_555214e4779501::t_34728296a8697b 65
+  s_555214e4779501::t_86cbb56246552b 4
+  s_555214e4779501::t_4bbd60eb77f8de 60-64,66-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "cf4a6261ed83a23830621e2b9a0ad38588f02ff1",
+  "prompts": {},
+  "sessions": {
+    "s_555214e4779501": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc89c0f4-e602-47d5-9df5-cb6c518646b5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
