@@ -96,5 +96,6 @@ fi
 
 mkdir -p "$HOME/.local/bin"
 ln -snf "$skill_dir/bin/agent-discipline" "$HOME/.local/bin/agent-discipline"
+ln -snf "$skill_dir/bin/adw-cli" "$HOME/.local/bin/adw-cli"
 
 echo "installed agent-discipline-watcher"

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Provide on-demand discipline review and search from one stable entry point."""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
+
+from lib import bm25, review
+
+JSON_HELP = "v1 fields: [rule,severity,path,line,excerpt,hint]"
+
+
+def add_review_parser(subparsers) -> None:
+    """Keep review options identical at this standalone entry point."""
+    parser = subparsers.add_parser("review", help="scan files, commits, or the repository")
+    parser.add_argument("paths", nargs="*")
+    parser.add_argument("--commits", type=int, metavar="N")
+    parser.add_argument(
+        "--format",
+        choices=("text", "md", "json"),
+        default="text",
+        help=f"report format. JSON {JSON_HELP}",
+    )
+    parser.add_argument("--output", metavar="FILE")
+    parser.add_argument("--gitnexus", action="store_true")
+    parser.set_defaults(func=review.emit)
+
+
+def add_search_parser(subparsers) -> None:
+    """Expose corpus selection without adding a persistent search index."""
+    parser = subparsers.add_parser("search", help="search findings and source chunks")
+    parser.add_argument("query")
+    parser.add_argument("paths", nargs="*")
+    parser.add_argument("--commits", type=int, metavar="N")
+    parser.add_argument("--findings", action="store_true")
+    parser.add_argument("--code", action="store_true")
+    parser.set_defaults(func=bm25.emit, gitnexus=False)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build one parser so subprocess and direct-call behavior stay aligned."""
+    parser = argparse.ArgumentParser(prog="adw-cli")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    add_review_parser(subparsers)
+    add_search_parser(subparsers)
+    return parser
+
+
+def main(argv=None) -> int:
+    """Dispatch commands and map expected usage or input failures to code two."""
+    parser = build_parser()
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        return args.func(args)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

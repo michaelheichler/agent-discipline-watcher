@@ -43,7 +43,7 @@ Claude Code installs this repo as a plugin. The other clients install through `i
 
 The Pi surface loads `pi/extensions/agent-discipline-watcher/index.ts`.
 
-`install.sh` creates timestamped backups before changing existing settings. It also links `bin/agent-discipline` into `~/.local/bin/agent-discipline`.
+`install.sh` creates timestamped backups before changing existing settings. It also links `bin/agent-discipline` and `bin/adw-cli` into `~/.local/bin`.
 
 ## Installation
 
@@ -140,6 +140,32 @@ hooks/run.sh PostToolUse
 ## Usage
 
 The hooks run automatically after installation and client activation.
+
+### On-demand review and search
+
+Run the same deterministic scanner over selected paths, the tracked repository, or changed lines from recent commits:
+
+```bash
+adw-cli review hooks/lib/scanner.py
+adw-cli review
+adw-cli review --commits 3 --format md
+adw-cli review --format json
+agent-discipline review --commits 1
+```
+
+Text output groups findings by file and includes the rule, severity, excerpt, and fix hint. Markdown adds scope and revision metadata plus a severity table. JSON uses schema version 1 with `v`, severity counts in `s`, and positional finding rows in `f`. Each row is `[rule,severity,path,line,excerpt,hint]`. Use the output-file flag to write the report instead of standard output.
+
+A review exits 0 when no block-tier finding exists, 1 when at least one block-tier finding exists, and 2 for usage or input errors. Commit reviews inspect the committed `HEAD` content and retain findings only on added or modified new-side lines.
+
+Search builds an in-memory BM25 index from findings and 80-line source chunks. Both corpora are searched unless one is selected explicitly:
+
+```bash
+adw-cli search "hedge stack"
+adw-cli search "hedge stack" --findings
+adw-cli search "scope resolution" --code hooks/lib
+```
+
+Pass the GitNexus flag to a review to check an existing local GitNexus index. The command never creates or refreshes an index. Missing, stale, and failed runners add a metadata line without changing the review exit status.
 
 Use the CLI to view or set per-project checks:
 

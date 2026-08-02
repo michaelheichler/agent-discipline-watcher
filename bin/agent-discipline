@@ -8,7 +8,7 @@ from pathlib import Path
 # Resolve through the script's real path, because install.sh symlinks this file into ~/.local/bin.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
 
-from lib import reporting  # noqa: E402
+from lib import reporting, review  # noqa: E402
 
 
 CHECKS = ("punctuation", "english", "clean_code")
@@ -213,6 +213,31 @@ def add_reporting_parsers(sub):
     judge.set_defaults(func=adjudicate)
 
 
+def add_review_parser(sub):
+    """Keep review setup outside main because the command list is near its size gate."""
+    parser = sub.add_parser("review", help="scan files, commits, or the repository")
+    parser.add_argument("paths", nargs="*")
+    parser.add_argument("--commits", type=int, metavar="N")
+    parser.add_argument(
+        "--format",
+        choices=("text", "md", "json"),
+        default="text",
+        help="report format. JSON v1 rows: [rule,severity,path,line,excerpt,hint]",
+    )
+    parser.add_argument("--output", metavar="FILE")
+    parser.add_argument("--gitnexus", action="store_true")
+    parser.set_defaults(func=review.emit)
+
+
+def dispatch(parser, args):
+    """Map review input and file errors to the documented usage status."""
+    try:
+        result = args.func(args)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    return result if isinstance(result, int) else 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -246,10 +271,10 @@ def main(argv=None):
     status_parser.set_defaults(func=status)
 
     add_reporting_parsers(sub)
+    add_review_parser(sub)
 
     args = parser.parse_args(argv)
-    args.func(args)
-    return 0
+    return dispatch(parser, args)
 
 
 if __name__ == "__main__":
