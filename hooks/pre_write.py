@@ -4,7 +4,7 @@ import re
 import time
 from pathlib import Path
 
-from lib.baseline import split_committed
+from lib.baseline import changed_lines, split_committed, subtract
 from lib.config import effective_config
 from lib.hookio import advise, allow, deny, read_payload, write_payload
 from lib.protected import path_findings
@@ -111,16 +111,81 @@ def _stamped(findings: list[dict], path: str) -> list[dict]:
     return [{**finding, "path": path} for finding in findings]
 
 
+def _label_pending_text(findings: list[dict]) -> list[dict]:
+    return [
+        {**finding, "detail": finding["detail"] + " (line " + str(finding["line"]) + " of pending edit text)"}
+        for finding in findings
+    ]
+
+
+def _pending_edit_text(tool_input: dict) -> str:
+    if "new_string" in tool_input:
+        return str(tool_input.get("new_string") or "")
+    return "\n".join(
+        str(edit.get("new_string", ""))
+        for edit in tool_input.get("edits", [])
+        if isinstance(edit, dict)
+    )
+
+
+def _apply_edits(tool_input: dict, path: str) -> tuple[str, str] | None:
+    edits = []
+    if "new_string" in tool_input:
+        edits.append(tool_input)
+    elif isinstance(tool_input.get("edits"), list):
+        edits = [edit for edit in tool_input["edits"] if isinstance(edit, dict)]
+    if not edits:
+        return None
+    target = Path(path)
+    if not target.is_file():
+        return None
+    try:
+        before = target.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    after = before
+    for edit in edits:
+        old = str(edit.get("old_string") or "")
+        new = str(edit.get("new_string") or "")
+        if not old or old not in after:
+            return None
+        count = -1 if edit.get("replace_all") else 1
+        after = after.replace(old, new, count)
+    return before, after
+
+
+def _edit_findings(tool_input: dict, path: str, cfg: dict) -> list[dict]:
+    applied = _apply_edits(tool_input, path)
+    if applied is None:
+        pending = _pending_edit_text(tool_input)
+        return _label_pending_text(_stamped(scan_all(path, pending, cfg), path))
+    before, after = applied
+    changed = changed_lines(before, after)
+    findings = scan_all(path, after, cfg)
+    inherited = scan_all(path, before, cfg)
+    new_findings = subtract(findings, inherited)
+    new_ids = {id(finding) for finding in new_findings}
+    return _stamped(
+        [finding for finding in findings if finding.get("line") in changed or id(finding) in new_ids],
+        path,
+    )
+
+
 def _pending_findings(payload: dict, cfg: dict) -> tuple[list[dict], list[dict]]:
     """Split whole-file content against its committed version, because only Write carries debt the edit did not create."""
-    whole_file = "content" in _tool_input(payload)
+    tool_input = _tool_input(payload)
+    if "new_string" in tool_input or isinstance(tool_input.get("edits"), list):
+        path = str(tool_input.get("file_path") or tool_input.get("path") or "<pending>")
+        protected = _stamped(path_findings(path, cfg, content=_pending_edit_text(tool_input)), path)
+        return protected + _edit_findings(tool_input, path, cfg), []
+    whole_file = "content" in tool_input
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for path, text in pending_writes(payload):
         owned_rows.extend(_stamped(path_findings(path, cfg, content=text), path))
         scanned = _stamped(scan_all(path, text, cfg), path)
         if not whole_file:
-            owned_rows.extend(scanned)
+            owned_rows.extend(_label_pending_text(scanned))
             continue
         owned, inherited = split_committed(Path(path), scanned, cfg)
         owned_rows.extend(owned)

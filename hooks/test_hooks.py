@@ -44,6 +44,83 @@ def test_pre_write_denies_forced_pending_write():
     assert "punctuation/banned_dash" in response["reason"]
 
 
+def _edit_config(tmp_path):
+    return {"ledger_path": _ledger_path(), "clean_code": True, "baseline": "none"}
+
+
+def test_pre_write_maps_edit_finding_to_post_edit_line(tmp_path):
+    target = tmp_path / "large.py"
+    target.write_text("".join(f"value_{index} = {index}\n" for index in range(120)), encoding="utf-8")
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "value_49 = 49\n",
+                         "new_string": "# Validate the cache entry\nvalue_49 = 49\n"}},
+        _edit_config(tmp_path),
+    )
+    assert response["decision"] == "block"
+    assert f"{target}:50 clean_code/what_comment" in response["reason"]
+
+
+def test_pre_write_edit_ignores_preexisting_debt(tmp_path):
+    target = tmp_path / "legacy.py"
+    target.write_text("# Validate the old entry\nvalue = 1\n", encoding="utf-8")
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "value = 1\n", "new_string": "value = 2\n"}},
+        _edit_config(tmp_path),
+    )
+    assert response == {}
+
+
+def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):
+    target = tmp_path / "multi.py"
+    target.write_text("".join(f"value_{index} = {index}\n" for index in range(120)), encoding="utf-8")
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "edits": [
+            {"old_string": "value_19 = 19\n", "new_string": "# Validate the first entry\nvalue_19 = 19\n"},
+            {"old_string": "value_79 = 79\n", "new_string": "# Validate the second entry\nvalue_79 = 79\n"},
+        ]}},
+        _edit_config(tmp_path),
+    )
+    assert response["decision"] == "block"
+    assert f"{target}:20 clean_code/what_comment" in response["reason"]
+    assert f"{target}:81 clean_code/what_comment" in response["reason"]
+
+
+def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp_path):
+    target = tmp_path / "hollow.py"
+    target.write_text("def test_case():\n    value = 1\n    assert value\n", encoding="utf-8")
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "    assert value\n", "new_string": ""}},
+        _edit_config(tmp_path),
+    )
+    assert response["decision"] == "block"
+    assert f"{target}:1 clean_code/hollow_test" in response["reason"]
+
+
+def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp_path):
+    target = tmp_path / "long.py"
+    target.write_text("".join(f"value_{index} = {index}\n" for index in range(991)), encoding="utf-8")
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "value_990 = 990\n",
+                         "new_string": "value_990 = 990\n" + "value_added = 1\n" * 10}},
+        _edit_config(tmp_path),
+    )
+    assert response["decision"] == "block"
+    assert f"{target}:1 clean_code/file_too_long" in response["reason"]
+
+
+def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
+    target = tmp_path / "missing.py"
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "not present\n",
+                         "new_string": "# Validate the cache entry\n"}},
+        _edit_config(tmp_path),
+    )
+    assert response["decision"] == "block"
+    report_path = response["reason"].rsplit("Full report: ", 1)[1]
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    assert "pending edit text" in report[0]["detail"]
+
+
 def test_pre_write_denies_plain_english_violation():
     payload = {"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "english": True})

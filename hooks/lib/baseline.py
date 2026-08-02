@@ -1,6 +1,7 @@
 """Hold an edit responsible for what it changed, not for debt the committed file already carried."""
 from __future__ import annotations
 
+import difflib
 import subprocess
 from collections import Counter
 from pathlib import Path
@@ -54,6 +55,18 @@ def committed_text(path: Path) -> str | None:
         return None
     directory, relative = located
     return _git(["show", "HEAD:" + relative], directory)
+
+
+def changed_lines(before: str, after: str) -> set[int]:
+    """Return post-edit line numbers covered by non-equal diff hunks."""
+    old_lines = before.splitlines(keepends=True)
+    new_lines = after.splitlines(keepends=True)
+    changed: set[int] = set()
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    for tag, _old_start, _old_end, new_start, new_end in matcher.get_opcodes():
+        if tag != "equal":
+            changed.update(range(new_start + 1, new_end + 1))
+    return changed
 
 
 def finding_key(finding: dict) -> tuple[str, str, str]:
