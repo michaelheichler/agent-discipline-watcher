@@ -221,7 +221,7 @@ def add_review_parser(sub):
     parser.add_argument(
         "--format",
         choices=("text", "md", "json"),
-        default="text",
+        default="json",
         help="report format. JSON v1 rows: [rule,severity,path,line,excerpt,hint]",
     )
     parser.add_argument("--output", metavar="FILE")

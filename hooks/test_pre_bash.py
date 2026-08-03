@@ -227,3 +227,33 @@ def test_run_denies_and_allows_through_the_hook_contract(tmp_path):
     denied = pre_bash.run({"tool_input": {"command": "./install.sh -y"}})
     assert denied.get("decision") == "block"
     assert pre_bash.run({"tool_input": {"command": "ls -la"}}) == {}
+
+
+LONG = "x" * 150
+
+
+@pytest.mark.parametrize("command", [
+    f"echo '{LONG}' > notes.txt",
+    f"printf '{LONG}' > notes.txt",
+    f"echo '{LONG}' | tee notes.txt",
+    f"cat > notes.txt <<'EOF'\n{LONG}\nEOF",
+    f"cat > notes.txt <<EOF\n$(whoami) {LONG}\nEOF",
+])
+def test_oversized_bash_writes_block_before_content_scanning(command):
+    result = pre_bash.run({"tool_input": {"command": command}})
+    assert result["decision"] == "block"
+    assert "Write or Edit" in result["reason"]
+
+
+@pytest.mark.parametrize("command", [
+    "cat <<EOF\nnot written\nEOF",
+    "echo ok > notes.txt",
+])
+def test_small_or_nonwriting_bash_commands_pass_the_write_cap(command):
+    assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+def test_short_bash_write_still_uses_existing_scan_path():
+    result = pre_bash.run({"tool_input": {"command": "echo 'bad" + "\N{EM DASH}" + "line' > notes.txt"}})
+    assert result["decision"] == "block"
+    assert "banned_dash" in result["reason"]

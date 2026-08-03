@@ -81,4 +81,4 @@ def render_json(findings: list[dict]) -> str:
         for item in findings
     ]
     payload = {"v": 1, "s": _counts(findings), "f": rows}
-    return json.dumps(payload, separators=(",", ":")) + "\n"
+    return json.dumps(payload, indent=2) + "\n"

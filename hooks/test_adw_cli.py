@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -26,8 +27,8 @@ def test_both_review_entry_points_delegate_to_shared_engine(tmp_path) -> None:
 
     assert standalone.returncode == integrated.returncode == 1
     assert standalone.stdout == integrated.stdout
+    assert json.loads(standalone.stdout)["s"]["block"] == 1
     assert "sample.md" in standalone.stdout
-    assert "banned_dash [block]" in standalone.stdout
 
 
 def test_standalone_json_output_and_search_work_in_subprocess(tmp_path) -> None:
@@ -38,9 +39,17 @@ def test_standalone_json_output_and_search_work_in_subprocess(tmp_path) -> None:
     search = _run(ADW_CLI, "search", "context resolver", "sample.py", cwd=tmp_path)
 
     assert report.returncode == 0
-    assert report.stdout.startswith('{"v":1,"s":')
+    assert json.loads(report.stdout)["v"] == 1
+    assert report.stdout.startswith("{\n")
+    text_source = tmp_path / "sample.md"
+    text_source.write_text("bad" + "\N{EM DASH}" + "line\n", encoding="utf-8")
+    text_report = _run(ADW_CLI, "review", "sample.md", "--format", "text", cwd=tmp_path)
+    assert text_report.returncode == 1
+    assert "banned_dash [block]" in text_report.stdout
+
     assert search.returncode == 0
     assert "\tcode\tsample.py:1\tneedle context resolver" in search.stdout
+
 
 
 def test_install_script_links_both_commands() -> None:
@@ -48,3 +57,8 @@ def test_install_script_links_both_commands() -> None:
 
     assert '"$HOME/.local/bin/agent-discipline"' in source
     assert '"$HOME/.local/bin/adw-cli"' in source
+    assert "# >>> agent-discipline-watcher >>>" in source
+    assert '[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ]' in source
+    completion = ROOT / "scripts" / "adw-completion.bash"
+    assert completion.exists()
+    assert "adw-cli" in completion.read_text(encoding="utf-8")

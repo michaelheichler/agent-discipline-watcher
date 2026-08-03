@@ -153,7 +153,7 @@ adw-cli review --format json
 agent-discipline review --commits 1
 ```
 
-Text output groups findings by file and includes the rule, severity, excerpt, and fix hint. Markdown adds scope and revision metadata plus a severity table. JSON uses schema version 1 with `v`, severity counts in `s`, and positional finding rows in `f`. Each row is `[rule,severity,path,line,excerpt,hint]`. Use the output-file flag to write the report instead of standard output.
+JSON is the default and uses schema version 1 with `v`, severity counts in `s`, and positional finding rows in `f`. Each row is `[rule,severity,path,line,excerpt,hint]`. Use the text or md format options for human-readable output. Text output groups findings by file and includes the rule, severity, excerpt, and fix hint. Markdown adds scope and revision metadata plus a severity table. Use the output-file flag to write the report instead of standard output.
 
 A review exits 0 when no block-tier finding exists, 1 when at least one block-tier finding exists, and 2 for usage or input errors. Commit reviews inspect the committed `HEAD` content and retain findings only on added or modified new-side lines.
 

@@ -9,13 +9,15 @@ from pathlib import PurePath
 try:
     from .config import GATE_FAMILIES, effective_config
     from .escalate import classify_what
+    from .markup import _blank_keep_newlines, _mask_markup, _sniff_prose
 except ImportError:
     from config import GATE_FAMILIES, effective_config
     from escalate import classify_what
+    from markup import _blank_keep_newlines, _mask_markup, _sniff_prose
 
 
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
-PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg"}
+PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
     ".pylintrc", ".editorconfig", ".npmrc", ".yarnrc", ".gitignore", ".gitattributes",
@@ -238,7 +240,7 @@ def _python_tree(path: str, text: str):
         return None
 
 
-def _unconditional_findings(path: str, text: str, config: dict, tree) -> list[dict]:
+def _unconditional_findings(path: str, text: str, config: dict, tree, code_file: bool) -> list[dict]:
     lines = text.splitlines() or [""]
     findings = [
         _finding("clean_code", "suppression_escape_hatch", number,
@@ -246,43 +248,52 @@ def _unconditional_findings(path: str, text: str, config: dict, tree) -> list[di
                  "Remove the marker and fix the reported issue.")
         for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
     ]
-    if _is_code(path):
+    if code_file:
         findings.extend(_what_comment_rows(path, text, config, tree))
     findings.extend(_what_docstring_findings(path, tree, config))
     return findings
 
 
-def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
+def _scan_context(path: str, text: str, config: dict | None) -> tuple[dict, object, list[str], bool, bool]:
+    """Share classification because every scan pass must use the same source view."""
     cfg = effective_config(config)
     cfg["_escalation_remaining"] = 5
-    tree = _python_tree(path, text)
-    lines = text.splitlines() or [""]
-    findings = _unconditional_findings(path, text, cfg, tree)
+    tree, lines = _python_tree(path, text), text.splitlines() or [""]
+    prose = _is_prose(path, text)
+    return cfg, tree, lines, prose, not prose and not _is_config(path)
+
+
+def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
+    cfg, tree, lines, prose, code_file = _scan_context(path, text, config)
+    findings = _unconditional_findings(path, text, cfg, tree, code_file)
     if _is_exempt(path, cfg):
         return findings
-    punct_lines = _strip_punctuation_blocks(path, text).splitlines() or [""]
-    english_lines = _strip_english_hidden(text).splitlines() or [""]
+    masked = _mask_markup(path, text)
+    punct_lines = _strip_punctuation_blocks(path, masked, prose).splitlines() or [""]
+    english_lines = _strip_english_hidden(masked).splitlines() or [""]
     active = _active_families(path, cfg)
-    code_file = _is_code(path)
     if "clean_code" in active and code_file:
         findings.extend(_scan_clean_code_file(path, text, cfg, tree))
     for number, line in enumerate(lines, 1):
         if "punctuation" in active:
             scan_line = punct_lines[number - 1] if number <= len(punct_lines) else ""
-            findings.extend(_scan_punctuation(path, number, line, scan_line))
-        if "english" in active and _is_prose(path):
+            findings.extend(_scan_punctuation(path, number, line, scan_line, prose))
+        if "english" in active and prose:
             scan_line = english_lines[number - 1] if number <= len(english_lines) else ""
             findings.extend(_scan_english(path, number, line, scan_line))
         if "clean_code" in active and code_file:
             findings.extend(_scan_clean_code(path, number, line))
-    if "english" in active and _is_prose(path):
-        findings.extend(_scan_prose_structure(path, text, cfg))
+    if "english" in active and prose:
+        findings.extend(_scan_prose_structure(path, masked, cfg))
     return findings
 
 
-def _is_prose(path: str) -> bool:
+def _is_prose(path: str, text: str | None = None) -> bool:
     lowered = path.lower()
-    return any(lowered.endswith(ext) for ext in PROSE_EXTS)
+    if any(lowered.endswith(ext) for ext in PROSE_EXTS):
+        return True
+    pure = PurePath(path)
+    return text is not None and pure.suffix == "" and not pure.name.startswith(".") and pure.name not in CONFIG_BASENAMES and _sniff_prose(text)
 
 
 def _is_config(path: str) -> bool:
@@ -325,11 +336,11 @@ PUNCTUATION_RULES = (
 )
 
 
-def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str) -> list[dict]:
+def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str, prose: bool) -> list[dict]:
     clean = _strip_inline_code(scan_line)
-    prose = _punctuation_prose_part(path, clean)
-    semicolon = "" if _is_config(path) else URL_RE.sub("", prose)
-    texts = {"clean": clean, "prose": prose, "semicolon": semicolon}
+    prose_part = _punctuation_prose_part(path, clean, prose)
+    semicolon = "" if _is_config(path) else URL_RE.sub("", prose_part)
+    texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon}
     rows = [
         _finding("punctuation", rule, line_number, detail + path, line, action)
         for target, regexes, rule, detail, action in PUNCTUATION_RULES
@@ -923,10 +934,10 @@ def _is_header_run(run: list[tuple[int, str]]) -> bool:
     return True
 
 
-def _strip_punctuation_blocks(path: str, text: str) -> str:
+def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -> str:
     text = HTML_CODE_RE.sub(_blank_keep_newlines, text)
     text = HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
-    if not _is_prose(path):
+    if not (prose if prose is not None else _is_prose(path, text)):
         return text
     visible = []
     fence = None
@@ -942,10 +953,6 @@ def _strip_english_hidden(text: str) -> str:
     return HTML_TAG_RE.sub(_blank_keep_newlines, text)
 
 
-def _blank_keep_newlines(match: re.Match) -> str:
-    return re.sub(r"[^\n]", " ", match.group(0))
-
-
 def _strip_inline_code(text: str) -> str:
     text = HTML_ENTITY_RE.sub("  ", text)
     return INLINE_CODE_RE.sub("  ", text)
@@ -956,10 +963,10 @@ def _strip_quoted(text: str) -> str:
     return re.sub(r"'[^']*'", "  ", text)
 
 
-def _punctuation_prose_part(path: str, line: str) -> str:
+def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
     if _is_config(path):
         return "" if SHELL_IN_CONFIG_RE.search(line) else line
-    if _is_prose(path):
+    if prose:
         return line
     # Ignore trailing comments because quote-unaware hash detection misreads CSS colors and JS private fields.
     leading = COMMENT_RE.match(line)

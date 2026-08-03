@@ -46,6 +46,7 @@ def test_json_round_trips_exact_version_one_schema() -> None:
 
     assert list(payload) == ["v", "s", "f"]
     assert payload["v"] == 1
+    assert "\n  " in render.render_json(FINDINGS)
     assert payload["s"] == {"block": 1, "would_block": 1, "release": 0}
     assert payload["f"] == [
         ["banned_dash", "block", "b.py", 7, "bad punctuation", "Rewrite it."],

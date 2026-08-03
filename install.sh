@@ -98,4 +98,12 @@ mkdir -p "$HOME/.local/bin"
 ln -snf "$skill_dir/bin/agent-discipline" "$HOME/.local/bin/agent-discipline"
 ln -snf "$skill_dir/bin/adw-cli" "$HOME/.local/bin/adw-cli"
 
+rc_block='\n# >>> agent-discipline-watcher >>>\nexport PATH="$HOME/.local/bin:$PATH"\n[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ] && . "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash"\n# <<< agent-discipline-watcher <<<\n'
+for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
+  if ! grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" 2>/dev/null; then
+    backup_file "$rc_file"
+    printf '%b' "$rc_block" >> "$rc_file"
+  fi
+done
+
 echo "installed agent-discipline-watcher"

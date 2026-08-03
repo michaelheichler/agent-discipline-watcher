@@ -883,3 +883,28 @@ def test_escalation_caches_success_by_comment_hash(monkeypatch, tmp_path):
     assert config["_escalation_remaining"] == 0
     cached = list((tmp_path / "escalation").glob("*.json"))
     assert len(cached) == 1
+
+
+
+def test_document_markup_masks_nonprose_regions_but_scans_tex_bodies():
+    cfg = {"punctuation": False, "clean_code": False}
+    tex = "\\section{in order to}\n% in order to\n$in order to$\n"
+    findings = scan_all("paper.tex", tex, cfg)
+    assert len([row for row in findings if row["rule"] == "wordiness"]) == 1
+
+
+def test_document_markup_masks_adoc_org_and_typ_blocks():
+    cfg = {"punctuation": False, "clean_code": False}
+    cases = {
+        "guide.adoc": "----\nin order to\n----\n",
+        "notes.org": "#+begin_src python\nin order to\n#+end_src\n",
+        "manual.typ": "```\nin order to\n```\n",
+    }
+    for path, text in cases.items():
+        assert "wordiness" not in {row["rule"] for row in scan_all(path, text, cfg)}
+
+
+def test_extensionless_prose_is_sniffed_but_shebangs_stay_code():
+    cfg = {"punctuation": False, "clean_code": False}
+    assert "wordiness" in {row["rule"] for row in scan_all("letter", "We write in order to finish.\n", cfg)}
+    assert not {row["rule"] for row in scan_all("script", "#!/bin/sh\necho in order to\n", cfg)}
