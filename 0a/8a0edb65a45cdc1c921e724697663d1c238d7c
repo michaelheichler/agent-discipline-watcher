@@ -1,0 +1,25 @@
+hooks/lib/test_scanner.py
+  s_1ea39d084772e5::t_4878cf665dc925 731,733-753,758-767
+  s_1ea39d084772e5::t_2a53492071ed4a 768-769
+hooks/lib/scanner.py
+  s_1ea39d084772e5::t_be1789a71ef797 39
+  s_1ea39d084772e5::t_a1273990acfe02 938-941,951
+hooks/test_hooks.py
+  s_1ea39d084772e5::t_a19e37623b8efb 124-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "0a8a0edb65a45cdc1c921e724697663d1c238d7c",
+  "prompts": {},
+  "sessions": {
+    "s_1ea39d084772e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0410525c-1975-4b7d-b6f4-e9e0e5a7a240",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
