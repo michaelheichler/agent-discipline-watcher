@@ -1,0 +1,76 @@
+{
+  "conventions": [
+    {
+      "id": "CONV-001",
+      "rule": "Comments must not narrate what code does, label cases by letter or number, apologize, record change history, or park deferred work behind a marker",
+      "source": "auto-detected",
+      "category": "style",
+      "confidence": "high",
+      "detected_from": "CONVENTIONS.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-002",
+      "rule": "No em-dash, en-dash, double-hyphen clause break, spaced hyphen as dash, semicolon joining independent clauses, or possessive apostrophe on a pronoun or decade",
+      "source": "auto-detected",
+      "category": "style",
+      "confidence": "high",
+      "detected_from": "CONVENTIONS.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-003",
+      "rule": "Tests are named test_<behavior> with descriptive multi-word names and grouped by the module or entry script they exercise",
+      "source": "auto-detected",
+      "category": "testing",
+      "confidence": "high",
+      "detected_from": "CONVENTIONS.md, STRUCTURE.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-004",
+      "rule": "Tests live alongside the code they cover (hooks/test_*.py, hooks/lib/test_*.py), not in a separate tests/ tree",
+      "source": "auto-detected",
+      "category": "file-structure",
+      "confidence": "high",
+      "detected_from": "STRUCTURE.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-005",
+      "rule": "One thin entry script per Claude Code lifecycle event under hooks/, delegating all logic to shared hooks/lib/ modules",
+      "source": "auto-detected",
+      "category": "file-structure",
+      "confidence": "high",
+      "detected_from": "ARCHITECTURE.md, PATTERNS.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-006",
+      "rule": "Every rule family resolves independently to off, observe, or enforce, rather than one global on/off switch",
+      "source": "auto-detected",
+      "category": "patterns",
+      "confidence": "high",
+      "detected_from": "CONVENTIONS.md, PATTERNS.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-007",
+      "rule": "Config resolves from .agent-discipline.json merged against schema defaults in config.py, passed down as a plain dict rather than through an injected config object",
+      "source": "auto-detected",
+      "category": "patterns",
+      "confidence": "medium",
+      "detected_from": "PATTERNS.md, ARCHITECTURE.md",
+      "added": "2026-08-04"
+    },
+    {
+      "id": "CONV-008",
+      "rule": "New rules launch in observe mode and graduate to enforce individually through a burn-in flow, rather than flipping the whole rule set to blocking at once",
+      "source": "auto-detected",
+      "category": "patterns",
+      "confidence": "high",
+      "detected_from": "CONVENTIONS.md",
+      "added": "2026-08-04"
+    }
+  ]
+}
