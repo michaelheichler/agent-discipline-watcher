@@ -121,6 +121,15 @@ def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     assert "pending edit text" in report[0]["detail"]
 
 
+def test_pre_write_denies_prose_semicolon_and_dash_break_in_tex():
+    content = "One reason; another reason.\nSome text word--word break here.\n"
+    payload = {"tool_input": {"file_path": "notes.tex", "content": content}}
+    response = pre_write.run(payload, {"ledger_path": _ledger_path()})
+    assert response["decision"] == "block"
+    assert "punctuation/prose_semicolon" in response["reason"]
+    assert "punctuation/dash_break" in response["reason"]
+
+
 def test_pre_write_denies_plain_english_violation():
     payload = {"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "english": True})

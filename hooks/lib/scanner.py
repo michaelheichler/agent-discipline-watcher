@@ -36,6 +36,7 @@ HTML_CODE_RE = re.compile(r"<(code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOT
 HTML_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 HTML_TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 HTML_ENTITY_RE = re.compile(r"&[a-zA-Z]+;|&#\d+;")
+TABLE_SEPARATOR_RE = re.compile(r"^\|?[\s:|-]*-[\s:|-]*\|?$")
 READABILITY_RULES = (
     (re.compile(
         r"\b(?:hope this helps|let me know if you (?:need anything else|have any questions)|"
@@ -934,6 +935,10 @@ def _is_header_run(run: list[tuple[int, str]]) -> bool:
     return True
 
 
+def _is_table_separator_row(line: str) -> bool:
+    return bool(TABLE_SEPARATOR_RE.fullmatch(line.strip()))
+
+
 def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -> str:
     text = HTML_CODE_RE.sub(_blank_keep_newlines, text)
     text = HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
@@ -943,7 +948,7 @@ def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -
     fence = None
     for line in text.splitlines():
         fence, marker = _next_fence(line, fence)
-        hidden = marker or fence or line.strip().startswith("|")
+        hidden = marker or fence or _is_table_separator_row(line)
         visible.append("" if hidden else line)
     return "\n".join(visible)
 

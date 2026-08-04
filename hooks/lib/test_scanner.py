@@ -727,12 +727,44 @@ def test_prose_semicolon_spares_css_private_fields_and_config_values():
 def test_prose_semicolon_spares_markdown_code_tables_and_urls():
     mark = chr(59)
     fenced = "```js\nconst value = 1" + mark + "\n```\n"
-    table = "| Name | Code |\n| --- | --- |\n| value | x = 1" + mark + " |\n"
     url = "https://example.com/a" + mark + "b\n"
-    for text in (fenced, table, url):
+    for text in (fenced, url):
         assert "prose_semicolon" not in _rules("README.md", text, {}), text
+
+    table = "| Name | Code |\n| --- | --- |\n| value | x = 1" + mark + " |\n"
+    assert "prose_semicolon" in _rules("README.md", table, {})
+
+    inline_code = "| code | `left" + mark + "right` |\n"
+    assert "prose_semicolon" not in _rules("README.md", inline_code, {})
+
+    findings_table = (
+        "| Metric | Notes |\n"
+        "| --- | --- |\n"
+        "| Latency | Improved this quarter" + mark + " still above SLO |\n"
+    )
+    assert "prose_semicolon" in _rules("README.md", findings_table, {})
+
+    dash_table = (
+        "| Metric | Notes |\n"
+        "| --- | --- |\n"
+        "| Latency | word" + "-" * 2 + "word break |\n"
+    )
+    assert "dash_break" in _rules("README.md", dash_table, {})
+
     prose = "The pipe | stays visible" + mark + " rewrite this clause.\n"
     assert "prose_semicolon" in _rules("README.md", prose, {})
+
+
+def test_table_separator_rows_are_hidden_without_hiding_cell_content():
+    cases = (
+        "| --- | --- |\n",
+        "|:---|---:|\n",
+        "|---|\n",
+    )
+    for text in cases:
+        assert scanner._is_table_separator_row(text)
+    for text in ("", "|", "| Name |", "| - note |"):
+        assert not scanner._is_table_separator_row(text)
 
 
 def test_google_style_public_docstring_is_structured_not_narration():
