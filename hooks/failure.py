@@ -116,10 +116,6 @@ def _is_exact_int(value: object) -> TypeGuard[int]:
     return _has_exact_type(value, int)
 
 
-def _is_exact_bool(value: object) -> TypeGuard[bool]:
-    return _has_exact_type(value, bool)
-
-
 def _canonical_duration(value: object) -> int:
     if not _is_exact_int(value):
         return 0
@@ -207,10 +203,6 @@ def _is_valid_mcp_part(value: str, maximum: int) -> bool:
 def failure_target(payload: dict) -> str:
     """Return one bounded scalar target without serializing arbitrary tool input."""
     return str(normalize_payload(payload)["target"])
-
-
-def _safe_tool_name(payload: dict) -> str:
-    return str(normalize_payload(payload)["tool_name"])
 
 
 def _next_streak(
