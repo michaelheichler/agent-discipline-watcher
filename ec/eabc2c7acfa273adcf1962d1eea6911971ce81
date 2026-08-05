@@ -1,0 +1,33 @@
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-RESEARCH.md
+  s_11842c2b137f6e::t_4e67aa1336ca55 1-42,44-136,138-176,178-218,220-266,268,270-301,303-433
+  s_11842c2b137f6e::t_3191f99e8ff374 43,219,267,269,302
+  s_11842c2b137f6e::t_1b0e6a8b664856 137,177
+.vbw-planning/STATE.md
+  s_9b8fc87c25fd86::t_f7655dd247fad1 7,13-17
+.vbw-planning/.agent-spawn-guard.log
+  s_11842c2b137f6e::t_aca22d66447a68 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "eceabc2c7acfa273adcf1962d1eea6911971ce81",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_9b8fc87c25fd86": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5410a1e8-4bc2-47f6-9349-39e0ca6bd07d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
