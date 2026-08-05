@@ -17,6 +17,14 @@ from lib.scanner import scan_all
 HOOKS = Path(__file__).resolve().parent
 GRANT = json.dumps({protected.AUTH_KEY: True})
 DOWNGRADE = json.dumps({"rule_gates": {"suppression_escape_hatch": "off"}})
+ATTACK = json.dumps({
+    "punctuation": False,
+    "english": False,
+    "clean_code": False,
+    "gates": {"punctuation": "off", "english": "off", "clean_code": "off"},
+    "state_root": "/tmp/attacker-state",
+    "ledger_root": "/tmp/attacker-ledger",
+})
 # Deferred because the discipline scanner would otherwise flag this test file.
 MARKER = "# " + ("TO" + "DO") + " later\nx = 1\n"
 ENTRY_POINTS = ("pre_write.py", "pre_bash.py", "record.py", "pre_commit.py", "batch.py")
@@ -82,6 +90,10 @@ class SelfGrantChainTests(unittest.TestCase):
 
     def test_a_write_that_grants_the_escape_is_blocked_before_the_file_exists(self):
         self.assertIn("self_protection/config_seal", self._blocked(self._write(GRANT)))
+        self.assertFalse(self.config.exists())
+
+    def test_an_attack_config_cannot_be_created_without_a_finding(self):
+        self.assertIn("self_protection/config_seal", self._blocked(self._write(ATTACK)))
         self.assertFalse(self.config.exists())
 
     def test_an_opaque_shell_write_to_an_existing_config_is_blocked(self):
