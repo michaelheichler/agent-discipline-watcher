@@ -1,0 +1,43 @@
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-01-PLAN.md
+  s_11842c2b137f6e::t_55dc1400f7a712 51
+  s_11842c2b137f6e::t_c0fc7054874810 38-40
+  s_11842c2b137f6e::t_6e0197240a9df3 1-37,41-50,52-108
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-02-PLAN.md
+  s_11842c2b137f6e::t_467b88d82b1854 1-110
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-03-PLAN.md
+  s_11842c2b137f6e::t_fd86d8554eaaa6 1-28,30-106
+  s_11842c2b137f6e::t_3e0928fe42e523 29
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-04-PLAN.md
+  s_11842c2b137f6e::t_4784d64244e282 1-51,53-106
+  s_11842c2b137f6e::t_cef35b1f0dab56 52
+.vbw-planning/.agent-spawn-guard.log
+  s_11842c2b137f6e::t_131a0c3fe982a8 3-4
+.vbw-planning/ROADMAP.md
+  s_e347235c75dce4::t_8afa715c916aba 10
+.vbw-planning/STATE.md
+  s_e347235c75dce4::t_5f24b5c5f911e7 8,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "a1a16e4125039bb7ab5dbdc1a3c4ebaa7c59c48c",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_e347235c75dce4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae4715028cb4b8f2c",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
