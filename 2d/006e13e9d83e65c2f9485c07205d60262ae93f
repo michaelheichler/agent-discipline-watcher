@@ -1,0 +1,20 @@
+hooks/test_self_protection_invariants.py
+  s_11842c2b137f6e::t_5652b761bad50f 95-98
+  s_11842c2b137f6e::t_5a726e425df068 20-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "2d006e13e9d83e65c2f9485c07205d60262ae93f",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
