@@ -96,6 +96,16 @@ def test_state_deletion_blocks(command):
     assert "state_deletion" in rules(command)
 
 
+@pytest.mark.parametrize("command", [
+    "rm -rf ~/.claude",
+    "rm -rf ~/.codex",
+    "unlink ~/.pi",
+    "shred ~/.claude",
+])
+def test_client_home_root_deletion_blocks(command, tmp_path):
+    assert "live_client_surface" in rules(command, tmp_path)
+
+
 def test_shell_write_to_live_surface_blocks(tmp_path):
     command = "echo '{}' > " + str(tmp_path / ".claude/settings.json")
     assert rules(command, tmp_path) == ["live_client_surface"]

@@ -92,6 +92,10 @@ def test_home_root_itself_is_not_a_surface(tmp_path):
     assert rules(str(tmp_path), tmp_path) == []
 
 
+def test_client_home_root_is_a_surface(tmp_path):
+    assert rules(str(tmp_path / ".claude"), tmp_path) == ["live_client_surface"]
+
+
 def test_existing_gate_config_is_sealed(tmp_path):
     target = tmp_path / "project" / ".agent-discipline.json"
     target.parent.mkdir(parents=True)

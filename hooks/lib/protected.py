@@ -139,7 +139,7 @@ NESTED_CLIENT_DIRS = ([".agents", "skills"], [".config", "opencode"])
 
 
 def _reaches_into_a_client_home(parts: list[str]) -> bool:
-    if parts[0] in CLIENT_HOME_DIRS and len(parts) > 1:
+    if parts[0] in CLIENT_HOME_DIRS:
         return True
     if len(parts) < 3:
         return False
@@ -159,8 +159,8 @@ def _live_client_rule(path: Path, home: Path) -> str | None:
 
 
 def _claude_rule(parts: list[str]) -> str | None:
-    if len(parts) < 2:
-        return None
+    if len(parts) == 1:
+        return "live_client_surface"
     entry = parts[1]
     if entry in CLAUDE_EXEMPT_DIRS:
         return None
