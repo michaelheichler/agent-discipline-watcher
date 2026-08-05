@@ -103,7 +103,6 @@ def _finding(rule: str, path: str, detail: str, action: str) -> dict:
 
 
 def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
-    """Expand and absolutize a target without touching the filesystem, because the path may not exist yet."""
     try:
         candidate = Path(path)
     except (TypeError, ValueError):
@@ -117,7 +116,6 @@ def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
 
 
 def _normalize(path: Path) -> Path:
-    """Collapse dot segments without resolving symlinks, so that a sandbox HOME under a symlinked temp dir still matches."""
     parts: list[str] = []
     for part in path.parts:
         if part == ".":
@@ -126,7 +124,7 @@ def _normalize(path: Path) -> Path:
             parts.pop()
             continue
         parts.append(part)
-    return Path(*parts) if parts else path
+    return Path(os.path.realpath(Path(*parts) if parts else path))
 
 
 def _relative_parts(path: Path, home: Path) -> list[str] | None:

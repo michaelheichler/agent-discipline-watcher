@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -52,6 +53,30 @@ def test_watcher_plugin_cache_path_blocks(tmp_path):
 def test_other_plugin_cache_path_blocks(tmp_path):
     target = tmp_path / ".claude/plugins/cache/other/hooks/hooks.json"
     assert rules(str(target), tmp_path) == ["live_client_surface"]
+
+
+def test_symlink_to_live_client_path_blocks(tmp_path):
+    home = tmp_path / "home"
+    target = home / ".claude/skills/agent-discipline-watcher/SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.touch()
+    link = tmp_path / "outside-home"
+    os.symlink(target, link)
+    assert rules(str(link), home) == ["live_client_surface"]
+
+
+def test_nonexistent_live_client_target_blocks(tmp_path):
+    target = tmp_path / ".claude/skills/agent-discipline-watcher/new.md"
+    assert rules(str(target), tmp_path) == ["live_client_surface"]
+
+
+def test_symlinked_home_still_matches_live_client_path(tmp_path):
+    real_home = tmp_path / "real-home"
+    real_home.mkdir()
+    linked_home = tmp_path / "linked-home"
+    os.symlink(real_home, linked_home, target_is_directory=True)
+    target = linked_home / ".claude/skills/agent-discipline-watcher/SKILL.md"
+    assert rules(str(target), linked_home) == ["live_client_surface"]
 
 
 def test_tilde_token_resolves_against_the_given_home(tmp_path):
