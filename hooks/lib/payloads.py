@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import operator
 from typing import TypedDict, cast
 
 _TOOL_INPUT_KEYS = ("tool_input", "toolInput", "input")
@@ -38,23 +37,23 @@ class RecordPayload(TypedDict):
 
 def exact_string_dict(value: object) -> dict[str, object]:
     """Copy exact-string members without invoking untrusted mapping methods."""
-    if not operator.is_(type(value), dict):
+    if not type(value) is dict:
         return {}
     result: dict[str, object] = {}
     for key, item in dict.items(cast(dict[object, object], value)):
-        if operator.is_(type(key), str):
+        if type(key) is str:
             result[cast(str, key)] = item
     return result
 
 
 def _exact_string(fields: dict[str, object], key: str) -> str:
     value = fields.get(key)
-    return cast(str, value) if operator.is_(type(value), str) else ""
+    return cast(str, value) if type(value) is str else ""
 
 
 def _is_exact_bool_field(fields: dict[str, object], key: str) -> bool:
     value = fields.get(key)
-    return cast(bool, value) if operator.is_(type(value), bool) else False
+    return cast(bool, value) if type(value) is bool else False
 
 
 _read_exact_bool = _is_exact_bool_field
@@ -62,7 +61,7 @@ _read_exact_bool = _is_exact_bool_field
 
 def _exact_int(fields: dict[str, object], key: str) -> int:
     value = fields.get(key)
-    return cast(int, value) if operator.is_(type(value), int) else 0
+    return cast(int, value) if type(value) is int else 0
 
 
 def _tool_input_from(fields: dict[str, object]) -> dict[str, object]:
@@ -84,11 +83,11 @@ def _file_path_from(tool_input: dict[str, object]) -> str:
 def _edit_text_from(tool_input: dict[str, object]) -> str:
     for key in _EDIT_TEXT_KEYS:
         value = tool_input.get(key)
-        if operator.is_(type(value), str):
+        if type(value) is str:
             return cast(str, value)
-        if operator.is_(type(value), list):
+        if type(value) is list:
             parts = cast(list[object], value)
-            if all(operator.is_(type(part), str) for part in parts):
+            if all(type(part) is str for part in parts):
                 return "\n".join(cast(list[str], parts))
     return ""
 
@@ -169,7 +168,7 @@ def prompt(payload: object) -> str:
     fields = exact_string_dict(payload)
     for key in _PROMPT_KEYS:
         value = fields.get(key)
-        if operator.is_(type(value), str):
+        if type(value) is str:
             return cast(str, value)
     return ""
 
@@ -202,11 +201,11 @@ def duration_ms(payload: object) -> int:
 def tool_calls(payload: object) -> list[dict]:
     """Return the PostToolBatch tool_calls array, or [] when absent."""
     value = exact_string_dict(payload).get("tool_calls")
-    if operator.is_(type(value), list):
+    if type(value) is list:
         return [
             exact_string_dict(item)
             for item in cast(list[object], value)
-            if operator.is_(type(item), dict)
+            if type(item) is dict
         ]
     return []
 
@@ -221,6 +220,6 @@ def task_subject(payload: object) -> str:
     fields = exact_string_dict(payload)
     for key in _TASK_SUBJECT_KEYS:
         value = fields.get(key)
-        if operator.is_(type(value), str):
+        if type(value) is str:
             return cast(str, value)
     return ""
