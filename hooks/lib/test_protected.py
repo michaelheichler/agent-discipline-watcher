@@ -209,6 +209,18 @@ def test_payload_without_roots_or_family_kill_does_not_grant_an_escape():
     assert protected.grants_escape(json.dumps({"max_rows": 4})) is False
 
 
+def test_first_creation_of_an_attack_config_blocks(tmp_path):
+    target = _config(tmp_path)
+    assert not target.exists()
+    assert rules(str(target), tmp_path, None, json.dumps(ATTACK)) == ["config_seal"]
+
+
+def test_first_creation_of_a_benign_config_stays_allowed(tmp_path):
+    target = _config(tmp_path)
+    assert not target.exists()
+    assert rules(str(target), tmp_path, None, json.dumps({"clean_code": False})) == []
+
+
 def test_a_self_granted_config_cannot_authorize_its_own_grant(tmp_path):
     granted = {protected.AUTH_KEY: True}
     assert rules(str(_config(tmp_path)), tmp_path, granted, GRANT) == ["config_seal"]
