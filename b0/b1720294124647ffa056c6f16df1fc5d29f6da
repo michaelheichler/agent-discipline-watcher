@@ -1,0 +1,35 @@
+hooks/pre_bash.py
+  s_11842c2b137f6e::t_aec95e2184e28e 11
+  s_11842c2b137f6e::t_4f1574178819a9 268
+  s_11842c2b137f6e::t_818ed1ef24b85a 209
+  s_11842c2b137f6e::t_743388adc4d26f 82-83
+hooks/pre_commit.py
+  s_11842c2b137f6e::t_70d17ac3feb4bd 11
+  s_11842c2b137f6e::t_121a410cf0cb8c 33-34
+hooks/test_hooks.py
+  s_11842c2b137f6e::t_9cf2b9d821e8ad 473
+  s_11842c2b137f6e::t_acff7337af982b 464-472,474-482
+hooks/pre_write.py
+  s_11842c2b137f6e::t_8f9d6a827b18d7 67-68
+  s_11842c2b137f6e::t_979cb2acf0f8e6 9
+hooks/test_pre_bash.py
+  s_11842c2b137f6e::t_cf39faee06f1a7 4-8
+  s_11842c2b137f6e::t_f2ba750e9c88cb 275-284,286-293
+  s_11842c2b137f6e::t_67fc489b790f54 285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "b0b1720294124647ffa056c6f16df1fc5d29f6da",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
