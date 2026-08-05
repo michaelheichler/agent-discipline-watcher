@@ -34,7 +34,6 @@ def test_live_client_surfaces_block(tmp_path, relative):
 @pytest.mark.parametrize("relative", [
     ".claude/jobs/abc/tmp/scratch.py",
     ".claude/projects/proj/memory/note.md",
-    ".claude/plugins/cache/other/hooks/hooks.json",
     ".claude/todos/list.json",
     ".claude/shell-snapshots/snap.sh",
     ".local/bin/ruff",
@@ -43,6 +42,16 @@ def test_live_client_surfaces_block(tmp_path, relative):
 ])
 def test_non_wiring_paths_pass(tmp_path, relative):
     assert rules(str(tmp_path / relative), tmp_path) == []
+
+
+def test_watcher_plugin_cache_path_blocks(tmp_path):
+    target = tmp_path / ".claude/plugins/cache/agent-discipline-watcher/hooks/pre_write.py"
+    assert rules(str(target), tmp_path) == ["live_client_surface"]
+
+
+def test_other_plugin_cache_path_blocks(tmp_path):
+    target = tmp_path / ".claude/plugins/cache/other/hooks/hooks.json"
+    assert rules(str(target), tmp_path) == ["live_client_surface"]
 
 
 def test_tilde_token_resolves_against_the_given_home(tmp_path):

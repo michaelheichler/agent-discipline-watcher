@@ -18,9 +18,8 @@ AUTH_ENV = "ADW_ALLOW_PROTECTED_EDIT"
 AUTH_KEY = "protected_paths_authorized"
 TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-# Scratch, transcripts, and installed plugins sit under the Claude home without being wiring, so that they stay writable.
 CLAUDE_EXEMPT_DIRS = frozenset({
-    "jobs", "projects", "plugins", "todos", "shell-snapshots",
+    "jobs", "projects", "todos", "shell-snapshots",
     "statsig", "logs", "ide", "tool-results", "downloads",
 })
 CLAUDE_WIRING_DIRS = frozenset({"skills", "agents", "hooks", "commands"})
@@ -167,6 +166,8 @@ def _claude_rule(parts: list[str]) -> str | None:
     entry = parts[1]
     if entry in CLAUDE_EXEMPT_DIRS:
         return None
+    if entry == "plugins" and len(parts) > 2:
+        return "live_client_surface"
     if entry in CLAUDE_WIRING_DIRS and len(parts) > 2:
         return "live_client_surface"
     if entry.startswith("settings") and entry.endswith(".json"):
