@@ -21,10 +21,10 @@ Hook findings are blockers, not advice. Fix the named file or reply text, then r
 Do not end a turn while a finding remains in your own changes. Do not silence a hook, delete hook state, or edit configuration to get past a finding. Do not add a Craftsman suppression marker. Do not broaden the task into style cleanup outside the requested scope."""
 
 CONTRACT = _CONTRACT_TEXT[:CONTRACT_MAX_CHARS]
+PARSE_FAILURE = {"_parse_failure": True}
 
 
 def read_payload() -> dict:
-    """Fail soft on unparseable stdin, because a traceback from the shared reader would take every hook down with it."""
     raw = sys.stdin.read()
     if not raw.strip():
         return {}
@@ -32,7 +32,7 @@ def read_payload() -> dict:
         return json.loads(raw)
     except ValueError as exc:
         sys.stderr.write(f"agent-discipline-watcher: unreadable hook payload ({exc})\n")
-        return {}
+        return PARSE_FAILURE
 
 
 def write_payload(payload: dict) -> None:
