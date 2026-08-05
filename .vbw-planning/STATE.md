@@ -4,17 +4,17 @@
 **Milestone:** Milestone 1: Remediate Review Findings
 
 ## Current Phase
-Phase: 1 of 5
+Phase: 1 of 5 (Self Tamper Fail Open Hardening)
 Plans: 0/0
 Progress: 0%
 Status: ready
 
 ## Phase Status
-- **Phase 1:** Pending planning
-- **Phase 2:** Pending
-- **Phase 3:** Pending
-- **Phase 4:** Pending
-- **Phase 5:** Pending
+- **Phase 1 (Self Tamper Fail Open Hardening):** Pending planning
+- **Phase 2 (Scanning Escalation Correctness):** Pending
+- **Phase 3 (State Reporting Ledger Integrity):** Pending
+- **Phase 4 (Hook Entry Script Correctness):** Pending
+- **Phase 5 (Cli Install Time Config Merge Safety):** Pending
 
 ## Key Decisions
 | Decision | Date | Rationale |
