@@ -482,6 +482,32 @@ def test_pretooluse_entry_scripts_allow_empty_stdin() -> None:
         assert json.loads(result.stdout) == {}, script
 
 
+def test_pre_mcp_entry_denies_malformed_stdin() -> None:
+    result = subprocess.run(
+        [sys.executable, "pre_mcp.py"], input="not json {", text=True,
+        capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    response = json.loads(result.stdout)
+    assert response["decision"] == "block"
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pre_mcp_entry_allows_empty_stdin() -> None:
+    result = subprocess.run(
+        [sys.executable, "pre_mcp.py"], input="", text=True,
+        capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    assert json.loads(result.stdout) == {}
+
+
+def test_pre_mcp_entry_allows_sessionless_payload() -> None:
+    result = subprocess.run(
+        [sys.executable, "pre_mcp.py"], input='{"tool_name": "mcp__server__call"}', text=True,
+        capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    assert json.loads(result.stdout) == {}
+
+
 def test_run_sh_routes_pretooluse():
     payload = json.dumps({"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}})
     result = subprocess.run(
