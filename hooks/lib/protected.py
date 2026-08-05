@@ -7,10 +7,10 @@ from pathlib import Path
 
 try:
     # Relative first because every hook entry script imports this module as lib.protected, where a bare name cannot resolve.
-    from .config import ALWAYS_BLOCKING_RULES, flatten_settings
+    from .config import ALWAYS_BLOCKING_RULES, GATE_FAMILIES, flatten_settings
     from .payloads import exact_string_dict
 except ImportError:
-    from config import ALWAYS_BLOCKING_RULES, flatten_settings
+    from config import ALWAYS_BLOCKING_RULES, GATE_FAMILIES, flatten_settings
     from payloads import exact_string_dict
 
 CONFIG_SEAL_BASENAME = ".agent-discipline.json"
@@ -55,7 +55,15 @@ def grants_escape(text: str | None) -> bool:
     if settings.get(AUTH_KEY):
         return True
     gates = exact_string_dict(settings.get("rule_gates"))
-    return any(rule in ALWAYS_BLOCKING_RULES and state != "enforce" for rule, state in gates.items())
+    if any(rule in ALWAYS_BLOCKING_RULES and state != "enforce" for rule, state in gates.items()):
+        return True
+    if "state_root" in settings or "ledger_root" in settings:
+        return True
+    family_gates = exact_string_dict(settings.get("gates"))
+    return all(
+        family_gates.get(family) == "off" if family in family_gates else settings.get(family) is False
+        for family in GATE_FAMILIES
+    )
 
 
 def path_findings(

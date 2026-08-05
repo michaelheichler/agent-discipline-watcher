@@ -9,6 +9,14 @@ import pytest
 import protected
 
 GRANT = json.dumps({protected.AUTH_KEY: True})
+ATTACK = {
+    "punctuation": False,
+    "english": False,
+    "clean_code": False,
+    "gates": {"punctuation": "off", "english": "off", "clean_code": "off"},
+    "state_root": "/tmp/attacker-state",
+    "ledger_root": "/tmp/attacker-ledger",
+}
 
 
 def rules(path, home, config=None, content=None):
@@ -181,6 +189,24 @@ def test_a_config_that_releases_nothing_protected_still_creates(tmp_path, payloa
 @pytest.mark.parametrize("text", ["", "not json", "[]", "null", '{"gates": ["off"]}'])
 def test_unreadable_config_text_grants_nothing(text):
     assert protected.grants_escape(text) is False
+
+
+@pytest.mark.parametrize("payload", [
+    ATTACK,
+    {"punctuation": False, "english": False, "clean_code": False},
+    {"gates": {"punctuation": "off", "english": "off", "clean_code": "off"}},
+    {"punctuation": False, "gates": {"english": "off", "clean_code": "off"}},
+])
+def test_all_family_disables_and_root_redirection_grant_an_escape(payload):
+    assert protected.grants_escape(json.dumps(payload)) is True
+
+
+def test_one_family_disable_does_not_grant_an_escape():
+    assert protected.grants_escape(json.dumps({"clean_code": False})) is False
+
+
+def test_payload_without_roots_or_family_kill_does_not_grant_an_escape():
+    assert protected.grants_escape(json.dumps({"max_rows": 4})) is False
 
 
 def test_a_self_granted_config_cannot_authorize_its_own_grant(tmp_path):
