@@ -1,0 +1,22 @@
+hooks/failure.py
+  s_11842c2b137f6e::t_b3be299b20dcbe 428-449,467
+  s_11842c2b137f6e::t_d3c1d89f742130 81
+  s_11842c2b137f6e::t_9eef28545b50fb 258-270,274-276,280,282-283
+  s_11842c2b137f6e::t_cec789b4ef777f 412-427,450,455,458-466,468,471-476,480-482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "85db87a676ced1355936597e5467d976bb310780",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
