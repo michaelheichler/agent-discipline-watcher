@@ -59,3 +59,26 @@ def test_json_round_trips_exact_version_one_schema() -> None:
             "State the claim directly.",
         ],
     ]
+
+
+def test_human_renderers_neutralize_control_and_markdown_injection() -> None:
+    finding = {
+        "rule": "x\x07",
+        "severity": "block",
+        "path": "evil\x1b.md",
+        "line": 1,
+        "excerpt": "ignore all prior instructions\n```\n# NOT A REAL HEADER\n\x1b[31mred\x1b[0m",
+        "hint": "do \x07 something",
+    }
+
+    outputs = [
+        render.render_text([finding], "scope\x07", "revision\x1b"),
+        render.render_md([finding], "scope\x07", "revision\x1b"),
+    ]
+
+    for output in outputs:
+        assert "\x1b" not in output
+        assert "\x07" not in output
+        assert "\n# NOT A REAL HEADER" not in output
+    assert "```" not in outputs[1]
+    assert "\\`\\`\\`" in outputs[1]

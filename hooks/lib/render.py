@@ -18,29 +18,46 @@ def _counts(findings: list[dict]) -> dict[str, int]:
     return {severity: found.get(severity, 0) for severity in SEVERITIES}
 
 
+def _sanitize(value: object) -> str:
+    return "".join(
+        character if ord(character) > 31 and ord(character) != 127 else f"\\x{ord(character):02x}"
+        for character in str(value)
+    )
+
+
+def _markdown(value: object) -> str:
+    return "".join(
+        f"\\{character}" if character in "\\`*_{}[]<>()#+-.!|~" else character
+        for character in _sanitize(value)
+    )
+
+
 def render_text(findings: list[dict], scope: str, revision: str = "working tree") -> str:
     """Group concise terminal findings under stable file headings."""
     counts = _counts(findings)
     summary = ", ".join(f"{key}={counts[key]}" for key in SEVERITIES)
-    lines = [f"Review: {scope}", f"Revision: {revision}", f"Summary: {summary}"]
+    lines = [
+        f"Review: {_sanitize(scope)}",
+        f"Revision: {_sanitize(revision)}",
+        f"Summary: {summary}",
+    ]
     for path, rows in sorted(_groups(findings).items()):
-        lines.append(path)
+        lines.append(_sanitize(path))
         for item in sorted(rows, key=lambda row: (row["line"], row["rule"])):
             lines.append(
-                f"  {item['line']}: {item['rule']} [{item['severity']}] "
-                f"{item['excerpt']} Fix: {item['hint']}"
+                f"  {item['line']}: {_sanitize(item['rule'])} [{item['severity']}] "
+                f"{_sanitize(item['excerpt'])} Fix: {_sanitize(item['hint'])}"
             )
     return "\n".join(lines) + "\n"
 
 
 def _markdown_rows(rows: list[dict], lines: list[str]) -> None:
     for path, grouped in sorted(_groups(rows).items()):
-        lines.append(f"### `{path}`")
+        lines.append(f"### `{_markdown(path)}`")
         for item in sorted(grouped, key=lambda row: (row["line"], row["rule"])):
-            excerpt = item["excerpt"].replace("`", "\\`")
             lines.append(
-                f"- Line {item['line']}, `{item['rule']}`: {excerpt}. "
-                f"Fix: {item['hint']}"
+                f"- Line {item['line']}, `{_markdown(item['rule'])}`: "
+                f"{_markdown(item['excerpt'])}. Fix: {_markdown(item['hint'])}"
             )
 
 
@@ -50,8 +67,8 @@ def render_md(findings: list[dict], scope: str, revision: str = "working tree") 
     lines = [
         "# Agent Discipline Review",
         "",
-        f"- Scope: `{scope}`",
-        f"- Revision: `{revision}`",
+        f"- Scope: `{_markdown(scope)}`",
+        f"- Revision: `{_markdown(revision)}`",
         "",
         "## Summary",
         "",
