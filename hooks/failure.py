@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import operator
 import posixpath
 import re
 import sys
@@ -79,7 +78,7 @@ def _exact_string_dict(value: object) -> dict[str, object]:
 
 
 def _has_exact_type(value: object, expected: type) -> bool:
-    return operator.is_(type(value), expected)
+    return type(value) is expected
 
 
 def _bounded_text(value: object, maximum: int) -> str:
@@ -256,41 +255,32 @@ def _valid_timestamp(value: object, default: float) -> float:
     return default
 
 
+def _update_streak(
+    streaks: dict[str, object], key: str, event: FailureEventData
+) -> int:
+    next_streak = _next_streak(
+        streaks.get(key),
+        event["error"],
+        interrupt=event["interrupt"],
+        duration_ms=event["duration_ms"],
+    )
+    streaks[key] = next_streak
+    return next_streak["count"]
+
+
 def _updated_streaks(
     state: dict, event: FailureEventData, captured: FailureCounts
 ) -> dict:
-    raw_streaks = state.get(FAILURE_STREAKS_KEY)
-    streaks = _exact_string_dict(raw_streaks)
-    raw_tools = streaks.get("tools")
-    raw_targets = streaks.get("targets")
-    tools = _exact_string_dict(raw_tools)
-    targets = _exact_string_dict(raw_targets)
-
+    streaks = _exact_string_dict(state.get(FAILURE_STREAKS_KEY))
+    tools = _exact_string_dict(streaks.get("tools"))
+    targets = _exact_string_dict(streaks.get("targets"))
     tool = event["tool"]
     target = event["target"]
     if tool:
-        next_tool = _next_streak(
-            tools.get(tool),
-            event["error"],
-            interrupt=event["interrupt"],
-            duration_ms=event["duration_ms"],
-        )
-        tools[tool] = next_tool
-        captured["tool_count"] = next_tool["count"]
+        captured["tool_count"] = _update_streak(tools, tool, event)
     if target:
-        next_target = _next_streak(
-            targets.get(target),
-            event["error"],
-            interrupt=event["interrupt"],
-            duration_ms=event["duration_ms"],
-        )
-        targets[target] = next_target
-        captured["target_count"] = next_target["count"]
-
-    updated = dict(streaks)
-    updated["tools"] = tools
-    updated["targets"] = targets
-    return updated
+        captured["target_count"] = _update_streak(targets, target, event)
+    return {**streaks, "tools": tools, "targets": targets}
 
 
 def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
@@ -419,53 +409,77 @@ def _failure_event(payload: TrustedPayload, now: float) -> FailureEventData:
     }
 
 
+def _capture_failure(
+    session_id: str, event: FailureEventData, state_root: str | None
+) -> FailureCounts | None:
+    captured: FailureCounts = {}
+    try:
+        session_state.update_state(
+            session_id,
+            lambda state: _record_failure(state, event, captured),
+            state_root,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
+        sys.stderr.write(f"agent-discipline-watcher: failure state update failed: {exc}\n")
+        return None
+    return captured
+
+
+def _record_guidance(
+    session_id: str,
+    payload: TrustedPayload,
+    event: FailureEventData,
+    ledger_root: str | None,
+    turn_id: str,
+) -> None:
+    record_decision(
+        session_id=session_id,
+        hook="failure",
+        event=FAILURE_EVENT,
+        family="tool_failure",
+        rule="repeated_failure",
+        path=event["target"],
+        tool_use_id=payload["tool_use_id"],
+        outcome="inject",
+        duration_ms=event["duration_ms"],
+        turn_id=turn_id,
+        root=ledger_root,
+    )
+
+
+def _failure_gate(
+    payload: TrustedPayload,
+    state_root: str | None,
+    ledger_root: str | None,
+    current_time: float | None,
+    turn_id: str,
+) -> dict:
+    session_id = payload["session_id"]
+    if not session_id or current_time is None or not payload["error"]:
+        return {}
+    event = _failure_event(payload, current_time)
+    captured = _capture_failure(session_id, event, state_root)
+    if captured is None:
+        return {}
+    message = _guidance(event, captured)
+    if not message:
+        return {}
+    _record_guidance(session_id, payload, event, ledger_root, turn_id)
+    return system_message(message)
+
+
 def _run_failure(
     payload: TrustedPayload,
     state_root: str | None,
     ledger_root: str | None,
     current_time: float | None,
 ) -> dict:
-    session_id = payload["session_id"]
-
-    def gate(turn_id: str) -> dict:
-        error = payload["error"]
-        if not session_id or current_time is None or not error:
-            return {}
-        event = _failure_event(payload, current_time)
-        captured: FailureCounts = {}
-        try:
-            session_state.update_state(
-                session_id,
-                lambda state: _record_failure(state, event, captured),
-                state_root,
-            )
-        except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
-            sys.stderr.write(
-                f"agent-discipline-watcher: failure state update failed: {exc}\n"
-            )
-            return {}
-        message = _guidance(event, captured)
-        if not message:
-            return {}
-        record_decision(
-            session_id=session_id,
-            hook="failure",
-            event=FAILURE_EVENT,
-            family="tool_failure",
-            rule="repeated_failure",
-            path=event["target"],
-            tool_use_id=payload["tool_use_id"],
-            outcome="inject",
-            duration_ms=event["duration_ms"],
-            turn_id=turn_id,
-            root=ledger_root,
-        )
-        return system_message(message)
-
     return run_with_ledger(
         hook="failure",
         payload=dict(payload),
-        gate=gate,
+        gate=lambda turn_id: _failure_gate(
+            payload, state_root, ledger_root, current_time, turn_id
+        ),
         ledger_root=ledger_root,
         state_root=state_root,
     )
