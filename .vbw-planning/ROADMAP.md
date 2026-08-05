@@ -7,7 +7,7 @@
 ## Progress
 | Phase | Status | Plans | Tasks | Commits |
 |-------|--------|-------|-------|---------|
-| 01 | ○ Planned |
+| 01 | Done | 4 | 12 | 14 |
 | 2 | Pending | 0 | 0 | 0 |
 | 3 | Pending | 0 | 0 | 0 |
 | 4 | Pending | 0 | 0 | 0 |
@@ -16,7 +16,7 @@
 ---
 
 ## Phase List
-- [ ] [Phase 1: Self-Tamper & Fail-Open Hardening](#phase-1-self-tamper-fail-open-hardening)
+- [x] [Phase 1: Self-Tamper & Fail-Open Hardening](#phase-1-self-tamper-fail-open-hardening)
 - [ ] [Phase 2: Scanning & Escalation Correctness](#phase-2-scanning-escalation-correctness)
 - [ ] [Phase 3: State, Reporting & Ledger Integrity](#phase-3-state-reporting-ledger-integrity)
 - [ ] [Phase 4: Hook Entry Script Correctness](#phase-4-hook-entry-script-correctness)
