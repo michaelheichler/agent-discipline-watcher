@@ -1,0 +1,25 @@
+hooks/lib/test_hookio.py
+  s_11842c2b137f6e::t_e4964cf2b9997d 18
+  s_11842c2b137f6e::t_cd98d159923f80 13
+  s_11842c2b137f6e::t_6461d38033f470 8
+  s_11842c2b137f6e::t_e7d2a64530325d 1-7,9-12,14-17,19-21
+hooks/lib/hookio.py
+  s_11842c2b137f6e::t_f9fe4f14d6e75f 35
+  s_11842c2b137f6e::t_c84ebbadc373d5 24,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "fd58c9de4b8a645e85faf9d0fd166ece7ee1534b",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
