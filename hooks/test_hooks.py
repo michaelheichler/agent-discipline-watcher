@@ -461,16 +461,25 @@ def test_read_payload_parses_good_input():
     assert result.stdout.strip() == "7"
 
 
-def test_read_payload_fails_soft_on_malformed_input():
-    result = subprocess.run(
-        [sys.executable, "-c", "from lib.hookio import read_payload; print(read_payload())"],
-        input="{not json", text=True, capture_output=True, cwd=str(Path(__file__).parent), check=False,
-    )
-    assert result.returncode == 0
-    assert result.stdout.strip() == "{}"
-    assert result.stderr.strip().startswith("agent-discipline-watcher: unreadable hook payload")
-    assert len(result.stderr.strip().splitlines()) == 1
-    assert "Traceback" not in result.stderr
+def test_pretooluse_entry_scripts_deny_malformed_stdin() -> None:
+    for script in ("pre_write.py", "pre_commit.py"):
+        result = subprocess.run(
+            [sys.executable, script], input="not json {", text=True,
+            capture_output=True, cwd=str(Path(__file__).parent), check=False,
+        )
+        response = json.loads(result.stdout)
+        assert response["decision"] == "block", script
+        assert response["hookSpecificOutput"]["permissionDecision"] == "deny", script
+        assert response["reason"].endswith("Cause: unreadable hook payload"), script
+
+
+def test_pretooluse_entry_scripts_allow_empty_stdin() -> None:
+    for script in ("pre_write.py", "pre_commit.py"):
+        result = subprocess.run(
+            [sys.executable, script], input="", text=True,
+            capture_output=True, cwd=str(Path(__file__).parent), check=False,
+        )
+        assert json.loads(result.stdout) == {}, script
 
 
 def test_run_sh_routes_pretooluse():

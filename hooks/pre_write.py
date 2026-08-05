@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lib.baseline import changed_lines, split_committed, subtract
 from lib.config import effective_config
-from lib.hookio import advise, allow, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.protected import path_findings
 from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scanner import scan_all
@@ -64,6 +64,8 @@ def split_patch(patch: str) -> list[tuple[str, str]]:
 def run(payload: dict, config: dict | None = None) -> dict:
     """Scan a pending write, blocking rather than passing the call through when the gate itself cannot decide."""
     try:
+        if payload is PARSE_FAILURE:
+            return deny(UNDECIDABLE + "unreadable hook payload")
         return _run(payload, config)
     except Exception as exc:
         return deny(UNDECIDABLE + str(exc))

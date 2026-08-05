@@ -1,6 +1,11 @@
 """Bash policy tests: bypass routes block, reads and sandboxed work pass."""
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 import pre_bash
@@ -267,3 +272,22 @@ def test_short_bash_write_still_uses_existing_scan_path():
     result = pre_bash.run({"tool_input": {"command": "echo 'bad" + "\N{EM DASH}" + "line' > notes.txt"}})
     assert result["decision"] == "block"
     assert "banned_dash" in result["reason"]
+
+
+def test_pre_bash_entry_denies_malformed_stdin() -> None:
+    result = subprocess.run(
+        [sys.executable, "pre_bash.py"], input="not json {", text=True,
+        capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    response = json.loads(result.stdout)
+    assert response["decision"] == "block"
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert response["reason"].endswith("Cause: unreadable hook payload")
+
+
+def test_pre_bash_entry_allows_empty_stdin() -> None:
+    result = subprocess.run(
+        [sys.executable, "pre_bash.py"], input="", text=True,
+        capture_output=True, cwd=str(Path(__file__).parent), check=False,
+    )
+    assert json.loads(result.stdout) == {}

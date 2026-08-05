@@ -8,7 +8,7 @@ import time
 from pathlib import PurePosixPath
 
 from lib.config import effective_config
-from lib.hookio import advise, allow, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.protected import authorized, is_live_client_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.scanner import scan_all, scannable_text
@@ -79,6 +79,8 @@ RULES = (
 def run(payload: dict, config: dict | None = None) -> dict:
     """Judge a pending Bash command, blocking rather than passing it through when the gate itself cannot decide."""
     try:
+        if payload is PARSE_FAILURE:
+            return deny(UNDECIDABLE + "unreadable hook payload")
         return _run(payload, config)
     except Exception as exc:
         return deny(UNDECIDABLE + str(exc))
@@ -204,7 +206,7 @@ def write_findings(command: str, config: dict | None = None) -> list[dict]:
     """Scan literal shell writes, because PostToolUse never matches Bash and this content would otherwise land unread."""
     findings = []
     for path, text in write_targets(command):
-        body = scannable_text(text, config)
+        body = scannable_text(text, config or {})
         if body is None:
             continue
         for finding in scan_all(path, body, config):
@@ -263,6 +265,7 @@ def _line_writes(line: str, bodies: list[str | None]) -> list[tuple[str, str]]:
     contents = list(bodies) if bodies else _literal_contents(segments)
     if not contents or None in contents:
         return []
+    contents = [content for content in contents if content is not None]
     if len(contents) == 1:
         return [(path, contents[0]) for path in targets]
     if len(contents) == len(targets):

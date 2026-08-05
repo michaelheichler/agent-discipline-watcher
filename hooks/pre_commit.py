@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lib.baseline import strip_against
 from lib.config import effective_config
-from lib.hookio import advise, allow, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.reporting import record_findings, run_with_ledger, verdict_message
 from lib.scanner import scan_all, scannable_text
 
@@ -30,6 +30,8 @@ def run(
 ) -> dict:
     """Scan the staged tree behind a pending commit, blocking rather than letting it through when the gate cannot decide."""
     try:
+        if payload is PARSE_FAILURE:
+            return deny(UNDECIDABLE + "unreadable hook payload")
         return _run(payload, config, ledger_root, state_root)
     except Exception as exc:
         return deny(UNDECIDABLE + str(exc))
