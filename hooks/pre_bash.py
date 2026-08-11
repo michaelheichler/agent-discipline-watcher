@@ -7,6 +7,7 @@ import shlex
 import time
 from pathlib import PurePosixPath
 
+from lib import reporting
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.protected import authorized, is_live_client_path, path_findings
@@ -28,10 +29,6 @@ OVERSIZE_WRITE = (
 UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this command and blocked it rather than letting it through. "
     "Repair the gate config and retry. Cause: "
-)
-OBSERVE_PREFIX = (
-    "agent-discipline-watcher is observing these, not blocking. "
-    "Judge each one and either repair it or state why it stands.\n"
 )
 MUTATING_VERB_RE = re.compile(
     r"\b(?:tee|cp|mv|ln|rm|truncate|chmod|chown|dd|shred|unlink)\b|\bsed\s+-i", re.IGNORECASE
@@ -127,15 +124,12 @@ def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], starte
 
 
 def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
-    blocking = [finding for finding, outcome in decisions if outcome == "block"]
-    if blocking:
-        reason, _ = compact_block(blocking, cfg)
+    kind, reason = reporting.verdict_message(decisions, cfg)
+    if kind == "block":
         return deny(reason)
-    observed = [finding for finding, outcome in decisions if outcome == "would_block"]
-    if not observed:
-        return allow()
-    reason, _ = compact_block(observed, cfg)
-    return advise(OBSERVE_PREFIX + reason, "PreToolUse")
+    if kind in {"must_fix", "observe"}:
+        return advise(reason, "PreToolUse")
+    return allow()
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:

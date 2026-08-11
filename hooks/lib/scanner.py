@@ -131,6 +131,8 @@ CONTENT_STOPWORDS = frozenset({
     "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "is", "it",
     "of", "on", "or", "the", "this", "to", "with",
 })
+IDENTIFIER_ECHO_THRESHOLD = 0.75
+MIN_IDENTIFIER_CONTENT_TOKENS = 3
 IMPLICIT_BUDGET_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:ms|s|us|ns)\s+budget\b", re.IGNORECASE)
 TEMPORAL_SINCE_RE = re.compile(
     r"\bsince\s+(?:the\s+)?(?:(?:last\s+)?release\b|v(?:ersion)?\.?\s*\d|\d)",
@@ -455,7 +457,11 @@ def _identifier_overlap(name_tokens, param_tokens, text: str) -> float:
 
 
 def _identifier_echo(name_tokens, param_tokens, text: str) -> bool:
-    return _identifier_overlap(name_tokens, param_tokens, text) >= 0.6
+    content_tokens = _identifier_tokens(text)
+    ratio = _identifier_overlap(name_tokens, param_tokens, text)
+    if len(content_tokens) < MIN_IDENTIFIER_CONTENT_TOKENS and ratio < 1.0:
+        return False
+    return ratio >= IDENTIFIER_ECHO_THRESHOLD
 
 
 def _scope_identity(scope, path: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -500,7 +506,7 @@ def _comment_is_what(text: str, names, params, _config: dict) -> bool:
         return not _has_strong_why_marker(text)
     if _has_why_marker(text):
         return False
-    return _identifier_overlap(names, params, text) >= 0.6
+    return _identifier_echo(names, params, text)
 
 
 def _what_comment_rows(path: str, text: str, config: dict, tree) -> list[dict]:
@@ -581,19 +587,30 @@ def _scan_clean_code_file(path: str, text: str, config: dict, tree) -> list[dict
     return findings
 
 
-def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
-    findings: list[dict] = []
-    run: list[tuple[int, str]] = []
+def comment_runs(path: str, text: str) -> list[list[tuple[int, str]]]:
+    """Group consecutive comment lines into runs, the same grouping _flush_comment_run judges."""
     lines = text.splitlines()
-    header_end = _header_block_end(lines)
+    runs: list[list[tuple[int, str]]] = []
+    run: list[tuple[int, str]] = []
     for number, line in enumerate(lines, 1):
         body = COMMENT_RE.match(line)
         if body and body.group(1).strip() and not DIRECTIVE_COMMENT_RE.match(line.strip()):
             run.append((number, line))
             continue
-        _flush_comment_run(path, run, findings, header_end)
+        if run:
+            runs.append(run)
         run = []
-    _flush_comment_run(path, run, findings, header_end)
+    if run:
+        runs.append(run)
+    return runs
+
+
+def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
+    findings: list[dict] = []
+    lines = text.splitlines()
+    header_end = _header_block_end(lines)
+    for run in comment_runs(path, text):
+        _flush_comment_run(path, run, findings, header_end)
     return findings
 
 

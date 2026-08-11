@@ -14,6 +14,19 @@ def test_prose_cleanup_replaces_dashes_and_wordiness() -> None:
     assert result.counts["prose"] >= 2
 
 
+def test_plain_replacement_change_has_rule_action() -> None:
+    result = rewrite.rewrite_text(
+        "a.md", "It is important to note that the sky is blue.\n", {}
+    )
+
+    assert result.changes == [{
+        "line": 1,
+        "rule": "throat_clearing",
+        "status": "rewritten",
+        "action": "Start with the point.",
+    }]
+
+
 def test_cleanup_preserves_inline_code_and_code_strings() -> None:
     prose = rewrite.rewrite_text(
         "README.md", f"Use `left{BAD_DASH}right` but fix left{BAD_DASH}right.\n", {}
@@ -179,3 +192,204 @@ def test_round_trip_code_rewrite_deletes_narration_and_retains_weak_why() -> Non
     summary = rewrite.summary(result.counts)
     assert f"{result.counts['comments']} comments removed" in summary
     assert "1 WHY comments need a concrete constraint or consequence" in summary
+
+
+
+def test_docstring_only_body_is_replaced_with_pass() -> None:
+    text = 'def _f():\n    """Returns the sum."""\n'
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert '"""' not in result.text
+    assert "pass" in result.text
+    __import__("ast").parse(result.text)
+    assert any(
+        change["status"] == "removed" and "docstring" in change["rule"]
+        for change in result.changes
+    )
+
+
+def test_docstring_is_deleted_when_other_body_statements_remain() -> None:
+    text = 'def _f():\n    """Returns the sum."""\n    return 1\n'
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert '"""' not in result.text
+    assert "pass" not in result.text
+    assert "return 1" in result.text
+    __import__("ast").parse(result.text)
+
+
+def test_mixed_docstring_removes_what_and_keeps_why() -> None:
+    text = (
+        'def _f(value):\n'
+        '    """Returns the value.\n'
+        '\n'
+        '    WHY: callers require stable identity.\n'
+        '    """\n'
+        '    return value\n'
+    )
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert "Returns the value." not in result.text
+    assert "WHY: callers require stable identity." in result.text
+    __import__("ast").parse(result.text)
+    assert any(
+        change["rule"] == "what_docstring" and change["status"] == "removed"
+        for change in result.changes
+    )
+
+
+def test_same_line_docstring_is_untouched_and_module_docstring_is_deleted() -> None:
+    text = (
+        'def _helper(value): """Returns the doubled value."""\n'
+        'def public(v): return _helper(v)\n'
+    )
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert result.text == text
+    assert result.changes == []
+
+    module = '"""Narrates the module.\nStill explanatory.\n"""\n'
+    module_result = rewrite.rewrite_text("example.py", module, {})
+    assert module_result.text == ""
+    assert all(change["rule"] == "docstring_narration" for change in module_result.changes)
+
+
+def test_docstring_what_mapping_uses_parsed_escape_resolved_lines() -> None:
+    text = (
+        'def _f(value):\n'
+        '    """Alpha.\\nReturns the value.\n'
+        '    Never raise from this path.\n'
+        '    WHY: callers require stable identity.\n'
+        '    """\n'
+    )
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert "Returns the value." not in result.text
+    assert "Never raise from this path." in result.text
+    assert "WHY: callers require stable identity." in result.text
+    __import__("ast").parse(result.text)
+
+
+def test_invalid_docstring_splice_falls_back_to_original_text() -> None:
+    text = 'def _f():\n    """Returns the sum."""\n'
+    patch = __import__("unittest.mock", fromlist=["patch"]).patch
+
+    with patch.object(rewrite, "_apply_docstring_edits", return_value="def broken(:\n"):
+        result = rewrite.rewrite_text("example.py", text, {})
+
+    assert result.text == text
+    __import__("ast").parse(result.text)
+
+
+def test_prose_comment_block_deletes_every_line_and_records_each_change() -> None:
+    text = (
+        "value = 1\n"
+        "# The cache is loaded here\n"
+        "# Requests reuse the cached value\n"
+    )
+    findings = rewrite.scanner.scan_all("example.py", text, {})
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert [(row["line"], row["rule"]) for row in findings] == [(2, "prose_comment_block")]
+    assert "The cache is loaded here" not in result.text
+    assert "Requests reuse the cached value" not in result.text
+    deleted = [change for change in result.changes if change["rule"] == "prose_comment_block"]
+    assert {change["line"] for change in deleted} == {2, 3}
+    assert all(change["status"] == "removed" for change in deleted)
+
+
+def test_prose_comment_block_respects_clean_code_gates() -> None:
+    text = "# Now we load the cache\n# Requests reuse the cached value\nvalue = 1\n"
+
+    result = rewrite.rewrite_text("a.py", text, {})
+    assert result.text == "value = 1\n"
+
+    for cfg in ({"clean_code": False}, {"exempt_paths": ["*.py"]}):
+        gated = rewrite.rewrite_text("a.py", text, cfg)
+        assert gated.text == text
+        assert gated.changes == []
+
+
+def test_prose_comment_block_with_why_is_left_untouched() -> None:
+    text = (
+        "value = 1\n"
+        "# The cache is loaded here\n"
+        "# Keep this because callers require stable identity\n"
+    )
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    assert result.text == text
+    assert result.changes == []
+
+
+def test_apostrophe_substitutions_apply_to_prose_and_code_comments() -> None:
+    cases = (
+        ("README.md", "Your's report covers 1990's policy.\n"),
+        ("example.py", "# Your's report covers 1990's policy.\nvalue = 1\n"),
+    )
+
+    for path, text in cases:
+        result = rewrite.rewrite_text(path, text, {})
+        assert "Your's" not in result.text
+        assert "1990's" not in result.text
+        assert "Yours report covers 1990s policy." in result.text
+        assert {change["rule"] for change in result.changes} >= {
+            "pronoun_apostrophe", "decade_apostrophe",
+        }
+        assert all(change["status"] == "rewritten" for change in result.changes)
+
+
+def test_pronoun_apostrophe_keeps_the_s() -> None:
+    result = rewrite.rewrite_text(
+        "a.md", "The choice is your's. The fault was her's.\n", {}
+    )
+
+    assert result.text == "The choice is yours. The fault was hers.\n"
+
+
+def test_long_comment_reflows_without_losing_words() -> None:
+    words = [f"word{number}" for number in range(60)]
+    body = " ".join(words)
+    text = "    # " + body + "\nvalue = 1\n"
+    result = rewrite.rewrite_text("example.py", text, {})
+
+    comment_lines = [line for line in result.text.splitlines() if line.lstrip().startswith("#")]
+    assert len(comment_lines) > 1
+    assert {line[:len(line) - len(line.lstrip())] for line in comment_lines} == {"    "}
+    output_words = {
+        word
+        for line in comment_lines
+        for word in rewrite.scanner.WORD_RE.findall(line.split("#", 1)[1])
+    }
+    assert output_words == set(words)
+    assert any(
+        change["rule"] == "long_comment" and change["status"] == "rewritten"
+        for change in result.changes
+    )
+
+
+def test_wordless_long_comments_are_left_unsplit() -> None:
+    for marker in ("=", "*", "-"):
+        text = "# " + marker * 160 + "\nx=1\n"
+        result = rewrite.rewrite_text("a.py", text, {})
+        assert result.text == text
+
+
+def test_legacy_cleanup_counts_have_itemized_changes() -> None:
+    prose = rewrite.rewrite_text(
+        "README.md",
+        f"It is important to note that we utilize this tool {BAD_DASH} in order to move quickly.\n",
+        {},
+    )
+    round_trip = _round_trip_result()
+    comments = rewrite.rewrite_text("example.py", CODE_BODY, {})
+
+    for result in (prose, round_trip, comments):
+        assert isinstance(result.changes, list) and result.changes
+        assert all(
+            {"line", "rule", "status"}.issubset(change)
+            for change in result.changes
+        )
+        assert all(change["status"] in {"removed", "rewritten"} for change in result.changes)
+    assert prose.counts["dashes"] == sum(change["rule"] == "banned_dash" for change in prose.changes)
+    assert any(change["status"] == "removed" for change in comments.changes)

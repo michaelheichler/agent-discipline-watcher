@@ -346,8 +346,11 @@ class BatchValidationTests(unittest.TestCase):
         with patch.object(batch, "effective_config", side_effect=mutate_source):
             response = batch.run(payload, self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self.assertIsNone(response.get("decision"))
+        advisory = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+        self.assertIsInstance(advisory, str)
+        self.assertTrue(advisory.strip())
+        self.assertIn("deferred_work_comment", advisory)
         decisions = self._batch_decisions()
         self.assertTrue(decisions)
         self.assertEqual({row["session_id"] for row in decisions}, {"s1"})

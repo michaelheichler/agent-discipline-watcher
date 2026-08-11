@@ -14,8 +14,8 @@ from typing import TypeGuard, TypeVar, cast
 
 from lib import payloads, reporting
 from lib.config import effective_config, resolve_outcome
-from lib.hookio import read_payload, system_message, write_payload
-from lib.reporting import compact_block, run_with_ledger
+from lib.hookio import advise, read_payload, system_message, write_payload
+from lib.reporting import run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
 
@@ -549,11 +549,12 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str):
         duration_ms = int((time.monotonic() - started) * 1000)
         if session_id:
             _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload)
-        blocking = [finding for finding, outcome in decisions if outcome == "block"]
-        if not blocking:
-            return {}
-        reason, _ = compact_block(blocking, cfg)
-        return {"decision": "block", "reason": reason}
+        kind, reason = reporting.verdict_message(decisions, cfg)
+        if kind == "block":
+            return {"decision": "block", "reason": reason}
+        if kind == "must_fix":
+            return advise(reason, BATCH_EVENT)
+        return {}
 
     return gate
 

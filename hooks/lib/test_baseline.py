@@ -222,7 +222,7 @@ class BaselineRuntimeTests(unittest.TestCase):
     def _record(self, body: str) -> str:
         return self._record_response(body).get("decision", "allow")
 
-    def _commit_gate(self, body: str) -> str:
+    def _commit_gate_response(self, body: str) -> dict:
         import pre_commit
         self.path.write_text(body, encoding="utf-8")
         git(self.repo, "add", "-A")
@@ -230,19 +230,41 @@ class BaselineRuntimeTests(unittest.TestCase):
             "hook_event_name": "PreToolUse", "session_id": "demo", "cwd": str(self.repo),
             "tool_name": "Bash", "tool_input": {"command": "git commit -m x"},
         }
-        response = pre_commit.run(payload, self.cfg, self.cfg["ledger_root"], self.cfg["state_root"])
-        return response.get("decision", "allow")
+        return pre_commit.run(payload, self.cfg, self.cfg["ledger_root"], self.cfg["state_root"])
+
+    def _commit_gate(self, body: str) -> str:
+        return self._commit_gate_response(body).get("decision", "allow")
 
     def test_a_clean_edit_to_a_legacy_file_is_allowed(self):
         self.assertEqual(self._record(CLEAN_ADDITION), "allow")
 
-    def test_new_enforced_debt_in_the_same_legacy_file_still_blocks(self):
-        self.assertEqual(self._record(ENFORCED_DEBT), "block")
+    def test_new_enforced_debt_in_the_same_legacy_file_advises(self):
+        response = self._record_response(ENFORCED_DEBT)
+        self.assertIsNone(response.get("decision"))
+        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["systemMessage"])
 
-    def test_new_what_comment_debt_is_blocked_by_default(self):
+    def test_new_what_comment_debt_advises_by_default(self):
         response = self._record_response(EXTRA_DEBT)
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("legacy.sh:4 clean_code/what_comment", response["reason"])
+        self.assertIsNone(response.get("decision"))
+        self.assertIn("legacy.sh:4 clean_code/what_comment", response["systemMessage"])
+
+    def test_writeback_declines_when_inherited_debt_shares_file(self):
+        import record
+        first = "# " + ("TO" + "DO") + " first\nx = 1\n"
+        path = commit(self.repo, "todo.py", first)
+        updated = first + "# " + ("TO" + "DO") + " second\n"
+        path.write_text(updated, encoding="utf-8")
+        payload = {
+            "session_id": "demo", "cwd": str(self.repo), "tool_name": "Edit",
+            "tool_use_id": "t2", "tool_input": {"file_path": str(path)},
+        }
+        response = record.run(payload, self.cfg)
+        message = response["systemMessage"]
+        self.assertEqual(path.read_text(encoding="utf-8"), updated)
+        self.assertIn(":3 clean_code/deferred_work_comment", message)
+        self.assertIn("[flagged]", message)
+        self.assertIn("already carried 1 findings you did not write", message)
+        self.assertNotIn(record.WRITEBACK_LEAD, message)
 
     def test_report_mode_names_the_inherited_debt_in_the_advisory(self):
         message = self._record_response(CLEAN_ADDITION)["systemMessage"]
@@ -258,8 +280,10 @@ class BaselineRuntimeTests(unittest.TestCase):
     def test_the_commit_gate_allows_staged_legacy_debt(self):
         self.assertEqual(self._commit_gate(CLEAN_ADDITION), "allow")
 
-    def test_the_commit_gate_still_blocks_newly_staged_enforced_debt(self):
-        self.assertEqual(self._commit_gate(ENFORCED_DEBT), "block")
+    def test_the_commit_gate_advises_newly_staged_enforced_debt(self):
+        response = self._commit_gate_response(ENFORCED_DEBT)
+        self.assertIsNone(response.get("decision"))
+        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["systemMessage"])
 
 
 class RewordedFindingTests(unittest.TestCase):

@@ -18,6 +18,12 @@ def _style_advice(response: dict) -> str:
     return response.get("hookSpecificOutput", {}).get("additionalContext", "")
 
 
+def _assert_style_row(response: dict, path: str | Path, line: int, rule: str) -> None:
+    advice = _style_advice(response)
+    assert f"{path}:{line}" in advice
+    assert f"/{rule}:" in advice
+
+
 def _disable_git_background_tasks() -> None:
     config = {
         "maintenance.auto": "false",
@@ -40,7 +46,7 @@ _disable_git_background_tasks()
 def test_pre_write_advises_a_forced_pending_write():
     payload = {"tool_input": {"file_path": "a.txt", "content": "bad\u2014dash"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    assert "banned_dash at a.txt" in _style_advice(response)
+    _assert_style_row(response, "a.txt", 1, "banned_dash")
 
 
 def _edit_config(tmp_path):
@@ -55,7 +61,7 @@ def test_pre_write_maps_edit_finding_to_post_edit_line(tmp_path):
                          "new_string": "# Validate the cache entry\nvalue_49 = 49\n"}},
         _edit_config(tmp_path),
     )
-    assert f"what_comment at {target}:50" in _style_advice(response)
+    _assert_style_row(response, target, 50, "what_comment")
 
 
 def test_pre_write_edit_ignores_preexisting_debt(tmp_path):
@@ -79,8 +85,8 @@ def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):
         _edit_config(tmp_path),
     )
     advice = _style_advice(response)
-    assert f"what_comment at {target}:20" in advice
-    assert f"what_comment at {target}:81" in advice
+    _assert_style_row(response, target, 20, "what_comment")
+    _assert_style_row(response, target, 81, "what_comment")
 
 
 def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp_path):
@@ -90,7 +96,7 @@ def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp
         {"tool_input": {"file_path": str(target), "old_string": "    assert value\n", "new_string": ""}},
         _edit_config(tmp_path),
     )
-    assert f"hollow_test at {target}:1" in _style_advice(response)
+    _assert_style_row(response, target, 1, "hollow_test")
 
 
 def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp_path):
@@ -101,7 +107,7 @@ def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp
                          "new_string": "value_990 = 990\n" + "value_added = 1\n" * 10}},
         _edit_config(tmp_path),
     )
-    assert f"file_too_long at {target}:1" in _style_advice(response)
+    _assert_style_row(response, target, 1, "file_too_long")
 
 
 def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
@@ -117,26 +123,26 @@ def test_pre_write_advises_prose_semicolon_and_dash_break_in_tex():
     payload = {"tool_input": {"file_path": "notes.tex", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
     advice = _style_advice(response)
-    assert "prose_semicolon at notes.tex:1" in advice
-    assert "dash_break at notes.tex:2" in advice
+    _assert_style_row(response, "notes.tex", 1, "prose_semicolon")
+    _assert_style_row(response, "notes.tex", 2, "dash_break")
 
 
 def test_pre_write_advises_plain_english_violation():
     payload = {"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "english": True})
-    assert "utilize at a.txt:1" in _style_advice(response)
+    _assert_style_row(response, "a.txt", 1, "utilize")
 
 
 def test_pre_write_advises_clean_code_violation():
     payload = {"tool_input": {"file_path": "a.py", "content": "# " + ("TO" + "DO") + " later"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert "deferred_work_comment at a.py:1" in _style_advice(response)
+    _assert_style_row(response, "a.py", 1, "deferred_work_comment")
 
 
 def test_pre_write_advises_prose_comment_block():
     payload = {"tool_input": {"file_path": "a.py", "content": "# first line\n# second line\nprint(1)\n"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert "prose_comment_block at a.py:1" in _style_advice(response)
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
@@ -144,14 +150,14 @@ WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the c
 
 def test_pre_write_enforces_what_comment_by_default():
     response = pre_write.run(WHAT_PAYLOAD, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert "what_comment at a.py:1" in _style_advice(response)
+    _assert_style_row(response, "a.py", 1, "what_comment")
 
 
 def test_pre_write_advises_what_comment_once_the_rule_is_enforced():
     config = {"ledger_path": _ledger_path(), "clean_code": True,
               "rule_gates": {"what_comment": "enforce"}}
     response = pre_write.run(WHAT_PAYLOAD, config)
-    assert "what_comment at a.py:1" in _style_advice(response)
+    _assert_style_row(response, "a.py", 1, "what_comment")
 
 
 def test_pre_write_allows_a_why_comment():
@@ -187,8 +193,8 @@ def test_pre_write_enforces_vue_comment_contract():
     }
     response = pre_write.run(two_comments, config)
     advice = _style_advice(response)
-    assert "what_comment at component.vue:2" in advice
-    assert "prose_comment_block at component.vue:1" in advice
+    _assert_style_row(response, "component.vue", 2, "what_comment")
+    _assert_style_row(response, "component.vue", 1, "prose_comment_block")
 
     one_comment = {
         "tool_input": {
@@ -245,7 +251,7 @@ def test_pre_write_still_advises_prose_splice_in_html_body():
     content = "<p>we run it; it works</p>"
     payload = {"tool_input": {"file_path": "a.html", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    assert "prose_semicolon at a.html:1" in _style_advice(response)
+    _assert_style_row(response, "a.html", 1, "prose_semicolon")
 
 
 def test_pre_commit_blocks_staged_forced_findings(tmp_path):
@@ -254,9 +260,8 @@ def test_pre_commit_blocks_staged_forced_findings(tmp_path):
     target.write_text("# first line\n# second line\nprint(1)\n", encoding="utf-8")
     _git(tmp_path, "add", "a.py")
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": "git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
-    assert "Create one or update" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
+    assert "Create one or update" in _style_advice(response)
 
 
 def test_pre_commit_allows_git_commit_as_argument(tmp_path):
@@ -279,8 +284,7 @@ def test_pre_commit_scans_git_c_repo(tmp_path):
     target.write_text("# first line\n# second line\nprint(1)\n", encoding="utf-8")
     _git(dirty, "add", "a.py")
     response = pre_commit.run({"cwd": str(clean), "tool_input": {"command": f"git -C {dirty} commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_cd_then_git_commit(tmp_path):
@@ -294,24 +298,21 @@ def test_pre_commit_scans_cd_then_git_commit(tmp_path):
     target.write_text("# first line\n# second line\nprint(1)\n", encoding="utf-8")
     _git(dirty, "add", "a.py")
     response = pre_commit.run({"cwd": str(clean), "tool_input": {"command": f"cd {dirty} && git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_pipeline_git_commit(tmp_path):
     _git(tmp_path, "init")
     _stage_bad_python(tmp_path)
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": "printf x | git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_command_wrapper(tmp_path):
     _git(tmp_path, "init")
     _stage_bad_python(tmp_path)
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": "command git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_env_wrapper(tmp_path):
@@ -319,8 +320,7 @@ def test_pre_commit_scans_env_wrapper(tmp_path):
     _stage_bad_python(tmp_path)
     command = "env -i GIT_AUTHOR_NAME=x git commit -m test"
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": command}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_grouped_cd_commit(tmp_path):
@@ -332,8 +332,7 @@ def test_pre_commit_scans_grouped_cd_commit(tmp_path):
     _git(dirty, "init")
     _stage_bad_python(dirty)
     response = pre_commit.run({"cwd": str(clean), "tool_input": {"command": f"(cd {dirty} && git commit -m test)"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_all_commit_cwds(tmp_path):
@@ -346,8 +345,7 @@ def test_pre_commit_scans_all_commit_cwds(tmp_path):
     _stage_bad_python(dirty)
     command = f"git -C {clean} commit --allow-empty -m empty; git -C {dirty} commit -m test"
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": command}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_scans_staged_blob_when_worktree_is_clean(tmp_path):
@@ -357,8 +355,7 @@ def test_pre_commit_scans_staged_blob_when_worktree_is_clean(tmp_path):
     _git(tmp_path, "add", "a.py")
     target.write_text("print(1)\n", encoding="utf-8")
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": "git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
 def test_pre_commit_ignores_dirty_worktree_when_staged_blob_is_clean(tmp_path):
@@ -379,16 +376,18 @@ def test_pre_commit_scans_from_repo_subdirectory(tmp_path):
     target.write_text("# first line\n# second line\nprint(1)\n", encoding="utf-8")
     _git(tmp_path, "add", "a.py")
     response = pre_commit.run({"cwd": str(subdir), "tool_input": {"command": "git commit -m test"}})
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/prose_comment_block" in response["reason"]
+    _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
-def test_record_blocks_forced_post_write(tmp_path):
+def test_record_corrects_forced_post_write(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
     post_response = record.run({"tool_input": {"file_path": str(target)}})
-    assert post_response["decision"] == "block"
-    assert "clean_code/deferred_work_comment" in post_response["reason"]
+    _assert_style_row(post_response, target, 1, "deferred_work_comment")
+    assert target.read_text(encoding="utf-8") == ""
+    assert "after: '<removed>'" in _style_advice(post_response)
+
+
 
 
 def test_record_allows_clean_post_write(tmp_path):
@@ -405,7 +404,7 @@ def test_record_ignores_uncertain_punctuation(tmp_path):
     assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
 
 
-def test_run_sh_blocks_forced_posttooluse(tmp_path):
+def test_run_sh_advises_forced_posttooluse(tmp_path):
     target = tmp_path / "note.md"
     target.write_text("bad\u2014dash\n", encoding="utf-8")
     payload = json.dumps({"tool_input": {"file_path": str(target)}})
@@ -416,8 +415,11 @@ def test_run_sh_blocks_forced_posttooluse(tmp_path):
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 2
-    assert "punctuation/banned_dash" in result.stderr
+    assert result.returncode == 0
+    assert result.stderr == ""
+    _assert_style_row(json.loads(result.stdout), target, 1, "banned_dash")
+
+
 
 
 def test_session_start_injects_policy():

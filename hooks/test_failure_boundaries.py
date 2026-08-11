@@ -64,6 +64,7 @@ class RecordContinuityTests(HookTestCase):
             HostileString("/repo"),
         )
         for cwd in invalid_cwds:
+            target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
             payload: dict[str, object] = {
                 "cwd": cwd,
                 "tool_name": "Write",
@@ -73,7 +74,11 @@ class RecordContinuityTests(HookTestCase):
                 record, "effective_config", wraps=record.effective_config
             ) as effective:
                 response = record.run(payload, self.cfg)
-            self.assertEqual(response["decision"], "block")
+            self.assertIsNone(response.get("decision"))
+            advisory = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+            self.assertIsInstance(advisory, str)
+            self.assertTrue(advisory.strip())
+            self.assertIn("deferred_work_comment", advisory)
             self.assertIsNone(effective.call_args.args[1])
 
     def test_project_config_cannot_redirect_any_persistence_root(self):

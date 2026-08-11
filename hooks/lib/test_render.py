@@ -25,7 +25,7 @@ FINDINGS = [
 def test_text_groups_paths_and_carries_fix_fields() -> None:
     output = render.render_text(FINDINGS, "selected paths")
 
-    assert "Summary: block=1, would_block=1, release=0" in output
+    assert "Summary: block=1, must_fix=0, would_block=1, release=0" in output
     assert output.index("a.md") < output.index("b.py")
     assert "7: banned_dash [block] bad punctuation Fix: Rewrite it." in output
 
@@ -47,7 +47,7 @@ def test_json_round_trips_exact_version_one_schema() -> None:
     assert list(payload) == ["v", "s", "f"]
     assert payload["v"] == 1
     assert "\n  " in render.render_json(FINDINGS)
-    assert payload["s"] == {"block": 1, "would_block": 1, "release": 0}
+    assert payload["s"] == {"block": 1, "must_fix": 0, "would_block": 1, "release": 0}
     assert payload["f"] == [
         ["banned_dash", "block", "b.py", 7, "bad punctuation", "Rewrite it."],
         [

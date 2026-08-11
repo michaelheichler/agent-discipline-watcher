@@ -74,6 +74,8 @@ def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict
     kind, message = verdict_message(decisions, cfg)
     if kind == "block":
         return deny(message)
+    elif kind == "must_fix":
+        return advise(message, "PreToolUse")
     return advise(message, "PreToolUse") if kind == "observe" else allow()
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import config, render, scanner
 
-SEVERITY_ORDER = {"block": 0, "would_block": 1, "release": 2}
+SEVERITY_ORDER = {"block": 0, "must_fix": 1, "would_block": 2, "release": 3}
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 10) -> str:
@@ -255,4 +255,4 @@ def emit(args) -> int:
         print(output, end="")
     if metadata and args.format == "json":
         print(metadata, file=sys.stderr)
-    return 1 if any(item["severity"] == "block" for item in findings) else 0
+    return 1 if any(item["severity"] in ("block", "must_fix") for item in findings) else 0

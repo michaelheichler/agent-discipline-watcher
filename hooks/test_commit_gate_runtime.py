@@ -1,4 +1,4 @@
-"""Runtime proof that the commit gate reaches pre_commit.py, blocks a staged finding, and leaves ledger evidence."""
+"""Runtime proof that the commit gate reaches pre_commit.py, reports a staged finding, and leaves ledger evidence."""
 from __future__ import annotations
 
 import json
@@ -42,6 +42,23 @@ def ledger_rows(ledger_root: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def advisory_text(response: dict) -> str:
+    specific = response.get("hookSpecificOutput") or {}
+    return "\n".join(
+        value
+        for value in (response.get("systemMessage"), specific.get("additionalContext"))
+        if isinstance(value, str)
+    )
+
+
+def assert_style_advisory(testcase: unittest.TestCase, response: dict) -> None:
+    testcase.assertIsNone(response.get("decision"), response)
+    message = advisory_text(response)
+    testcase.assertTrue(message.strip(), response)
+    testcase.assertIn("notes.md", message)
+    testcase.assertIn("punctuation/banned_dash", message)
+
+
 class CommitGateRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -67,9 +84,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
     def test_staged_finding_blocks_the_commit(self):
         stage(self.repo, "notes.md", DIRTY)
         result = self.gate('git commit -m "docs(x): add notes"')
-        self.assertEqual(result.get("decision"), "block")
-        self.assertIn("notes.md", result["reason"])
-        self.assertIn("punctuation", result["reason"])
+        assert_style_advisory(self, result)
 
     def test_clean_staged_tree_is_allowed(self):
         stage(self.repo, "notes.md", CLEAN)
@@ -80,7 +95,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         self.gate('git commit -m "docs(x): add notes"')
         decisions = [row for row in ledger_rows(self.ledger) if row.get("event") == "PreCommit"]
         self.assertEqual(len(decisions), 1, ledger_rows(self.ledger))
-        self.assertEqual(decisions[0]["outcome"], "block")
+        self.assertEqual(decisions[0]["outcome"], "must_fix")
         self.assertEqual(decisions[0]["hook"], "pre_commit")
         self.assertEqual(decisions[0]["path"], "notes.md")
         self.assertEqual(decisions[0]["family"], "punctuation")
@@ -100,7 +115,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         stage(self.repo, "notes.md", DIRTY)
         payload = {"tool_input": {"command": "git commit -m msg"}, "cwd": str(self.repo)}
         result = pre_commit.run(payload, None, ledger_root=self.ledger, state_root=self.state)
-        self.assertEqual(result.get("decision"), "block")
+        assert_style_advisory(self, result)
         self.assertEqual(ledger_rows(self.ledger), [])
 
 
@@ -132,10 +147,10 @@ class CommitCommandFormTests(unittest.TestCase):
         ]
         for command in forms:
             with self.subTest(command=command):
-                self.assertEqual(self.gate(command).get("decision"), "block", command)
+                assert_style_advisory(self, self.gate(command))
 
     def test_repo_scoped_flag_reaches_the_gate(self):
-        self.assertEqual(self.gate(f"git -C {self.repo} commit -m msg").get("decision"), "block")
+        assert_style_advisory(self, self.gate(f"git -C {self.repo} commit -m msg"))
 
     def test_repo_redirecting_flags_resolve_to_the_named_work_tree(self):
         elsewhere = self.root / "elsewhere"
@@ -155,11 +170,10 @@ class CommitCommandFormTests(unittest.TestCase):
                 result = pre_commit.run(
                     payload, None, ledger_root=self.root / "l2", state_root=self.root / "s2"
                 )
-                self.assertEqual(result.get("decision"), "block", command)
-                self.assertIn("notes.md", result["reason"])
+                assert_style_advisory(self, result)
 
     def test_config_flag_consumes_its_value_without_moving_cwd(self):
-        self.assertEqual(self.gate("git -c core.hooksPath=/dev/null commit -m msg").get("decision"), "block")
+        assert_style_advisory(self, self.gate("git -c core.hooksPath=/dev/null commit -m msg"))
 
     def test_non_commit_commands_are_ignored(self):
         for command in ["git log -n 5", "git status", "git commit-tree HEAD", "ls -la", "git push"]:
@@ -190,9 +204,8 @@ class CommitGateDispatchTests(unittest.TestCase):
             capture_output=True, check=False, env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        decision = json.loads(result.stdout)
-        self.assertEqual(decision.get("decision"), "block")
-        self.assertIn("notes.md", decision["reason"])
+        response = json.loads(result.stdout)
+        assert_style_advisory(self, response)
 
 
 if __name__ == "__main__":

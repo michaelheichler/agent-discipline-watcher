@@ -1,4 +1,9 @@
-"""The edit gate, the post-write gate, and the commit gate must read one gate state, or observe means nothing."""
+"""All gates must preserve the nonblocking policy for style findings.
+
+Enforcement means deterministic pre-write cleanup where possible, followed by
+itemized ``must_fix`` advisories for anything that remains. Only security and
+self-protection rules may hard-block a tool call.
+"""
 from __future__ import annotations
 
 import json
@@ -33,7 +38,11 @@ def make_repo(root: Path) -> Path:
 
 
 def verdict_class(response: dict) -> str:
-    """Reduce either hook's response shape to block, advise, or silent, since the shapes differ but the verdict must not."""
+    """Reduce either hook response shape to a shared verdict label.
+
+The shapes differ, but style findings must remain advisory across gates; only
+security/self-protection findings may produce ``block``.
+"""
     if response.get("decision") == "block":
         return "block"
     return "advise" if response.get("systemMessage") else "silent"
@@ -72,10 +81,10 @@ class VerdictParityTests(unittest.TestCase):
             ("silent", "advise"),
         )
 
-    def test_an_enforced_rule_is_cleaned_pre_write_and_blocks_post_write(self):
+    def test_an_enforced_rule_is_cleaned_pre_write_and_advises_post_write(self):
         self.assertEqual(
             self._both(OBSERVED, {"rule_gates": {"what_comment": "enforce"}}),
-            ("silent", "block"),
+            ("silent", "advise"),
         )
 
     def test_a_rule_switched_off_is_silent_in_both_gates(self):
@@ -84,15 +93,20 @@ class VerdictParityTests(unittest.TestCase):
             ("silent", "silent"),
         )
 
-    def test_an_enforced_family_is_cleaned_pre_write_and_blocks_post_write(self):
-        self.assertEqual(self._both(ENFORCED, {}), ("silent", "block"))
+    def test_an_enforced_family_is_cleaned_pre_write_and_advises_post_write(self):
+        self.assertEqual(self._both(ENFORCED, {}), ("silent", "advise"))
 
-    def test_the_shipped_default_cleans_what_comment_pre_write_and_blocks_post_write(self):
-        self.assertEqual(self._both(OBSERVED, {}), ("silent", "block"))
+    def test_the_shipped_default_cleans_what_comment_pre_write_and_advises_post_write(self):
+        self.assertEqual(self._both(OBSERVED, {}), ("silent", "advise"))
 
 
 class DefaultBaselineParityTests(unittest.TestCase):
-    """Under the shipped baseline the three gates must agree on a legacy file, which pinning baseline none never proves."""
+    """The shipped baseline keeps inherited style debt advisory across all gates.
+
+Write-back may leave the commit gate silent once a file on disk is clean, but
+must decline to touch a file that mixes inherited and new debt; new debt that
+remains on disk must continue to advise at commit time.
+"""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
@@ -129,7 +143,7 @@ class DefaultBaselineParityTests(unittest.TestCase):
         )
         return verdict_class(written), verdict_class(recorded), verdict_class(committed)
 
-    def test_inherited_debt_blocks_in_no_gate(self):
+    def test_inherited_debt_is_advisory_before_commit_and_silent_at_commit(self):
         self.assertEqual(self._three(ENFORCED + "y = 2\n"), ("advise", "advise", "silent"))
 
     def test_the_edit_gate_names_the_debt_it_did_not_write(self):
@@ -141,10 +155,10 @@ class DefaultBaselineParityTests(unittest.TestCase):
         self.assertIn("already carried 1 findings", response["systemMessage"])
         self.assertIn("clean_code/deferred_work_comment", response["systemMessage"])
 
-    def test_debt_the_write_adds_still_blocks_in_every_gate(self):
+    def test_new_debt_stays_advisory_when_sharing_a_file_with_inherited_debt(self):
         self.assertEqual(
             self._three(ENFORCED + "# " + ("TO" + "DO") + " second\n"),
-            ("advise", "block", "block"),
+            ("advise", "advise", "advise"),
         )
 
     def test_an_edit_fragment_answers_for_its_own_text(self):
@@ -165,7 +179,11 @@ class DefaultBaselineParityTests(unittest.TestCase):
 
 
 class RecordExitCodeTests(unittest.TestCase):
-    """Exit status is the only thing the runtime reads, so the block and advise paths are proved through the process."""
+    """Prove process behavior for style findings and the block-only exit path.
+
+A ``must_fix`` advisory exits successfully and reports on stdout; only a
+security/self-protection ``block`` should exit 2 and write to stderr.
+"""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
@@ -183,15 +201,17 @@ class RecordExitCodeTests(unittest.TestCase):
             capture_output=True, check=False, cwd=str(HOOKS),
         )
 
-    def test_an_enforced_finding_exits_two_on_stderr(self):
+    def test_an_enforced_finding_exits_zero_with_advisory_stdout(self):
         result = self._run(ENFORCED)
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("clean_code/deferred_work_comment", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("clean_code/deferred_work_comment", result.stdout)
+        self.assertEqual(result.stderr, "")
 
-    def test_default_what_comment_exits_two_on_stderr(self):
+    def test_default_what_comment_exits_zero_with_advisory_stdout(self):
         result = self._run(OBSERVED)
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("clean_code/what_comment", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("clean_code/what_comment", result.stdout)
+        self.assertEqual(result.stderr, "")
 
     def test_a_clean_file_exits_zero_with_no_advisory(self):
         result = self._run("x = 1\n")
@@ -221,17 +241,17 @@ class CommitGateStateTests(unittest.TestCase):
     def _rows(self) -> list[dict]:
         return reporting._read_jsonl(reporting.LEDGER_FILENAME, self.ledger)
 
-    def test_an_enforced_finding_blocks_the_commit(self):
+    def test_an_enforced_finding_advises_on_the_commit(self):
         config = {"rule_gates": {"what_comment": "off"}}
-        self.assertEqual(verdict_class(self._gate(ENFORCED, config)), "block")
+        self.assertEqual(verdict_class(self._gate(ENFORCED, config)), "advise")
 
-    def test_a_blocked_commit_still_writes_its_precommit_row(self):
+    def test_an_advised_commit_still_writes_its_precommit_row(self):
         self._gate(ENFORCED, {"rule_gates": {"what_comment": "off"}})
         rows = [row for row in self._rows() if row.get("event") == "PreCommit"]
-        blocked = [row for row in rows if row["outcome"] == "block"]
-        self.assertEqual([row["rule"] for row in blocked], ["deferred_work_comment"])
-        self.assertEqual(blocked[0]["hook"], "pre_commit")
-        self.assertEqual(blocked[0]["path"], "a.py")
+        must_fix = [row for row in rows if row["outcome"] == "must_fix"]
+        self.assertEqual([row["rule"] for row in must_fix], ["deferred_work_comment"])
+        self.assertEqual(must_fix[0]["hook"], "pre_commit")
+        self.assertEqual(must_fix[0]["path"], "a.py")
 
     def test_an_observed_finding_advises_instead_of_blocking(self):
         config = {"rule_gates": {"what_comment": "observe"}}
@@ -268,27 +288,26 @@ class CommitMessageScanTests(unittest.TestCase):
 
     def test_a_short_flag_message_is_scanned(self):
         response = self._gate('git commit -m "the tests now pass -- finally"')
-        self.assertEqual(response.get("decision"), "block")
-        self.assertIn("commit_message.md", response["reason"])
-        self.assertIn("punctuation/", response["reason"])
+        self.assertEqual(verdict_class(response), "advise")
+        self.assertIn("commit_message.md", response["systemMessage"])
+        self.assertIn("punctuation/", response["systemMessage"])
 
     def test_an_attached_short_flag_value_is_scanned(self):
-        self.assertEqual(self._gate('git commit -m"we ship it; it works"').get("decision"), "block")
+        response = self._gate('git commit -m"we ship it; it works"')
+        self.assertEqual(verdict_class(response), "advise")
 
     def test_a_long_flag_message_is_scanned(self):
-        self.assertEqual(
-            self._gate('git commit --message "we ship it; it works"').get("decision"), "block"
-        )
+        response = self._gate('git commit --message "we ship it; it works"')
+        self.assertEqual(verdict_class(response), "advise")
 
     def test_an_inline_long_flag_message_is_scanned(self):
-        self.assertEqual(
-            self._gate('git commit --message="we ship it; it works"').get("decision"), "block"
-        )
+        response = self._gate('git commit --message="we ship it; it works"')
+        self.assertEqual(verdict_class(response), "advise")
 
     def test_a_later_repeated_message_is_scanned_too(self):
         response = self._gate('git commit -m "clean subject" -m "we ship it; it works"')
-        self.assertEqual(response.get("decision"), "block")
-        self.assertIn("commit_message.md:3", response["reason"])
+        self.assertEqual(verdict_class(response), "advise")
+        self.assertIn("commit_message.md:3", response["systemMessage"])
 
     def test_a_clean_message_passes(self):
         self.assertEqual(self._gate('git commit -m "add the parity tests"'), {})

@@ -3,7 +3,7 @@
 import json
 from collections import Counter
 
-SEVERITIES = ("block", "would_block", "release")
+SEVERITIES = ("block", "must_fix", "would_block", "release")
 
 
 def _groups(findings: list[dict]) -> dict[str, list[dict]]:

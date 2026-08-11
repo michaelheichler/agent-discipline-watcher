@@ -186,6 +186,19 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
             capture_output=True, check=False, cwd=str(self.root),
         )
 
+    def _assert_deferred_work_advisory(self, result: subprocess.CompletedProcess) -> None:
+        self.assertEqual(result.returncode, 0, result.stderr)
+        response = json.loads(result.stdout)
+        self.assertIsNone(response.get("decision"), response)
+        specific = response.get("hookSpecificOutput") or {}
+        advisory = "\n".join(
+            value
+            for value in (response.get("systemMessage"), specific.get("additionalContext"))
+            if isinstance(value, str)
+        )
+        self.assertTrue(advisory.strip(), response)
+        self.assertIn("deferred_work_comment", advisory)
+
     def test_no_entry_point_dies_on_a_malformed_gate_map(self):
         for malformed in MALFORMED:
             (self.root / CONFIG_NAME).write_text(json.dumps(malformed), encoding="utf-8")
@@ -200,12 +213,13 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
     def test_a_malformed_gate_map_does_not_release_the_finding(self):
         for malformed in MALFORMED:
             (self.root / CONFIG_NAME).write_text(json.dumps(malformed), encoding="utf-8")
+            self.target.write_text(MARKER, encoding="utf-8")
             with self.subTest(config=malformed):
-                self.assertEqual(self._run("record.py").returncode, 2)
+                self._assert_deferred_work_advisory(self._run("record.py"))
 
     def test_unparseable_config_text_falls_back_to_the_enforcing_defaults(self):
         (self.root / CONFIG_NAME).write_text("{not json", encoding="utf-8")
-        self.assertEqual(self._run("record.py").returncode, 2)
+        self._assert_deferred_work_advisory(self._run("record.py"))
 
 
 class ExemptionDegradeTests(unittest.TestCase):

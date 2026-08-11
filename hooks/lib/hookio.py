@@ -16,7 +16,7 @@ Code: intent lives in names, structure, and tests. Delete any comment that narra
 
 Stance: be skeptical and direct. Verify changeable facts before claiming them. Challenge weak assumptions and overbuilt solutions. Do not open with praise, agreement, or other empty validators.
 
-Style findings are cleaned automatically or reported as advice; security findings still block the write. Fix the named file or reply text, then rerun the relevant check. Keep the fix narrow: rewrite the offending sentence, comment, test, or function rather than widening the change.
+Style findings are cleaned automatically or reported as an itemized per-line checklist. Treat every [removed], [rewritten], and [flagged] row as a separate line to verify, not a summary count; each names the file, line, rule, and action. Security findings still block the write. Fix the named file or reply text, then rerun the relevant check. Keep the fix narrow: rewrite the offending sentence, comment, test, or function rather than widening the change.
 
 Do not end a turn while a finding remains in your own changes. Do not silence a hook, delete hook state, or edit configuration to get past a finding. Do not add a Craftsman suppression marker. Do not broaden the task into style cleanup outside the requested scope."""
 

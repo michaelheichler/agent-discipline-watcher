@@ -500,3 +500,101 @@ class PreGateEvidenceTests(unittest.TestCase):
         import pre_bash
         pre_bash.run({"session_id": "probe", "tool_input": {"command": "ls"}}, dict(self.cfg))
         self.assertTrue([row for row in self._rows() if row.get("hook") == "pre_bash" and row.get("event") == "observed"])
+
+
+
+def test_verdict_message_must_fix_wins_over_would_block() -> None:
+    must_fix = {
+        "path": "a.py", "family": "clean_code", "rule": "what_comment",
+        "line": 1, "action": "fix", "snippet": "x",
+    }
+    observed = {
+        "path": "b.py", "family": "english", "rule": "utilize",
+        "line": 2, "action": "fix", "snippet": "x",
+    }
+
+    kind, message = reporting.verdict_message(
+        [(observed, "would_block"), (must_fix, "must_fix")], {}
+    )
+
+    assert kind == "must_fix"
+    assert message.startswith(reporting.MUST_FIX_LEAD)
+    assert "a.py:1 clean_code/what_comment" in message
+    assert "b.py:2 english/utilize" not in message
+
+
+def test_verdict_message_with_only_would_block_still_observes() -> None:
+    finding = {
+        "path": "a.py", "family": "clean_code", "rule": "what_comment",
+        "line": 1, "action": "fix", "snippet": "x",
+    }
+
+    kind, message = reporting.verdict_message([(finding, "would_block")], {})
+
+    assert kind == "observe"
+    assert message.startswith(reporting.OBSERVE_LEAD)
+
+
+def test_verdict_message_block_still_wins_over_every_other_tier() -> None:
+    block = {
+        "path": "blocked.py", "family": "protected", "rule": "live_surface",
+        "line": 1, "action": "deny", "snippet": "x",
+    }
+    must_fix = {
+        "path": "must-fix.py", "family": "clean_code", "rule": "what_comment",
+        "line": 2, "action": "fix", "snippet": "x",
+    }
+    observed = {
+        "path": "observed.py", "family": "english", "rule": "utilize",
+        "line": 3, "action": "fix", "snippet": "x",
+    }
+
+    kind, message = reporting.verdict_message(
+        [(observed, "would_block"), (must_fix, "must_fix"), (block, "block")], {}
+    )
+
+    assert kind == "block"
+    assert message.startswith(reporting.BLOCK_LEAD)
+    assert "blocked.py:1 protected/live_surface" in message
+    assert "must-fix.py:2 clean_code/what_comment" not in message
+
+
+def test_format_row_status_prefix_is_optional() -> None:
+    finding = {
+        "path": "a.py", "family": "clean_code", "rule": "what_comment",
+        "line": 4, "action": "fix",
+    }
+
+    tagged = reporting.format_row({**finding, "status": "removed"})
+    untagged = reporting.format_row(finding)
+
+    assert tagged.startswith("[removed] ")
+    assert "a.py:4 clean_code/what_comment: fix" in tagged
+    assert not untagged.startswith("[")
+    assert untagged == "a.py:4 clean_code/what_comment: fix"
+
+
+def test_correction_notice_renders_changes_and_tags_unresolved_rows() -> None:
+    changes = [
+        {
+            "path": "a.py", "family": "clean_code", "rule": "utilize",
+            "line": 1, "status": "rewritten", "action": "use", "snippet": "x",
+        },
+    ]
+    flagged = [
+        {
+            "path": "b.py", "family": "english", "rule": "what_comment",
+            "line": 2, "status": "removed", "action": "delete", "snippet": "x",
+        },
+        {
+            "path": "c.py", "family": "clean_code", "rule": "weak_why_comment",
+            "line": 3, "action": "explain", "snippet": "x",
+        },
+    ]
+
+    message = reporting.correction_notice(changes, flagged, {})
+
+    assert message.startswith(reporting.MUST_FIX_LEAD)
+    assert "[rewritten] a.py:1 clean_code/utilize" in message
+    assert "[removed] b.py:2 english/what_comment" in message
+    assert "[flagged] c.py:3 clean_code/weak_why_comment" in message

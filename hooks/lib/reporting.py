@@ -57,7 +57,7 @@ def _comment_prototypes() -> list[dict]:
     return _WHY_PROTOTYPES + _what_prototypes()
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
-OUTCOMES = ("block", "inject", "would_block", "no_edits", "release")
+OUTCOMES = ("block", "must_fix", "inject", "would_block", "no_edits", "release")
 
 
 def write_full_report(findings: list[dict]) -> str:
@@ -70,6 +70,10 @@ def write_full_report(findings: list[dict]) -> str:
 
 
 BLOCK_LEAD = "agent-discipline-watcher blocked findings:"
+MUST_FIX_LEAD = (
+    "agent-discipline-watcher changed or flagged the following. This is not a suggestion: "
+    "re-check every line below before you consider this edit done."
+)
 OBSERVE_LEAD = (
     "agent-discipline-watcher is observing these, not blocking. "
     "Judge each one and either repair it or state why it stands."
@@ -99,10 +103,22 @@ def verdict_message(
     blocking = [finding for finding, outcome in decisions if outcome == "block"]
     if blocking:
         return "block", compact_block(blocking, config)[0]
+    must_fix = [finding for finding, outcome in decisions if outcome == "must_fix"]
+    if must_fix:
+        return "must_fix", compact_block(must_fix, config, lead=MUST_FIX_LEAD)[0]
     observed = [finding for finding, outcome in decisions if outcome == "would_block"]
     if not observed:
         return "release", ""
     return "observe", compact_block(observed, config, lead=OBSERVE_LEAD)[0]
+
+
+def correction_notice(changes: list[dict], flagged: list[dict], config=None) -> str:
+    """Render changed and unresolved findings as one forceful, itemized correction checklist."""
+    tagged_flagged = [
+        item if item.get("status") else {**item, "status": "flagged"}
+        for item in flagged
+    ]
+    return compact_block([*changes, *tagged_flagged], config, lead=MUST_FIX_LEAD)[0]
 
 
 def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
@@ -118,8 +134,10 @@ def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
 
 def format_row(item: dict) -> str:
     path = item.get("path") or item.get("file") or "<pending>"
+    status = item.get("status")
+    prefix = f"[{status}] " if status else ""
     return (
-        f"{path}:{item.get('line')} "
+        f"{prefix}{path}:{item.get('line')} "
         f"{item.get('family')}/{item.get('rule')}: "
         f"{item.get('action')}"
     )

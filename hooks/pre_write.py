@@ -7,8 +7,9 @@ from pathlib import Path
 
 from lib import payloads
 import lib.rewrite as rewrite
+import lib.reporting as reporting
 from lib.baseline import changed_lines, split_committed, subtract
-from lib.config import ALWAYS_BLOCKING_RULES, effective_config
+from lib.config import ALWAYS_BLOCKING_RULES, effective_config, resolve_outcome
 from lib.hookio import PARSE_FAILURE, allow, context, deny, read_payload, write_payload
 from lib.protected import path_findings
 from lib.reporting import (
@@ -125,16 +126,6 @@ def _unique_findings(findings: list[dict]) -> list[dict]:
     return result
 
 
-def _advice(findings: list[dict]) -> str:
-    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
-    rows = [
-        f"{row.get('rule')} at {row.get('path', '<pending>')}:{row.get('line', 0)}"
-        for row in style[:3]
-    ]
-    suffix = f" and {len(style) - 3} more" if len(style) > 3 else ""
-    return "Remaining style advice: " + ", ".join(rows) + suffix + "." if rows else ""
-
-
 def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float):
     return record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_write",
@@ -163,8 +154,38 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if security:
         _, message = verdict_message(security, cfg)
         return deny(message)
-    messages = [rewrite.summary(rewritten.counts) if valid else "Automatic cleanup was skipped because it would invalidate Python syntax."]
-    messages.append(_advice(findings))
+
+    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
+    unresolved = [
+        {**row, "path": path}
+        for row in rewritten.unresolved
+        if row.get("rule") not in ALWAYS_BLOCKING_RULES
+    ]
+    must_fix_ids = {
+        id(row) for row, outcome in decisions
+        if outcome == "must_fix" and row.get("rule") not in ALWAYS_BLOCKING_RULES
+    }
+    flagged = [row for row in style if id(row) in must_fix_ids]
+    if not flagged:
+        flagged = [row for row in unresolved if resolve_outcome(row, cfg) == "must_fix"]
+    families = {
+        str(row.get("rule") or ""): str(row.get("family") or "")
+        for row in [*original, *current]
+    }
+    changes = [
+        {
+            **change,
+            "path": path,
+            "family": families.get(str(change.get("rule") or ""), ""),
+        }
+        for change in rewritten.changes
+    ]
+    if not valid:
+        messages = ["Automatic cleanup was skipped because it would invalidate Python syntax."]
+    elif changes or flagged:
+        messages = [reporting.correction_notice(changes, flagged, cfg)]
+    else:
+        messages = [rewrite.summary(rewritten.counts)]
     joined = "\n".join(message for message in messages if message)
     _emit_tool_use_report(payload, path, findings, rewritten.counts)
     return _response(joined, inherited_advice(inherited, cfg), rewritten.changed and valid, effective)

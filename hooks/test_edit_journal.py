@@ -73,7 +73,8 @@ class EditJournalTests(unittest.TestCase):
             "tool_input": {"file_path": str(target)},
         }
         response = record.run(payload, self.cfg)
-        self.assertEqual(response["decision"], "block")
+        self.assertIsNone(response.get("decision"))
+        self.assertIn("clean_code/deferred_work_comment", response["systemMessage"])
         self.assertEqual(len(self._journal_rows()), 1)
 
     def test_an_observed_finding_advises_and_is_recorded_as_would_block(self):
@@ -94,7 +95,7 @@ class EditJournalTests(unittest.TestCase):
                          [("what_comment", "would_block")])
         self.assertEqual(decisions[0]["tool_use_id"], "toolu_2")
 
-    def test_a_blocked_finding_is_recorded_as_block(self):
+    def test_a_must_fix_finding_is_recorded_as_must_fix(self):
         target = self.root / "a.py"
         target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
         payload = {
@@ -107,7 +108,7 @@ class EditJournalTests(unittest.TestCase):
             row["rule"]: row["outcome"]
             for row in self._ledger_rows() if row["event"] == "PostToolUse"
         }
-        self.assertEqual(outcomes["deferred_work_comment"], "block")
+        self.assertEqual(outcomes["deferred_work_comment"], "must_fix")
 
     def test_a_clean_edit_records_no_decision_row(self):
         target = self.root / "a.py"
@@ -191,6 +192,22 @@ class EditJournalTests(unittest.TestCase):
         record.run(payload, self.cfg)
         self.assertEqual(self._journal_rows()[0]["turn_id"], "turn-7")
         self.assertEqual(self._heartbeat_rows()[0]["turn_id"], "turn-7")
+
+    def test_non_utf8_writeback_is_declined_without_corrupting_original_bytes(self):
+        target = self.root / "latin1.py"
+        original = b"x = 1  # caf\xe9 latin1 byte\n# " + b"TO" + b"DO later\n"
+        target.write_bytes(original)
+        payload = {
+            "session_id": "s1",
+            "cwd": str(self.root),
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        response = record.run(payload, self.cfg)
+        message = response.get("systemMessage", "")
+        self.assertEqual(target.read_bytes(), original)
+        self.assertIn("deferred_work_comment", message)
+        self.assertNotIn(record.WRITEBACK_LEAD, message)
 
 
 if __name__ == "__main__":

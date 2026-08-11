@@ -107,8 +107,10 @@ def test_self_protection_still_blocks_and_takes_precedence():
 
 def test_content_finding_blocks_through_the_hook_contract():
     result = pre_bash.run({"tool_input": {"command": f"echo '{PROSE}' > out.md"}})
-    assert result["decision"] == "block"
-    assert "inflated_diction" in result["reason"]
+    assert result.get("decision") is None
+    advisory = result.get("hookSpecificOutput", {}).get("additionalContext", "")
+    assert isinstance(advisory, str) and advisory.strip()
+    assert "inflated_diction" in advisory
 
 
 def test_observed_family_reports_without_blocking():

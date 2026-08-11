@@ -73,13 +73,23 @@ class BatchGateTests(unittest.TestCase):
     def _batch_decisions(self) -> list[dict]:
         return [row for row in self._rows() if row.get("event") == "PostToolBatch"]
 
+    def _assert_advisory(self, response: dict, rule: str) -> str:
+        self.assertIsNone(response.get("decision"))
+        output = response.get("hookSpecificOutput", {})
+        self.assertIsInstance(output, dict)
+        context = output.get("additionalContext", "")
+        self.assertIsInstance(context, str)
+        self.assertTrue(context.strip())
+        self.assertIn(rule, context)
+        return context
+
     def _duplicate_text(self) -> str:
         return "def duplicated(value):\n    total = value + 1\n    return total\n" * 6
 
     def test_matching_ids_dedupe_only_canonical_per_call_findings(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
         call = self._call(path, "tool-1")
-        self.assertEqual(self._record_call(call)["decision"], "block")
+        self._assert_advisory(self._record_call(call), "deferred_work_comment")
 
         response = batch.run(self._payload([call]), self.cfg)
 
@@ -93,10 +103,10 @@ class BatchGateTests(unittest.TestCase):
         self._record_call(call)
         session_state.write_state("s1", {"turn_id": "turn-4"}, self.state_root)
 
+        path.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
         response = batch.run(self._payload([call]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_current_turn_row_suppresses_current_finding(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -109,20 +119,20 @@ class BatchGateTests(unittest.TestCase):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
         call = self._call(path, "tool-1")
         self._record_call(call, session_id="other")
+        path.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
 
         response = batch.run(self._payload([call]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_unrelated_tool_id_never_suppresses_finding(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
         self._record_call(self._call(path, "other-id"))
+        path.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
 
         response = batch.run(self._payload([self._call(path, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_matching_id_for_another_path_never_suppresses_finding(self):
         bad = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -131,7 +141,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([self._call(bad, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_same_session_row_from_another_turn_never_suppresses(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -149,7 +159,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([self._call(path, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_missing_id_for_one_call_forces_cross_file_only_mode(self):
         bad = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -173,8 +183,7 @@ class BatchGateTests(unittest.TestCase):
             self.cfg,
         )
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("duplicate_file_content", response["reason"])
+        self._assert_advisory(response, "duplicate_file_content")
 
     def test_duplicate_ids_force_cross_file_only_mode(self):
         bad = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -213,10 +222,11 @@ class BatchGateTests(unittest.TestCase):
             if row.get("session_id") in {"single", "repeated"}
         ]
 
-        self.assertEqual(single["decision"], repeated["decision"])
+        single_context = self._assert_advisory(single, "deferred_work_comment")
+        repeated_context = self._assert_advisory(repeated, "deferred_work_comment")
         self.assertEqual(
-            single["reason"].split("\nFull report:", 1)[0],
-            repeated["reason"].split("\nFull report:", 1)[0],
+            single_context.split("\nFull report:", 1)[0],
+            repeated_context.split("\nFull report:", 1)[0],
         )
         self.assertEqual(
             [item[1:] for item in projections if item[0] == "single"],
@@ -352,8 +362,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([call, duplicate]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
         self.assertNotIn(
             batch.DEGRADED_RULE, {row["rule"] for row in self._batch_decisions()}
         )
@@ -373,8 +382,7 @@ class BatchGateTests(unittest.TestCase):
         shared_call["tool_input"].update({"left": shared, "right": shared})
         response = batch.run(self._payload([shared_call, dict(shared_call)]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
         self.assertNotEqual(self._batch_decisions()[-1]["rule"], batch.DEGRADED_RULE)
 
     def test_compact_dag_has_linear_work_and_alias_insensitive_equality(self):
@@ -405,7 +413,7 @@ class BatchGateTests(unittest.TestCase):
         with patch.object(batch, "_canonical_atom", side_effect=count_atom):
             response = batch.run(self._payload([first, second]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
+        self._assert_advisory(response, "deferred_work_comment")
         self.assertNotIn(
             batch.DEGRADED_RULE, {row["rule"] for row in self._batch_decisions()}
         )
@@ -560,8 +568,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = self._record_call(self._call(path, "tool-1"))
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_reordering_calls_does_not_change_findings(self):
         left = self._write("left.py", self._duplicate_text())
@@ -587,7 +594,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([self._call(path, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_no_session_id_uses_cross_file_only_mode_without_ledger(self):
         bad = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -624,8 +631,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([self._call(path, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_normalized_ledger_alias_never_suppresses_raw_path(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
@@ -645,8 +651,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload([self._call(raw_path, "tool-1")]), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("deferred_work_comment", response["reason"])
+        self._assert_advisory(response, "deferred_work_comment")
 
     def test_cross_file_finding_is_never_suppressed_by_matching_rows(self):
         left = self._write("left.py", self._duplicate_text())
@@ -657,8 +662,7 @@ class BatchGateTests(unittest.TestCase):
 
         response = batch.run(self._payload(calls), self.cfg)
 
-        self.assertEqual(response["decision"], "block")
-        self.assertIn("duplicate_file_content", response["reason"])
+        self._assert_advisory(response, "duplicate_file_content")
 
     def test_symlink_aliases_do_not_trigger_duplicate_file_content(self):
         target = self._write("target.py", self._duplicate_text())
@@ -721,7 +725,7 @@ class BatchGateTests(unittest.TestCase):
         )
 
     def test_duplicate_content_requires_200_nonspace_characters(self):
-        for size, blocked in ((199, False), (200, True)):
+        for size, should_report in ((199, False), (200, True)):
             with self.subTest(size=size):
                 session_id = f"boundary-{size}"
                 session_state.write_state(
@@ -739,9 +743,10 @@ class BatchGateTests(unittest.TestCase):
                     self.cfg,
                 )
 
-                self.assertEqual(response.get("decision") == "block", blocked)
-                if blocked:
-                    self.assertIn("duplicate_file_content", response["reason"])
+                if should_report:
+                    self._assert_advisory(response, "duplicate_file_content")
+                else:
+                    self.assertEqual(response, {})
 
     def test_disappearance_between_stat_and_read_is_harmless(self):
         path = self._write("vanishing.py", self._duplicate_text())
@@ -841,8 +846,7 @@ class BatchGateTests(unittest.TestCase):
             )
 
         self.assertEqual(len(mutations), 2)
-        self.assertEqual(mutant["decision"], "block")
-        self.assertIn("duplicate_file_content", mutant["reason"])
+        self._assert_advisory(mutant, "duplicate_file_content")
 
     def test_observe_records_cross_file_would_block_without_blocking(self):
         left = self._write("left.py", self._duplicate_text())
