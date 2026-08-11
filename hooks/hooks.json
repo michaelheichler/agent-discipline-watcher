@@ -33,17 +33,6 @@
             "timeout": 30
           }
         ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "agent",
-            "model": "haiku",
-            "timeout": 45,
-            "prompt": "Agent Discipline Watcher pre-write correction (experimental). A separate Haiku call, independent of the deterministic pre_tool.py rewrite hook that also runs on this event. Scope: only correct prose or comment phrasing that needs real content knowledge and that a deterministic regex cannot safely fix, such as a dead-metaphor idiom like smoking gun, inflated diction like a testament to, a vague quantity like a wide variety of, a there is X that construction, or awkward but recoverable prose or docstring phrasing. Never attempt a hollow test with no assertion, a fake assertion is worse than an honest gap. Never attempt an over-long function or file, that is an unverifiable structural rewrite risk. Never attempt anything you are not highly confident about. Do not alter code semantics. Touch nothing outside the specific flagged phrase or sentence. Return no updatedInput at all unless you are highly confident the rewrite is a strict improvement that preserves the original meaning. On any uncertainty, timeout risk, or missing context, do nothing: no updatedInput, no denial, no block. You have no authority to deny or block a write, this tier is purely additive to whatever the deterministic hook already decided. Respond with hookSpecificOutput containing hookEventName PreToolUse, additionalContext as a short string, and updatedInput only when you are making a change."
-          }
-        ]
       }
     ],
     "PostToolUse": [
