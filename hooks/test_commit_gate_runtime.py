@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ RUN_SH = ROOT / "hooks" / "run.sh"
 # Built from the code point because writing the character would trip the punctuation family on this file.
 DIRTY = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation family blocks.\n"
 CLEAN = "This sentence is plain and blocks nothing.\n"
+DASH = chr(0x2014)
 
 
 def git(repo: Path, *args: str) -> None:
@@ -117,6 +119,104 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = pre_commit.run(payload, None, ledger_root=self.ledger, state_root=self.state)
         assert_style_advisory(self, result)
         self.assertEqual(ledger_rows(self.ledger), [])
+
+    def test_commit_message_rewrite_returns_updated_command(self):
+        command = 'git commit -m "add' + DASH + 'notes; it\'s 1990\'s"'
+        result = self.gate(command)
+        specific = result["hookSpecificOutput"]
+        updated = specific["updatedInput"]
+
+        self.assertNotEqual(updated["command"], command)
+        self.assertEqual(
+            pre_commit._commit_messages(updated["command"]),
+            ["add-notes. it's 1990s"],
+        )
+        self.assertIn("[rewritten] commit_message.md:1 punctuation/banned_dash", advisory_text(result))
+        self.assertNotIn("[flagged] commit_message.md:1", advisory_text(result))
+
+    def test_rewrite_preserves_surrounding_shell_syntax(self):
+        cases = {
+            'git commit -m "msg; here" > /dev/null 2>&1':
+                "git commit -m 'msg. here' > /dev/null 2>&1",
+            "git add *.py && git commit -m 'msg; here'":
+                "git add *.py && git commit -m 'msg. here'",
+            'cd $HOME/repo && git commit -m "msg; here"':
+                "cd $HOME/repo && git commit -m 'msg. here'",
+            'for f in a b; do echo $f; done && git commit -m "msg; here"':
+                "for f in a b; do echo $f; done && git commit -m 'msg. here'",
+            'git commit -am "msg; here"':
+                "git commit -am 'msg. here'",
+            'FOO=bar git commit -m "msg; here"':
+                "FOO=bar git commit -m 'msg. here'",
+        }
+        for command, expected in cases.items():
+            with self.subTest(command=command):
+                updated = self.gate(command)["hookSpecificOutput"]["updatedInput"]
+                self.assertEqual(updated["command"], expected)
+
+    def test_rewrite_preserves_multiple_message_spans(self):
+        command = 'git commit -m "first' + DASH + 'part" -m "second' + DASH + 'part"'
+        result = self.gate(command)
+        self.assertEqual(
+            result["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit -m first-part -m second-part",
+        )
+
+    def test_rewrite_disclosure_is_user_visible(self):
+        result = self.gate('git commit -m "msg; here"')
+        self.assertIn("systemMessage", result)
+        self.assertIn("rewrote the commit message before the commit ran", result["systemMessage"])
+
+    def test_clean_message_has_no_updated_input(self):
+        result = self.gate('git commit -m "fix notes"')
+        self.assertNotIn("updatedInput", result.get("hookSpecificOutput", {}))
+
+    def test_bundled_and_assignment_messages_are_scanned(self):
+        for command in [
+            'git commit -am "circle back with the team"',
+            'FOO=bar git commit -m "circle back with the team"',
+        ]:
+            with self.subTest(command=command):
+                result = self.gate(command)
+                self.assertIn("english/corporate_idiom", advisory_text(result))
+                self.assertNotIn("updatedInput", result.get("hookSpecificOutput", {}))
+
+    def test_unfixable_commit_message_keeps_command_unchanged(self):
+        command = 'git commit -m "circle back with the team"'
+        result = self.gate(command)
+        specific = result["hookSpecificOutput"]
+
+        self.assertNotIn("updatedInput", specific)
+        self.assertIn("commit_message.md:1 english/corporate_idiom", advisory_text(result))
+
+    def test_rewritten_special_characters_round_trip_through_shell(self):
+        command = 'git commit -m "fix' + DASH + 'its apostrophe: it\'s 1990\'s; keep \\"quotes\\""'
+        new_command, _changes = pre_commit._rewrite_commit_messages(
+            command, pre_commit.effective_config(None)
+        )
+
+        self.assertEqual(
+            shlex.split(new_command),
+            ["git", "commit", "-m", 'fix-its apostrophe: it\'s 1990s. keep "quotes"'],
+        )
+
+    def test_list_command_input_returns_normalized_string_shape(self):
+        payload = {
+            "tool_input": {"command": ["git", "commit", "-m", "bad" + DASH + "dash"]},
+            "cwd": str(self.repo),
+        }
+        result = pre_commit.run(payload, None, ledger_root=self.ledger, state_root=self.state)
+
+        updated = result["hookSpecificOutput"]["updatedInput"]
+        self.assertIsInstance(updated["command"], list)
+        self.assertEqual(updated["command"], ["git", "commit", "-m", "bad-dash"])
+
+    def test_list_inline_message_stays_one_element(self):
+        command = ["git", "commit", "--message=bad" + DASH + "notes and more"]
+        updated, _changes = pre_commit._rewrite_commit_messages(
+            command, pre_commit.effective_config(None)
+        )
+        self.assertEqual(updated, ["git", "commit", "--message=bad-notes and more"])
 
 
 class CommitCommandFormTests(unittest.TestCase):

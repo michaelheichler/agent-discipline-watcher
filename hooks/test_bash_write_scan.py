@@ -1,9 +1,12 @@
 """Shell-write scan tests: a heredoc or redirect must face the same rules a Write faces."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import pre_bash
+import record
 
 PROSE = "We leverage a rich tapestry of utilities."
 CODE = "# Returns the total value\nvalue = 1\n"
@@ -56,6 +59,51 @@ def test_heredoc_target_and_content_are_paired():
 def test_clean_content_passes(command):
     assert content_rules(command) == []
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+def test_bash_write_is_corrected_after_prewrite_advisory(tmp_path):
+    target = tmp_path / "target.py"
+    command = 'echo "# ' + ("TO" + "DO") + r' later\nvalue = 1\n" > target.py'
+    pre_response = pre_bash.run(
+        {"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}}
+    )
+    assert "deferred_work_comment" in pre_response["systemMessage"]
+    target.write_text(pre_bash.write_targets(command)[0][1], encoding="utf-8")
+
+    post_response = record.run(
+        {
+            "tool_name": "Bash",
+            "cwd": str(tmp_path),
+            "tool_input": {"command": command},
+        },
+        {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
+    )
+
+    assert "deferred_work_comment" in post_response["systemMessage"]
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_tilde_bash_write_is_corrected_after_postwrite(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    target = Path("~/notes.py").expanduser()
+    command = 'echo "# ' + ("TO" + "DO") + r' later\nvalue = 1\n" > ~/notes.py'
+
+    assert pre_bash.write_paths(command) == ["~/notes.py"]
+    target.write_text(pre_bash.write_targets(command)[0][1], encoding="utf-8")
+
+    response = record.run(
+        {
+            "tool_name": "Bash",
+            "cwd": str(tmp_path),
+            "tool_input": {"command": command},
+        },
+        {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
+    )
+
+    assert "deferred_work_comment" in response["systemMessage"]
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
 
 
 @pytest.mark.parametrize("command", [

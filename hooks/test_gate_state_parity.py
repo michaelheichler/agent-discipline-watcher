@@ -286,34 +286,59 @@ class CommitMessageScanTests(unittest.TestCase):
         payload = {"cwd": str(self.repo), "tool_input": {"command": command}}
         return pre_commit.run(payload, None, ledger_root=self.root / "l", state_root=self.root / "s")
 
-    def test_a_short_flag_message_is_scanned(self):
+    def test_a_short_flag_message_is_corrected(self):
         response = self._gate('git commit -m "the tests now pass -- finally"')
         self.assertEqual(verdict_class(response), "advise")
-        self.assertIn("commit_message.md", response["systemMessage"])
-        self.assertIn("punctuation/", response["systemMessage"])
+        self.assertEqual(
+            response["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit -m 'the tests now pass, finally'",
+        )
 
-    def test_an_attached_short_flag_value_is_scanned(self):
+    def test_an_attached_short_flag_value_is_corrected(self):
         response = self._gate('git commit -m"we ship it; it works"')
         self.assertEqual(verdict_class(response), "advise")
+        self.assertEqual(
+            response["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit -m'we ship it. it works'",
+        )
 
-    def test_a_long_flag_message_is_scanned(self):
+    def test_a_long_flag_message_is_corrected(self):
         response = self._gate('git commit --message "we ship it; it works"')
         self.assertEqual(verdict_class(response), "advise")
+        self.assertEqual(
+            response["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit --message 'we ship it. it works'",
+        )
 
-    def test_an_inline_long_flag_message_is_scanned(self):
+    def test_an_inline_long_flag_message_is_corrected(self):
         response = self._gate('git commit --message="we ship it; it works"')
         self.assertEqual(verdict_class(response), "advise")
+        self.assertEqual(
+            response["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit --message='we ship it. it works'",
+        )
 
-    def test_a_later_repeated_message_is_scanned_too(self):
+    def test_a_later_repeated_message_is_corrected_too(self):
         response = self._gate('git commit -m "clean subject" -m "we ship it; it works"')
         self.assertEqual(verdict_class(response), "advise")
-        self.assertIn("commit_message.md:3", response["systemMessage"])
+        self.assertEqual(
+            response["hookSpecificOutput"]["updatedInput"]["command"],
+            "git commit -m \"clean subject\" -m 'we ship it. it works'",
+        )
 
     def test_a_clean_message_passes(self):
         self.assertEqual(self._gate('git commit -m "add the parity tests"'), {})
 
     def test_a_file_backed_message_is_left_alone(self):
         self.assertEqual(self._gate("git commit -F notes.txt"), {})
+
+    def test_an_ansi_c_quoted_message_is_left_unchanged(self):
+        command = r"git commit -m $'subject; here\n\nbody line'"
+        updated, changes = pre_commit._rewrite_commit_messages(
+            command, pre_commit.effective_config(None)
+        )
+        self.assertEqual(updated, command)
+        self.assertEqual(changes, [])
 
     def test_a_message_outside_a_commit_is_not_scanned(self):
         self.assertEqual(self._gate('git tag -m "we ship it; it works" v1'), {})
@@ -336,6 +361,44 @@ class CommitMessageParsingTests(unittest.TestCase):
 
     def test_a_non_commit_git_command_yields_nothing(self):
         self.assertEqual(pre_commit._commit_messages('git commit-tree -m x'), [])
+
+    def test_value_taking_flags_are_not_message_bundles(self):
+        cfg = pre_commit.effective_config(None)
+        for command in [
+            'git commit -Fm "notes; draft.md"',
+            'git commit -Cm "notes; draft.md"',
+            'git commit -cm "notes; draft.md"',
+            'git commit -tm "notes; draft.md"',
+            'git commit -Sm "notes; draft.md"',
+            'git commit -um "notes; draft.md"',
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(pre_commit._rewrite_commit_messages(command, cfg), (command, []))
+
+    def test_inline_m_value_is_not_a_message_bundle(self):
+        command = 'git commit -ma "message; text"'
+        self.assertEqual(
+            pre_commit._rewrite_commit_messages(command, pre_commit.effective_config(None)),
+            (command, []),
+        )
+
+    def test_boolean_message_bundles_rewrite_the_next_token(self):
+        cfg = pre_commit.effective_config(None)
+        for flag in ("-am", "-nm"):
+            command = f'{"git commit"} {flag} "message; text"'
+            self.assertEqual(
+                pre_commit._rewrite_commit_messages(command, cfg),
+                (f"git commit {flag} 'message. text'", [
+                    {
+                        "line": 1,
+                        "rule": "prose_semicolon",
+                        "status": "rewritten",
+                        "action": "Use a comma, period, or parentheses.",
+                        "path": "commit_message.md",
+                        "family": "punctuation",
+                    }
+                ]),
+            )
 
 
 if __name__ == "__main__":

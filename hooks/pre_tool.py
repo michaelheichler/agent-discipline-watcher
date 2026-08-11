@@ -36,6 +36,11 @@ def _context_text(response: dict) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _system_message(response: dict) -> str:
+    value = response.get("systemMessage")
+    return value if isinstance(value, str) else ""
+
+
 def _updated_input(response: dict) -> dict | None:
     specific = response.get("hookSpecificOutput")
     if not isinstance(specific, dict):
@@ -51,8 +56,16 @@ def _merge(responses: list[dict]) -> dict:
             return response
     messages = [text for response in responses if (text := _context_text(response))]
     messages.append(WRITE_REMINDER)
+    system_messages = [
+        text for response in responses if (text := _system_message(response)) != ""
+    ]
     updated = next((value for response in responses if (value := _updated_input(response))), None)
-    return context("\n".join(dict.fromkeys(messages)), "PreToolUse", updated)
+    merged = context("\n".join(dict.fromkeys(messages)), "PreToolUse", updated)
+    return (
+        {**merged, "systemMessage": "\n".join(dict.fromkeys(system_messages))}
+        if system_messages
+        else merged
+    )
 
 
 def run(payload: dict, config: dict | None = None) -> dict:

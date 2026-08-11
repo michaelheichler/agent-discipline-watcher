@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
+import pre_bash
 from lib import reporting
 import lib.rewrite as rewrite
 from lib.config import effective_config, resolve_outcome
@@ -37,12 +38,17 @@ WRITEBACK_LEAD = (
 
 
 def _edited_paths(payload: RecordPayload) -> list[str]:
+    paths: list[str] = []
     path = payload["file_path"]
     if path:
-        return [path]
-    return [
-        match.strip().strip('"') for match in PATCH_FILE.findall(payload["edit_text"])
-    ]
+        paths.append(path)
+    else:
+        paths.extend(
+            match.strip().strip('"') for match in PATCH_FILE.findall(payload["edit_text"])
+        )
+    if payload["tool_name"] == "Bash":
+        paths.extend(pre_bash.write_paths(payload["edit_text"]))
+    return paths
 
 
 def edited_paths(payload: object) -> list[str]:
@@ -86,7 +92,7 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:
-        path = Path(raw_path)
+        path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = cwd / path
         if not path.exists() or not path.is_file():
@@ -176,17 +182,20 @@ def _inherited_line_numbers(inherited: list[dict], path_text: str) -> set[int]:
     return lines
 
 
-def _strict_utf8(path: Path) -> bool | None:
+def _read_correction_text(
+    path: Path, cfg: dict
+) -> tuple[bool, str] | None:
     try:
         path.read_bytes().decode("utf-8")
     except UnicodeDecodeError:
-        return False
+        return False, ""
     except OSError:
         return None
-    return True
+    text = read_scannable(path, cfg)
+    return None if text is None else (True, text)
 
 
-def _safe_rewrite(
+def _rewrite_and_validate(
     path_text: str, path: Path, text: str, cfg: dict
 ) -> rewrite.TextRewrite | None:
     try:
@@ -201,24 +210,39 @@ def _safe_rewrite(
     return rewritten
 
 
+def _writeback_content(
+    text: str, rewritten: rewrite.TextRewrite, inherited_lines: set[int]
+) -> str | None:
+    if rewritten.text == text:
+        return None
+    if inherited_lines & _original_changed_lines(text, rewritten.text):
+        return None
+    return rewritten.text
+
+
+def _write_path(path: Path, text: str) -> bool:
+    try:
+        path.write_text(text, encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    return True
+
+
 def _writeback_result(
     path: Path, text: str, rewritten: rewrite.TextRewrite,
     owned_path: list[dict], inherited_lines: set[int],
 ) -> tuple[list[dict], bool] | None:
-    if rewritten.text == text:
+    writeback_text = _writeback_content(text, rewritten, inherited_lines)
+    if writeback_text is None:
         return [], False
-    if inherited_lines & _original_changed_lines(text, rewritten.text):
-        return [], False
-    try:
-        path.write_text(rewritten.text, encoding="utf-8")
-    except (OSError, UnicodeError):
+    if not _write_path(path, writeback_text):
         return None
     families = {
         str(row.get("rule") or ""): str(row.get("family") or "")
         for row in owned_path
     }
     changes = _writeback_change_rows(
-        rewritten.changes, text, rewritten.text, path, families
+        rewritten.changes, text, writeback_text, path, families
     )
     return changes, True
 
@@ -242,15 +266,13 @@ def _correct_path(
     owned_must_fix = _must_fix_findings(owned_path, path_text, cfg)
     if not owned_must_fix:
         return None
-    utf8 = _strict_utf8(path)
-    if utf8 is None:
+    source = _read_correction_text(path, cfg)
+    if source is None:
         return None
+    utf8, text = source
     if not utf8:
         return _declined_correction(owned_must_fix)
-    text = read_scannable(path, cfg)
-    if text is None:
-        return None
-    rewritten = _safe_rewrite(path_text, path, text, cfg)
+    rewritten = _rewrite_and_validate(path_text, path, text, cfg)
     if rewritten is None:
         return _declined_correction(owned_must_fix)
     result = _writeback_result(path, text, rewritten, owned_path, inherited_lines)
@@ -270,7 +292,7 @@ def _correct_paths(
     corrections: list[dict] = []
     seen: set[str] = set()
     for raw_path in paths:
-        path = Path(raw_path)
+        path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = cwd / path
         path_text = str(path)
@@ -347,6 +369,16 @@ def _correction_notice(
     return _joined(WRITEBACK_LEAD if writeback else "", itemized)
 
 
+def _response_decision(
+    kind: str, message: str, correction: str, notice: str
+) -> tuple[str, str]:
+    if kind == "block":
+        return "block", _joined(message, correction, notice)
+    if kind == "must_fix" and correction:
+        return "advise", _joined(correction, notice)
+    return "advise", _joined(message, notice)
+
+
 def _response(
     decisions: list[tuple[dict, str]],
     inherited: list[dict],
@@ -357,13 +389,10 @@ def _response(
     kind, message = verdict_message(decisions, cfg)
     correction = _correction_notice(corrections or [], cfg, decisions)
     notice = inherited_advice(inherited, cfg)
-    if kind == "block":
-        return {"decision": "block", "reason": _joined(message, correction, notice)}
-    if kind == "must_fix" and correction:
-        advisory = _joined(correction, notice)
-    else:
-        advisory = _joined(message, notice)
-    return advise(advisory, "PostToolUse") if advisory else {}
+    branch, content = _response_decision(kind, message, correction, notice)
+    if branch == "block":
+        return {"decision": "block", "reason": content}
+    return advise(content, "PostToolUse") if content else {}
 
 
 def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, ledger_root) -> Callable[[str], dict]:

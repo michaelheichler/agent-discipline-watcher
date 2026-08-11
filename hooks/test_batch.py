@@ -108,6 +108,30 @@ class BatchGateTests(unittest.TestCase):
 
         self._assert_advisory(response, "deferred_work_comment")
 
+    def test_bash_write_is_correlated_across_turns(self):
+        path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
+        write_call = self._call(path, "write-1")
+        session_state.write_state("s1", {"turn_id": "turn-3"}, self.state_root)
+        self._record_call(write_call)
+        session_state.write_state("s1", {"turn_id": "turn-4"}, self.state_root)
+        path.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
+
+        bash_call = {
+            "tool_name": "Bash",
+            "tool_use_id": "bash-1",
+            "tool_input": {"command": f'echo "x" > {path}'},
+        }
+        findings = batch.findings_for_batch(
+            self._payload([bash_call]), self.cfg, "turn-4"
+        )
+        self.assertIn("deferred_work_comment", {finding["rule"] for finding in findings})
+
+        self._record_call(bash_call)
+        self.assertEqual(
+            batch.findings_for_batch(self._payload([bash_call]), self.cfg, "turn-4"),
+            [],
+        )
+
     def test_current_turn_row_suppresses_current_finding(self):
         path = self._write("bad.py", "# " + ("TO" + "DO") + " later\n")
         call = self._call(path, "tool-1")
@@ -915,10 +939,20 @@ class BatchReadOnlyToolTests(unittest.TestCase):
 
     def test_a_read_of_a_dirty_file_produces_no_batch_finding(self):
         path = self._write("legacy.py", self.DIRTY)
-        for tool in ("Read", "Grep", "Glob", "NotebookRead", "Bash"):
+        for tool in ("Read", "Grep", "Glob", "NotebookRead"):
             with self.subTest(tool=tool):
                 payload = self._payload([self._tool_call(tool, path)])
                 self.assertEqual(batch.findings_for_batch(payload, self.cfg, "turn-4"), [])
+
+        bash_read = {
+            "tool_name": "Bash",
+            "tool_use_id": "tool-1",
+            "tool_input": {"command": f"cat {path}"},
+        }
+        self.assertEqual(
+            batch.findings_for_batch(self._payload([bash_read]), self.cfg, "turn-4"),
+            [],
+        )
 
     def test_a_write_of_the_same_file_still_produces_a_finding(self):
         path = self._write("legacy.py", self.DIRTY)

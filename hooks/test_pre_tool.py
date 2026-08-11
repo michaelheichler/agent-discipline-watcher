@@ -1,4 +1,5 @@
 """Locks the single-handler boundary because parallel input mutations race."""
+import subprocess
 from unittest.mock import patch
 
 import pre_tool
@@ -34,3 +35,18 @@ def test_bash_runs_safety_and_commit_checks_once() -> None:
     bash.assert_called_once()
     commit.assert_called_once()
     assert "additionalContext" in response["hookSpecificOutput"]
+
+
+def test_bash_commit_rewrite_disclosure_survives_dispatch(tmp_path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    response = pre_tool.run({
+        "tool_name": "Bash",
+        "tool_input": {"command": 'git commit -m "we ship it; it works"'},
+        "cwd": str(tmp_path),
+    })
+
+    assert response["systemMessage"]
+    assert "rewrote the commit message before the commit ran" in response["systemMessage"]
+    assert response["hookSpecificOutput"]["updatedInput"]["command"] == (
+        "git commit -m 'we ship it. it works'"
+    )

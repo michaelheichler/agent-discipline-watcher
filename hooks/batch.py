@@ -8,6 +8,7 @@ import operator
 import os
 import re
 import time
+import pre_bash
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeGuard, TypeVar, cast
@@ -23,9 +24,9 @@ BATCH_EVENT = "PostToolBatch"
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
-# Mirrors the PostToolUse matcher in hooks/hooks.json, because PostToolBatch has no matcher of its own.
+# Mirrors the PostToolUse matcher in hooks/hooks.json, including Bash, because PostToolBatch has no matcher of its own.
 WRITE_TOOL_NAMES = frozenset({
-    "write", "edit", "multiedit", "notebookedit", "apply_patch",
+    "write", "edit", "multiedit", "notebookedit", "apply_patch", "bash",
 })
 
 
@@ -240,6 +241,15 @@ def _edited_paths(tool_input: dict) -> tuple[str, ...]:
     path = tool_input.get("file_path") or tool_input.get("path")
     if path:
         return (path,) if _is_exact_type(path, str) else ()
+    command = tool_input.get("command")
+    if command:
+        command_text = command if _is_exact_type(command, str) else (
+            " ".join(str(part) for part in command) if _is_exact_type(command, list) else None
+        )
+        if command_text:
+            bash_paths = tuple(pre_bash.write_paths(command_text))
+            if bash_paths:
+                return bash_paths
     patch = (
         tool_input.get("patch")
         or tool_input.get("command")
@@ -256,7 +266,7 @@ def _edited_paths(tool_input: dict) -> tuple[str, ...]:
 
 
 def _normalized_path(raw_path: str, cwd: Path) -> str:
-    path = Path(raw_path)
+    path = Path(raw_path).expanduser()
     try:
         return str((path if path.is_absolute() else cwd / path).resolve(strict=False))
     except (OSError, RuntimeError, ValueError):
