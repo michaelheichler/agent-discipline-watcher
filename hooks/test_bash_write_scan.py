@@ -6,7 +6,7 @@ import pytest
 import pre_bash
 
 PROSE = "We leverage a rich tapestry of utilities."
-CODE = "# this function returns the total\nvalue = 1\n"
+CODE = "# Returns the total value\nvalue = 1\n"
 
 
 def content_rules(command, config=None):

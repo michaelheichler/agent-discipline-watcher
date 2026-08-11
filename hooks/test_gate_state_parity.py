@@ -66,16 +66,16 @@ class VerdictParityTests(unittest.TestCase):
         )
         return verdict_class(written), verdict_class(recorded)
 
-    def test_an_observed_rule_advises_in_both_gates(self):
+    def test_an_observed_rule_is_cleaned_pre_write_and_advises_post_write(self):
         self.assertEqual(
             self._both(OBSERVED, {"rule_gates": {"what_comment": "observe"}}),
-            ("advise", "advise"),
+            ("silent", "advise"),
         )
 
-    def test_an_enforced_rule_blocks_in_both_gates(self):
+    def test_an_enforced_rule_is_cleaned_pre_write_and_blocks_post_write(self):
         self.assertEqual(
             self._both(OBSERVED, {"rule_gates": {"what_comment": "enforce"}}),
-            ("block", "block"),
+            ("silent", "block"),
         )
 
     def test_a_rule_switched_off_is_silent_in_both_gates(self):
@@ -84,11 +84,11 @@ class VerdictParityTests(unittest.TestCase):
             ("silent", "silent"),
         )
 
-    def test_an_enforced_family_still_blocks_in_both_gates(self):
-        self.assertEqual(self._both(ENFORCED, {}), ("block", "block"))
+    def test_an_enforced_family_is_cleaned_pre_write_and_blocks_post_write(self):
+        self.assertEqual(self._both(ENFORCED, {}), ("silent", "block"))
 
-    def test_the_shipped_default_enforces_what_comment_in_both_gates(self):
-        self.assertEqual(self._both(OBSERVED, {}), ("block", "block"))
+    def test_the_shipped_default_cleans_what_comment_pre_write_and_blocks_post_write(self):
+        self.assertEqual(self._both(OBSERVED, {}), ("silent", "block"))
 
 
 class DefaultBaselineParityTests(unittest.TestCase):
@@ -138,13 +138,13 @@ class DefaultBaselineParityTests(unittest.TestCase):
              "tool_input": {"file_path": str(self.target), "content": ENFORCED + "y = 2\n"}},
             dict(self.cfg),
         )
-        self.assertIn("already carried 2 findings", response["systemMessage"])
+        self.assertIn("already carried 1 findings", response["systemMessage"])
         self.assertIn("clean_code/deferred_work_comment", response["systemMessage"])
 
     def test_debt_the_write_adds_still_blocks_in_every_gate(self):
         self.assertEqual(
             self._three(ENFORCED + "# " + ("TO" + "DO") + " second\n"),
-            ("block", "block", "block"),
+            ("advise", "block", "block"),
         )
 
     def test_an_edit_fragment_answers_for_its_own_text(self):
@@ -154,7 +154,7 @@ class DefaultBaselineParityTests(unittest.TestCase):
              "tool_input": {"file_path": str(self.target), "new_string": "# " + ("TO" + "DO") + " third\n"}},
             dict(self.cfg),
         )
-        self.assertEqual(verdict_class(response), "block")
+        self.assertEqual(verdict_class(response), "silent")
 
     def test_an_edit_fragment_free_of_findings_passes(self):
         response = pre_write.run(

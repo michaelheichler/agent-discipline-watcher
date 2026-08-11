@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh SessionStart"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" SessionStart",
+            "timeout": 10
           }
         ]
       }
@@ -16,41 +17,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh UserPromptSubmit"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" UserPromptSubmit",
+            "timeout": 30
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreToolUse"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Bash(git *)",
-            "command": "__SKILL_DIR__/hooks/run.sh PreCommit"
-          },
-          {
-            "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreBash"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PreMcp"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" PreToolUse",
+            "timeout": 30
           }
         ]
       }
@@ -61,7 +40,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolUse"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" PostToolUse",
+            "timeout": 30
           }
         ]
       }
@@ -71,7 +51,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolBatch"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" PostToolBatch",
+            "timeout": 30
           }
         ]
       }
@@ -81,7 +62,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh PostToolUseFailure"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" PostToolUseFailure",
+            "timeout": 10
           }
         ]
       }
@@ -91,27 +73,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh SubagentStart"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh SubagentStop"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "__SKILL_DIR__/hooks/run.sh Stop"
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" SubagentStart",
+            "timeout": 10
           }
         ]
       }

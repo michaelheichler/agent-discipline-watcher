@@ -11,6 +11,17 @@ from unittest import mock
 import session_state
 
 
+class PluginDataHomeTests(unittest.TestCase):
+    def test_falls_back_to_legacy_home_when_unset(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CLAUDE_PLUGIN_DATA", None)
+            self.assertEqual(session_state.plugin_data_home(), Path.home() / ".agent-discipline")
+
+    def test_prefers_claude_plugin_data_env(self):
+        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": "/tmp/adw-data"}):
+            self.assertEqual(session_state.plugin_data_home(), Path("/tmp/adw-data"))
+
+
 class SessionStateTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -136,6 +147,16 @@ class SessionStateTests(unittest.TestCase):
         session_state.write_state("my.session", {"ok": True}, root=self.root)
         self.assertEqual(session_state.read_state("my.session", root=self.root), {"ok": True})
         self.assertTrue((self.root / "my.session").is_dir())
+
+    def test_advance_turn_sets_the_first_turn(self) -> None:
+        state = session_state.advance_turn("s1", root=self.root)
+        self.assertEqual(state["turn_count"], 1)
+        self.assertEqual(state["turn_id"], "turn-1")
+
+    def test_advance_turn_increments_existing_state(self) -> None:
+        session_state.write_state("s1", {"turn_count": 2, "other": True}, root=self.root)
+        state = session_state.advance_turn("s1", root=self.root)
+        self.assertEqual(state, {"turn_count": 3, "turn_id": "turn-3", "other": True})
 
     def test_cleanup_session_removes_directory(self):
         session_state.write_state("s1", {"count": 1}, root=self.root)

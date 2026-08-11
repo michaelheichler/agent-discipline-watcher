@@ -149,22 +149,6 @@ class ToolUseIdTests(unittest.TestCase):
         self.assertEqual(payloads.tool_use_id({"tool_name": "Write"}), "")
 
 
-class StopHookActiveTests(unittest.TestCase):
-    def test_compatibility_name_is_direct_alias(self):
-        self.assertIs(payloads.stop_hook_active, payloads.is_stop_hook_active)
-
-    def test_true_when_flag_set(self):
-        payload = {"hook_event_name": "Stop", "stop_hook_active": True}
-        self.assertIs(payloads.stop_hook_active(payload), True)
-        self.assertIs(payloads.is_stop_hook_active(payload), True)
-
-    def test_absent_returns_false(self):
-        self.assertIs(payloads.stop_hook_active({"hook_event_name": "Stop"}), False)
-
-    def test_string_false_does_not_coerce_to_true(self):
-        self.assertIs(payloads.stop_hook_active({"stop_hook_active": "false"}), False)
-
-
 class AgentTranscriptPathTests(unittest.TestCase):
     def test_reads_documented_subagent_transcript(self):
         # assumed because agent_transcript_path is not in the published docs, only plan-named

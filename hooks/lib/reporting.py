@@ -1,6 +1,7 @@
 """Ledger, shared hook wrapper, and observe-report CLI."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -12,12 +13,48 @@ from pathlib import Path
 
 try:
     # Relative first because hook entry scripts import this as lib.reporting, where a bare name cannot resolve.
-    from . import session_state
+    from . import embeddings, session_state
 except ImportError:
+    import embeddings
     import session_state
 
 LEDGER_FILENAME = "ledger.jsonl"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
+
+TOOL_USE_REPORT_DIRNAME = ".adw-tool-reports"
+TOOL_USE_REPORT_PROTOCOL_VERSION = 1
+TOOL_USE_REPORT_MAX_AGE_SECONDS = 3600
+TOOL_USE_REPORT_MAX_BYTES = 20_000
+TOOL_USE_REPORT_MAX_UNRESOLVED = 10
+AMBIGUOUS_COMMENT_RULES = frozenset({"what_comment", "what_docstring", "weak_why_comment"})
+
+_WHY_PROTOTYPES = [
+    {"label": "WHY", "text": "kept because callers require stable ordering across retries"},
+    {"label": "WHY", "text": "guards against a race that only shows up under concurrent writers"},
+    {"label": "WHY", "text": "works around a platform limit that has no better fix"},
+]
+
+
+def _what_prototypes() -> list[dict]:
+    """Sample the shared WHAT corpus instead of duplicating labeled examples in this module."""
+    corpus = Path(__file__).with_name("corpus_what_comments.jsonl")
+    try:
+        lines = corpus.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines[:5]:
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and row.get("text"):
+            rows.append({"label": "WHAT", "text": str(row["text"])})
+    return rows
+
+
+def _comment_prototypes() -> list[dict]:
+    return _WHY_PROTOTYPES + _what_prototypes()
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
 OUTCOMES = ("block", "inject", "would_block", "no_edits", "release")
@@ -88,8 +125,152 @@ def format_row(item: dict) -> str:
     )
 
 
+def _report_dir(transcript_path: str) -> Path | None:
+    if not transcript_path:
+        return None
+    return Path(transcript_path).resolve().parent / TOOL_USE_REPORT_DIRNAME
+
+
+def tool_use_report_path(transcript_path: str, session_id: str, tool_use_id: str) -> Path | None:
+    """Key the filename by session and tool_use_id so parallel tool calls never collide."""
+    directory = _report_dir(transcript_path)
+    if directory is None or not session_id or not tool_use_id:
+        return None
+    digest = hashlib.sha256(f"{session_id}:{tool_use_id}".encode("utf-8")).hexdigest()
+    return directory / f"{digest}.json"
+
+
+def _bounded(value: object, cap: int) -> str:
+    return str(value if value is not None else "")[:cap]
+
+
+def _bounded_unresolved(rows: list[dict]) -> list[dict]:
+    return [
+        {
+            "path": _bounded(row.get("path"), 300),
+            "line": row.get("line") if isinstance(row.get("line"), int) else 0,
+            "rule": _bounded(row.get("rule"), 80),
+            "snippet": _bounded(row.get("snippet"), 300),
+            "nearby": _bounded(row.get("nearby", row.get("detail")), 300),
+        }
+        for row in rows[:TOOL_USE_REPORT_MAX_UNRESOLVED]
+    ]
+
+
+def _ambiguous_matches(unresolved: list[dict]) -> dict[str, dict] | None:
+    candidates = [
+        {"id": str(index), "text": row.get("snippet") or row.get("detail") or ""}
+        for index, row in enumerate(unresolved)
+        if row.get("rule") in AMBIGUOUS_COMMENT_RULES
+    ]
+    if not candidates:
+        return None
+    return embeddings.enrich(candidates, _comment_prototypes())
+
+
+def _tool_use_report_body(
+    target_path: str, tool_name: str, cleanup_counts: dict, unresolved: list[dict]
+) -> dict:
+    bounded_unresolved = _bounded_unresolved(unresolved)
+    body = {
+        "protocol_version": TOOL_USE_REPORT_PROTOCOL_VERSION,
+        "prototype_version": embeddings.PROTOTYPE_VERSION,
+        "ts": now_iso(),
+        "target_path": _bounded(target_path, 500),
+        "tool_name": _bounded(tool_name, 40),
+        "cleanup_counts": {
+            str(key): value for key, value in (cleanup_counts or {}).items()
+            if isinstance(value, int) and not isinstance(value, bool)
+        },
+        "unresolved": bounded_unresolved,
+    }
+    matches = _ambiguous_matches(bounded_unresolved)
+    if matches:
+        body["embedding_matches"] = matches
+    return body
+
+
+def _serialize_bounded(body: dict) -> str:
+    raw = json.dumps(body, ensure_ascii=True, separators=(",", ":"))
+    if len(raw.encode("utf-8")) <= TOOL_USE_REPORT_MAX_BYTES:
+        return raw
+    body.pop("embedding_matches", None)
+    body["unresolved"] = body["unresolved"][:3]
+    return json.dumps(body, ensure_ascii=True, separators=(",", ":"))
+
+
+def _write_report_file(path: Path, raw: str) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+        descriptor = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(raw)
+        os.chmod(path, 0o600)
+    except OSError:
+        return False
+    return True
+
+
+def write_tool_use_report(
+    *,
+    transcript_path: str,
+    session_id: str,
+    tool_use_id: str,
+    target_path: str,
+    tool_name: str,
+    cleanup_counts: dict | None = None,
+    unresolved: list[dict] | None = None,
+) -> str | None:
+    """Write one mode-0600 report the Haiku reviewer can read, returning None when it cannot be placed safely."""
+    path = tool_use_report_path(transcript_path, session_id, tool_use_id)
+    if path is None:
+        return None
+    body = _tool_use_report_body(target_path, tool_name, cleanup_counts or {}, unresolved or [])
+    raw = _serialize_bounded(body)
+    return str(path) if _write_report_file(path, raw) else None
+
+
+def read_tool_use_report(transcript_path: str, session_id: str, tool_use_id: str) -> dict | None:
+    path = tool_use_report_path(transcript_path, session_id, tool_use_id)
+    if path is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def sweep_tool_use_reports(
+    transcript_path: str,
+    max_age_seconds: float = TOOL_USE_REPORT_MAX_AGE_SECONDS,
+    now: float | None = None,
+) -> int:
+    """Remove report files older than the cutoff, run at SessionStart and again on later pre-tool calls."""
+    directory = _report_dir(transcript_path)
+    if directory is None or not directory.is_dir():
+        return 0
+    cutoff = (time.time() if now is None else now) - max_age_seconds
+    removed = 0
+    for entry in directory.iterdir():
+        if not entry.is_file():
+            continue
+        try:
+            stale = entry.stat().st_mtime < cutoff
+        except OSError:
+            continue
+        if stale:
+            try:
+                entry.unlink()
+                removed += 1
+            except OSError:
+                pass
+    return removed
+
+
 def _default_ledger_root() -> Path:
-    return Path.home() / ".agent-discipline" / "ledger"
+    return session_state.plugin_data_home() / "ledger"
 
 
 def _ledger_dir(root: str | os.PathLike[str] | None) -> Path:

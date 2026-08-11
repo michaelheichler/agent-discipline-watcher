@@ -24,10 +24,16 @@ class LedgerRootTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_default_root_under_home(self):
-        self.assertEqual(
-            reporting._default_ledger_root(),
-            Path.home() / ".agent-discipline" / "ledger",
-        )
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CLAUDE_PLUGIN_DATA", None)
+            self.assertEqual(
+                reporting._default_ledger_root(),
+                Path.home() / ".agent-discipline" / "ledger",
+            )
+
+    def test_default_root_prefers_plugin_data_env(self):
+        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": str(self.root)}):
+            self.assertEqual(reporting._default_ledger_root(), self.root / "ledger")
 
     def test_ledger_dir_uses_override(self):
         self.assertEqual(reporting._ledger_dir(self.root), self.root)

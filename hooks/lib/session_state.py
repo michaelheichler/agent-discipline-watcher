@@ -14,8 +14,16 @@ STATE_FILENAME = "state.json"
 LOCK_FILENAME = ".lock"
 
 
+def plugin_data_home() -> Path:
+    """Return the plugin's persistent data directory, preferring CLAUDE_PLUGIN_DATA over the legacy ~/.agent-discipline fallback."""
+    override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".agent-discipline"
+
+
 def _default_root() -> Path:
-    return Path.home() / ".agent-discipline" / "state"
+    return plugin_data_home() / "state"
 
 
 def _validate_session_id(session_id: str) -> None:
@@ -103,6 +111,21 @@ def update_state(
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
     finally:
         os.close(lock_fd)
+
+
+def _next_turn(state: dict) -> dict:
+    count = state.get("turn_count")
+    if not isinstance(count, int) or isinstance(count, bool):
+        count = 0
+    count += 1
+    return {**state, "turn_count": count, "turn_id": f"turn-{count}"}
+
+
+def advance_turn(
+    session_id: str, root: str | os.PathLike[str] | None = None
+) -> dict:
+    """Advance at prompt start because Stop no longer owns turn accounting."""
+    return update_state(session_id, _next_turn, root)
 
 
 def cleanup_session(

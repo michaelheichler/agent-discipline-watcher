@@ -12,10 +12,10 @@ import record
 import session_start
 
 
-WHAT_COMMENT_ACTION = (
-    "Only WHY comments are allowed. WHAT comments are never allowed. "
-    "State the reason the code is this way, or delete the comment."
-)
+def _style_advice(response: dict) -> str:
+    # A style finding never carries decision because pre_write only cleans or advises on it.
+    assert "decision" not in response
+    return response.get("hookSpecificOutput", {}).get("additionalContext", "")
 
 
 def _disable_git_background_tasks() -> None:
@@ -37,11 +37,10 @@ def _disable_git_background_tasks() -> None:
 _disable_git_background_tasks()
 
 
-def test_pre_write_denies_forced_pending_write():
+def test_pre_write_advises_a_forced_pending_write():
     payload = {"tool_input": {"file_path": "a.txt", "content": "bad\u2014dash"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    assert response["decision"] == "block"
-    assert "punctuation/banned_dash" in response["reason"]
+    assert "banned_dash at a.txt" in _style_advice(response)
 
 
 def _edit_config(tmp_path):
@@ -56,8 +55,7 @@ def test_pre_write_maps_edit_finding_to_post_edit_line(tmp_path):
                          "new_string": "# Validate the cache entry\nvalue_49 = 49\n"}},
         _edit_config(tmp_path),
     )
-    assert response["decision"] == "block"
-    assert f"{target}:50 clean_code/what_comment" in response["reason"]
+    assert f"what_comment at {target}:50" in _style_advice(response)
 
 
 def test_pre_write_edit_ignores_preexisting_debt(tmp_path):
@@ -80,9 +78,9 @@ def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):
         ]}},
         _edit_config(tmp_path),
     )
-    assert response["decision"] == "block"
-    assert f"{target}:20 clean_code/what_comment" in response["reason"]
-    assert f"{target}:81 clean_code/what_comment" in response["reason"]
+    advice = _style_advice(response)
+    assert f"what_comment at {target}:20" in advice
+    assert f"what_comment at {target}:81" in advice
 
 
 def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp_path):
@@ -92,8 +90,7 @@ def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp
         {"tool_input": {"file_path": str(target), "old_string": "    assert value\n", "new_string": ""}},
         _edit_config(tmp_path),
     )
-    assert response["decision"] == "block"
-    assert f"{target}:1 clean_code/hollow_test" in response["reason"]
+    assert f"hollow_test at {target}:1" in _style_advice(response)
 
 
 def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp_path):
@@ -104,51 +101,42 @@ def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp
                          "new_string": "value_990 = 990\n" + "value_added = 1\n" * 10}},
         _edit_config(tmp_path),
     )
-    assert response["decision"] == "block"
-    assert f"{target}:1 clean_code/file_too_long" in response["reason"]
+    assert f"file_too_long at {target}:1" in _style_advice(response)
 
 
 def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     target = tmp_path / "missing.py"
-    response = pre_write.run(
-        {"tool_input": {"file_path": str(target), "old_string": "not present\n",
-                         "new_string": "# Validate the cache entry\n"}},
-        _edit_config(tmp_path),
-    )
-    assert response["decision"] == "block"
-    report_path = response["reason"].rsplit("Full report: ", 1)[1]
-    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
-    assert "pending edit text" in report[0]["detail"]
+    tool_input = {"file_path": str(target), "old_string": "not present\n",
+                  "new_string": "# Validate the cache entry\n"}
+    findings = pre_write._edit_findings(tool_input, str(target), _edit_config(tmp_path))
+    assert "pending edit text" in findings[0]["detail"]
 
 
-def test_pre_write_denies_prose_semicolon_and_dash_break_in_tex():
+def test_pre_write_advises_prose_semicolon_and_dash_break_in_tex():
     content = "One reason; another reason.\nSome text word--word break here.\n"
     payload = {"tool_input": {"file_path": "notes.tex", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    assert response["decision"] == "block"
-    assert "punctuation/prose_semicolon" in response["reason"]
-    assert "punctuation/dash_break" in response["reason"]
+    advice = _style_advice(response)
+    assert "prose_semicolon at notes.tex:1" in advice
+    assert "dash_break at notes.tex:2" in advice
 
 
-def test_pre_write_denies_plain_english_violation():
+def test_pre_write_advises_plain_english_violation():
     payload = {"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "english": True})
-    assert response["decision"] == "block"
-    assert "english/utilize" in response["reason"]
+    assert "utilize at a.txt:1" in _style_advice(response)
 
 
-def test_pre_write_denies_clean_code_violation():
+def test_pre_write_advises_clean_code_violation():
     payload = {"tool_input": {"file_path": "a.py", "content": "# " + ("TO" + "DO") + " later"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert response["decision"] == "block"
-    assert "clean_code/deferred_work_comment" in response["reason"]
+    assert "deferred_work_comment at a.py:1" in _style_advice(response)
 
 
-def test_pre_write_denies_prose_comment_block():
+def test_pre_write_advises_prose_comment_block():
     payload = {"tool_input": {"file_path": "a.py", "content": "# first line\n# second line\nprint(1)\n"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert response["decision"] == "block"
-    assert "clean_code/prose_comment_block" in response["reason"]
+    assert "prose_comment_block at a.py:1" in _style_advice(response)
 
 
 WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the cache entry\nvalidate()\n"}}
@@ -156,17 +144,14 @@ WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the c
 
 def test_pre_write_enforces_what_comment_by_default():
     response = pre_write.run(WHAT_PAYLOAD, {"ledger_path": _ledger_path(), "clean_code": True})
-    assert response["decision"] == "block"
-    assert "clean_code/what_comment" in response["reason"]
-    assert WHAT_COMMENT_ACTION in response["reason"]
+    assert "what_comment at a.py:1" in _style_advice(response)
 
 
-def test_pre_write_blocks_what_comment_once_the_rule_is_enforced():
+def test_pre_write_advises_what_comment_once_the_rule_is_enforced():
     config = {"ledger_path": _ledger_path(), "clean_code": True,
               "rule_gates": {"what_comment": "enforce"}}
     response = pre_write.run(WHAT_PAYLOAD, config)
-    assert response["decision"] == "block"
-    assert "clean_code/what_comment" in response["reason"]
+    assert "what_comment at a.py:1" in _style_advice(response)
 
 
 def test_pre_write_allows_a_why_comment():
@@ -179,15 +164,13 @@ def test_pre_write_allows_a_why_comment():
     assert pre_write.run(why_payload, {"ledger_path": _ledger_path(), "clean_code": True}) == {}
 
 
-def test_what_comment_survives_the_clean_code_switch_and_path_exemption():
+def test_what_comment_is_silenced_by_the_clean_code_switch_and_path_exemption():
     disabled_and_exempt = {
         "ledger_path": _ledger_path(),
         "clean_code": False,
         "exempt_paths": ["a.py"],
     }
-    response = pre_write.run(WHAT_PAYLOAD, disabled_and_exempt)
-    assert response["decision"] == "block"
-    assert "clean_code/what_comment" in response["reason"]
+    assert pre_write.run(WHAT_PAYLOAD, disabled_and_exempt) == {}
 
 
 def test_pre_write_enforces_vue_comment_contract():
@@ -196,15 +179,16 @@ def test_pre_write_enforces_vue_comment_contract():
         "tool_input": {
             "file_path": "component.vue",
             "content": (
-                "// Keep the fallback because old clients omit the field\n"
-                "// Preserve the default because empty values are valid\n"
+                "// Reads the fallback value\n"
+                "// Sets the default\n"
                 "const value = fallback\n"
             ),
         }
     }
     response = pre_write.run(two_comments, config)
-    assert response["decision"] == "block"
-    assert "clean_code/prose_comment_block" in response["reason"]
+    advice = _style_advice(response)
+    assert "what_comment at component.vue:2" in advice
+    assert "prose_comment_block at component.vue:1" in advice
 
     one_comment = {
         "tool_input": {
@@ -257,12 +241,11 @@ def test_pre_write_allows_css_semicolons_in_style_block():
     assert response == {}
 
 
-def test_pre_write_still_denies_prose_splice_in_html_body():
+def test_pre_write_still_advises_prose_splice_in_html_body():
     content = "<p>we run it; it works</p>"
     payload = {"tool_input": {"file_path": "a.html", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    assert response["decision"] == "block"
-    assert "punctuation/prose_semicolon" in response["reason"]
+    assert "prose_semicolon at a.html:1" in _style_advice(response)
 
 
 def test_pre_commit_blocks_staged_forced_findings(tmp_path):
@@ -508,8 +491,11 @@ def test_pre_mcp_entry_allows_sessionless_payload() -> None:
     assert json.loads(result.stdout) == {}
 
 
-def test_run_sh_routes_pretooluse():
-    payload = json.dumps({"tool_input": {"file_path": "a.txt", "content": "util" + "ize"}})
+def test_run_sh_routes_pretooluse_and_still_denies_a_security_finding():
+    payload = json.dumps({
+        "tool_name": "Write",
+        "tool_input": {"file_path": "a.py", "content": "# craftsman" + "-ignore\nprint(1)\n"},
+    })
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "PreToolUse"],
         input=payload,
@@ -520,16 +506,18 @@ def test_run_sh_routes_pretooluse():
     assert json.loads(result.stdout)["decision"] == "block"
 
 
-def test_run_sh_routes_precommit_non_commit():
-    payload = json.dumps({"tool_input": {"command": "git status"}})
+def test_run_sh_routes_pretooluse_non_commit_bash():
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git status"}})
     result = subprocess.run(
-        [str(Path(__file__).parent / "run.sh"), "PreCommit"],
+        [str(Path(__file__).parent / "run.sh"), "PreToolUse"],
         input=payload,
         text=True,
         capture_output=True,
         check=True,
     )
-    assert json.loads(result.stdout) == {}
+    response = json.loads(result.stdout)
+    assert "decision" not in response
+    assert "additionalContext" in response["hookSpecificOutput"]
 
 
 def test_run_sh_routes_user_prompt_submit_to_the_firewall():
@@ -537,18 +525,6 @@ def test_run_sh_routes_user_prompt_submit_to_the_firewall():
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "UserPromptSubmit"],
         input=payload,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout or "{}").get("decision") != "block"
-
-
-def test_run_sh_routes_stop_to_the_stop_gate():
-    result = subprocess.run(
-        [str(Path(__file__).parent / "run.sh"), "Stop"],
-        input="{}",
         text=True,
         capture_output=True,
         check=False,

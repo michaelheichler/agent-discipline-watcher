@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import escalate
 import scanner
 from config import effective_config
 from scanner import scan_all
@@ -438,8 +437,8 @@ if __name__ == "__main__":
 
 def test_exempt_paths_config_skips_configurable_families():
     text = (
-        "# Keep this HYG-99 fixture because exempt paths must skip prose blocks\n"
-        "# Preserve a second line because the fixture needs a comment run\n"
+        "# first narrating line of prose\n"
+        "# second narrating line of prose\n"
         "x = 1\n"
     )
     cfg = {"exempt_paths": ["scripts/legacy_contract_test.py"]}
@@ -491,16 +490,17 @@ def _what_rows(path, line, config=None):
 
 def test_why_marker_gate():
     for line in (
+        "# increments the counter",
+        "# resets the counter",
+        "# returns the total",
+    ):
+        assert len(_what_rows("sample.py", line)) == 1, line
+    for line in (
         "# cached since v2",
         "# deprecated since 2024",
         "# unchanged since release 3",
         "# since 2020",
         "# valid since v1.4.2",
-        "# increments the counter",
-        "# this function returns the total",
-    ):
-        assert len(_what_rows("sample.py", line)) == 1, line
-    for line in (
         "# skip since the file is locked",
         "# since the lock is held, bail out early",
         "# retry otherwise the socket leaks",
@@ -510,11 +510,11 @@ def test_why_marker_gate():
         assert _what_rows("sample.py", line) == [], line
 
 
-def test_what_comment_ignores_exempt_paths_and_the_clean_code_switch():
+def test_what_comment_respects_exempt_paths_and_the_clean_code_switch():
     line = "# increments the counter"
     switches_off = {"punctuation": False, "english": False, "clean_code": False}
-    assert _what_rows("sample.py", line, switches_off)
-    assert _what_rows(
+    assert not _what_rows("sample.py", line, switches_off)
+    assert not _what_rows(
         "/repo/generated/sample.py",
         line,
         {"exempt_paths": ["generated/*"], "clean_code": False},
@@ -576,8 +576,14 @@ def test_exempt_families_matches_a_bare_name_inside_a_directory():
 
 
 def test_exempt_families_cannot_silence_an_always_blocking_rule():
+    marker = "craftsman" + "-ignore: PY002"
     cfg = {"exempt_families": {"a.py": ["clean_code", "punctuation", "english"]}}
-    assert "what_comment" in _rules("a.py", "# increments the counter\nx = 1\n", cfg)
+    assert "suppression_escape_hatch" in _rules("a.py", "# " + marker + "\n", cfg)
+
+
+def test_exempt_families_can_silence_what_comment():
+    cfg = {"exempt_families": {"a.py": ["clean_code"]}}
+    assert "what_comment" not in _rules("a.py", "# increments the counter\nx = 1\n", cfg)
 
 
 def test_exempt_families_ignores_an_unknown_family_name():
@@ -683,12 +689,9 @@ def test_identifier_echo_uses_camel_snake_params_and_jaccard_threshold():
     assert not scanner._identifier_echo(("fetch_record",), (), "Load one stable row from storage")
 
 
-def test_middle_band_docstring_uses_escalation(monkeypatch):
-    calls = []
-    monkeypatch.setattr(scanner, "classify_what", lambda text, fallback, config: calls.append((text, fallback)) or True)
+def test_middle_band_docstring_is_not_what_without_escalation():
     text = 'def validate_cache_item():\n    """Cache item validator."""\n'
-    assert "what_docstring" in _rules("sample.py", text, {"escalation": {"enabled": True}})
-    assert calls == [("Cache item validator.", False)]
+    assert "what_docstring" not in _rules("sample.py", text, {})
 
 
 def test_prose_semicolon_fires_in_prose_and_comments():
@@ -820,10 +823,10 @@ def test_dunder_scope_is_public_and_budget_docstring_is_exempt():
     assert "what_docstring" not in _rules("sample.py", budget, {})
 
 
-def test_what_docstring_survives_family_and_path_switches():
+def test_what_docstring_respects_family_and_path_switches():
     text = 'def _scan():\n    """Scan."""\n'
     config = {"clean_code": False, "exempt_paths": ["sample.py"]}
-    assert "what_docstring" in _rules("sample.py", text, config)
+    assert "what_docstring" not in _rules("sample.py", text, config)
 
 
 def test_identifier_split_keeps_acronym_before_digits():
@@ -837,27 +840,6 @@ def test_python_ast_is_parsed_once_and_non_python_is_not_parsed(monkeypatch):
     scan_all("sample.py", 'def _f():\n    """Scan."""\n', {})
     scan_all("sample.js", "const value = 1\n", {})
     assert len(calls) == 1
-
-
-def test_escalation_is_capped_on_cache_misses(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: calls.append(text) or False)
-    comments = ["Cache item validator."] * 3
-    comments.extend(f"Cache item validator {suffix}." for suffix in ("alpha", "beta", "gamma", "delta", "epsilon", "zeta"))
-    text = "\n".join(
-        f'def validate_cache_item():\n    """{comment}"""'
-        for comment in comments
-    )
-    config = {"escalation": {"enabled": True}, "state_root": str(tmp_path)}
-    scan_all("sample.py", text, config)
-    assert calls == [
-        "Cache item validator.",
-        "Cache item validator alpha.",
-        "Cache item validator beta.",
-        "Cache item validator gamma.",
-        "Cache item validator delta.",
-    ]
 
 
 def _corpus_source(row):
@@ -887,37 +869,6 @@ def test_what_comment_corpus_precision_and_recall_stay_above_floor():
     assert recall >= 0.9, predicted
 
 
-def test_escalation_defaults_off_and_uses_configured_model():
-    settings = effective_config({})["escalation"]
-    assert settings == {"enabled": False, "model": "claude-haiku-4-5-20251001"}
-
-
-def test_escalation_failure_preserves_heuristic_verdict(monkeypatch, tmp_path):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: None)
-    config = {"escalation": {"enabled": True}, "state_root": str(tmp_path)}
-    assert escalate.classify_what("Validate cached item.", True, config) is True
-    assert escalate.classify_what("Validate cached item.", False, config) is False
-
-
-def test_escalation_caches_success_by_comment_hash(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(escalate, "_remote_verdict", lambda text, model: calls.append(text) or True)
-    config = {
-        "escalation": {"enabled": True},
-        "state_root": str(tmp_path),
-        "_escalation_remaining": 1,
-    }
-    assert escalate.classify_what("Validate cached item.", False, config) is True
-    assert escalate.classify_what("Validate cached item.", False, config) is True
-    assert calls == ["Validate cached item."]
-    assert config["_escalation_remaining"] == 0
-    cached = list((tmp_path / "escalation").glob("*.json"))
-    assert len(cached) == 1
-
-
-
 def test_document_markup_masks_nonprose_regions_but_scans_tex_bodies():
     cfg = {"punctuation": False, "clean_code": False}
     tex = "\\section{in order to}\n% in order to\n$in order to$\n"
@@ -940,3 +891,35 @@ def test_extensionless_prose_is_sniffed_but_shebangs_stay_code():
     cfg = {"punctuation": False, "clean_code": False}
     assert "wordiness" in {row["rule"] for row in scan_all("letter", "We write in order to finish.\n", cfg)}
     assert not {row["rule"] for row in scan_all("script", "#!/bin/sh\necho in order to\n", cfg)}
+
+
+def test_weak_why_comment_fires_for_a_weak_marker_only():
+    rows = scan_all("sample.py", "# skip unless the lock is held\nx = 1\n", {})
+    rules = {row["rule"] for row in rows}
+    assert "weak_why_comment" in rules
+    assert "what_comment" not in rules
+
+
+def test_weak_why_comment_spares_a_strong_marker_comment():
+    rows = scan_all("sample.py", "# skip because the lock is held\nx = 1\n", {})
+    assert "weak_why_comment" not in {row["rule"] for row in rows}
+
+
+def test_weak_why_comment_defaults_to_observe():
+    assert effective_config({})["rule_gates"]["weak_why_comment"] == "observe"
+
+
+def test_why_line_protects_a_multiline_docstring_from_narration():
+    text = "\n".join([
+        '"""module summary',
+        'second line because callers rely on this exact ordering"""',
+        "x = 1",
+    ])
+    rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "docstring_narration" not in rules
+
+
+def test_why_line_protects_a_comment_block_from_prose_comment_block():
+    text = "# first line\n# second line because docs live in the wiki\nprint(1)\n"
+    rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "prose_comment_block" not in rules

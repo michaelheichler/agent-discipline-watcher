@@ -177,7 +177,8 @@ class CommitGateDispatchTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_run_sh_precommit_route_blocks_end_to_end(self):
+    def test_run_sh_pretooluse_route_blocks_a_commit_end_to_end(self):
+        # No PreCommit route exists anymore because pre_tool.py fans Bash out to both scanners.
         payload = json.dumps({
             "tool_name": "Bash",
             "tool_input": {"command": 'git commit -m "docs(x): y"'},
@@ -185,7 +186,7 @@ class CommitGateDispatchTests(unittest.TestCase):
         })
         env = dict(os.environ, HOME=str(self.root))
         result = subprocess.run(
-            [str(RUN_SH), "PreCommit"], input=payload, text=True,
+            [str(RUN_SH), "PreToolUse"], input=payload, text=True,
             capture_output=True, check=False, env=env,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

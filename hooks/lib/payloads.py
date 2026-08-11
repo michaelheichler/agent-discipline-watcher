@@ -146,14 +146,6 @@ def tool_use_id(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "tool_use_id")
 
 
-def is_stop_hook_active(payload: object) -> bool:
-    """Return the Stop flag set when a prior Stop hook already blocked, or False."""
-    return _read_exact_bool(exact_string_dict(payload), "stop_hook_active")
-
-
-stop_hook_active = is_stop_hook_active
-
-
 def agent_transcript_path(payload: object) -> str:
     """Return the subagent transcript path, or ''."""
     fields = exact_string_dict(payload)

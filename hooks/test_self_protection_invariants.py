@@ -76,6 +76,14 @@ class SelfGrantChainTests(unittest.TestCase):
         self.assertEqual(response.get("decision"), "block", response)
         return response["reason"]
 
+    def _apply_patch(self, patch: str, config: dict | None = None) -> dict:
+        payload = {
+            "session_id": "s1", "cwd": str(self.root),
+            "tool_name": "apply_patch",
+            "tool_input": {"command": ["apply_patch", patch]},
+        }
+        return pre_write.run(payload, {**self.cfg, **(config or {})})
+
     def test_a_heredoc_that_grants_the_escape_is_blocked(self):
         command = "cat > " + str(self.config) + " <<'JE'\n" + GRANT + "\nJE\n"
         self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
@@ -100,6 +108,24 @@ class SelfGrantChainTests(unittest.TestCase):
         self.config.write_text("{}", encoding="utf-8")
         command = "cp /tmp/other.json " + str(self.config)
         self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+
+    def test_a_delete_file_patch_against_a_protected_path_is_blocked(self):
+        self.config.write_text("{}", encoding="utf-8")
+        patch = "*** Begin Patch\n*** Delete File: " + str(self.config) + "\n*** End Patch"
+        self.assertIn("self_protection/config_seal", self._blocked(self._apply_patch(patch)))
+
+    def test_a_deletion_only_update_patch_against_a_protected_path_is_blocked(self):
+        self.config.write_text("{}", encoding="utf-8")
+        patch = (
+            "*** Begin Patch\n*** Update File: " + str(self.config) + "\n"
+            "@@\n-{}\n*** End Patch"
+        )
+        self.assertIn("self_protection/config_seal", self._blocked(self._apply_patch(patch)))
+
+    def test_an_ordinary_apply_patch_is_unaffected(self):
+        target = self.root / "ok.py"
+        patch = "*** Begin Patch\n*** Add File: " + str(target) + "\n+x = 1\n*** End Patch"
+        self.assertEqual(self._apply_patch(patch), {})
 
     def test_a_landed_grant_cannot_authorize_the_next_grant(self):
         self.config.write_text(GRANT, encoding="utf-8")

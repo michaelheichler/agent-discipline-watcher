@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.hookio import CONTRACT, read_payload, write_payload
+from lib.reporting import sweep_tool_use_reports
 
 SESSION_START_EVENT = "SessionStart"
 READABLE_OUTPUT_HEADING = "READABLE OUTPUT RULES ACTIVE (main agent only)"
@@ -33,8 +34,19 @@ def readable_output_context(path: Path | None = None) -> str:
     return f"{READABLE_OUTPUT_HEADING}\n\n{body}" if body else ""
 
 
+def _sweep_reports(payload: dict) -> None:
+    transcript_path = str((payload or {}).get("transcript_path") or "")
+    if not transcript_path:
+        return
+    try:
+        sweep_tool_use_reports(transcript_path)
+    except OSError:
+        pass
+
+
 def run(payload: dict | None = None, config: dict | None = None) -> dict:
     """Send the short line to the transcript and the full contract to the model, because systemMessage alone never reaches the model."""
+    _sweep_reports(payload or {})
     readable = readable_output_context()
     context = f"{CONTRACT}\n\n{readable}" if readable else CONTRACT
     return {

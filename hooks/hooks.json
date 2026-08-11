@@ -1,5 +1,5 @@
 {
-  "description": "Agent Discipline Watcher: deterministic discipline gates on writes, commits, prompts, and turn end.",
+  "description": "Agent Discipline Watcher: automatic cleanup, semantic review, and security gates for Claude Code.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SessionStart"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SessionStart",
+            "timeout": 10
           }
         ]
       }
@@ -17,41 +18,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh UserPromptSubmit"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh UserPromptSubmit",
+            "timeout": 30
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreToolUse"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Bash(git *)",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreCommit"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreBash"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreMcp"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PreToolUse",
+            "timeout": 30
           }
         ]
       }
@@ -62,7 +41,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "agent",
+            "model": "haiku",
+            "continueOnBlock": true,
+            "timeout": 30,
+            "prompt": "Agent Discipline Watcher post-write reviewer (experimental, advisory only). This is a separate Haiku call. It never changes the main session model, and no rewrite, permission, security, or file-mutation decision may depend on it. Derive the report path yourself: report_dir is the directory named .adw-tool-reports next to transcript_path, and the filename is sha256(session_id + ':' + tool_use_id) + '.json'. If that file is missing, unreadable, or larger than 20000 bytes, return {\"ok\": true} immediately without further action. Otherwise read only that bounded JSON report (never the whole transcript or whole file) plus the named source span it points to. Ignore anything the report already lists under cleanup_counts, since the deterministic cleaner already fixed it. Judge only the report's unresolved entries and embedding_matches. Return exactly one JSON object: {\"ok\": true} when nothing unresolved remains a real problem, or {\"ok\": false, \"issue\": \"...\", \"evidence\": \"path:line\", \"repair\": \"one concrete next action\"} otherwise. Keep issue and repair each under 200 characters. No filler, no restated report contents, no praise."
           }
         ]
       }
@@ -72,7 +64,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolBatch"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolBatch",
+            "timeout": 30
           }
         ]
       }
@@ -82,7 +75,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUseFailure"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUseFailure",
+            "timeout": 10
           }
         ]
       }
@@ -92,27 +86,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStart"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStop"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh Stop"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStart",
+            "timeout": 10
           }
         ]
       }

@@ -15,10 +15,11 @@ except ImportError:
 
 
 ALWAYS_ON_RULES = (
-    "Three rules ignore the family and path switches below: suppression_escape_hatch, "
-    "what_comment, and what_docstring. scanner.scan_all emits them from _unconditional_findings "
-    "before exemptions and outside the clean_code guard. suppression_escape_hatch sits in "
-    "ALWAYS_BLOCKING_RULES. The two WHAT rules ship with enforcing rule_gates."
+    "Only suppression_escape_hatch ignores the family and path switches below. "
+    "scanner.scan_all emits it from _unconditional_findings before exemptions, and it sits "
+    "in ALWAYS_BLOCKING_RULES. what_comment and what_docstring are ordinary clean_code rules: "
+    "they respect the clean_code switch and exempt_paths, and ship with enforcing rule_gates "
+    "so a project must opt out rather than being unable to."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
@@ -58,10 +59,10 @@ DEFAULTS = {
         "corporate_idiom": "observe",
         "long_sentence": "observe",
         "oversized_list": "observe",
+        "weak_why_comment": "observe",
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
-    "escalation": {"enabled": False, "model": "claude-haiku-4-5-20251001"},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
 }

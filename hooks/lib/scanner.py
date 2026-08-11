@@ -8,11 +8,9 @@ from pathlib import PurePath
 
 try:
     from .config import GATE_FAMILIES, effective_config
-    from .escalate import classify_what
     from .markup import _blank_keep_newlines, _mask_markup, _sniff_prose
 except ImportError:
     from config import GATE_FAMILIES, effective_config
-    from escalate import classify_what
     from markup import _blank_keep_newlines, _mask_markup, _sniff_prose
 
 
@@ -124,7 +122,8 @@ WHAT_OPENER_RE = re.compile(
     r"^(?:Returns?|Returning|Scans?|Scanning|Checks?|Checking|Validates?|Validating|"
     r"Handles?|Handling|Processes?|Processing|Gets?|Getting|Sets?|Setting|Creates?|Creating|"
     r"Initializes?|Initializing|Iterates?|Iterating|Loops? through|Looping through|"
-    r"Copy|Copies|Copying|Reports?|Reporting)\b",
+    r"Copy|Copies|Copying|Reports?|Reporting|Increments?|Incrementing|Decrements?|Decrementing|"
+    r"Resets?|Resetting|Stores?|Storing)\b",
     re.IGNORECASE,
 )
 IDENTIFIER_PART_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|\b)|[A-Z]?[a-z]+|\d+")
@@ -241,24 +240,19 @@ def _python_tree(path: str, text: str):
         return None
 
 
-def _unconditional_findings(path: str, text: str, config: dict, tree, code_file: bool) -> list[dict]:
+def _unconditional_findings(path: str, text: str, _config: dict, _tree, _code_file: bool) -> list[dict]:
     lines = text.splitlines() or [""]
-    findings = [
+    return [
         _finding("clean_code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + path, line,
                  "Remove the marker and fix the reported issue.")
         for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
     ]
-    if code_file:
-        findings.extend(_what_comment_rows(path, text, config, tree))
-    findings.extend(_what_docstring_findings(path, tree, config))
-    return findings
 
 
 def _scan_context(path: str, text: str, config: dict | None) -> tuple[dict, object, list[str], bool, bool]:
     """Share classification because every scan pass must use the same source view."""
     cfg = effective_config(config)
-    cfg["_escalation_remaining"] = 5
     tree, lines = _python_tree(path, text), text.splitlines() or [""]
     prose = _is_prose(path, text)
     return cfg, tree, lines, prose, not prose and not _is_config(path)
@@ -500,17 +494,13 @@ def _identity_at_line(identities, line_number: int) -> tuple[tuple[str, ...], tu
     return names, params
 
 
-def _comment_is_what(text: str, names, params, config: dict) -> bool:
-    opener = bool(WHAT_OPENER_RE.match(text))
-    why = _has_why_marker(text)
-    if opener:
-        if _has_strong_why_marker(text):
-            return False
-        return classify_what(text, True, config) if why else True
-    ratio = _identifier_overlap(names, params, text)
-    if why:
+def _comment_is_what(text: str, names, params, _config: dict) -> bool:
+    """Require a strong marker to clear an opener because a weak causal word must not excuse plain narration."""
+    if WHAT_OPENER_RE.match(text):
+        return not _has_strong_why_marker(text)
+    if _has_why_marker(text):
         return False
-    return classify_what(text, True, config) if 0.4 <= ratio < 0.6 else True
+    return _identifier_overlap(names, params, text) >= 0.6
 
 
 def _what_comment_rows(path: str, text: str, config: dict, tree) -> list[dict]:
@@ -552,6 +542,12 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
         for pattern, rule, action in READABILITY_RULES
         if pattern.search(text)
     )
+    if _has_why_marker(text) and not _has_strong_why_marker(text):
+        rows.append(_finding(
+            "clean_code", "weak_why_comment", line_number,
+            "Causal wording lacks a concrete reason in " + path, line,
+            "Name the constraint, invariant, or consequence, or drop the causal wording.",
+        ))
     return rows
 
 
@@ -576,7 +572,9 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
 
 def _scan_clean_code_file(path: str, text: str, config: dict, tree) -> list[dict]:
     lines = text.splitlines()
-    findings = _scan_clean_code_blocks(path, text)
+    findings = _what_comment_rows(path, text, config, tree)
+    findings.extend(_what_docstring_findings(path, tree, config))
+    findings.extend(_scan_clean_code_blocks(path, text))
     findings.extend(_scan_docstrings(path, tree))
     findings.extend(_scan_lengths(path, lines, config, tree))
     findings.extend(_scan_hollow_test_blocks(path, lines))
@@ -611,11 +609,14 @@ def _scope_docstring(scope) -> tuple[int, str] | None:
 
 
 def _narrating_docstring(scope) -> tuple[int, str] | None:
+    """Spare a block that carries one WHY line because that line already answers for the whole block."""
     hit = _scope_docstring(scope)
     if not hit or "\n" not in hit[1].strip():
         return None
     lines = [line.strip() for line in hit[1].splitlines() if line.strip()]
-    return None if any(TAG_LINE_RE.match(line) for line in lines[1:]) else hit
+    if any(TAG_LINE_RE.match(line) for line in lines[1:]):
+        return None
+    return None if any(_has_why_marker(line) for line in lines) else hit
 
 
 def _public_scope(scope) -> bool:
@@ -624,19 +625,16 @@ def _public_scope(scope) -> bool:
     return not scope.name.startswith("_") or (scope.name.startswith("__") and scope.name.endswith("__"))
 
 
-def _docstring_line_is_what(scope, path: str, line: str, first_line: bool, config: dict) -> bool:
+def _docstring_line_is_what(scope, path: str, line: str, first_line: bool, _config: dict) -> bool:
     names, params = _scope_identity(scope, path)
-    ratio = _identifier_overlap(names, params, line)
     echo = _identifier_echo(names, params, line)
     if _public_scope(scope) and first_line and not echo:
-        return classify_what(line, False, config) if 0.4 <= ratio < 0.6 else False
-    opener = bool(WHAT_OPENER_RE.match(line))
-    why = _has_why_marker(line)
-    if opener:
-        if _has_strong_why_marker(line):
-            return False
-        return classify_what(line, True, config) if why else True
-    return not why
+        return False
+    if WHAT_OPENER_RE.match(line):
+        return not _has_strong_why_marker(line)
+    if _has_why_marker(line):
+        return False
+    return echo
 
 
 def _what_docstring_rows(path: str, scope, hit: tuple[int, str], config: dict) -> list[dict]:
@@ -901,9 +899,12 @@ def _test_block(lines: list[str], start: int) -> tuple[list[str], int]:
 def _flush_comment_run(
     path: str, run: list[tuple[int, str]], findings: list[dict], header_end: int = 0
 ) -> None:
+    """Spare a run that carries one WHY line because that line already answers for the block."""
     if len(run) < 2:
         return
     if run[-1][0] <= header_end or _is_header_run(run):
+        return
+    if any(_has_why_marker(_comment_text(line) or "") for _number, line in run):
         return
     line_number, line = run[0]
     findings.append(_finding(

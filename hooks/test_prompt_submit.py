@@ -55,6 +55,12 @@ def context(response: dict) -> str:
     return response["hookSpecificOutput"]["additionalContext"]
 
 
+def test_session_prompt_advances_the_ledger_turn() -> None:
+    with mock.patch.object(prompt_submit.session_state, "advance_turn") as advance:
+        prompt_submit.run(payload("Implement it.", session_id="s1"))
+    advance.assert_called_once()
+
+
 @pytest.mark.parametrize(
     ("text", "rule"),
     [

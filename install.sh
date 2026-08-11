@@ -45,7 +45,7 @@ ln -snf "$skill_dir" "$HOME/.agents/skills/agent-discipline-watcher"
 
 if [ "$install_claude" -eq 1 ] && [ "$claude_legacy" -eq 1 ]; then
   mkdir -p "$HOME/.claude/skills"
-  ln -snf "$skill_dir" "$HOME/.claude/skills/agent-discipline-watcher"
+  ln -snf "$skill_dir/skills/agent-discipline-watcher" "$HOME/.claude/skills/agent-discipline-watcher"
   backup_file "$HOME/.claude/settings.json"
   python3 "$skill_dir/hooks/merge-claude-settings.py" \
     --settings "$HOME/.claude/settings.json" \
@@ -57,7 +57,7 @@ elif [ "$install_claude" -eq 1 ]; then
     --settings "$HOME/.claude/settings.json" \
     --remove-legacy
   legacy_link="$HOME/.claude/skills/agent-discipline-watcher"
-  if [ -L "$legacy_link" ] && [ "$(readlink "$legacy_link")" = "$skill_dir" ]; then
+  if [ -L "$legacy_link" ] && [ "$(readlink "$legacy_link")" = "$skill_dir/skills/agent-discipline-watcher" ]; then
     rm -f "$legacy_link"
   fi
   cat <<'EOF'

@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXTENSION = ROOT / "pi" / "extensions" / "agent-discipline-watcher" / "index.ts"
 README = ROOT / "README.md"
-SKILL = ROOT / "SKILL.md"
+SKILL = ROOT / "skills" / "agent-discipline-watcher" / "SKILL.md"
 
 
 def read(path: Path) -> str:

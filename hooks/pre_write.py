@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import ast
 import re
 import time
 from pathlib import Path
 
+from lib import payloads
+import lib.rewrite as rewrite
 from lib.baseline import changed_lines, split_committed, subtract
-from lib.config import effective_config
-from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
+from lib.config import ALWAYS_BLOCKING_RULES, effective_config
+from lib.hookio import PARSE_FAILURE, allow, context, deny, read_payload, write_payload
 from lib.protected import path_findings
-from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
+from lib.reporting import (
+    inherited_advice, record_findings, run_with_ledger, sweep_tool_use_reports,
+    verdict_message, write_tool_use_report,
+)
 from lib.scanner import scan_all
 
-PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
+PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)$", re.MULTILINE)
 UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this write and blocked it rather than letting it through. "
     "Repair the gate config and retry. Cause: "
@@ -30,6 +36,9 @@ def pending_writes(payload: dict) -> list[tuple[str, str]]:
         return [(path, str(tool_input.get("content") or ""))]
     if "new_string" in tool_input:
         return [(path, str(tool_input.get("new_string") or ""))]
+    if "new_source" in tool_input:
+        path = tool_input.get("notebook_path") or path
+        return [(path, str(tool_input.get("new_source") or ""))]
     edits = tool_input.get("edits")
     if isinstance(edits, list):
         return [(path, "\n".join(str(edit.get("new_string", "")) for edit in edits if isinstance(edit, dict)))]
@@ -49,14 +58,14 @@ def split_patch(patch: str) -> list[tuple[str, str]]:
     for line in patch.splitlines():
         match = PATCH_FILE.match(line)
         if match:
-            if current and lines:
+            if current:
                 rows.append((current, "\n".join(lines)))
             current = match.group(1).strip().strip('"')
             lines = []
             continue
         if current and line.startswith("+") and not line.startswith("+++"):
             lines.append(line[1:])
-    if current and lines:
+    if current:
         rows.append((current, "\n".join(lines)))
     return rows
 
@@ -82,30 +91,107 @@ def _run(payload: dict, config: dict | None) -> dict:
     )
 
 
-def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
-    started = time.monotonic()
-    if payload.get("session_id"):
-        cfg["session_id"] = payload["session_id"]
-    findings, inherited = _pending_findings(payload, cfg)
-    if not findings and not inherited:
-        return allow()
-    decisions = record_findings(
+def _candidate_payload(payload: dict, tool_input: dict) -> dict:
+    candidate = dict(payload)
+    candidate["tool_input"] = tool_input
+    return candidate
+
+
+def _valid_python_candidate(tool_input: dict, path: str) -> bool:
+    if not path.lower().endswith(".py"):
+        return True
+    if isinstance(tool_input.get("content"), str):
+        candidate = tool_input["content"]
+    else:
+        applied = _apply_edits(tool_input, path)
+        candidate = applied[1] if applied else None
+    if candidate is None:
+        return True
+    try:
+        ast.parse(candidate)
+    except SyntaxError:
+        return False
+    return True
+
+
+def _unique_findings(findings: list[dict]) -> list[dict]:
+    seen: set[tuple[object, ...]] = set()
+    result: list[dict] = []
+    for finding in findings:
+        key = (finding.get("rule"), finding.get("path"), finding.get("line"))
+        if key not in seen:
+            seen.add(key)
+            result.append(finding)
+    return result
+
+
+def _advice(findings: list[dict]) -> str:
+    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
+    rows = [
+        f"{row.get('rule')} at {row.get('path', '<pending>')}:{row.get('line', 0)}"
+        for row in style[:3]
+    ]
+    suffix = f" and {len(style) - 3} more" if len(style) > 3 else ""
+    return "Remaining style advice: " + ", ".join(rows) + suffix + "." if rows else ""
+
+
+def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float):
+    return record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_write",
         event="PreToolUse", findings=findings, turn_id=turn_id,
         tool_use_id=str(payload.get("tool_use_id") or ""),
         duration_ms=int((time.monotonic() - started) * 1000),
         root=cfg.get("ledger_root"), config=cfg,
     )
-    return _verdict(decisions, inherited, cfg)
 
 
-def _verdict(decisions: list[tuple[dict, str]], inherited: list[dict], cfg: dict) -> dict:
-    """Deny on an enforced finding, otherwise report so the agent must weigh the rest before moving on."""
-    kind, message = verdict_message(decisions, cfg)
-    joined = "\n".join(part for part in (message, inherited_advice(inherited, cfg)) if part)
-    if kind == "block":
-        return deny(joined)
-    return advise(joined, "PreToolUse") if joined else allow()
+def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
+    started = time.monotonic()
+    if payload.get("session_id"):
+        cfg["session_id"] = payload["session_id"]
+    original, inherited = _pending_findings(payload, cfg)
+    tool_input = _tool_input(payload)
+    rewritten = rewrite.rewrite_tool_input(payloads.tool_name(payload), tool_input, cfg)
+    path = str(tool_input.get("file_path") or tool_input.get("path") or "<pending>")
+    valid = not rewritten.changed or _valid_python_candidate(rewritten.tool_input, path)
+    effective = rewritten.tool_input if valid else tool_input
+    current, _ = _pending_findings(_candidate_payload(payload, effective), cfg)
+    protected = [row for row in original if row.get("rule") in ALWAYS_BLOCKING_RULES]
+    findings = _unique_findings(protected + current)
+    decisions = _record(payload, cfg, turn_id, findings, started) if findings else []
+    security = [row for row in decisions if row[0].get("rule") in ALWAYS_BLOCKING_RULES]
+    if security:
+        _, message = verdict_message(security, cfg)
+        return deny(message)
+    messages = [rewrite.summary(rewritten.counts) if valid else "Automatic cleanup was skipped because it would invalidate Python syntax."]
+    messages.append(_advice(findings))
+    joined = "\n".join(message for message in messages if message)
+    _emit_tool_use_report(payload, path, findings, rewritten.counts)
+    return _response(joined, inherited_advice(inherited, cfg), rewritten.changed and valid, effective)
+
+
+def _emit_tool_use_report(payload: dict, path: str, findings: list[dict], counts: dict) -> None:
+    """Skip silently without a transcript_path, because the report has nowhere safe to live next to it."""
+    transcript_path = str(payload.get("transcript_path") or "")
+    if not transcript_path:
+        return
+    sweep_tool_use_reports(transcript_path)
+    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
+    write_tool_use_report(
+        transcript_path=transcript_path,
+        session_id=str(payload.get("session_id") or ""),
+        tool_use_id=str(payload.get("tool_use_id") or ""),
+        target_path=path,
+        tool_name=payloads.tool_name(payload),
+        cleanup_counts=counts,
+        unresolved=style,
+    )
+
+
+def _response(joined: str, notice: str, rewrote: bool, effective: dict) -> dict:
+    """Carry the inherited-debt notice on systemMessage because context() is model-only and a human needs to see it too."""
+    response = context(joined, "PreToolUse", effective) if rewrote else context(joined, "PreToolUse") if joined else allow()
+    return {**response, "systemMessage": notice} if notice else response
 
 
 def _stamped(findings: list[dict], path: str) -> list[dict]:
@@ -123,6 +209,8 @@ def _label_pending_text(findings: list[dict]) -> list[dict]:
 def _pending_edit_text(tool_input: dict) -> str:
     if "new_string" in tool_input:
         return str(tool_input.get("new_string") or "")
+    if "new_source" in tool_input:
+        return str(tool_input.get("new_source") or "")
     return "\n".join(
         str(edit.get("new_string", ""))
         for edit in tool_input.get("edits", [])
@@ -176,8 +264,11 @@ def _edit_findings(tool_input: dict, path: str, cfg: dict) -> list[dict]:
 def _pending_findings(payload: dict, cfg: dict) -> tuple[list[dict], list[dict]]:
     """Split whole-file content against its committed version, because only Write carries debt the edit did not create."""
     tool_input = _tool_input(payload)
-    if "new_string" in tool_input or isinstance(tool_input.get("edits"), list):
-        path = str(tool_input.get("file_path") or tool_input.get("path") or "<pending>")
+    if "new_string" in tool_input or "new_source" in tool_input or isinstance(tool_input.get("edits"), list):
+        path = str(
+            tool_input.get("file_path") or tool_input.get("path")
+            or tool_input.get("notebook_path") or "<pending>"
+        )
         protected = _stamped(path_findings(path, cfg, content=_pending_edit_text(tool_input)), path)
         return protected + _edit_findings(tool_input, path, cfg), []
     whole_file = "content" in tool_input

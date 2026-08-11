@@ -13,16 +13,11 @@ RUN_SH = ROOT / "hooks" / "run.sh"
 DISPATCH = {
     "SessionStart": "session_start.py",
     "UserPromptSubmit": "prompt_submit.py",
-    "PreToolUse": "pre_write.py",
-    "PreCommit": "pre_commit.py",
-    "PreBash": "pre_bash.py",
-    "PreMcp": "pre_mcp.py",
+    "PreToolUse": "pre_tool.py",
     "PostToolUse": "record.py",
     "PostToolBatch": "batch.py",
     "PostToolUseFailure": "failure.py",
     "SubagentStart": "subagent_start.py",
-    "SubagentStop": "subagent_stop.py",
-    "Stop": "stop.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)

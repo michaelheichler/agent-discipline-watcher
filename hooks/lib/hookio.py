@@ -16,7 +16,7 @@ Code: intent lives in names, structure, and tests. Delete any comment that narra
 
 Stance: be skeptical and direct. Verify changeable facts before claiming them. Challenge weak assumptions and overbuilt solutions. Do not open with praise, agreement, or other empty validators.
 
-Hook findings are blockers, not advice. Fix the named file or reply text, then rerun the relevant check. Keep the fix narrow: rewrite the offending sentence, comment, test, or function rather than widening the change.
+Style findings are cleaned automatically or reported as advice; security findings still block the write. Fix the named file or reply text, then rerun the relevant check. Keep the fix narrow: rewrite the offending sentence, comment, test, or function rather than widening the change.
 
 Do not end a turn while a finding remains in your own changes. Do not silence a hook, delete hook state, or edit configuration to get past a finding. Do not add a Craftsman suppression marker. Do not broaden the task into style cleanup outside the requested scope."""
 
@@ -54,6 +54,14 @@ def deny(reason: str) -> dict:
 
 def allow() -> dict:
     return {}
+
+
+def context(message: str, event: str, updated_input: dict | None = None) -> dict:
+    """Use model context because systemMessage is visible only to the user."""
+    specific: dict[str, object] = {"hookEventName": event, "additionalContext": message}
+    if updated_input is not None:
+        specific["updatedInput"] = updated_input
+    return {"hookSpecificOutput": specific}
 
 
 def stop_block(reason: str) -> dict:

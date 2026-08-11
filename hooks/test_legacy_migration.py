@@ -134,7 +134,7 @@ class InstallScriptTests(unittest.TestCase):
             )
             self.assertIn("legacy path-based wiring", result.stdout)
             settings = json.loads((Path(home) / ".claude" / "settings.json").read_text(encoding="utf-8"))
-            self.assertIn("run.sh PreToolUse", json.dumps(settings))
+            self.assertIn('run.sh\\" PreToolUse', json.dumps(settings))
 
     def test_default_claude_branch_is_idempotent(self):
         with tempfile.TemporaryDirectory() as home:
