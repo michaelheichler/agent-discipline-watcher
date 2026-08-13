@@ -121,6 +121,19 @@ class EditJournalTests(unittest.TestCase):
         record.run(payload, self.cfg)
         self.assertEqual([row for row in self._ledger_rows() if row["event"] == "PostToolUse"], [])
 
+    def test_oversized_source_still_hits_the_line_guard(self):
+        target = self.root / "large.py"
+        target.write_text("x = 1\n" * 1000, encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_use_id": "toolu-large",
+            "tool_input": {"file_path": str(target)},
+        }
+        response = record.run(payload, {**self.cfg, "max_scan_bytes": 10})
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("file_too_long", response["reason"])
+
     def test_journal_write_failure_does_not_fail_hook(self):
         read_only = self.root / "ro"
         read_only.mkdir()

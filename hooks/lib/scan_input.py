@@ -14,6 +14,34 @@ LEGACY_ENV_NAMES = {
     "ADW_FILE_BLOCK_LINES": "CLEANCODER_FILE_BLOCK_LINES",
     "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
 }
+FILE_LENGTH_WARNING = 500
+FILE_LENGTH_CRITICAL = 750
+FILE_LENGTH_BLOCK = 1000
+
+
+def file_length_policy(count: int) -> tuple[str, str] | None:
+    if count >= FILE_LENGTH_BLOCK:
+        return "file_too_long", "Split this file into focused modules."
+    if count >= FILE_LENGTH_CRITICAL:
+        return "file_length_critical", "Split this file now. It will hard block at 1000 lines."
+    if count >= FILE_LENGTH_WARNING:
+        return "file_length_warning", "Plan a focused split before this file reaches 750 lines."
+    return None
+
+
+def file_line_count(path: Path) -> int | None:
+    try:
+        with path.open("rb") as handle:
+            count = 0
+            for line in handle:
+                if b"\0" in line:
+                    return None
+                count += 1
+                if count >= FILE_LENGTH_BLOCK:
+                    return count
+            return count
+    except OSError:
+        return None
 
 
 def read_scannable(path: Path, config: dict) -> str | None:

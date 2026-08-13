@@ -65,6 +65,12 @@ class ResolveOutcomeTests(unittest.TestCase):
         cfg = {"gates": {"clean_code": "observe"}}
         self.assertEqual(config.resolve_outcome(self._finding("clean_code"), cfg), "would_block")
 
+    def test_file_length_reminders_observe_and_hard_cap_blocks(self):
+        cfg = config.effective_config({})
+        self.assertEqual(config.resolve_outcome(self._finding("clean_code", "file_length_warning"), cfg), "would_block")
+        self.assertEqual(config.resolve_outcome(self._finding("clean_code", "file_length_critical"), cfg), "would_block")
+        self.assertEqual(config.resolve_outcome(self._finding("clean_code", "file_too_long"), cfg), "block")
+
     def test_off_finding_releases(self):
         cfg = {"gates": {"english": "off"}}
         self.assertEqual(config.resolve_outcome(self._finding("english"), cfg), "release")

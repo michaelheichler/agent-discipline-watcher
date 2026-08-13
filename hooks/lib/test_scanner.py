@@ -305,11 +305,30 @@ def test_clean_code_restores_old_structural_floor():
 
 
 def test_clean_code_file_length_thresholds():
-    warn = scan_all("sample.py", "\n".join("x = 1" for _ in range(500)), {"punctuation": False, "english": False})
-    hard = scan_all("sample.py", "\n".join("x = 1" for _ in range(1000)), {"punctuation": False, "english": False})
-    hard_rows = [item for item in hard if item["rule"] == "file_too_long"]
-    assert warn == []
-    assert hard_rows and hard_rows[0]["force"] is True
+    def rules(count: int) -> set[str]:
+        source = "\n".join("x = 1" for _ in range(count))
+        return {row["rule"] for row in scan_all("sample.py", source, {})}
+
+    assert not rules(499) & {"file_length_warning", "file_length_critical", "file_too_long"}
+    assert "file_length_warning" in rules(500)
+    assert "file_length_warning" in rules(749)
+    assert "file_length_critical" in rules(750)
+    assert "file_length_critical" in rules(999)
+    assert "file_too_long" in rules(1000)
+
+
+def test_file_length_guard_ignores_release_controls():
+    config = {
+        "clean_code": False,
+        "gates": {"clean_code": "off"},
+        "kill_switches": {"clean_code": True},
+        "exempt_paths": ["sample.py"],
+        "rule_gates": {"file_too_long": "off", "file_length_warning": "off"},
+    }
+    warning = scan_all("sample.py", "\n".join("x = 1" for _ in range(500)), config)
+    blocked = scan_all("sample.py", "\n".join("x = 1" for _ in range(1000)), config)
+    assert "file_length_warning" in {row["rule"] for row in warning}
+    assert "file_too_long" in {row["rule"] for row in blocked}
 
 
 def test_clean_code_hollow_test_block_in_js():

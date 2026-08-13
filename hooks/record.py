@@ -10,6 +10,7 @@ from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
 import pre_bash
+from lib import scan_input
 from lib.config import effective_config
 from lib.hookio import advise, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
@@ -22,7 +23,7 @@ from lib.reporting import (
     run_with_ledger,
     verdict_message,
 )
-from lib.scanner import read_scannable, scan_all
+from lib.scanner import file_length_findings, read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
 
@@ -89,6 +90,9 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
             continue
         text = read_scannable(path, cfg)
         if text is None:
+            count = scan_input.file_line_count(path)
+            if count is not None:
+                owned_rows.extend(_stamped(file_length_findings(str(path), "x\n" * count), path))
             continue
         owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
         owned_rows.extend(_stamped(owned, path))

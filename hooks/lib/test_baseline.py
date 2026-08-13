@@ -68,6 +68,11 @@ class SubtractTests(unittest.TestCase):
 
         self.assertEqual(baseline.subtract([marker], [marker]), [marker])
 
+    def test_file_length_guard_is_not_removed_from_the_baseline(self):
+        for rule in ("file_length_warning", "file_length_critical", "file_too_long"):
+            finding = row(rule, "long.py")
+            self.assertEqual(baseline.subtract([finding], [finding]), [finding])
+
 
 class BaselineModeTests(unittest.TestCase):
     def test_it_defaults_to_report(self):

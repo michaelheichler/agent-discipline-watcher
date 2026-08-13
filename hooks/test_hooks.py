@@ -113,6 +113,25 @@ def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp
     _assert_style_row(response, target, 1, "file_too_long")
 
 
+def test_pre_write_reminds_at_500_and_750_then_blocks_at_1000_lines():
+    def response(count: int) -> dict:
+        content = "\n".join("x = 1" for _ in range(count))
+        return pre_write.run(
+            {"tool_name": "Write", "tool_input": {"file_path": "long.py", "content": content}},
+            {"baseline": "none"},
+        )
+
+    warning = response(500)
+    critical = response(750)
+    blocked = response(1000)
+    assert "decision" not in warning
+    assert "file_length_warning" in warning["hookSpecificOutput"]["additionalContext"]
+    assert "decision" not in critical
+    assert "file_length_critical" in critical["hookSpecificOutput"]["additionalContext"]
+    assert blocked["decision"] == "block"
+    assert "file_too_long" in blocked["reason"]
+
+
 def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     target = tmp_path / "missing.py"
     tool_input = {"file_path": str(target), "old_string": "not present\n",
@@ -362,6 +381,18 @@ def test_pre_commit_scans_staged_blob_when_worktree_is_clean(tmp_path):
     target.write_text("print(1)\n", encoding="utf-8")
     response = pre_commit.run({"cwd": str(tmp_path), "tool_input": {"command": "git commit -m test"}})
     _assert_style_row(response, "a.py", 1, "prose_comment_block")
+
+
+def test_pre_commit_blocks_oversized_staged_blob_when_full_scan_is_capped(tmp_path):
+    _git(tmp_path, "init")
+    target = tmp_path / "large.py"
+    target.write_text("x = 1\n" * 1000, encoding="utf-8")
+    _git(tmp_path, "add", "large.py")
+    response = pre_commit.run(
+        {"cwd": str(tmp_path), "tool_input": {"command": "git commit -m test"}},
+        {"max_scan_bytes": 10},
+    )
+    _assert_style_row(response, "large.py", 1, "file_too_long")
 
 
 def test_pre_commit_ignores_dirty_worktree_when_staged_blob_is_clean(tmp_path):

@@ -241,6 +241,7 @@ def _unconditional_findings(
     comment_source = comment_text if comment_text is not None else text
     if not code_file:
         return findings
+    findings.extend(_file_length_findings(path, len(lines)))
     findings.extend(_multiline_comment_findings(path, comment_source))
     comment_source = _normalize_block_comments(comment_source)
     findings.extend(_what_comment_rows(path, comment_source, config, tree))
@@ -715,16 +716,16 @@ def _lexical_scope_header(lines: list[str]) -> bool:
             return False
     return False
 
-def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
-    hard = _int_setting(config, "file_block_lines", "ADW_FILE_BLOCK_LINES", 1000)
-    if count >= hard:
-        return [_finding(
-            "clean_code", "file_too_long", 1,
-            "File is over the hard length cap in " + path,
-            path, "Split this file into focused modules.",
-        )]
-    return []
+def _file_length_findings(path: str, count: int) -> list[dict]:
+    policy = scan_input.file_length_policy(count)
+    if policy is None:
+        return []
+    rule, action = policy
+    return [_finding("clean_code", rule, 1, f"File has {count} lines in {path}", path, action)]
 
+
+def file_length_findings(path: str, text: str) -> list[dict]:
+    return _file_length_findings(path, len(text.splitlines()) or 1) if _is_code(path) else []
 def _long_functions(tree, func_limit: int):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -861,9 +862,8 @@ def _scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:
 
 
 def _scan_lengths(path: str, lines: list[str], config: dict, tree) -> list[dict]:
-    findings = _file_length_findings(path, len(lines), config)
-    findings.extend(_function_length_findings(path, config, tree))
-    return findings
+    del lines
+    return _function_length_findings(path, config, tree)
 
 
 def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:

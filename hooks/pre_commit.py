@@ -10,7 +10,7 @@ from lib.baseline import strip_against
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.reporting import record_findings, run_with_ledger, verdict_message
-from lib.scanner import scan_all, scannable_text
+from lib.scanner import file_length_findings, scan_all, scannable_text
 
 # Suffixed so that scanner._is_prose treats the message as prose and the english family reaches it.
 COMMIT_MESSAGE_PATH = "commit_message.md"
@@ -94,6 +94,7 @@ def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
     for path in _staged(repo):
         text = _staged_text(repo, path)
         if text is None or scannable_text(text, cfg) is None:
+            findings.extend({**finding, "path": path} for finding in file_length_findings(path, text or ""))
             continue
         owned = strip_against(_head_text(repo, path), path, scan_all(path, text, cfg), cfg)
         for finding in owned:

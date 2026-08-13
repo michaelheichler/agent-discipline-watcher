@@ -22,7 +22,9 @@ ALWAYS_ON_RULES = (
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({
     "suppression_escape_hatch",
+    "file_too_long",
 })
+FIXED_OBSERVE_RULES = frozenset({"file_length_warning", "file_length_critical"})
 STRICT_HARD_BLOCK_RULES = frozenset({
     "what_comment",
     "what_docstring",
@@ -67,6 +69,8 @@ DEFAULTS = {
         "corporate_idiom": "observe",
         "long_sentence": "observe",
         "oversized_list": "observe",
+        "file_length_warning": "observe",
+        "file_length_critical": "observe",
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
@@ -150,6 +154,8 @@ def resolve_outcome(finding: dict, config: dict | None = None) -> str:
     rule = finding.get("rule", "") if isinstance(finding, dict) else ""
     if rule in ALWAYS_BLOCKING_RULES:
         return "block"
+    if rule in FIXED_OBSERVE_RULES:
+        return "would_block"
     own = rule_state(rule, config)
     if own is not None:
         return _outcome_for(own)

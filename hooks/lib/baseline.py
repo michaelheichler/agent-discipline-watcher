@@ -7,10 +7,10 @@ from collections import Counter
 from pathlib import Path
 
 try:
-    from .config import SCANNER_ALWAYS_BLOCKING_RULES
+    from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from .scanner import scan_all
 except ImportError:
-    from config import SCANNER_ALWAYS_BLOCKING_RULES
+    from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from scanner import scan_all
 
 
@@ -101,7 +101,7 @@ def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
     exact = Counter(
         finding_key(row)
         for row in baseline
-        if row.get("rule") not in SCANNER_ALWAYS_BLOCKING_RULES
+        if row.get("rule") not in SCANNER_ALWAYS_BLOCKING_RULES | FIXED_OBSERVE_RULES
     )
     survivors = _consume(findings, exact, finding_key)
     if not survivors:
