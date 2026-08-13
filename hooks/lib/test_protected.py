@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-import protected
+from lib import protected
 
 GRANT = json.dumps({protected.AUTH_KEY: True})
 ATTACK = {

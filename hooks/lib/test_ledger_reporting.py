@@ -9,8 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import reporting
-import session_state
+from lib import reporting, session_state
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

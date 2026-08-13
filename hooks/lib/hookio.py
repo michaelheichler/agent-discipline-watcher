@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import operator
 import sys
 
 
@@ -34,7 +35,7 @@ def read_payload() -> dict:
     except ValueError as exc:
         sys.stderr.write(f"agent-discipline-watcher: unreadable hook payload ({exc})\n")
         return PARSE_FAILURE
-    if type(payload) is not dict:
+    if not operator.is_(type(payload), dict):
         sys.stderr.write("agent-discipline-watcher: unreadable hook payload (expected JSON object)\n")
         return PARSE_FAILURE
     return payload

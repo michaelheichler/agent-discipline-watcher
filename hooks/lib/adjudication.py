@@ -5,9 +5,9 @@ import hashlib
 import json
 import os
 import subprocess
-from dataclasses import asdict, dataclass
+from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, TypedDict
+from typing import NamedTuple, TypedDict
 
 try:
     from . import session_state
@@ -26,8 +26,7 @@ TIMEOUT_SECONDS = CLIENT_HOOK_DEADLINE_SECONDS - TIMEOUT_MARGIN_SECONDS
 CACHE_FIELD = "adjudication_cache"
 
 
-@dataclass(frozen=True)
-class Request:
+class Request(NamedTuple):
     rule: str
     path: str
     line: int
@@ -38,7 +37,16 @@ class Request:
     content_hash: str
 
     def to_dict(self) -> dict[str, str | int]:
-        return asdict(self)
+        return {
+            "rule": self.rule,
+            "path": self.path,
+            "line": self.line,
+            "source": self.source,
+            "context": self.context,
+            "rubric_version": self.rubric_version,
+            "scanner_version": self.scanner_version,
+            "content_hash": self.content_hash,
+        }
 
 
 class Result(TypedDict):
@@ -47,8 +55,7 @@ class Result(TypedDict):
     reason: str
 
 
-class Adjudicator(Protocol):
-    def __call__(self, request: Request) -> object: ...
+Adjudicator = Callable[[Request], object]
 
 
 def request_for(finding: dict, text: str, source_line: int | None = None) -> Request:

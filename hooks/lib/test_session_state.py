@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import session_state
+from lib import session_state
 
 
 class PluginDataHomeTests(unittest.TestCase):

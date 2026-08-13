@@ -1,6 +1,7 @@
 import json
 import subprocess
 from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import batch
@@ -9,12 +10,12 @@ import record
 from lib import session_state
 
 
+@dataclass
 class RecordingAdjudicator:
-    def __init__(self, result):
-        self.result = result
-        self.requests = []
+    result: object
+    requests: list[object] = field(default_factory=list, init=False)
 
-    def __call__(self, request):
+    def __call__(self, request: object) -> object:
         self.requests.append(request)
         return self.result
 

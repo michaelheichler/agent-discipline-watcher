@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-import scanner
-from config import effective_config
-from scanner import scan_all
+from lib import scanner
+from lib.config import effective_config
+from lib.scanner import scan_all
 
 
 def test_length_caps_read_the_adw_env_names(monkeypatch):
@@ -428,7 +428,6 @@ if __name__ == "__main__":
     test_clean_code_blocks_prose_comment_blocks_in_code_files()
     test_clean_code_allows_standard_license_header_blocks()
     test_clean_code_comment_block_rule_spares_single_comment_docs_and_config()
-    from pathlib import Path
     import tempfile
 
     with tempfile.TemporaryDirectory() as directory:

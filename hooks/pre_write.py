@@ -147,11 +147,9 @@ def _adjudicated_findings(findings: list[dict], payload: dict, cfg: dict) -> lis
     state_root = cfg.get("state_root")
     confirmed: list[dict] = []
     for finding in ambiguous:
-        path = str(finding.get("path") or "<pending>")
-        tool_input = _tool_input(payload)
-        applied = _apply_edits(tool_input, str(_resolved_path(path, Path(payload.get("cwd") or "."))))
-        text = applied[1] if applied else text_by_path.get(path, _pending_edit_text(tool_input))
-        request = adjudication.request_for(finding, text, finding.get("line") if applied else None)
+        path, request = _pending_adjudication_request(
+            finding, payload, text_by_path
+        )
         try:
             result = adjudication.adjudicate_with_cache(
                 request,
@@ -166,6 +164,24 @@ def _adjudicated_findings(findings: list[dict], payload: dict, cfg: dict) -> lis
         if result["verdict"] == "block":
             confirmed.append({**finding, "detail": result["reason"], "snippet": result["evidence"]})
     return deterministic + released + confirmed
+
+
+def _pending_adjudication_request(
+    finding: dict,
+    payload: dict,
+    text_by_path: dict[str, str],
+) -> tuple[str, adjudication.Request]:
+    path = str(finding.get("path") or "<pending>")
+    tool_input = _tool_input(payload)
+    resolved = _resolved_path(path, Path(payload.get("cwd") or "."))
+    applied = _apply_edits(tool_input, str(resolved))
+    text = applied[1] if applied else text_by_path.get(
+        path, _pending_edit_text(tool_input)
+    )
+    request = adjudication.request_for(
+        finding, text, finding.get("line") if applied else None
+    )
+    return path, request
 
 
 def _stamped(findings: list[dict], path: str) -> list[dict]:

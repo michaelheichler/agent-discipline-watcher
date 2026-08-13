@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import baseline
+from lib import baseline, config, scanner
 
 LEGACY = "#!/usr/bin/env python3\n# increments the counter\nx = 1\n"
 EXTRA_DEBT = LEGACY + "# resets the counter\ny = 2\n"
@@ -83,7 +83,6 @@ class BaselineModeTests(unittest.TestCase):
         self.assertEqual(baseline.baseline_mode({"baseline": "git"}), "git")
 
     def test_the_shipped_default_config_selects_report(self):
-        import config
         self.assertEqual(config.effective_config()["baseline"], "report")
 
 
@@ -128,9 +127,8 @@ class StripCommittedTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def _findings(self, body: str, cfg: dict | None = None) -> list[dict]:
-        from scanner import scan_all
         self.path.write_text(body, encoding="utf-8")
-        rows = scan_all(str(self.path), body, cfg or {})
+        rows = scanner.scan_all(str(self.path), body, cfg or {})
         return baseline.strip_committed(self.path, rows, cfg or {})
 
     def test_committed_debt_alone_reports_nothing(self):
@@ -148,9 +146,10 @@ class StripCommittedTests(unittest.TestCase):
         self.assertIn("what_comment", rules)
 
     def _split(self, body: str, cfg: dict) -> tuple[list[dict], list[dict]]:
-        from scanner import scan_all
         self.path.write_text(body, encoding="utf-8")
-        return baseline.split_committed(self.path, scan_all(str(self.path), body, cfg), cfg)
+        return baseline.split_committed(
+            self.path, scanner.scan_all(str(self.path), body, cfg), cfg
+        )
 
     def test_report_mode_hands_back_the_inherited_half(self):
         owned, inherited = self._split(EXTRA_DEBT, {"baseline": "report"})
@@ -172,28 +171,27 @@ class StripCommittedTests(unittest.TestCase):
         self.assertEqual({id(row) for row in owned} & {id(row) for row in inherited}, set())
 
     def test_an_untracked_file_owns_everything(self):
-        from scanner import scan_all
         fresh = self.repo / "fresh.py"
         fresh.write_text(EXTRA_DEBT, encoding="utf-8")
         cfg = {"baseline": "report"}
-        owned, inherited = baseline.split_committed(fresh, scan_all(str(fresh), EXTRA_DEBT, cfg), cfg)
+        owned, inherited = baseline.split_committed(
+            fresh, scanner.scan_all(str(fresh), EXTRA_DEBT, cfg), cfg
+        )
         self.assertEqual(len(owned), 2)
         self.assertEqual(inherited, [])
 
     def test_strip_committed_still_returns_the_owned_half_alone(self):
-        from scanner import scan_all
         self.path.write_text(EXTRA_DEBT, encoding="utf-8")
         cfg = {"baseline": "report"}
-        rows = scan_all(str(self.path), EXTRA_DEBT, cfg)
+        rows = scanner.scan_all(str(self.path), EXTRA_DEBT, cfg)
         self.assertEqual(
             baseline.strip_committed(self.path, rows, cfg),
             baseline.split_committed(self.path, rows, cfg)[0],
         )
 
     def test_strip_against_still_returns_the_owned_half_alone(self):
-        from scanner import scan_all
         cfg = {"baseline": "report"}
-        rows = scan_all("legacy.py", EXTRA_DEBT, cfg)
+        rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
         self.assertEqual(
             [item["snippet"] for item in baseline.strip_against(LEGACY, "legacy.py", rows, cfg)],
             ["# resets the counter"],

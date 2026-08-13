@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import ClassVar
 from unittest import mock
 
-import config
-import reporting
-import session_state
+from lib import config, reporting, scanner, session_state
 
 
 def _read_ledger(root: Path) -> list[dict]:
@@ -105,7 +103,6 @@ class ResolveOutcomeTests(unittest.TestCase):
             )
 
     def test_scanner_emits_and_resolve_blocks_always_on_under_full_defeat(self):
-        import scanner
         defeat = {
             "gates": {f: "off" for f in config.GATE_FAMILIES},
             "kill_switches": {f: True for f in config.GATE_FAMILIES},

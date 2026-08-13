@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import operator
 import posixpath
 import re
 import sys
@@ -78,7 +79,7 @@ def _exact_string_dict(value: object) -> dict[str, object]:
 
 
 def _has_exact_type(value: object, expected: type) -> bool:
-    return type(value) is expected
+    return operator.is_(type(value), expected)
 
 
 def _bounded_text(value: object, maximum: int) -> str:

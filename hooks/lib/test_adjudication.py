@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-import adjudication
+from lib import adjudication
 
 
 def _request():

@@ -8,10 +8,11 @@ import operator
 import os
 import re
 import time
-import pre_bash
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeGuard, TypeVar, cast
+
+import pre_bash
 
 from lib import payloads, reporting
 from lib import adjudication

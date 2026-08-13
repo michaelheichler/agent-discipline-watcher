@@ -95,7 +95,6 @@ def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):
         ]}},
         _edit_config(tmp_path),
     )
-    advice = _style_advice(response)
     _assert_style_row(response, target, 20, "what_comment")
     _assert_style_row(response, target, 81, "what_comment")
 
@@ -133,7 +132,6 @@ def test_pre_write_advises_prose_semicolon_and_dash_break_in_tex():
     content = "One reason; another reason.\nSome text word--word break here.\n"
     payload = {"tool_input": {"file_path": "notes.tex", "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
-    advice = _style_advice(response)
     _assert_style_row(response, "notes.tex", 1, "prose_semicolon")
     _assert_style_row(response, "notes.tex", 2, "dash_break")
 
@@ -207,7 +205,6 @@ def test_pre_write_enforces_vue_comment_contract():
         }
     }
     response = pre_write.run(two_comments, config)
-    advice = _style_advice(response)
     _assert_style_row(response, "component.vue", 2, "what_comment")
     _assert_style_row(response, "component.vue", 1, "prose_comment_block")
 

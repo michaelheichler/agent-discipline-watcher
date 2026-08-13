@@ -1,6 +1,8 @@
 """Centralize pre-tool control so one hook owns the permission result."""
 from __future__ import annotations
 
+import operator
+
 from lib import payloads
 from lib.hookio import PARSE_FAILURE, deny, read_payload, write_payload
 from lib.payloads import exact_string_dict
@@ -22,7 +24,7 @@ UNDECIDABLE = (
 
 
 def _invalid_payload(payload: object) -> bool:
-    if payload is PARSE_FAILURE or type(payload) is not dict:
+    if payload is PARSE_FAILURE or not operator.is_(type(payload), dict):
         return True
     name = payloads.tool_name(payload)
     if not name:
@@ -33,7 +35,7 @@ def _invalid_payload(payload: object) -> bool:
     for key in ("tool_input", "toolInput", "input"):
         if key in fields:
             value = fields[key]
-            return type(value) is not dict or not value
+            return not operator.is_(type(value), dict) or not value
     return True
 
 

@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import ast
 import fnmatch
-import os
 import re
 from pathlib import PurePath
+from typing import NamedTuple
 
 try:
+    from . import scan_input
     from .config import GATE_FAMILIES, effective_config
     from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
 except ImportError:
+    import scan_input
     from config import GATE_FAMILIES, effective_config
     from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
+
+read_scannable = scan_input.read_scannable
+scannable_text = scan_input.scannable_text
+_int_setting = scan_input.int_setting
 
 
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
@@ -165,11 +171,6 @@ DIRECTIVE_COMMENT_RE = re.compile(
     r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+)",
     re.IGNORECASE,
 )
-# Kept as an accepted alias because clean-coder-discipline was merged into this package and user shells still export it.
-LEGACY_ENV_NAMES = {
-    "ADW_FILE_BLOCK_LINES": "CLEANCODER_FILE_BLOCK_LINES",
-    "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
-}
 SUPPRESSION_MARKER = "craftsman" + "-ignore"
 SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b", re.IGNORECASE)
 
@@ -209,31 +210,6 @@ def _active_families(path: str, cfg: dict) -> frozenset[str]:
     )
 
 
-def read_scannable(path, config: dict) -> str | None:
-    cfg = effective_config(config)
-    try:
-        if path.stat().st_size > _max_scan_bytes(cfg):
-            return None
-        raw = path.read_bytes()
-    except OSError:
-        return None
-    if b"\0" in raw[:8192]:
-        return None
-    return raw.decode("utf-8", errors="replace")
-
-
-def scannable_text(text: str, config: dict) -> str | None:
-    if len(text) > _max_scan_bytes(effective_config(config)):
-        return None
-    if "\0" in text[:8192]:
-        return None
-    return text
-
-
-def _max_scan_bytes(config: dict) -> int:
-    return _int_setting(config, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", 1_000_000)
-
-
 def _python_tree(path: str, text: str):
     if not path.lower().endswith(".py"):
         return None
@@ -253,20 +229,31 @@ def _unconditional_findings(path: str, text: str, _config: dict, _tree, _code_fi
     ]
 
 
-def _scan_context(path: str, text: str, config: dict | None) -> tuple[dict, object, list[str], bool, bool]:
+class _ScanContext(NamedTuple):
+    config: dict
+    tree: object
+    lines: list[str]
+    prose: bool
+    code_file: bool
+    active_families: frozenset[str]
+
+
+def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
     """Share classification because every scan pass must use the same source view."""
     cfg = effective_config(config)
     tree, lines = _python_tree(path, text), text.splitlines() or [""]
     suffix = PurePath(path.lower()).suffix
     prose = _is_prose(path, text) or suffix in {".vue", ".svelte"}
     code_file = (not prose and not _is_config(path)) or suffix in MIXED_LANGUAGE_EXTS
-    return cfg, tree, lines, prose, code_file
+    return _ScanContext(cfg, tree, lines, prose, code_file, _active_families(path, cfg))
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
-    cfg, tree, lines, prose, code_file = _scan_context(path, text, config)
-    findings = _unconditional_findings(path, text, cfg, tree, code_file)
-    if _is_exempt(path, cfg):
+    context = _scan_context(path, text, config)
+    findings = _unconditional_findings(
+        path, text, context.config, context.tree, context.code_file
+    )
+    if _is_exempt(path, context.config):
         return findings
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
@@ -274,24 +261,27 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     comment_source = render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}) if mixed else text
     if mixed:
         comment_source = mask_script_strings(comment_source, regions)
-    punct_lines = _strip_punctuation_blocks(path, masked, prose).splitlines() or [""]
+    punct_lines = _strip_punctuation_blocks(path, masked, context.prose).splitlines() or [""]
     english_lines = _strip_english_hidden(masked).splitlines() or [""]
     comment_lines = comment_source.splitlines() or [""]
-    active = _active_families(path, cfg)
-    if "clean_code" in active and code_file:
-        findings.extend(_scan_clean_code_file(path, comment_source, cfg, tree))
-    for number, line in enumerate(lines, 1):
-        if "punctuation" in active:
+    if "clean_code" in context.active_families and context.code_file:
+        findings.extend(
+            _scan_clean_code_file(path, comment_source, context.config, context.tree)
+        )
+    for number, line in enumerate(context.lines, 1):
+        if "punctuation" in context.active_families:
             scan_line = punct_lines[number - 1] if number <= len(punct_lines) else ""
-            findings.extend(_scan_punctuation(path, number, line, scan_line, prose))
-        if "english" in active and prose:
+            findings.extend(
+                _scan_punctuation(path, number, line, scan_line, context.prose)
+            )
+        if "english" in context.active_families and context.prose:
             scan_line = english_lines[number - 1] if number <= len(english_lines) else ""
             findings.extend(_scan_english(path, number, line, scan_line))
-        if "clean_code" in active and code_file:
+        if "clean_code" in context.active_families and context.code_file:
             scan_line = comment_lines[number - 1] if number <= len(comment_lines) else ""
             findings.extend(_scan_clean_code(path, number, scan_line))
-    if "english" in active and prose:
-        findings.extend(_scan_prose_structure(path, masked, cfg))
+    if "english" in context.active_families and context.prose:
+        findings.extend(_scan_prose_structure(path, masked, context.config))
     return findings
 
 
@@ -1005,19 +995,3 @@ def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
     # Ignore trailing comments because quote-unaware hash detection misreads CSS colors and JS private fields.
     leading = COMMENT_RE.match(line)
     return leading.group(1) if leading else ""
-
-
-def _env_setting(env_name: str, default: int):
-    """Prefer the ADW name and accept the merged-package name, so that an existing user shell keeps working."""
-    for name in (env_name, LEGACY_ENV_NAMES.get(env_name)):
-        if name and name in os.environ:
-            return os.environ[name]
-    return default
-
-
-def _int_setting(config: dict, key: str, env_name: str, default: int) -> int:
-    raw = config.get(key, _env_setting(env_name, default))
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return default

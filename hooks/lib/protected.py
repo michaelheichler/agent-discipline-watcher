@@ -172,15 +172,13 @@ def _claude_rule(parts: list[str]) -> str | None:
     entry = parts[1]
     if entry in CLAUDE_EXEMPT_DIRS:
         return None
-    if entry == "plugins" and len(parts) > 2:
-        return "live_client_surface"
-    if entry in CLAUDE_WIRING_DIRS and len(parts) > 2:
-        return "live_client_surface"
-    if entry.startswith("settings") and entry.endswith(".json"):
-        return "live_client_surface"
-    if entry == "claude.md":
-        return "live_client_surface"
-    return None
+    nested_wiring = (
+        entry == "plugins" or entry in CLAUDE_WIRING_DIRS
+    ) and len(parts) > 2
+    protected_file = (
+        entry.startswith("settings") and entry.endswith(".json")
+    ) or entry == "claude.md"
+    return "live_client_surface" if nested_wiring or protected_file else None
 
 
 def _is_gate_config(path: Path) -> bool:

@@ -1,4 +1,4 @@
-from scanner import scan_all
+from lib.scanner import scan_all
 
 
 def test_skip_calls_are_not_policed():

@@ -1,7 +1,7 @@
 import pytest
 
-from markup import RegionKind, extract_regions, render_regions
-from scanner import scan_all
+from lib.markup import RegionKind, extract_regions, render_regions
+from lib.scanner import scan_all
 
 
 HTML_SOURCE = """<main data-note="attribute; not prose">
