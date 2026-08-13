@@ -99,6 +99,10 @@ def test_state_deletion_blocks(command):
     assert "state_deletion" in rules(command)
 
 
+def test_state_overwrite_blocks():
+    assert "state_mutation" in rules("printf x > ~/.agent-discipline/state/s1/state.json")
+
+
 @pytest.mark.parametrize("command", [
     "rm -rf ~/.claude",
     "rm -rf ~/.codex",
@@ -279,9 +283,9 @@ def test_pre_bash_entry_denies_malformed_stdin() -> None:
         capture_output=True, cwd=str(Path(__file__).parent), check=False,
     )
     response = json.loads(result.stdout)
-    assert response["decision"] == "block"
+    assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert response["reason"].endswith("Cause: unreadable hook payload")
+    assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload")
 
 
 def test_pre_bash_entry_allows_empty_stdin() -> None:

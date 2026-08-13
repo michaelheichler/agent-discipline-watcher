@@ -8,8 +8,8 @@ import time
 from pathlib import PurePosixPath
 
 from lib import reporting
-from lib.config import effective_config
-from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
+from lib.config import effective_hook_config
+from lib.hookio import PARSE_FAILURE, advise, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.protected import authorized, is_live_client_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.scanner import scan_all, scannable_text
@@ -67,6 +67,9 @@ RULES = (
     ("state_deletion",
      "Watcher state or gate config deleted",
      "Leave the state in place and repair the reported finding."),
+    ("state_mutation",
+     "Watcher state or gate config mutated",
+     "Leave watcher state under host control and repair the reported finding."),
     ("live_client_surface",
      "Shell command mutates a live client install",
      "Change the repo source and reinstall instead of editing the live install."),
@@ -84,7 +87,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def _run(payload: dict, config: dict | None) -> dict:
-    cfg = effective_config(config, payload.get("cwd") or None)
+    cfg = effective_hook_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_bash",
         payload=payload,
@@ -147,6 +150,8 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
         hits.append("cap_override")
     if any(_deletes_state(segment) for segment in segments):
         hits.append("state_deletion")
+    if "state_deletion" not in hits and any(_mutates_state(segment) for segment in segments):
+        hits.append("state_mutation")
     if any(_mutates_live_client(segment, home) for segment in segments):
         hits.append("live_client_surface")
     return [_finding(rule, command) for rule in hits]
@@ -439,6 +444,12 @@ def _deletes_state(segment: list[str]) -> bool:
     return any(STATE_TARGET_RE.search(word) for word in words)
 
 
+def _mutates_state(segment: list[str]) -> bool:
+    return _is_mutating(segment) and any(
+        STATE_TARGET_RE.search(word) for word in _words(segment)
+    )
+
+
 
 def _is_mutating(segment: list[str]) -> bool:
     """Report the mutating shell forms, so that a read of a protected path stays allowed."""
@@ -503,4 +514,4 @@ def _command(payload: dict) -> str:
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    write_payload(claude_pretool_response(run(read_payload())))

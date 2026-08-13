@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import record
-from lib import reporting, session_state
+from lib import blocker_state, reporting, session_state
 
 
 class EditJournalTests(unittest.TestCase):
@@ -133,6 +134,67 @@ class EditJournalTests(unittest.TestCase):
         response = record.run(payload, {**self.cfg, "max_scan_bytes": 10})
         self.assertEqual(response["decision"], "block")
         self.assertIn("file_too_long", response["reason"])
+        reasons, paths = blocker_state.snapshot("s1", "", self.state_root)
+        self.assertIn("file_too_long", reasons[0])
+        self.assertEqual(paths, [str(target)])
+
+    def test_unscannable_source_remains_blocked(self):
+        target = self.root / "binary.py"
+        target.write_bytes(b"# increments the counter\n\0x = 1\n")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        response = record.run(payload, self.cfg)
+        self.assertIn("unscannable_file", response["reason"])
+
+    def test_project_config_cannot_redirect_blocker_state(self):
+        project = self.root / "project"
+        project.mkdir()
+        redirected = self.root / "redirected"
+        (self.root / ".agent-discipline.json").write_text(
+            '{"state_root":"' + str(redirected) + '"}', encoding="utf-8",
+        )
+        target = project / "a.py"
+        target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "cwd": str(project),
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        record.run(payload, self.cfg)
+        self.assertTrue(blocker_state.snapshot("s1", "", self.state_root)[0])
+        self.assertFalse(redirected.exists())
+
+    def test_block_response_survives_state_write_failure(self):
+        target = self.root / "a.py"
+        target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        }
+        with mock.patch.object(blocker_state, "touch_paths", side_effect=OSError("read only")):
+            response = record.run(payload, self.cfg)
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("what_comment", response["reason"])
+
+    def test_relative_path_is_persisted_against_event_cwd(self):
+        project = self.root / "project"
+        project.mkdir()
+        target = project / "a.py"
+        target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
+        payload = {
+            "session_id": "s1",
+            "cwd": str(project),
+            "tool_name": "Write",
+            "tool_input": {"file_path": "a.py"},
+        }
+        record.run(payload, self.cfg)
+        _reasons, paths = blocker_state.snapshot("s1", "", self.state_root)
+        self.assertEqual(paths, [str(target)])
 
     def test_journal_write_failure_does_not_fail_hook(self):
         read_only = self.root / "ro"

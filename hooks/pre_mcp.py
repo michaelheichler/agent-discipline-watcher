@@ -21,7 +21,7 @@ from failure import (
 )
 from lib import session_state
 from lib.config import effective_config
-from lib.hookio import PARSE_FAILURE, allow, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.reporting import record_decision, run_with_ledger
 
 PRE_TOOL_EVENT = "PreToolUse"
@@ -147,4 +147,4 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    write_payload(claude_pretool_response(run(read_payload())))

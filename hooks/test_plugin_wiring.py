@@ -96,9 +96,12 @@ class PluginManifestTests(unittest.TestCase):
         self.assertTrue(url.endswith(REPO_SLUG), f"{url} does not match {REPO_SLUG}")
 
     def test_marketplace_entry_has_no_pinned_version(self):
-        # Omitted because a marketplace version pins updates and would drift out of parity with plugin.json.
         catalog = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
         self.assertNotIn("version", catalog["plugins"][0])
+
+    def test_manifest_uses_commit_sha_updates(self):
+        manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+        self.assertNotIn("version", manifest)
 
 
 class PluginHookRegistrationTests(unittest.TestCase):
@@ -153,12 +156,12 @@ class PluginHookRegistrationTests(unittest.TestCase):
         legacy_filters = {route_of(e): e.get("if") for _, e in hook_commands(snippet)}
         self.assertEqual(plugin_filters, legacy_filters)
 
-    def test_post_tool_use_blocks_feed_back_and_continue(self):
+    def test_post_tool_use_command_uses_response_feedback_not_prompt_option(self):
         snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
         for config in (self.config, snippet):
             entries = [entry for event, entry in hook_commands(config) if event == "PostToolUse"]
             self.assertTrue(entries)
-            self.assertTrue(all(entry.get("continueOnBlock") is True for entry in entries))
+            self.assertTrue(all("continueOnBlock" not in entry for entry in entries))
 
 
     def test_pretool_command_does_not_use_prompt_hook_continuation_option(self):

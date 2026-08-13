@@ -626,8 +626,9 @@ class SuccessResetTests(HookTestCase):
     def test_success_state_write_failure_preserves_record_response(self):
         failure.run(self.payload(), self.cfg, now=1.0)
         before = self.state()
-        with mock.patch.object(
-            failure.session_state, "update_state", side_effect=OSError("read only")
+        with (
+            mock.patch.object(failure.session_state, "update_state", side_effect=OSError("read only")),
+            mock.patch.object(failure.session_state, "update_state_strict", side_effect=OSError("read only")),
         ):
             self.assertEqual(self.succeed(), {})
         self.assertEqual(self.state(), before)

@@ -27,6 +27,7 @@ CLIENT_HOME_DIRS = frozenset({".codex", ".pi"})
 
 LIVE_ACTION = "Change the repo source and reinstall instead of editing the live install."
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
+STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
 GRANT_ACTION = (
     "The config key no longer grants anything. Ask the human to export "
     + AUTH_ENV
@@ -80,13 +81,17 @@ def path_findings(
         return []
     if _is_gate_config(resolved) and grants_escape(content):
         return [_finding("config_seal", path, "Self-granted gate escape in " + path, GRANT_ACTION)]
+    if _is_state_path(resolved, home):
+        return [_finding("state_mutation", path, "Watcher state path in " + path, STATE_ACTION)]
     root = Path(home).expanduser() if home is not None else Path.home()
     rule = _live_client_rule(resolved, _normalize(root))
     if rule is not None:
         return [_finding(rule, path, "Live client install path in " + path, LIVE_ACTION)]
-    if _is_config_seal(resolved):
-        return [_finding("config_seal", path, "Gate config edit in " + path, SEAL_ACTION)]
-    return []
+    return (
+        [_finding("config_seal", path, "Gate config edit in " + path, SEAL_ACTION)]
+        if _is_config_seal(resolved)
+        else []
+    )
 
 
 def is_live_client_path(path: str, home: str | os.PathLike[str] | None = None) -> bool:
@@ -183,6 +188,18 @@ def _claude_rule(parts: list[str]) -> str | None:
 
 def _is_gate_config(path: Path) -> bool:
     return path.name.lower() == CONFIG_SEAL_BASENAME
+
+
+def _is_state_path(path: Path, home: str | os.PathLike[str] | None) -> bool:
+    override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
+    root = Path(override).expanduser() if override else (
+        Path(home).expanduser() / ".agent-discipline" if home is not None else Path.home() / ".agent-discipline"
+    )
+    try:
+        path.relative_to(_normalize(root))
+    except ValueError:
+        return False
+    return True
 
 
 def _is_config_seal(path: Path) -> bool:

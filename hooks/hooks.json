@@ -42,7 +42,6 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse",
-            "continueOnBlock": true,
             "timeout": 30
           }
         ]

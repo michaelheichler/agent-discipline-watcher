@@ -9,7 +9,7 @@ from contextlib import suppress
 from typing import NamedTuple, cast
 
 from lib import payloads, reporting
-from lib.config import effective_config, gate_state
+from lib.config import effective_hook_config, gate_state
 from lib.hookio import read_payload, write_payload
 from lib.scanner import scan_all, scannable_text
 
@@ -149,9 +149,9 @@ def _caller_mentions(config: object, key: str) -> bool:
 
 def _resolved_config(config: dict[str, object], cwd: str) -> dict[str, object]:
     try:
-        return effective_config(config, cwd or None)
+        return effective_hook_config(config, cwd or None)
     except (OSError, ValueError, TypeError, RuntimeError):
-        return effective_config(config)
+        return effective_hook_config(config, None)
 
 
 def _prompt(payload: object) -> str:
@@ -448,9 +448,7 @@ def _evaluate(
         names = ", ".join(f"{family}/{rule}" for family, rule in findings)
         return {
             "decision": "block",
-            "reason": ("Agent discipline firewall blocked rules: " + names)[
-                :MAX_RESPONSE_CHARS
-            ],
+            "reason": ("Agent discipline firewall blocked rules: " + names)[:MAX_RESPONSE_CHARS],
         }
     return {
         "hookSpecificOutput": {

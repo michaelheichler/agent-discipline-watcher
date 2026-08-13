@@ -452,9 +452,10 @@ def test_run_sh_blocks_forced_posttooluse(tmp_path):
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 2
-    assert result.stdout == ""
-    assert f"{target}:1 punctuation/banned_dash" in result.stderr
+    assert result.returncode == 0
+    response = json.loads(result.stdout)
+    assert "decision" not in response
+    assert f"{target}:1 punctuation/banned_dash" in response["hookSpecificOutput"]["additionalContext"]
 
 
 
@@ -490,9 +491,9 @@ def test_pretooluse_entry_scripts_deny_malformed_stdin() -> None:
             capture_output=True, cwd=str(Path(__file__).parent), check=False,
         )
         response = json.loads(result.stdout)
-        assert response["decision"] == "block", script
+        assert "decision" not in response, script
         assert response["hookSpecificOutput"]["permissionDecision"] == "deny", script
-        assert response["reason"].endswith("Cause: unreadable hook payload"), script
+        assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload"), script
 
 
 def test_pretooluse_entry_scripts_allow_empty_stdin() -> None:
@@ -510,7 +511,7 @@ def test_pre_mcp_entry_denies_malformed_stdin() -> None:
         capture_output=True, cwd=str(Path(__file__).parent), check=False,
     )
     response = json.loads(result.stdout)
-    assert response["decision"] == "block"
+    assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 

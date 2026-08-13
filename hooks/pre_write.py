@@ -5,8 +5,8 @@ import time
 from pathlib import Path
 
 from lib.baseline import changed_lines, split_committed, subtract
-from lib.config import effective_config
-from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
+from lib.config import effective_hook_config
+from lib.hookio import PARSE_FAILURE, advise, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.protected import path_findings
 from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
@@ -77,7 +77,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 def _run(payload: dict, config: dict | None) -> dict:
-    cfg = effective_config(config, payload.get("cwd") or None)
+    cfg = effective_hook_config(config, payload.get("cwd") or None)
     return run_with_ledger(
         hook="pre_write",
         payload=payload,
@@ -228,4 +228,4 @@ def _resolved_path(path: str, cwd: Path) -> Path:
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    write_payload(claude_pretool_response(run(read_payload())))

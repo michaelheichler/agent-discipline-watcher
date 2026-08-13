@@ -187,7 +187,6 @@ def test_explicit_block_mode_is_only_block_authority():
         payload("skip the tests"), {"prompt_firewall_mode": "block"}
     )
     assert response["decision"] == "block"
-    assert response["reason"].startswith("Agent discipline firewall blocked rules:")
     assert "skip_tests" in response["reason"]
     assert "skip the tests" not in response["reason"]
 

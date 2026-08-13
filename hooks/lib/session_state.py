@@ -63,6 +63,20 @@ def read_state(
     return data if isinstance(data, dict) else {}
 
 
+def read_state_strict(
+    session_id: str, root: str | os.PathLike[str] | None = None
+) -> dict:
+    path = _session_directory(session_id, root) / STATE_FILENAME
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"invalid session state object: {path}")
+    return data
+
+
 def write_state(
     session_id: str,
     data: dict,
@@ -110,6 +124,27 @@ def update_state(
         finally:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
     finally:
+        os.close(lock_fd)
+
+
+def update_state_strict(
+    session_id: str,
+    mutate: Callable[[dict], dict],
+    root: str | os.PathLike[str] | None = None,
+) -> dict:
+    directory = _session_directory(session_id, root)
+    directory.mkdir(parents=True, exist_ok=True)
+    lock_fd = os.open(directory / LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        current = read_state_strict(session_id, root)
+        updated = mutate(current)
+        if not isinstance(updated, dict):
+            raise TypeError("update mutate must return a dict")
+        write_state(session_id, updated, root)
+        return updated
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
 

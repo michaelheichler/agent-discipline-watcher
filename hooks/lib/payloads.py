@@ -147,6 +147,10 @@ def tool_use_id(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "tool_use_id")
 
 
+def agent_id(payload: object) -> str:
+    return _exact_string(exact_string_dict(payload), "agent_id")
+
+
 def agent_transcript_path(payload: object) -> str:
     """Return the subagent transcript path, or ''."""
     fields = exact_string_dict(payload)

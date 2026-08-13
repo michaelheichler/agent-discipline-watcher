@@ -40,6 +40,11 @@ def test_live_client_surfaces_block(tmp_path, relative):
     assert rules(str(tmp_path / relative), tmp_path) == ["live_client_surface"]
 
 
+def test_watcher_state_mutation_blocks(tmp_path):
+    target = tmp_path / ".agent-discipline" / "state" / "s1" / "state.json"
+    assert rules(str(target), tmp_path) == ["state_mutation"]
+
+
 @pytest.mark.parametrize("relative", [
     ".claude/jobs/abc/tmp/scratch.py",
     ".claude/projects/proj/memory/note.md",

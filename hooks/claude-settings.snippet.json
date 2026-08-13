@@ -41,7 +41,6 @@
           {
             "type": "command",
             "command": "\"__SKILL_DIR__/hooks/run.sh\" PostToolUse",
-            "continueOnBlock": true,
             "timeout": 30
           }
         ]

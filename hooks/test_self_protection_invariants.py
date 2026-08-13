@@ -187,9 +187,10 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
         )
 
     def _assert_deferred_work_block(self, result: subprocess.CompletedProcess) -> None:
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(result.stdout, "")
-        self.assertIn("deferred_work_comment", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        response = json.loads(result.stdout)
+        self.assertNotIn("decision", response)
+        self.assertIn("deferred_work_comment", response["hookSpecificOutput"]["additionalContext"])
 
     def test_no_entry_point_dies_on_a_malformed_gate_map(self):
         for malformed in MALFORMED:

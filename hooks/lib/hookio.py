@@ -101,6 +101,12 @@ def claude_pretool_response(payload: dict) -> dict:
     return {"hookSpecificOutput": dict(specific)}
 
 
+def claude_feedback_response(payload: dict, event: str) -> dict:
+    if payload.get("decision") != "block":
+        return payload
+    return advise(str(payload.get("reason") or "Fix the blocked findings and retry."), event)
+
+
 def allow() -> dict:
     return {}
 

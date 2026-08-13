@@ -10,9 +10,9 @@ from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
 import pre_bash
-from lib import scan_input
+from lib import blocker_state, payloads, scan_input
 from lib.config import effective_config
-from lib.hookio import advise, read_payload, write_payload
+from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
 from lib.baseline import split_committed
 from lib.reporting import (
@@ -23,7 +23,7 @@ from lib.reporting import (
     run_with_ledger,
     verdict_message,
 )
-from lib.scanner import file_length_findings, read_scannable, scan_all
+from lib.scanner import read_scannable, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
 
@@ -90,14 +90,20 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
             continue
         text = read_scannable(path, cfg)
         if text is None:
-            count = scan_input.file_line_count(path)
-            if count is not None:
-                owned_rows.extend(_stamped(file_length_findings(str(path), "x\n" * count), path))
+            owned_rows.extend(_stamped(scan_input.fallback_findings(path), path))
             continue
         owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
         owned_rows.extend(_stamped(owned, path))
         inherited_rows.extend(_stamped(inherited, path))
     return owned_rows, inherited_rows
+
+
+def _resolved_paths(paths: list[str], cwd: Path) -> list[str]:
+    resolved = []
+    for raw_path in paths:
+        path = Path(raw_path).expanduser()
+        resolved.append(str(path if path.is_absolute() else cwd / path))
+    return resolved
 
 
 def _projected_payload(payload: dict) -> RecordPayload:
@@ -151,7 +157,7 @@ def _response(
     return advise(content, "PostToolUse") if content else {}
 
 
-def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, ledger_root) -> Callable[[str], dict]:
+def _gate_for(projected: RecordPayload, paths: list[str], tracked_paths: list[str], cwd: Path, cfg: dict, ledger_root, agent_id: str) -> Callable[[str], dict]:
 
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
@@ -165,7 +171,21 @@ def _gate_for(projected: RecordPayload, paths: list[str], cwd: Path, cfg: dict, 
             duration_ms=int((time.monotonic() - started) * 1000),
             root=ledger_root, config=cfg,
         )
-        return _response(decisions, inherited, cfg)
+        response = _response(decisions, inherited, cfg)
+        if projected["session_id"]:
+            try:
+                blocker_state.touch_paths(projected["session_id"], agent_id, tracked_paths, cfg.get("state_root"))
+                kind, reason = verdict_message(decisions, cfg)
+                for path in tracked_paths:
+                    if kind == "block":
+                        blocker_state.set_pending(
+                            projected["session_id"], agent_id, path, reason, cfg.get("state_root"),
+                        )
+                    else:
+                        blocker_state.clear_pending(projected["session_id"], agent_id, path, cfg.get("state_root"))
+            except Exception as exc:
+                sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {exc}\n")
+        return response
 
     return gate
 
@@ -182,10 +202,12 @@ def _run_record(payload: dict, config: dict | None) -> dict:
         _note_success(projected, trusted_config)
     cwd = Path(cwd_text or ".")
     paths = _edited_paths(projected)
+    tracked_paths = _resolved_paths(paths, cwd)
+    agent_id = payloads.agent_id(payload)
     return run_with_ledger(
         hook="record",
         payload=dict(projected),
-        gate=_gate_for(projected, paths, cwd, cfg, ledger_root),
+        gate=_gate_for(projected, paths, tracked_paths, cwd, cfg, ledger_root, agent_id),
         ledger_root=ledger_root,
         state_root=state_root,
     )
@@ -201,9 +223,4 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
-    payload = read_payload()
-    response = run(payload)
-    if response.get("decision") == "block":
-        sys.stderr.write(response["reason"] + "\n")
-        raise SystemExit(2)
-    write_payload(response)
+    write_payload(claude_feedback_response(run(read_payload()), "PostToolUse"))

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lib.baseline import strip_against
 from lib.config import effective_config
-from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, advise, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.reporting import record_findings, run_with_ledger, verdict_message
 from lib.scanner import file_length_findings, scan_all, scannable_text
 
@@ -429,4 +429,4 @@ def _staged_text(repo: Path, path: str) -> str | None:
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    write_payload(claude_pretool_response(run(read_payload())))

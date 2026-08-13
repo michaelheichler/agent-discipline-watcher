@@ -14,14 +14,15 @@ from typing import TypeGuard, TypeVar, cast
 
 import pre_bash
 
-from lib import payloads, reporting
-from lib.config import effective_config, resolve_outcome
+from lib import blocker_state, payloads, reporting
+from lib.config import effective_config, effective_hook_config, resolve_outcome
 from lib.hookio import advise, read_payload, write_payload
 from lib.reporting import run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
 
 BATCH_EVENT = "PostToolBatch"
+UNDECIDABLE_KEY = "<batch-error>"
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
@@ -498,11 +499,14 @@ def _sanitized_payload(payload: object) -> dict:
     source = dict.copy(validated)
     raw_session_id = source.get("session_id")
     raw_cwd = source.get("cwd")
+    raw_agent_id = source.get("agent_id")
     raw_calls = source.get("tool_calls", _INVALID)
     sanitized: dict[str, object] = {
         "session_id": raw_session_id if _is_exact_type(raw_session_id, str) else "",
         "cwd": raw_cwd if _is_exact_type(raw_cwd, str) else "",
     }
+    if _is_exact_type(raw_agent_id, str) and raw_agent_id:
+        sanitized["agent_id"] = raw_agent_id
     if raw_calls is not _INVALID:
         sanitized["tool_calls"] = (
             list.copy(raw_calls) if _is_exact_type(raw_calls, list) else raw_calls
@@ -563,6 +567,18 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str):
         if session_id:
             _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload)
         kind, reason = reporting.verdict_message(decisions, cfg)
+        if session_id:
+            agent_id = blocker_state.scope(payload)
+            blocker_state.touch_paths(
+                session_id, agent_id,
+                [str(path) for _call, _raw, path in _call_entries(payload)],
+                cfg.get("state_root"),
+            )
+            if kind == "block":
+                blocker_state.set_pending(session_id, agent_id, "<batch>", reason, cfg.get("state_root"))
+            else:
+                blocker_state.clear_pending(session_id, agent_id, "<batch>", cfg.get("state_root"))
+            blocker_state.clear_pending(session_id, agent_id, UNDECIDABLE_KEY, cfg.get("state_root"))
         if kind == "block":
             return {"decision": "block", "reason": reason}
         if kind == "observe":
@@ -583,12 +599,24 @@ def run(payload: dict, config: dict | None = None) -> dict:
     try:
         return _run(payload, config)
     except Exception as exc:
-        return {"decision": "block", "reason": UNDECIDABLE + str(exc)}
+        reason = UNDECIDABLE + str(exc)
+        sanitized = _sanitized_payload(payload)
+        session_id = payloads.session_id(sanitized)
+        if session_id:
+            root = effective_hook_config(config, payloads.cwd(sanitized) or None).get("state_root")
+            try:
+                blocker_state.set_pending(
+                    session_id, blocker_state.scope(sanitized), UNDECIDABLE_KEY, reason, root,
+                )
+            except Exception as state_exc:
+                import sys
+                sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
+        return {"decision": "block", "reason": reason}
 
 
 def _run(payload: dict, config: dict | None) -> dict:
     payload = _sanitized_payload(payload)
-    cfg = effective_config(config, payloads.cwd(payload) or None)
+    cfg = effective_hook_config(config, payloads.cwd(payload) or None)
     return run_with_ledger(
         hook="batch",
         payload=payload,
@@ -599,13 +627,10 @@ def _run(payload: dict, config: dict | None) -> dict:
 
 
 def cli_response(response: dict) -> dict:
-    return response
+    if response.get("decision") != "block":
+        return response
+    return advise(str(response.get("reason") or "PostToolBatch blocked findings"), BATCH_EVENT)
 
 
 if __name__ == "__main__":
-    response = cli_response(run(read_payload()))
-    if response.get("decision") == "block":
-        import sys
-        sys.stderr.write(str(response.get("reason", "PostToolBatch blocked findings")) + "\n")
-        raise SystemExit(2)
-    write_payload(response)
+    write_payload(cli_response(run(read_payload())))

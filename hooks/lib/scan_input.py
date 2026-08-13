@@ -44,6 +44,27 @@ def file_line_count(path: Path) -> int | None:
         return None
 
 
+def fallback_findings(path: Path) -> list[dict]:
+    count = file_line_count(path)
+    policy = file_length_policy(count) if count is not None else None
+    if policy is not None and policy[0] == "file_too_long":
+        rule, action = policy
+        detail = f"File has {count} lines in {path}"
+    else:
+        rule = "unscannable_file"
+        action = "Make the file readable UTF-8 text within the scan byte limit."
+        detail = f"File could not be fully scanned: {path}"
+    return [{
+        "family": "clean_code",
+        "rule": rule,
+        "line": 1,
+        "detail": detail,
+        "force": True,
+        "snippet": str(path)[:180],
+        "action": action,
+    }]
+
+
 def read_scannable(path: Path, config: dict) -> str | None:
     cfg = effective_config(config)
     try:

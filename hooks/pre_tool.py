@@ -84,12 +84,14 @@ def run(payload: dict, config: dict | None = None) -> dict:
     if name in READ_ONLY_TOOLS:
         return {}
     if name in DIRECT_WRITERS:
-        return _merge([pre_write.run(payload, config)])
-    if name == "Bash":
-        return _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
-    if name.startswith("mcp__"):
-        return _merge([pre_mcp.run(payload, config)])
-    return {}
+        response = _merge([pre_write.run(payload, config)])
+    elif name == "Bash":
+        response = _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
+    elif name.startswith("mcp__"):
+        response = _merge([pre_mcp.run(payload, config)])
+    else:
+        response = {}
+    return response
 
 
 if __name__ == "__main__":

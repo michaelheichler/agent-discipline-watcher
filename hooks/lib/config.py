@@ -23,6 +23,7 @@ ALWAYS_ON_RULES = (
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({
     "suppression_escape_hatch",
     "file_too_long",
+    "unscannable_file",
 })
 FIXED_OBSERVE_RULES = frozenset({"file_length_warning", "file_length_critical"})
 STRICT_HARD_BLOCK_RULES = frozenset({
@@ -35,7 +36,7 @@ STRICT_HARD_BLOCK_RULES = frozenset({
 # Kept apart from the scanner set because protected.py and pre_bash.py emit these from a path and a command, not from file content.
 SELF_PROTECTION_RULES = frozenset({
     "live_client_surface", "config_seal", "install_without_sandbox_home",
-    "commit_gate_bypass", "cap_override", "state_deletion",
+    "commit_gate_bypass", "cap_override", "state_deletion", "state_mutation",
 })
 ALWAYS_BLOCKING_RULES = (
     SCANNER_ALWAYS_BLOCKING_RULES | STRICT_HARD_BLOCK_RULES | SELF_PROTECTION_RULES
@@ -105,6 +106,16 @@ def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | N
         merged.update(_project_settings(cwd))
     if config:
         merged.update(config)
+    return merged
+
+
+def effective_hook_config(config: object, cwd: str | os.PathLike[str] | None) -> dict:
+    caller = exact_string_dict(config)
+    scan_config = {key: value for key, value in caller.items() if key not in {"state_root", "ledger_root"}}
+    merged = effective_config(scan_config, cwd)
+    for key in ("state_root", "ledger_root"):
+        value = caller.get(key)
+        merged[key] = value if isinstance(value, str) else None
     return merged
 
 
