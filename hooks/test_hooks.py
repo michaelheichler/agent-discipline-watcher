@@ -542,7 +542,10 @@ def test_run_sh_routes_pretooluse_and_still_denies_a_security_finding():
         capture_output=True,
         check=True,
     )
-    assert json.loads(result.stdout)["decision"] == "block"
+    response = json.loads(result.stdout)
+    assert "decision" not in response
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "suppression_escape_hatch" in response["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_run_sh_routes_pretooluse_non_commit_bash():

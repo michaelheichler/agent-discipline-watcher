@@ -137,7 +137,10 @@ class CommitGateRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["decision"], "block")
+        response = json.loads(result.stdout)
+        self.assertNotIn("decision", response)
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("banned_dash", response["hookSpecificOutput"]["permissionDecisionReason"])
 
 
 if __name__ == "__main__":

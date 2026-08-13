@@ -153,6 +153,19 @@ class PluginHookRegistrationTests(unittest.TestCase):
         legacy_filters = {route_of(e): e.get("if") for _, e in hook_commands(snippet)}
         self.assertEqual(plugin_filters, legacy_filters)
 
+    def test_post_tool_use_blocks_feed_back_and_continue(self):
+        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
+        for config in (self.config, snippet):
+            entries = [entry for event, entry in hook_commands(config) if event == "PostToolUse"]
+            self.assertTrue(entries)
+            self.assertTrue(all(entry.get("continueOnBlock") is True for entry in entries))
+
+
+    def test_pretool_command_does_not_use_prompt_hook_continuation_option(self):
+        entries = [entry for event, entry in hook_commands(self.config) if event == "PreToolUse"]
+        self.assertTrue(entries)
+        self.assertTrue(all("continueOnBlock" not in entry for entry in entries))
+
 
 class PluginCommandExecutionTests(unittest.TestCase):
     def setUp(self):

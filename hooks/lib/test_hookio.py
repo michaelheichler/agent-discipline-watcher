@@ -38,3 +38,16 @@ def test_write_payload_hard_bounds_repeated_hook_text(capsys) -> None:
     output = capsys.readouterr().out
     assert len(output.encode("utf-8")) <= hookio.MAX_RESPONSE_BYTES + 1
     assert json.loads(output)["decision"] == "block"
+
+
+def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:
+    response = hookio.claude_pretool_response(hookio.deny("fix and retry"))
+    assert "decision" not in response
+    assert "reason" not in response
+    assert response == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "fix and retry",
+        }
+    }

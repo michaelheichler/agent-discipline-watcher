@@ -28,7 +28,24 @@ def test_non_object_stdin_is_rejected_by_the_pretool_entrypoint() -> None:
 
     assert result.returncode == 0
     response = json.loads(result.stdout)
-    assert response["decision"] == "block"
+    assert "decision" not in response
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pretool_entrypoint_denial_returns_feedback_without_ending_turn() -> None:
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": "a.py", "content": "# Increment the counter.\nx = 1\n"},
+    }
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).with_name("pre_tool.py"))],
+        input=json.dumps(payload), text=True, capture_output=True, check=False,
+    )
+
+    response = json.loads(result.stdout)
+    assert "decision" not in response
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "what_comment" in response["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_payload_without_tool_name_is_rejected() -> None:

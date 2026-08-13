@@ -4,7 +4,7 @@ from __future__ import annotations
 import operator
 
 from lib import payloads
-from lib.hookio import PARSE_FAILURE, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, claude_pretool_response, deny, read_payload, write_payload
 from lib.payloads import exact_string_dict
 import pre_bash
 import pre_commit
@@ -93,4 +93,4 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
-    write_payload(run(read_payload()))
+    write_payload(claude_pretool_response(run(read_payload())))

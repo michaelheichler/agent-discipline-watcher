@@ -94,6 +94,13 @@ def deny(reason: str) -> dict:
     }
 
 
+def claude_pretool_response(payload: dict) -> dict:
+    specific = payload.get("hookSpecificOutput")
+    if not isinstance(specific, dict) or specific.get("permissionDecision") != "deny":
+        return payload
+    return {"hookSpecificOutput": dict(specific)}
+
+
 def allow() -> dict:
     return {}
 
