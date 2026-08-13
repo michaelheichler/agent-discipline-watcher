@@ -19,8 +19,7 @@ ALWAYS_ON_RULES = (
     "scanner.scan_all emits it from _unconditional_findings before exemptions, and it sits "
     "in ALWAYS_BLOCKING_RULES. what_comment and what_docstring are ordinary clean_code rules: "
     "they respect the clean_code switch and exempt_paths, and ship with enforcing rule_gates "
-    "so a project must opt out rather than being unable to. Enforcing no longer means the tool "
-    "call is denied: it means must_fix, auto-corrected by the rewriter or flagged line by line."
+    "so a project must opt out rather than being unable to. Enforcing means the tool call is denied."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
@@ -51,7 +50,7 @@ DEFAULTS = {
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
     # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
-    # "enforce" resolves to must_fix (auto-corrected or flagged), never a tool-call block, outside ALWAYS_BLOCKING_RULES.
+    # "enforce" resolves to a hard block.
     "rule_gates": {
         "what_comment": "enforce",
         "what_docstring": "enforce",
@@ -136,12 +135,12 @@ def rule_state(rule: str, config: dict | None = None) -> str | None:
 
 def _outcome_for(state: str) -> str:
     if state == "enforce":
-        return "must_fix"
+        return "block"
     return "would_block" if state == "observe" else "release"
 
 
 def resolve_outcome(finding: dict, config: dict | None = None) -> str:
-    """Return what a finding does: block (security/self-protection only), must_fix, would_block, or release."""
+    """Return the configured blocking, observing, or release outcome for one finding."""
     rule = finding.get("rule", "") if isinstance(finding, dict) else ""
     if rule in ALWAYS_BLOCKING_RULES:
         return "block"

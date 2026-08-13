@@ -6,8 +6,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import lib.reporting as reporting
-import lib.rewrite as rewrite
 from lib.baseline import strip_against
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
@@ -62,11 +60,10 @@ def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict
     if not commit_cwds:
         return allow()
     cfg = effective_config(config, cwd)
-    new_command, message_changes = _rewrite_commit_messages(command, cfg)
     findings = _staged_findings(commit_cwds, config)
-    message_findings = _message_findings(new_command, cfg)
+    message_findings = _message_findings(command, cfg)
     findings.extend(message_findings)
-    if not findings and not message_changes:
+    if not findings:
         return allow()
     decisions = record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_commit",
@@ -75,37 +72,10 @@ def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict
         duration_ms=int((time.monotonic() - started) * 1000),
         root=ledger_root, config=cfg,
     )
-    return _gate_response(
-        payload, command, new_command, message_changes, message_findings, decisions, cfg
-    )
-
-
-def _gate_response(
-    payload: dict, command: str | list[str], new_command: str | list[str],
-    message_changes: list[dict], message_findings: list[dict],
-    decisions: list[tuple[dict, str]], cfg: dict,
-) -> dict:
     kind, message = verdict_message(decisions, cfg)
     if kind == "block":
         return deny(message)
-    flagged = [finding for finding, outcome in decisions if outcome == "must_fix"]
-    if message_changes or any(finding in message_findings for finding in flagged):
-        notice = reporting.correction_notice(message_changes, flagged, cfg)
-        if message_changes:
-            notice = "agent-discipline-watcher rewrote the commit message before the commit ran.\n" + notice
-        if kind == "observe":
-            notice = "\n".join(part for part in (notice, message) if part)
-        return _correction_response(payload, command, new_command, notice)
-    return advise(message, "PreToolUse") if kind in {"must_fix", "observe"} else allow()
-
-
-def _correction_response(
-    payload: dict, command: str | list[str], new_command: str | list[str], notice: str
-) -> dict:
-    response = advise(notice, "PreToolUse")
-    if new_command != command:
-        response["hookSpecificOutput"]["updatedInput"] = _updated_tool_input(payload, new_command)
-    return response
+    return advise(message, "PreToolUse") if kind == "observe" else allow()
 
 
 def _staged_findings(commit_cwds: list[Path], config: dict | None) -> list[dict]:
@@ -156,93 +126,6 @@ def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
     ]
 
 
-def _rewrite_commit_messages(
-    command: str | list[str], cfg: dict
-) -> tuple[str | list[str], list[dict]]:
-    if isinstance(command, list):
-        return _rewrite_list_commit_messages(command, cfg)
-    return _rewrite_string_commit_messages(command, cfg)
-
-
-def _rewrite_string_commit_messages(command: str, cfg: dict) -> tuple[str, list[dict]]:
-    changes: list[dict] = []
-    replacements: list[tuple[int, int, str]] = []
-    message_line = 1
-    for segment in _raw_segments(command):
-        values = [_raw_word_value(raw) for raw, _start, _end in segment]
-        for word_index, form, value in _message_occurrences(values):
-            raw, start, end = segment[word_index]
-            if _is_ansi_c_quoted(raw, form):
-                continue
-            result, result_changes, message_line = _rewrite_message_value(
-                value, message_line, cfg
-            )
-            changes.extend(result_changes)
-            if result == value:
-                continue
-            prefix = "" if form == "separate" else "--message=" if form == "equals" else "-m"
-            replacement = shlex.quote(result) if form == "separate" else prefix + shlex.quote(result)
-            replacements.append((start, end, replacement))
-    updated = command
-    for start, end, replacement in sorted(replacements, reverse=True):
-        updated = updated[:start] + replacement + updated[end:]
-    return (updated if replacements else command), changes
-
-
-def _rewrite_list_commit_messages(
-    command: list[str], cfg: dict
-) -> tuple[list[str], list[dict]]:
-    updated = list(command)
-    changes: list[dict] = []
-    message_line = 1
-    for segment in _indexed_list_segments(command):
-        values = [value for _index, value in segment]
-        for word_index, form, value in _message_occurrences(values):
-            result, result_changes, message_line = _rewrite_message_value(
-                value, message_line, cfg
-            )
-            changes.extend(result_changes)
-            if result == value:
-                continue
-            list_index = segment[word_index][0]
-            prefix = "" if form == "separate" else "--message=" if form == "equals" else "-m"
-            updated[list_index] = result if form == "separate" else prefix + result
-    return (updated if updated != command else command), changes
-
-
-def _rewrite_message_value(
-    value: str, message_line: int, cfg: dict
-) -> tuple[str, list[dict], int]:
-    result = rewrite.rewrite_text(COMMIT_MESSAGE_PATH, value, cfg)
-    families = {
-        finding.get("rule"): finding.get("family", "")
-        for finding in scan_all(COMMIT_MESSAGE_PATH, value, cfg)
-    }
-    changes = []
-    for change in result.changes:
-        item = {
-            **change,
-            "path": COMMIT_MESSAGE_PATH,
-            "family": families.get(change.get("rule"), ""),
-        }
-        if isinstance(item.get("line"), int):
-            item["line"] += message_line - 1
-        changes.append(item)
-    next_line = message_line + (result.text.count("\n") + 2 if result.text else 2)
-    return result.text, changes, next_line
-
-
-def _updated_tool_input(payload: dict, command: str | list[str]) -> dict:
-    tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
-    updated = dict(tool_input)
-    key = next(
-        (name for name in ("command", "cmd", "input") if name in tool_input),
-        "command",
-    )
-    updated[key] = list(command) if isinstance(command, list) else command
-    return updated
-
-
 def _commit_messages(command: str | list[str]) -> list[str]:
     messages: list[str] = []
     for segment in _segments(command):
@@ -257,18 +140,6 @@ def _messages_after_commit(tokens: list[str]) -> list[str]:
     return _message_values(tokens[tokens.index("commit") + 1:])
 
 
-def _message_occurrences(tokens: list[str]) -> list[tuple[int, str, str]]:
-    start = _unwrap_start(tokens)
-    tokens = tokens[start:]
-    if len(tokens) < 2 or tokens[0] != "git" or "commit" not in tokens:
-        return []
-    commit_index = tokens.index("commit")
-    return [
-        (start + commit_index + 1 + index, form, value)
-        for index, form, value in _message_positions(tokens[commit_index + 1:])
-    ]
-
-
 def _message_positions(tokens: list[str]) -> list[tuple[int, str, str]]:
     values: list[tuple[int, str, str]] = []
     cursor = 0
@@ -276,19 +147,19 @@ def _message_positions(tokens: list[str]) -> list[tuple[int, str, str]]:
         token = tokens[cursor]
         if token in {"-m", "--message"} or _is_message_bundle(token):
             if cursor + 1 < len(tokens):
-                values.append((cursor + 1, "separate", tokens[cursor + 1]))
+                values.append((cursor + 1, "separate", _decode_ansi_c_value(tokens[cursor + 1])))
             cursor += 2
             continue
         name, separator, inline = token.partition("=")
         if separator and name == "--message":
-            values.append((cursor, "equals", inline))
+            values.append((cursor, "equals", _decode_ansi_c_value(inline)))
         elif token.startswith("-m") and len(token) > 2:
-            values.append((cursor, "short_inline", token[2:]))
+            values.append((cursor, "short_inline", _decode_ansi_c_value(token[2:])))
         cursor += 1
     return values
 
 
-_BOOLEAN_BUNDLE_CHARS = frozenset("anqvoe")  # only genuinely no-value git commit short flags: -a -n -q -v -o -e
+_BOOLEAN_BUNDLE_CHARS = frozenset("anqvoe")
 
 
 def _is_message_bundle(token: str) -> bool:
@@ -303,100 +174,11 @@ def _message_values(tokens: list[str]) -> list[str]:
     return [value for _index, _form, value in _message_positions(tokens)]
 
 
-def _raw_segments(command: str) -> list[list[tuple[str, int, int]]]:
-    segments: list[list[tuple[str, int, int]]] = []
-    current: list[tuple[str, int, int]] = []
-    for raw in _raw_words(command):
-        if raw[0] in {"&&", "||", ";", "|", "(", ")"}:
-            segments.append(current)
-            segments.append([raw])
-            current = []
-        else:
-            current.append(raw)
-    segments.append(current)
-    return segments
-
-
-def _raw_words(command: str) -> list[tuple[str, int, int]]:
-    tokens = _positioned_tokens(command)
-    if not tokens:
-        return []
-    words: list[tuple[str, int, int]] = []
-    index = 0
-    while index < len(tokens):
-        raw, start, end = tokens[index]
-        if raw in {"&&", "||", ";", "|", "(", ")"}:
-            words.append((raw, start, end))
-            index += 1
-            continue
-        word_end = _shell_word_end(command, start)
-        index += 1
-        while index < len(tokens) and tokens[index][1] < word_end:
-            index += 1
-        words.append((command[start:word_end], start, word_end))
-    return words
-
-
-def _positioned_tokens(command: str) -> list[tuple[str, int, int]]:
-    try:
-        lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()")
-        lexer.whitespace_split = True
-        tokens: list[tuple[str, int, int]] = []
-        cursor = 0
-        for token in lexer:
-            start = command.index(token, cursor)
-            end = start + len(token)
-            tokens.append((command[start:end], start, end))
-            cursor = end
-        return tokens
-    except (ValueError, IndexError):
-        return []
-
-
-def _shell_word_end(command: str, start: int) -> int:
-    quote = ""
-    cursor = start
-    while cursor < len(command):
-        char = command[cursor]
-        if quote:
-            if char == "\\" and quote == '"' and cursor + 1 < len(command):
-                cursor += 2
-                continue
-            if char == quote:
-                quote = ""
-            cursor += 1
-            continue
-        if char in {"'", '"'}:
-            quote = char
-        elif char == "\\" and cursor + 1 < len(command):
-            cursor += 2
-            continue
-        elif char.isspace() or char in ";&|()":
-            break
-        cursor += 1
-    return cursor
-
-
-def _raw_word_value(raw: str) -> str:
-    try:
-        values = shlex.split(raw)
-    except ValueError:
-        values = []
-    if len(values) == 1:
-        return values[0]
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
-        return raw[1:-1]
-    return raw
-
-
-def _is_ansi_c_quoted(raw: str, form: str) -> bool:
-    if form == "separate":
-        value = raw
-    elif form == "equals":
-        value = raw.partition("=")[2]
-    else:
-        value = raw[2:]
-    return value.startswith("$'")
+def _decode_ansi_c_value(value: str) -> str:
+    if not value.startswith("$'"):
+        return value
+    end, decoded = _ansi_c_quote(value, 2)
+    return decoded if end == len(value) - 1 else value
 
 
 PATH_FLAGS = frozenset({"-C", "--work-tree", "--git-dir"})
@@ -440,7 +222,7 @@ def _segments(command: str | list[str]) -> list[list[str]]:
     if isinstance(command, list):
         return [[token for _index, token in segment] for segment in _indexed_list_segments(command)]
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer = shlex.shlex(_normalize_ansi_c_quotes(command), posix=True, punctuation_chars=";&|()")
         lexer.whitespace_split = True
         parts = list(lexer)
     except ValueError:
@@ -456,6 +238,38 @@ def _segments(command: str | list[str]) -> list[list[str]]:
         current.append(part)
     segments.append(current)
     return segments
+
+
+def _normalize_ansi_c_quotes(command: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    while cursor < len(command):
+        start = command.find("$'", cursor)
+        if start < 0:
+            parts.append(command[cursor:])
+            break
+        parts.append(command[cursor:start])
+        end, value = _ansi_c_quote(command, start + 2)
+        if end < 0:
+            return command
+        parts.append(shlex.quote(value))
+        cursor = end + 1
+    return "".join(parts)
+
+
+def _ansi_c_quote(command: str, cursor: int) -> tuple[int, str]:
+    chars: list[str] = []
+    while cursor < len(command):
+        char = command[cursor]
+        if char == "'":
+            return cursor, "".join(chars)
+        if char == "\\" and cursor + 1 < len(command):
+            chars.append(command[cursor + 1])
+            cursor += 2
+            continue
+        chars.append(char)
+        cursor += 1
+    return -1, ""
 
 
 def _indexed_list_segments(command: list[str]) -> list[list[tuple[int, str]]]:

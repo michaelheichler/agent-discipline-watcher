@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import ast
 import re
 import time
 from pathlib import Path
 
-from lib import payloads
-import lib.rewrite as rewrite
-import lib.reporting as reporting
+from lib import adjudication
 from lib.baseline import changed_lines, split_committed, subtract
-from lib.config import ALWAYS_BLOCKING_RULES, effective_config, resolve_outcome
-from lib.hookio import PARSE_FAILURE, allow, context, deny, read_payload, write_payload
+from lib.config import effective_config, resolve_outcome
+from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.protected import path_findings
 from lib.reporting import (
-    inherited_advice, record_findings, run_with_ledger, sweep_tool_use_reports,
-    verdict_message, write_tool_use_report,
+    inherited_advice, record_findings, run_with_ledger, verdict_message,
 )
 from lib.scanner import scan_all
 
@@ -92,29 +88,6 @@ def _run(payload: dict, config: dict | None) -> dict:
     )
 
 
-def _candidate_payload(payload: dict, tool_input: dict) -> dict:
-    candidate = dict(payload)
-    candidate["tool_input"] = tool_input
-    return candidate
-
-
-def _valid_python_candidate(tool_input: dict, path: str) -> bool:
-    if not path.lower().endswith(".py"):
-        return True
-    if isinstance(tool_input.get("content"), str):
-        candidate = tool_input["content"]
-    else:
-        applied = _apply_edits(tool_input, path)
-        candidate = applied[1] if applied else None
-    if candidate is None:
-        return True
-    try:
-        ast.parse(candidate)
-    except SyntaxError:
-        return False
-    return True
-
-
 def _unique_findings(findings: list[dict]) -> list[dict]:
     seen: set[tuple[object, ...]] = set()
     result: list[dict] = []
@@ -140,79 +113,59 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     started = time.monotonic()
     if payload.get("session_id"):
         cfg["session_id"] = payload["session_id"]
-    original, inherited = _pending_findings(payload, cfg)
-    tool_input = _tool_input(payload)
-    rewritten = rewrite.rewrite_tool_input(payloads.tool_name(payload), tool_input, cfg)
-    path = str(tool_input.get("file_path") or tool_input.get("path") or "<pending>")
-    valid = not rewritten.changed or _valid_python_candidate(rewritten.tool_input, path)
-    effective = rewritten.tool_input if valid else tool_input
-    current, _ = _pending_findings(_candidate_payload(payload, effective), cfg)
-    protected = [row for row in original if row.get("rule") in ALWAYS_BLOCKING_RULES]
-    findings = _unique_findings(protected + current)
+    findings, inherited = _pending_findings(payload, cfg)
+    findings = _unique_findings(findings)
+    findings = _adjudicated_findings(findings, payload, cfg)
     decisions = _record(payload, cfg, turn_id, findings, started) if findings else []
-    security = [row for row in decisions if row[0].get("rule") in ALWAYS_BLOCKING_RULES]
-    if security:
-        _, message = verdict_message(security, cfg)
+    kind, message = verdict_message(decisions, cfg)
+    if kind == "block":
         return deny(message)
+    notice = inherited_advice(inherited, cfg)
+    if kind == "observe":
+        return advise("\n".join(part for part in (message, notice) if part), "PreToolUse")
+    return {"systemMessage": notice} if notice else allow()
 
-    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
-    unresolved = [
-        {**row, "path": path}
-        for row in rewritten.unresolved
-        if row.get("rule") not in ALWAYS_BLOCKING_RULES
+
+def _adjudicated_findings(findings: list[dict], payload: dict, cfg: dict) -> list[dict]:
+    ambiguous = [
+        row for row in findings
+        if row.get("rule") in adjudication.AMBIGUOUS_RULES
+        and resolve_outcome(row, cfg) == "block"
     ]
-    must_fix_ids = {
-        id(row) for row, outcome in decisions
-        if outcome == "must_fix" and row.get("rule") not in ALWAYS_BLOCKING_RULES
-    }
-    flagged = [row for row in style if id(row) in must_fix_ids]
-    if not flagged:
-        flagged = [row for row in unresolved if resolve_outcome(row, cfg) == "must_fix"]
-    families = {
-        str(row.get("rule") or ""): str(row.get("family") or "")
-        for row in [*original, *current]
-    }
-    changes = [
-        {
-            **change,
-            "path": path,
-            "family": families.get(str(change.get("rule") or ""), ""),
-        }
-        for change in rewritten.changes
+    deterministic = [row for row in findings if row.get("rule") not in adjudication.AMBIGUOUS_RULES]
+    if any(resolve_outcome(row, cfg) == "block" for row in deterministic):
+        return findings
+    released = [
+        row for row in findings
+        if row.get("rule") in adjudication.AMBIGUOUS_RULES
+        and resolve_outcome(row, cfg) != "block"
     ]
-    if not valid:
-        messages = ["Automatic cleanup was skipped because it would invalidate Python syntax."]
-    elif changes or flagged:
-        messages = [reporting.correction_notice(changes, flagged, cfg)]
-    else:
-        messages = [rewrite.summary(rewritten.counts)]
-    joined = "\n".join(message for message in messages if message)
-    _emit_tool_use_report(payload, path, findings, rewritten.counts)
-    return _response(joined, inherited_advice(inherited, cfg), rewritten.changed and valid, effective)
-
-
-def _emit_tool_use_report(payload: dict, path: str, findings: list[dict], counts: dict) -> None:
-    """Skip silently without a transcript_path, because the report has nowhere safe to live next to it."""
-    transcript_path = str(payload.get("transcript_path") or "")
-    if not transcript_path:
-        return
-    sweep_tool_use_reports(transcript_path)
-    style = [row for row in findings if row.get("rule") not in ALWAYS_BLOCKING_RULES]
-    write_tool_use_report(
-        transcript_path=transcript_path,
-        session_id=str(payload.get("session_id") or ""),
-        tool_use_id=str(payload.get("tool_use_id") or ""),
-        target_path=path,
-        tool_name=payloads.tool_name(payload),
-        cleanup_counts=counts,
-        unresolved=style,
-    )
-
-
-def _response(joined: str, notice: str, rewrote: bool, effective: dict) -> dict:
-    """Carry the inherited-debt notice on systemMessage because context() is model-only and a human needs to see it too."""
-    response = context(joined, "PreToolUse", effective) if rewrote else context(joined, "PreToolUse") if joined else allow()
-    return {**response, "systemMessage": notice} if notice else response
+    if not ambiguous:
+        return deterministic + released
+    text_by_path = dict(pending_writes(payload))
+    session_id = str(cfg.get("session_id") or payload.get("session_id") or "")
+    state_root = cfg.get("state_root")
+    confirmed: list[dict] = []
+    for finding in ambiguous:
+        path = str(finding.get("path") or "<pending>")
+        tool_input = _tool_input(payload)
+        applied = _apply_edits(tool_input, str(_resolved_path(path, Path(payload.get("cwd") or "."))))
+        text = applied[1] if applied else text_by_path.get(path, _pending_edit_text(tool_input))
+        request = adjudication.request_for(finding, text, finding.get("line") if applied else None)
+        try:
+            result = adjudication.adjudicate_with_cache(
+                request,
+                adjudication.configured_adjudicator(cfg),
+                session_id,
+                state_root,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"adjudication unavailable at {path}:{request.line}; repair Haiku access and retry: {exc}"
+            ) from exc
+        if result["verdict"] == "block":
+            confirmed.append({**finding, "detail": result["reason"], "snippet": result["evidence"]})
+    return deterministic + released + confirmed
 
 
 def _stamped(findings: list[dict], path: str) -> list[dict]:
@@ -265,15 +218,16 @@ def _apply_edits(tool_input: dict, path: str) -> tuple[str, str] | None:
     return before, after
 
 
-def _edit_findings(tool_input: dict, path: str, cfg: dict) -> list[dict]:
-    applied = _apply_edits(tool_input, path)
+def _edit_findings(tool_input: dict, path: str, resolved_path: Path, cfg: dict) -> list[dict]:
+    scan_path = str(resolved_path)
+    applied = _apply_edits(tool_input, scan_path)
     if applied is None:
         pending = _pending_edit_text(tool_input)
         return _label_pending_text(_stamped(scan_all(path, pending, cfg), path))
     before, after = applied
     changed = changed_lines(before, after)
-    findings = scan_all(path, after, cfg)
-    inherited = scan_all(path, before, cfg)
+    findings = scan_all(scan_path, after, cfg)
+    inherited = scan_all(scan_path, before, cfg)
     new_findings = subtract(findings, inherited)
     new_ids = {id(finding) for finding in new_findings}
     return _stamped(
@@ -285,13 +239,17 @@ def _edit_findings(tool_input: dict, path: str, cfg: dict) -> list[dict]:
 def _pending_findings(payload: dict, cfg: dict) -> tuple[list[dict], list[dict]]:
     """Split whole-file content against its committed version, because only Write carries debt the edit did not create."""
     tool_input = _tool_input(payload)
+    cwd = Path(payload.get("cwd") or ".")
     if "new_string" in tool_input or "new_source" in tool_input or isinstance(tool_input.get("edits"), list):
         path = str(
             tool_input.get("file_path") or tool_input.get("path")
             or tool_input.get("notebook_path") or "<pending>"
         )
-        protected = _stamped(path_findings(path, cfg, content=_pending_edit_text(tool_input)), path)
-        return protected + _edit_findings(tool_input, path, cfg), []
+        resolved_path = _resolved_path(path, cwd)
+        protected = _stamped(
+            path_findings(str(resolved_path), cfg, content=_pending_edit_text(tool_input)), path
+        )
+        return protected + _edit_findings(tool_input, path, resolved_path, cfg), []
     whole_file = "content" in tool_input
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
@@ -301,10 +259,16 @@ def _pending_findings(payload: dict, cfg: dict) -> tuple[list[dict], list[dict]]
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue
-        owned, inherited = split_committed(Path(path), scanned, cfg)
+        resolved_path = _resolved_path(path, cwd)
+        owned, inherited = split_committed(resolved_path, scanned, cfg)
         owned_rows.extend(owned)
         inherited_rows.extend(inherited)
     return owned_rows, inherited_rows
+
+
+def _resolved_path(path: str, cwd: Path) -> Path:
+    candidate = Path(path).expanduser()
+    return candidate if candidate.is_absolute() else cwd / candidate
 
 
 if __name__ == "__main__":

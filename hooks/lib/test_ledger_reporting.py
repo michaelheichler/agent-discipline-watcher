@@ -390,8 +390,21 @@ class CompactBlockRegressionTests(unittest.TestCase):
         )
 
     def test_max_rows_still_caps_the_listing(self):
-        reason, _ = reporting.compact_block([self._finding()] * 5, {"max_rows": 2}, lead="x:")
+        findings = [{**self._finding(), "line": line} for line in range(1, 6)]
+        reason, _ = reporting.compact_block(findings, {"max_rows": 2}, lead="x:")
         self.assertIn("... 3 more", reason)
+
+    def test_compact_block_has_a_hard_utf8_bound(self):
+        finding = self._finding()
+        finding.update({
+            "path": "x" * 100_000,
+            "action": "y" * 100_000,
+            "snippet": "z" * 100_000,
+        })
+
+        reason, _ = reporting.compact_block([finding], {"max_rows": 8})
+
+        self.assertLessEqual(len(reason.encode("utf-8")), reporting.MAX_COMPACT_BYTES)
 
 
 class VerdictMessageTests(unittest.TestCase):
@@ -438,9 +451,9 @@ class InheritedAdviceTests(unittest.TestCase):
         self.assertEqual(reporting.inherited_advice([], {}), "")
 
     def test_max_rows_keeps_a_legacy_file_from_flooding_the_response(self):
-        message = reporting.inherited_advice([self._row(1)] * 12, {"max_rows": 3})
+        message = reporting.inherited_advice([self._row(line) for line in range(1, 13)], {"max_rows": 3})
         self.assertIn("... 9 more", message)
-        self.assertEqual(message.count("old.py:1"), 3)
+        self.assertEqual(sum(f"old.py:{line}" in message for line in range(1, 13)), 3)
 
 
 if __name__ == "__main__":
@@ -503,26 +516,6 @@ class PreGateEvidenceTests(unittest.TestCase):
 
 
 
-def test_verdict_message_must_fix_wins_over_would_block() -> None:
-    must_fix = {
-        "path": "a.py", "family": "clean_code", "rule": "what_comment",
-        "line": 1, "action": "fix", "snippet": "x",
-    }
-    observed = {
-        "path": "b.py", "family": "english", "rule": "utilize",
-        "line": 2, "action": "fix", "snippet": "x",
-    }
-
-    kind, message = reporting.verdict_message(
-        [(observed, "would_block"), (must_fix, "must_fix")], {}
-    )
-
-    assert kind == "must_fix"
-    assert message.startswith(reporting.MUST_FIX_LEAD)
-    assert "a.py:1 clean_code/what_comment" in message
-    assert "b.py:2 english/utilize" not in message
-
-
 def test_verdict_message_with_only_would_block_still_observes() -> None:
     finding = {
         "path": "a.py", "family": "clean_code", "rule": "what_comment",
@@ -535,14 +528,10 @@ def test_verdict_message_with_only_would_block_still_observes() -> None:
     assert message.startswith(reporting.OBSERVE_LEAD)
 
 
-def test_verdict_message_block_still_wins_over_every_other_tier() -> None:
+def test_verdict_message_block_wins_over_observe() -> None:
     block = {
         "path": "blocked.py", "family": "protected", "rule": "live_surface",
         "line": 1, "action": "deny", "snippet": "x",
-    }
-    must_fix = {
-        "path": "must-fix.py", "family": "clean_code", "rule": "what_comment",
-        "line": 2, "action": "fix", "snippet": "x",
     }
     observed = {
         "path": "observed.py", "family": "english", "rule": "utilize",
@@ -550,13 +539,12 @@ def test_verdict_message_block_still_wins_over_every_other_tier() -> None:
     }
 
     kind, message = reporting.verdict_message(
-        [(observed, "would_block"), (must_fix, "must_fix"), (block, "block")], {}
+        [(observed, "would_block"), (block, "block")], {}
     )
 
     assert kind == "block"
     assert message.startswith(reporting.BLOCK_LEAD)
     assert "blocked.py:1 protected/live_surface" in message
-    assert "must-fix.py:2 clean_code/what_comment" not in message
 
 
 def test_format_row_status_prefix_is_optional() -> None:
@@ -574,27 +562,12 @@ def test_format_row_status_prefix_is_optional() -> None:
     assert untagged == "a.py:4 clean_code/what_comment: fix"
 
 
-def test_correction_notice_renders_changes_and_tags_unresolved_rows() -> None:
-    changes = [
-        {
-            "path": "a.py", "family": "clean_code", "rule": "utilize",
-            "line": 1, "status": "rewritten", "action": "use", "snippet": "x",
-        },
-    ]
-    flagged = [
-        {
-            "path": "b.py", "family": "english", "rule": "what_comment",
-            "line": 2, "status": "removed", "action": "delete", "snippet": "x",
-        },
-        {
-            "path": "c.py", "family": "clean_code", "rule": "weak_why_comment",
-            "line": 3, "action": "explain", "snippet": "x",
-        },
-    ]
+def test_compact_block_deduplicates_path_line_and_rule() -> None:
+    finding = {
+        "path": "a.py", "line": 1, "family": "punctuation",
+        "rule": "banned_dash", "action": "Use ASCII hyphen.",
+    }
 
-    message = reporting.correction_notice(changes, flagged, {})
+    message, _report = reporting.compact_block([finding, dict(finding)], {})
 
-    assert message.startswith(reporting.MUST_FIX_LEAD)
-    assert "[rewritten] a.py:1 clean_code/utilize" in message
-    assert "[removed] b.py:2 english/what_comment" in message
-    assert "[flagged] c.py:3 clean_code/weak_why_comment" in message
+    assert message.count("a.py:1 punctuation/banned_dash") == 1

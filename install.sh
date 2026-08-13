@@ -4,8 +4,6 @@ set -eu
 skill_dir="$(cd "$(dirname "$0")" && pwd)"
 install_claude=1
 install_codex=1
-install_opencode=1
-install_pi=1
 assume_yes=0
 claude_legacy=0
 
@@ -13,12 +11,8 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --claude) install_claude=1 ;;
     --codex) install_codex=1 ;;
-    --opencode) install_opencode=1 ;;
-    --pi) install_pi=1 ;;
     --no-claude) install_claude=0 ;;
     --no-codex) install_codex=0 ;;
-    --no-opencode) install_opencode=0 ;;
-    --no-pi) install_pi=0 ;;
     --claude-legacy) install_claude=1; claude_legacy=1 ;;
     -y) assume_yes=1 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -79,19 +73,6 @@ if [ "$install_codex" -eq 1 ]; then
     --config "$HOME/.codex/config.toml" \
     --skill-dir "$skill_dir"
   echo "Codex hooks installed globally. Run /hooks in Codex to review and trust new or changed hooks."
-fi
-
-if [ "$install_opencode" -eq 1 ]; then
-  mkdir -p "$HOME/.config/opencode/plugins"
-  cp "$skill_dir/opencode/agent-discipline-watcher.ts" \
-    "$HOME/.config/opencode/plugins/agent-discipline-watcher.ts"
-fi
-
-if [ "$install_pi" -eq 1 ]; then
-  backup_file "$HOME/.pi/agent/settings.json"
-  python3 "$skill_dir/hooks/merge-pi-settings.py" \
-    --settings "$HOME/.pi/agent/settings.json" \
-    --skill-dir "$skill_dir"
 fi
 
 mkdir -p "$HOME/.local/bin"

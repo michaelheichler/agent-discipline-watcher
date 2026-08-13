@@ -34,7 +34,7 @@ MUTATING_VERB_RE = re.compile(
     r"\b(?:tee|cp|mv|ln|rm|truncate|chmod|chown|dd|shred|unlink)\b|\bsed\s+-i", re.IGNORECASE
 )
 INSTALLER_NAMES = frozenset({
-    "install.sh", "merge-claude-settings.py", "merge-codex-config.py", "merge-pi-settings.py",
+    "install.sh", "merge-claude-settings.py", "merge-codex-config.py",
 })
 # Matched only in command position, because naming a script inside a quoted string is not running it.
 INTERPRETERS = frozenset({
@@ -127,7 +127,7 @@ def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
     kind, reason = reporting.verdict_message(decisions, cfg)
     if kind == "block":
         return deny(reason)
-    if kind in {"must_fix", "observe"}:
+    if kind == "observe":
         return advise(reason, "PreToolUse")
     return allow()
 

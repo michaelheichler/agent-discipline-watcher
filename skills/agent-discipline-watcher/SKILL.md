@@ -15,8 +15,8 @@ description: >-
 # Agent Discipline Watcher
 
 Apply this skill whenever you produce or revise agent output that may land in a
-file, commit, code review, user-facing prose, or final reply. It is a cross-client
-discipline layer for Codex, Claude Code, and Pi.
+file, commit, code review, user-facing prose, or final reply. It supports Claude
+Code and Codex.
 
 ## Enforce These Rules
 

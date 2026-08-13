@@ -14,8 +14,9 @@ from pathlib import Path
 from typing import TypeGuard, TypeVar, cast
 
 from lib import payloads, reporting
+from lib import adjudication
 from lib.config import effective_config, resolve_outcome
-from lib.hookio import advise, read_payload, system_message, write_payload
+from lib.hookio import advise, read_payload, write_payload
 from lib.reporting import run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
@@ -469,16 +470,21 @@ def _stat_fingerprint(file_stat: os.stat_result) -> StatFingerprint:
     )
 
 
-def _scan_path(path: Path, cfg: dict) -> list[dict]:
+def _scan_path(path: Path, cfg: dict, session_id: str) -> list[dict]:
     text = _read_path(path, cfg)
     if text is None:
         return []
     findings = []
-    for finding in strip_committed(path, scan_all(str(path), text, cfg), cfg):
+    findings = strip_committed(path, scan_all(str(path), text, cfg), cfg)
+    findings = adjudication.filter_cached_releases(
+        findings, text, session_id, cfg.get("state_root")
+    )
+    stamped = []
+    for finding in findings:
         item = dict(finding)
         item["path"] = str(path)
-        findings.append(item)
-    return findings
+        stamped.append(item)
+    return stamped
 
 
 def _read_path(path: Path, cfg: dict) -> str | None:
@@ -523,7 +529,7 @@ def findings_for_batch(
     for call_id, raw_path, path in ordered:
         if (call_id, raw_path) in reported:
             continue
-        for finding in _scan_path(path, cfg):
+        for finding in _scan_path(path, cfg, payloads.session_id(payload)):
             finding["_tool_use_id"] = call_id
             findings.append(finding)
     return findings
@@ -562,7 +568,7 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str):
         kind, reason = reporting.verdict_message(decisions, cfg)
         if kind == "block":
             return {"decision": "block", "reason": reason}
-        if kind == "must_fix":
+        if kind == "observe":
             return advise(reason, BATCH_EVENT)
         return {}
 
@@ -596,18 +602,13 @@ def _run(payload: dict, config: dict | None) -> dict:
 
 
 def cli_response(response: dict) -> dict:
-    """Downgrade a batch block to a message, because D13 makes record.py canonical and a halted turn cannot be reworked."""
-    reason = response.get("reason", "")
-    if response.get("decision") != "block" or not reason:
-        return response
-    return {
-        **system_message(reason),
-        "hookSpecificOutput": {
-            "hookEventName": BATCH_EVENT,
-            "additionalContext": reason,
-        },
-    }
+    return response
 
 
 if __name__ == "__main__":
-    write_payload(cli_response(run(read_payload())))
+    response = cli_response(run(read_payload()))
+    if response.get("decision") == "block":
+        import sys
+        sys.stderr.write(str(response.get("reason", "PostToolBatch blocked findings")) + "\n")
+        raise SystemExit(2)
+    write_payload(response)

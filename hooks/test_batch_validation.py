@@ -346,8 +346,8 @@ class BatchValidationTests(unittest.TestCase):
         with patch.object(batch, "effective_config", side_effect=mutate_source):
             response = batch.run(payload, self.cfg)
 
-        self.assertIsNone(response.get("decision"))
-        advisory = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+        self.assertEqual(response.get("decision"), "block")
+        advisory = response.get("reason", "")
         self.assertIsInstance(advisory, str)
         self.assertTrue(advisory.strip())
         self.assertIn("deferred_work_comment", advisory)

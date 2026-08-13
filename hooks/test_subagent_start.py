@@ -27,7 +27,7 @@ class SubagentStartInjectionTests(unittest.TestCase):
 
     def test_the_real_contract_ships_rather_than_a_one_line_reminder(self) -> None:
         text = injected({})["additionalContext"]
-        for clause in ("em dash", "possessive pronoun", "hollow test", "still block the write",
+        for clause in ("em dash", "possessive pronoun", "hollow test", "Every finding blocks",
                        "Craftsman suppression marker", "empty intensifiers"):
             with self.subTest(clause=clause):
                 self.assertIn(clause, text)

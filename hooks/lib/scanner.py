@@ -8,14 +8,15 @@ from pathlib import PurePath
 
 try:
     from .config import GATE_FAMILIES, effective_config
-    from .markup import _blank_keep_newlines, _mask_markup, _sniff_prose
+    from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
 except ImportError:
     from config import GATE_FAMILIES, effective_config
-    from markup import _blank_keep_newlines, _mask_markup, _sniff_prose
+    from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
 
 
 BAD_DASH_RE = re.compile("[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]")
 PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
+MIXED_LANGUAGE_EXTS = {".html", ".htm", ".xml", ".svg", ".vue", ".svelte"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
     ".pylintrc", ".editorconfig", ".npmrc", ".yarnrc", ".gitignore", ".gitattributes",
@@ -256,8 +257,10 @@ def _scan_context(path: str, text: str, config: dict | None) -> tuple[dict, obje
     """Share classification because every scan pass must use the same source view."""
     cfg = effective_config(config)
     tree, lines = _python_tree(path, text), text.splitlines() or [""]
-    prose = _is_prose(path, text)
-    return cfg, tree, lines, prose, not prose and not _is_config(path)
+    suffix = PurePath(path.lower()).suffix
+    prose = _is_prose(path, text) or suffix in {".vue", ".svelte"}
+    code_file = (not prose and not _is_config(path)) or suffix in MIXED_LANGUAGE_EXTS
+    return cfg, tree, lines, prose, code_file
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
@@ -265,12 +268,18 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     findings = _unconditional_findings(path, text, cfg, tree, code_file)
     if _is_exempt(path, cfg):
         return findings
-    masked = _mask_markup(path, text)
+    regions = extract_regions(path, text)
+    mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
+    masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
+    comment_source = render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}) if mixed else text
+    if mixed:
+        comment_source = mask_script_strings(comment_source, regions)
     punct_lines = _strip_punctuation_blocks(path, masked, prose).splitlines() or [""]
     english_lines = _strip_english_hidden(masked).splitlines() or [""]
+    comment_lines = comment_source.splitlines() or [""]
     active = _active_families(path, cfg)
     if "clean_code" in active and code_file:
-        findings.extend(_scan_clean_code_file(path, text, cfg, tree))
+        findings.extend(_scan_clean_code_file(path, comment_source, cfg, tree))
     for number, line in enumerate(lines, 1):
         if "punctuation" in active:
             scan_line = punct_lines[number - 1] if number <= len(punct_lines) else ""
@@ -279,7 +288,8 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
             scan_line = english_lines[number - 1] if number <= len(english_lines) else ""
             findings.extend(_scan_english(path, number, line, scan_line))
         if "clean_code" in active and code_file:
-            findings.extend(_scan_clean_code(path, number, line))
+            scan_line = comment_lines[number - 1] if number <= len(comment_lines) else ""
+            findings.extend(_scan_clean_code(path, number, scan_line))
     if "english" in active and prose:
         findings.extend(_scan_prose_structure(path, masked, cfg))
     return findings
@@ -558,12 +568,13 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
 
 
 def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
+    comment = _comment_text(line)
     rows = [
         _finding("clean_code", rule, line_number, detail + path, line, action)
         for regex, rule, detail, action in CLEAN_CODE_LINE_RULES
-        if regex.search(line)
+        if comment is not None and regex.search(line)
     ]
-    rows.extend(_comment_body_rows(path, line_number, line))
+    rows.extend(_comment_body_rows(path, line_number, line) if comment is not None else [])
     if _looks_like_empty_test(line):
         rows.append(_finding(
             "clean_code",

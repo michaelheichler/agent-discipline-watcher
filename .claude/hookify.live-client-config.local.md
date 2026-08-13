@@ -20,12 +20,12 @@ Change the repo source instead:
 | --- | --- |
 | `~/.claude/settings.json` | `hooks/claude-settings.snippet.json` and `hooks/merge-claude-settings.py` |
 | `~/.codex/config.toml` | `hooks/codex-config.snippet.toml` and `hooks/merge-codex-config.py` |
-| `~/.pi/agent/settings.json` | `hooks/merge-pi-settings.py` |
-| `~/.config/opencode/plugins/agent-discipline-watcher.ts` | `opencode/agent-discipline-watcher.ts` |
 | `~/.local/bin/agent-discipline` | `bin/agent-discipline` |
 
 Prove the merged result against a sandbox HOME, then install.
 
 Scratch and memory paths such as `~/.claude/jobs/` and `~/.claude/projects/` are not client config, so they pass.
+
+Pi and OpenCode paths remain protected from accidental live edits, but their watcher adapters are archived and have no active source mapping.
 
 Disable this rule only when the task is repairing a broken live install.

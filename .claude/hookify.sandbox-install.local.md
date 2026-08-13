@@ -7,7 +7,7 @@ tool_matcher: Bash
 conditions:
   - field: command
     operator: regex_match
-    pattern: (?:^|[;&|(]\s*|\b(?:python3?|sh|bash|zsh|dash|command|env|exec|sudo|nohup|time)\s+)(?:[\w./-]*/)?(?:install\.sh|merge-claude-settings\.py|merge-codex-config\.py|merge-pi-settings\.py)\b
+    pattern: (?:^|[;&|(]\s*|\b(?:python3?|sh|bash|zsh|dash|command|env|exec|sudo|nohup|time)\s+)(?:[\w./-]*/)?(?:install\.sh|merge-claude-settings\.py|merge-codex-config\.py)\b
   - field: command
     operator: not_contains
     pattern: HOME=
@@ -15,7 +15,7 @@ conditions:
 
 **Blocked: installer or merge script aimed at the real HOME.**
 
-`install.sh` and the merge scripts rewrite `~/.claude/settings.json`, `~/.codex/config.toml`, and `~/.pi/agent/settings.json`. The README states the rule for this repo: an unknown event key can break client config parsing rather than no-op, so every new wiring proves the merged config in a sandbox HOME before any live install.
+`install.sh` and the merge scripts rewrite `~/.claude/settings.json` and `~/.codex/config.toml`. The README states the rule for this repo: an unknown event key can break client config parsing rather than no-op, so every new wiring proves the merged config in a sandbox HOME before any live install.
 
 Run it against a throwaway HOME:
 

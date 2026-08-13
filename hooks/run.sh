@@ -4,7 +4,7 @@ set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON=python3
 
-DISPATCH="SessionStart:session_start.py UserPromptSubmit:prompt_submit.py PreToolUse:pre_tool.py PostToolUse:record.py PostToolBatch:batch.py PostToolUseFailure:failure.py SubagentStart:subagent_start.py"
+DISPATCH="SessionStart:session_start.py UserPromptSubmit:prompt_submit.py PreToolUse:pre_tool.py PreCommit:pre_tool.py PostToolUse:record.py PostToolBatch:batch.py PostToolUseFailure:failure.py SubagentStart:subagent_start.py"
 
 event="${1:-}"
 usage="usage: run.sh "

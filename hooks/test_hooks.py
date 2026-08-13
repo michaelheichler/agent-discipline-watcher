@@ -13,8 +13,8 @@ import session_start
 
 
 def _style_advice(response: dict) -> str:
-    # A style finding never carries decision because pre_write only cleans or advises on it.
-    assert "decision" not in response
+    if response.get("decision") == "block":
+        return response.get("reason", "")
     return response.get("hookSpecificOutput", {}).get("additionalContext", "")
 
 
@@ -22,6 +22,12 @@ def _assert_style_row(response: dict, path: str | Path, line: int, rule: str) ->
     advice = _style_advice(response)
     assert f"{path}:{line}" in advice
     assert f"/{rule}:" in advice
+
+
+def _confirm_violation(request):
+    lines = [line for line in request.source.splitlines() if line.strip()]
+    evidence = next((line for line in lines if "Validate" in line or "Reads" in line or "Sets" in line), lines[0])
+    return {"verdict": "block", "evidence": evidence, "reason": "The comment narrates code."}
 
 
 def _disable_git_background_tasks() -> None:
@@ -50,7 +56,12 @@ def test_pre_write_advises_a_forced_pending_write():
 
 
 def _edit_config(tmp_path):
-    return {"ledger_path": _ledger_path(), "clean_code": True, "baseline": "none"}
+    return {
+        "ledger_path": _ledger_path(),
+        "clean_code": True,
+        "baseline": "none",
+        "adjudicator": _confirm_violation,
+    }
 
 
 def test_pre_write_maps_edit_finding_to_post_edit_line(tmp_path):
@@ -114,7 +125,7 @@ def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     target = tmp_path / "missing.py"
     tool_input = {"file_path": str(target), "old_string": "not present\n",
                   "new_string": "# Validate the cache entry\n"}
-    findings = pre_write._edit_findings(tool_input, str(target), _edit_config(tmp_path))
+    findings = pre_write._edit_findings(tool_input, str(target), target, _edit_config(tmp_path))
     assert "pending edit text" in findings[0]["detail"]
 
 
@@ -149,13 +160,15 @@ WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the c
 
 
 def test_pre_write_enforces_what_comment_by_default():
-    response = pre_write.run(WHAT_PAYLOAD, {"ledger_path": _ledger_path(), "clean_code": True})
+    response = pre_write.run(WHAT_PAYLOAD, {
+        "ledger_path": _ledger_path(), "clean_code": True, "adjudicator": _confirm_violation,
+    })
     _assert_style_row(response, "a.py", 1, "what_comment")
 
 
 def test_pre_write_advises_what_comment_once_the_rule_is_enforced():
     config = {"ledger_path": _ledger_path(), "clean_code": True,
-              "rule_gates": {"what_comment": "enforce"}}
+              "rule_gates": {"what_comment": "enforce"}, "adjudicator": _confirm_violation}
     response = pre_write.run(WHAT_PAYLOAD, config)
     _assert_style_row(response, "a.py", 1, "what_comment")
 
@@ -180,7 +193,9 @@ def test_what_comment_is_silenced_by_the_clean_code_switch_and_path_exemption():
 
 
 def test_pre_write_enforces_vue_comment_contract():
-    config = {"ledger_path": _ledger_path(), "clean_code": True}
+    config = {
+        "ledger_path": _ledger_path(), "clean_code": True, "adjudicator": _confirm_violation,
+    }
     two_comments = {
         "tool_input": {
             "file_path": "component.vue",
@@ -379,13 +394,13 @@ def test_pre_commit_scans_from_repo_subdirectory(tmp_path):
     _assert_style_row(response, "a.py", 1, "prose_comment_block")
 
 
-def test_record_corrects_forced_post_write(tmp_path):
+def test_record_blocks_forced_post_write_without_mutating_file(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
     post_response = record.run({"tool_input": {"file_path": str(target)}})
     _assert_style_row(post_response, target, 1, "deferred_work_comment")
-    assert target.read_text(encoding="utf-8") == ""
-    assert "after: '<removed>'" in _style_advice(post_response)
+    assert post_response["decision"] == "block"
+    assert target.read_text(encoding="utf-8") == "# " + ("TO" + "DO") + " later\n"
 
 
 
@@ -404,7 +419,7 @@ def test_record_ignores_uncertain_punctuation(tmp_path):
     assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
 
 
-def test_run_sh_advises_forced_posttooluse(tmp_path):
+def test_run_sh_blocks_forced_posttooluse(tmp_path):
     target = tmp_path / "note.md"
     target.write_text("bad\u2014dash\n", encoding="utf-8")
     payload = json.dumps({"tool_input": {"file_path": str(target)}})
@@ -415,9 +430,9 @@ def test_run_sh_advises_forced_posttooluse(tmp_path):
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 0
-    assert result.stderr == ""
-    _assert_style_row(json.loads(result.stdout), target, 1, "banned_dash")
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert f"{target}:1 punctuation/banned_dash" in result.stderr
 
 
 
@@ -519,7 +534,7 @@ def test_run_sh_routes_pretooluse_non_commit_bash():
     )
     response = json.loads(result.stdout)
     assert "decision" not in response
-    assert "additionalContext" in response["hookSpecificOutput"]
+    assert response == {}
 
 
 def test_run_sh_routes_user_prompt_submit_to_the_firewall():

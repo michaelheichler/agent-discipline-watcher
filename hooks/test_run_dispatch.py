@@ -14,6 +14,7 @@ DISPATCH = {
     "SessionStart": "session_start.py",
     "UserPromptSubmit": "prompt_submit.py",
     "PreToolUse": "pre_tool.py",
+    "PreCommit": "pre_tool.py",
     "PostToolUse": "record.py",
     "PostToolBatch": "batch.py",
     "PostToolUseFailure": "failure.py",

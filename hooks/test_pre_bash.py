@@ -21,7 +21,6 @@ def rules(command, home=None, config=None):
     "sh ./install.sh --no-codex",
     "python3 hooks/merge-claude-settings.py --settings x --skill-dir y",
     "python3 hooks/merge-codex-config.py --config x --skill-dir y",
-    "python3 hooks/merge-pi-settings.py --settings x --skill-dir y",
 ])
 def test_installers_without_sandbox_home_block(command):
     assert rules(command) == ["install_without_sandbox_home"]
@@ -41,7 +40,6 @@ def test_sandboxed_installers_pass(command):
     'grep -n install.sh README.md',
     'python3 -c \'paths = ["hooks/merge-claude-settings.py", "install.sh"]\'',
     'git log --oneline -- install.sh',
-    'cat <<EOF\nsee hooks/merge-pi-settings.py for details\nEOF',
     'sed -n 1,5p install.sh',
 ])
 def test_naming_an_installer_without_running_it_passes(command):
@@ -270,9 +268,8 @@ def test_small_or_nonwriting_bash_commands_pass_the_write_cap(command):
 
 def test_short_bash_write_still_uses_existing_scan_path():
     result = pre_bash.run({"tool_input": {"command": "echo 'bad" + "\N{EM DASH}" + "line' > notes.txt"}})
-    assert result.get("decision") is None
-    advisory = result.get("hookSpecificOutput", {}).get("additionalContext", "")
-    assert isinstance(advisory, str) and advisory.strip()
+    assert result["decision"] == "block"
+    advisory = result["reason"]
     assert "banned_dash" in advisory
 
 

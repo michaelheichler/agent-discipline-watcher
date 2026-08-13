@@ -61,29 +61,18 @@ def test_clean_content_passes(command):
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
 
 
-def test_bash_write_is_corrected_after_prewrite_advisory(tmp_path):
+def test_bash_write_is_blocked_before_execution(tmp_path):
     target = tmp_path / "target.py"
     command = 'echo "# ' + ("TO" + "DO") + r' later\nvalue = 1\n" > target.py'
     pre_response = pre_bash.run(
         {"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}}
     )
-    assert "deferred_work_comment" in pre_response["systemMessage"]
-    target.write_text(pre_bash.write_targets(command)[0][1], encoding="utf-8")
-
-    post_response = record.run(
-        {
-            "tool_name": "Bash",
-            "cwd": str(tmp_path),
-            "tool_input": {"command": command},
-        },
-        {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
-    )
-
-    assert "deferred_work_comment" in post_response["systemMessage"]
-    assert target.read_text(encoding="utf-8") == "value = 1\n"
+    assert pre_response["decision"] == "block"
+    assert "deferred_work_comment" in pre_response["reason"]
+    assert not target.exists()
 
 
-def test_tilde_bash_write_is_corrected_after_postwrite(monkeypatch, tmp_path):
+def test_tilde_bash_postwrite_blocks_without_mutation(monkeypatch, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -102,8 +91,9 @@ def test_tilde_bash_write_is_corrected_after_postwrite(monkeypatch, tmp_path):
         {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
     )
 
-    assert "deferred_work_comment" in response["systemMessage"]
-    assert target.read_text(encoding="utf-8") == "value = 1\n"
+    assert response["decision"] == "block"
+    assert "deferred_work_comment" in response["reason"]
+    assert target.read_text(encoding="utf-8") == pre_bash.write_targets(command)[0][1]
 
 
 @pytest.mark.parametrize("command", [
@@ -155,10 +145,8 @@ def test_self_protection_still_blocks_and_takes_precedence():
 
 def test_content_finding_blocks_through_the_hook_contract():
     result = pre_bash.run({"tool_input": {"command": f"echo '{PROSE}' > out.md"}})
-    assert result.get("decision") is None
-    advisory = result.get("hookSpecificOutput", {}).get("additionalContext", "")
-    assert isinstance(advisory, str) and advisory.strip()
-    assert "inflated_diction" in advisory
+    assert result["decision"] == "block"
+    assert "inflated_diction" in result["reason"]
 
 
 def test_observed_family_reports_without_blocking():

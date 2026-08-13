@@ -73,8 +73,8 @@ class EditJournalTests(unittest.TestCase):
             "tool_input": {"file_path": str(target)},
         }
         response = record.run(payload, self.cfg)
-        self.assertIsNone(response.get("decision"))
-        self.assertIn("clean_code/deferred_work_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("clean_code/deferred_work_comment", response["reason"])
         self.assertEqual(len(self._journal_rows()), 1)
 
     def test_an_observed_finding_advises_and_is_recorded_as_would_block(self):
@@ -95,7 +95,7 @@ class EditJournalTests(unittest.TestCase):
                          [("what_comment", "would_block")])
         self.assertEqual(decisions[0]["tool_use_id"], "toolu_2")
 
-    def test_a_must_fix_finding_is_recorded_as_must_fix(self):
+    def test_an_enforced_finding_is_recorded_as_block(self):
         target = self.root / "a.py"
         target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
         payload = {
@@ -108,7 +108,7 @@ class EditJournalTests(unittest.TestCase):
             row["rule"]: row["outcome"]
             for row in self._ledger_rows() if row["event"] == "PostToolUse"
         }
-        self.assertEqual(outcomes["deferred_work_comment"], "must_fix")
+        self.assertEqual(outcomes["deferred_work_comment"], "block")
 
     def test_a_clean_edit_records_no_decision_row(self):
         target = self.root / "a.py"
@@ -204,10 +204,9 @@ class EditJournalTests(unittest.TestCase):
             "tool_input": {"file_path": str(target)},
         }
         response = record.run(payload, self.cfg)
-        message = response.get("systemMessage", "")
+        message = response.get("reason", "")
         self.assertEqual(target.read_bytes(), original)
         self.assertIn("deferred_work_comment", message)
-        self.assertNotIn(record.WRITEBACK_LEAD, message)
 
 
 if __name__ == "__main__":

@@ -7,8 +7,10 @@ from collections import Counter
 from pathlib import Path
 
 try:
+    from .config import ALWAYS_BLOCKING_RULES
     from .scanner import scan_all
 except ImportError:
+    from config import ALWAYS_BLOCKING_RULES
     from scanner import scan_all
 
 
@@ -96,7 +98,11 @@ def _consume(findings: list[dict], budget: Counter, key_of) -> list[dict]:
 
 def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
     """Drop the baseline's own findings, exact text first and rule alone second, because rewording an already offending line adds no debt."""
-    exact = Counter(finding_key(row) for row in baseline)
+    exact = Counter(
+        finding_key(row)
+        for row in baseline
+        if row.get("rule") not in ALWAYS_BLOCKING_RULES
+    )
     survivors = _consume(findings, exact, finding_key)
     if not survivors:
         return []

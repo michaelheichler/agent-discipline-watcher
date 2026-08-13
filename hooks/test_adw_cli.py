@@ -27,7 +27,7 @@ def test_both_review_entry_points_delegate_to_shared_engine(tmp_path) -> None:
 
     assert standalone.returncode == integrated.returncode == 1
     assert standalone.stdout == integrated.stdout
-    assert json.loads(standalone.stdout)["s"]["must_fix"] == 1
+    assert json.loads(standalone.stdout)["s"]["block"] == 1
     assert "sample.md" in standalone.stdout
 
 
@@ -45,7 +45,7 @@ def test_standalone_json_output_and_search_work_in_subprocess(tmp_path) -> None:
     text_source.write_text("bad" + "\N{EM DASH}" + "line\n", encoding="utf-8")
     text_report = _run(ADW_CLI, "review", "sample.md", "--format", "text", cwd=tmp_path)
     assert text_report.returncode == 1
-    assert "banned_dash [must_fix]" in text_report.stdout
+    assert "banned_dash [block]" in text_report.stdout
 
     assert search.returncode == 0
     assert "\tcode\tsample.py:1\tneedle context resolver" in search.stdout

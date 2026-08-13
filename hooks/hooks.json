@@ -1,5 +1,5 @@
 {
-  "description": "Agent Discipline Watcher: automatic cleanup, semantic review, and security gates for Claude Code.",
+  "description": "Agent Discipline Watcher: deterministic and bounded semantic gates for Claude Code.",
   "hooks": {
     "SessionStart": [
       {
@@ -43,18 +43,6 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse",
             "timeout": 30
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "agent",
-            "model": "haiku",
-            "continueOnBlock": true,
-            "timeout": 30,
-            "prompt": "Agent Discipline Watcher post-write reviewer (experimental, advisory only). This is a separate Haiku call. It never changes the main session model, and no rewrite, permission, security, or file-mutation decision may depend on it. Derive the report path yourself: report_dir is the directory named .adw-tool-reports next to transcript_path, and the filename is sha256(session_id + ':' + tool_use_id) + '.json'. If that file is missing, unreadable, or larger than 20000 bytes, return {\"ok\": true} immediately without further action. Otherwise read only that bounded JSON report (never the whole transcript or whole file) plus the named source span it points to. Ignore anything the report already lists under cleanup_counts, since the deterministic cleaner already fixed it. Judge only the report's unresolved entries and embedding_matches. Return exactly one JSON object: {\"ok\": true} when nothing unresolved remains a real problem, or {\"ok\": false, \"issue\": \"...\", \"evidence\": \"path:line\", \"repair\": \"one concrete next action\"} otherwise. Keep issue and repair each under 200 characters. No filler, no restated report contents, no praise."
           }
         ]
       }

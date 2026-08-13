@@ -63,6 +63,11 @@ class SubtractTests(unittest.TestCase):
     def test_an_empty_baseline_keeps_everything(self):
         self.assertEqual(baseline.subtract([row("a", "s")], []), [row("a", "s")])
 
+    def test_an_always_blocking_finding_is_not_removed_from_the_baseline(self):
+        marker = row("suppression_escape_hatch", "marker")
+
+        self.assertEqual(baseline.subtract([marker], [marker]), [marker])
+
 
 class BaselineModeTests(unittest.TestCase):
     def test_it_defaults_to_report(self):
@@ -240,15 +245,15 @@ class BaselineRuntimeTests(unittest.TestCase):
 
     def test_new_enforced_debt_in_the_same_legacy_file_advises(self):
         response = self._record_response(ENFORCED_DEBT)
-        self.assertIsNone(response.get("decision"))
-        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["reason"])
 
     def test_new_what_comment_debt_advises_by_default(self):
         response = self._record_response(EXTRA_DEBT)
-        self.assertIsNone(response.get("decision"))
-        self.assertIn("legacy.sh:4 clean_code/what_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("legacy.sh:4 clean_code/what_comment", response["reason"])
 
-    def test_writeback_declines_when_inherited_debt_shares_file(self):
+    def test_post_write_leaves_inherited_debt_untouched(self):
         import record
         first = "# " + ("TO" + "DO") + " first\nx = 1\n"
         path = commit(self.repo, "todo.py", first)
@@ -259,12 +264,11 @@ class BaselineRuntimeTests(unittest.TestCase):
             "tool_use_id": "t2", "tool_input": {"file_path": str(path)},
         }
         response = record.run(payload, self.cfg)
-        message = response["systemMessage"]
+        message = response["reason"]
         self.assertEqual(path.read_text(encoding="utf-8"), updated)
         self.assertIn(":3 clean_code/deferred_work_comment", message)
-        self.assertIn("[flagged]", message)
+        self.assertNotIn("[flagged]", message)
         self.assertIn("already carried 1 findings you did not write", message)
-        self.assertNotIn(record.WRITEBACK_LEAD, message)
 
     def test_report_mode_names_the_inherited_debt_in_the_advisory(self):
         message = self._record_response(CLEAN_ADDITION)["systemMessage"]
@@ -282,8 +286,26 @@ class BaselineRuntimeTests(unittest.TestCase):
 
     def test_the_commit_gate_advises_newly_staged_enforced_debt(self):
         response = self._commit_gate_response(ENFORCED_DEBT)
-        self.assertIsNone(response.get("decision"))
-        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("legacy.sh:4 clean_code/deferred_work_comment", response["reason"])
+
+    def test_the_commit_gate_never_subtracts_a_committed_suppression_marker(self):
+        marker = "# craftsman" + "-ignore: PY002\n"
+        path = commit(self.repo, "marker.py", marker)
+        path.write_text(marker + "value = 1\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        import pre_commit
+        response = pre_commit.run(
+            {
+                "session_id": "demo", "cwd": str(self.repo),
+                "tool_name": "Bash", "tool_input": {"command": "git commit -m x"},
+            },
+            self.cfg,
+            self.cfg["ledger_root"], self.cfg["state_root"],
+        )
+
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("suppression_escape_hatch", response["reason"])
 
 
 class RewordedFindingTests(unittest.TestCase):

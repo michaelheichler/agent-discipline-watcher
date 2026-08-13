@@ -53,7 +53,7 @@ class ResolveOutcomeTests(unittest.TestCase):
         return {"family": family, "rule": rule}
 
     def test_every_state_of_every_family(self):
-        expected = {"off": "release", "observe": "would_block", "enforce": "must_fix"}
+        expected = {"off": "release", "observe": "would_block", "enforce": "block"}
         for family in config.GATE_FAMILIES:
             for state in config.GATE_STATES:
                 cfg = {"gates": {family: state}}
@@ -376,14 +376,14 @@ class RuleGateTests(unittest.TestCase):
 
     def test_what_rules_ship_enforced_and_ignore_the_family_switch(self):
         for finding in (self.WHAT, self.DOC):
-            self.assertEqual(config.resolve_outcome(finding, {"clean_code": False}), "must_fix")
+            self.assertEqual(config.resolve_outcome(finding, {"clean_code": False}), "block")
 
     def test_its_family_keeps_enforcing_around_it(self):
         self.assertEqual(config.gate_state("clean_code", {}), "enforce")
-        self.assertEqual(config.resolve_outcome({"family": "clean_code", "rule": "hollow_test"}, {}), "must_fix")
+        self.assertEqual(config.resolve_outcome({"family": "clean_code", "rule": "hollow_test"}, {}), "block")
 
     def test_the_punctuation_rules_require_a_fix(self):
-        self.assertEqual(config.resolve_outcome(self.DASH, {}), "must_fix")
+        self.assertEqual(config.resolve_outcome(self.DASH, {}), "block")
 
     def test_a_rule_state_overrides_its_family(self):
         cfg = {"gates": {"punctuation": "enforce"}, "rule_gates": {"banned_dash": "observe"}}
@@ -391,10 +391,15 @@ class RuleGateTests(unittest.TestCase):
 
     def test_enforce_requires_fix_for_one_rule(self):
         self.assertEqual(
-            config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "enforce"}}), "must_fix")
+            config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "enforce"}}), "block")
 
     def test_an_unknown_rule_state_falls_back_to_the_family(self):
-        self.assertEqual(config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "sometimes"}}), "must_fix")
+        self.assertEqual(config.resolve_outcome(self.WHAT, {"rule_gates": {"what_comment": "sometimes"}}), "block")
+
+    def test_block_rule_inventory_has_no_duplicate_or_empty_ids(self):
+        inventory = tuple(sorted(config.ALWAYS_BLOCKING_RULES))
+        self.assertEqual(len(inventory), len(set(inventory)))
+        self.assertTrue(all(inventory))
 
     def test_a_rule_gate_cannot_release_an_always_blocking_rule(self):
         for state in ("off", "observe"):

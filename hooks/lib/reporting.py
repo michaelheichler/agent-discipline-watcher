@@ -1,7 +1,6 @@
 """Ledger, shared hook wrapper, and observe-report CLI."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -13,51 +12,17 @@ from pathlib import Path
 
 try:
     # Relative first because hook entry scripts import this as lib.reporting, where a bare name cannot resolve.
-    from . import embeddings, session_state
+    from . import session_state
 except ImportError:
-    import embeddings
     import session_state
 
 LEDGER_FILENAME = "ledger.jsonl"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
-
-TOOL_USE_REPORT_DIRNAME = ".adw-tool-reports"
-TOOL_USE_REPORT_PROTOCOL_VERSION = 1
-TOOL_USE_REPORT_MAX_AGE_SECONDS = 3600
-TOOL_USE_REPORT_MAX_BYTES = 20_000
-TOOL_USE_REPORT_MAX_UNRESOLVED = 10
-AMBIGUOUS_COMMENT_RULES = frozenset({"what_comment", "what_docstring", "weak_why_comment"})
-
-_WHY_PROTOTYPES = [
-    {"label": "WHY", "text": "kept because callers require stable ordering across retries"},
-    {"label": "WHY", "text": "guards against a race that only shows up under concurrent writers"},
-    {"label": "WHY", "text": "works around a platform limit that has no better fix"},
-]
-
-
-def _what_prototypes() -> list[dict]:
-    """Sample the shared WHAT corpus instead of duplicating labeled examples in this module."""
-    corpus = Path(__file__).with_name("corpus_what_comments.jsonl")
-    try:
-        lines = corpus.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    rows = []
-    for line in lines[:5]:
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(row, dict) and row.get("text"):
-            rows.append({"label": "WHAT", "text": str(row["text"])})
-    return rows
-
-
-def _comment_prototypes() -> list[dict]:
-    return _WHY_PROTOTYPES + _what_prototypes()
+MAX_COMPACT_BYTES = 4096
+MAX_COMPACT_FIELD_BYTES = 768
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
-OUTCOMES = ("block", "must_fix", "inject", "would_block", "no_edits", "release")
+OUTCOMES = ("block", "inject", "would_block", "no_edits", "release")
 
 
 def write_full_report(findings: list[dict]) -> str:
@@ -70,10 +35,6 @@ def write_full_report(findings: list[dict]) -> str:
 
 
 BLOCK_LEAD = "agent-discipline-watcher blocked findings:"
-MUST_FIX_LEAD = (
-    "agent-discipline-watcher changed or flagged the following. This is not a suggestion: "
-    "re-check every line below before you consider this edit done."
-)
 OBSERVE_LEAD = (
     "agent-discipline-watcher is observing these, not blocking. "
     "Judge each one and either repair it or state why it stands."
@@ -86,14 +47,37 @@ def compact_block(
     lead: str = BLOCK_LEAD,
 ) -> tuple[str, str]:
     max_rows = int((config or {}).get("max_rows", 8))
-    report = write_full_report(findings)
-    rows = [format_row(item) for item in findings[:max_rows]]
-    extra = len(findings) - len(rows)
+    unique = _deduplicated(findings)
+    report = write_full_report(unique)
+    rows = [format_row(item) for item in unique[:max_rows]]
+    extra = len(unique) - len(rows)
     if extra > 0:
         rows.append(f"... {extra} more")
-    reason = lead + "\n" + "\n".join(rows)
-    reason += "\nFull report: " + report
+    lines = [_clip(lead, MAX_COMPACT_FIELD_BYTES)]
+    lines.extend(_clip(row, MAX_COMPACT_FIELD_BYTES) for row in rows)
+    lines.append("Full report: " + _clip(report, MAX_COMPACT_FIELD_BYTES))
+    reason = _clip("\n".join(lines), MAX_COMPACT_BYTES)
     return reason, report
+
+
+def _deduplicated(findings: list[dict]) -> list[dict]:
+    seen: set[tuple[object, object, object]] = set()
+    result: list[dict] = []
+    for finding in findings:
+        key = (finding.get("path") or finding.get("file"), finding.get("line"), finding.get("rule"))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(finding)
+    return result
+
+
+def _clip(value: object, limit: int) -> str:
+    text = str(value)
+    encoded = text.encode("utf-8")
+    if len(encoded) <= limit:
+        return text
+    return encoded[: max(limit - 3, 0)].decode("utf-8", errors="ignore") + "..."
 
 
 def verdict_message(
@@ -103,22 +87,10 @@ def verdict_message(
     blocking = [finding for finding, outcome in decisions if outcome == "block"]
     if blocking:
         return "block", compact_block(blocking, config)[0]
-    must_fix = [finding for finding, outcome in decisions if outcome == "must_fix"]
-    if must_fix:
-        return "must_fix", compact_block(must_fix, config, lead=MUST_FIX_LEAD)[0]
     observed = [finding for finding, outcome in decisions if outcome == "would_block"]
     if not observed:
         return "release", ""
     return "observe", compact_block(observed, config, lead=OBSERVE_LEAD)[0]
-
-
-def correction_notice(changes: list[dict], flagged: list[dict], config=None) -> str:
-    """Render changed and unresolved findings as one forceful, itemized correction checklist."""
-    tagged_flagged = [
-        item if item.get("status") else {**item, "status": "flagged"}
-        for item in flagged
-    ]
-    return compact_block([*changes, *tagged_flagged], config, lead=MUST_FIX_LEAD)[0]
 
 
 def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
@@ -141,150 +113,6 @@ def format_row(item: dict) -> str:
         f"{item.get('family')}/{item.get('rule')}: "
         f"{item.get('action')}"
     )
-
-
-def _report_dir(transcript_path: str) -> Path | None:
-    if not transcript_path:
-        return None
-    return Path(transcript_path).resolve().parent / TOOL_USE_REPORT_DIRNAME
-
-
-def tool_use_report_path(transcript_path: str, session_id: str, tool_use_id: str) -> Path | None:
-    """Key the filename by session and tool_use_id so parallel tool calls never collide."""
-    directory = _report_dir(transcript_path)
-    if directory is None or not session_id or not tool_use_id:
-        return None
-    digest = hashlib.sha256(f"{session_id}:{tool_use_id}".encode("utf-8")).hexdigest()
-    return directory / f"{digest}.json"
-
-
-def _bounded(value: object, cap: int) -> str:
-    return str(value if value is not None else "")[:cap]
-
-
-def _bounded_unresolved(rows: list[dict]) -> list[dict]:
-    return [
-        {
-            "path": _bounded(row.get("path"), 300),
-            "line": row.get("line") if isinstance(row.get("line"), int) else 0,
-            "rule": _bounded(row.get("rule"), 80),
-            "snippet": _bounded(row.get("snippet"), 300),
-            "nearby": _bounded(row.get("nearby", row.get("detail")), 300),
-        }
-        for row in rows[:TOOL_USE_REPORT_MAX_UNRESOLVED]
-    ]
-
-
-def _ambiguous_matches(unresolved: list[dict]) -> dict[str, dict] | None:
-    candidates = [
-        {"id": str(index), "text": row.get("snippet") or row.get("detail") or ""}
-        for index, row in enumerate(unresolved)
-        if row.get("rule") in AMBIGUOUS_COMMENT_RULES
-    ]
-    if not candidates:
-        return None
-    return embeddings.enrich(candidates, _comment_prototypes())
-
-
-def _tool_use_report_body(
-    target_path: str, tool_name: str, cleanup_counts: dict, unresolved: list[dict]
-) -> dict:
-    bounded_unresolved = _bounded_unresolved(unresolved)
-    body = {
-        "protocol_version": TOOL_USE_REPORT_PROTOCOL_VERSION,
-        "prototype_version": embeddings.PROTOTYPE_VERSION,
-        "ts": now_iso(),
-        "target_path": _bounded(target_path, 500),
-        "tool_name": _bounded(tool_name, 40),
-        "cleanup_counts": {
-            str(key): value for key, value in (cleanup_counts or {}).items()
-            if isinstance(value, int) and not isinstance(value, bool)
-        },
-        "unresolved": bounded_unresolved,
-    }
-    matches = _ambiguous_matches(bounded_unresolved)
-    if matches:
-        body["embedding_matches"] = matches
-    return body
-
-
-def _serialize_bounded(body: dict) -> str:
-    raw = json.dumps(body, ensure_ascii=True, separators=(",", ":"))
-    if len(raw.encode("utf-8")) <= TOOL_USE_REPORT_MAX_BYTES:
-        return raw
-    body.pop("embedding_matches", None)
-    body["unresolved"] = body["unresolved"][:3]
-    return json.dumps(body, ensure_ascii=True, separators=(",", ":"))
-
-
-def _write_report_file(path: Path, raw: str) -> bool:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(path.parent, 0o700)
-        descriptor = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(raw)
-        os.chmod(path, 0o600)
-    except OSError:
-        return False
-    return True
-
-
-def write_tool_use_report(
-    *,
-    transcript_path: str,
-    session_id: str,
-    tool_use_id: str,
-    target_path: str,
-    tool_name: str,
-    cleanup_counts: dict | None = None,
-    unresolved: list[dict] | None = None,
-) -> str | None:
-    """Write one mode-0600 report the Haiku reviewer can read, returning None when it cannot be placed safely."""
-    path = tool_use_report_path(transcript_path, session_id, tool_use_id)
-    if path is None:
-        return None
-    body = _tool_use_report_body(target_path, tool_name, cleanup_counts or {}, unresolved or [])
-    raw = _serialize_bounded(body)
-    return str(path) if _write_report_file(path, raw) else None
-
-
-def read_tool_use_report(transcript_path: str, session_id: str, tool_use_id: str) -> dict | None:
-    path = tool_use_report_path(transcript_path, session_id, tool_use_id)
-    if path is None or not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def sweep_tool_use_reports(
-    transcript_path: str,
-    max_age_seconds: float = TOOL_USE_REPORT_MAX_AGE_SECONDS,
-    now: float | None = None,
-) -> int:
-    """Remove report files older than the cutoff, run at SessionStart and again on later pre-tool calls."""
-    directory = _report_dir(transcript_path)
-    if directory is None or not directory.is_dir():
-        return 0
-    cutoff = (time.time() if now is None else now) - max_age_seconds
-    removed = 0
-    for entry in directory.iterdir():
-        if not entry.is_file():
-            continue
-        try:
-            stale = entry.stat().st_mtime < cutoff
-        except OSError:
-            continue
-        if stale:
-            try:
-                entry.unlink()
-                removed += 1
-            except OSError:
-                pass
-    return removed
 
 
 def _default_ledger_root() -> Path:

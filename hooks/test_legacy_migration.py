@@ -119,7 +119,7 @@ class InstallScriptTests(unittest.TestCase):
             settings.parent.mkdir(parents=True)
             settings.write_text(json.dumps(LEGACY_SETTINGS), encoding="utf-8")
             result = subprocess.run(
-                ["bash", str(INSTALL), "--no-codex", "--no-opencode", "--no-pi", "-y"],
+                ["bash", str(INSTALL), "--no-codex", "-y"],
                 capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
             )
             self.assertIn("/plugin marketplace add", result.stdout)
@@ -129,7 +129,7 @@ class InstallScriptTests(unittest.TestCase):
     def test_legacy_flag_still_writes_path_based_wiring(self):
         with tempfile.TemporaryDirectory() as home:
             result = subprocess.run(
-                ["bash", str(INSTALL), "--claude-legacy", "--no-codex", "--no-opencode", "--no-pi", "-y"],
+                ["bash", str(INSTALL), "--claude-legacy", "--no-codex", "-y"],
                 capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
             )
             self.assertIn("legacy path-based wiring", result.stdout)
@@ -141,12 +141,31 @@ class InstallScriptTests(unittest.TestCase):
             settings = Path(home) / ".claude" / "settings.json"
             settings.parent.mkdir(parents=True)
             settings.write_text(json.dumps(LEGACY_SETTINGS), encoding="utf-8")
-            args = ["bash", str(INSTALL), "--no-codex", "--no-opencode", "--no-pi", "-y"]
+            args = ["bash", str(INSTALL), "--no-codex", "-y"]
             env = {"HOME": home, "PATH": _path()}
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             once = settings.read_text(encoding="utf-8")
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             self.assertEqual(settings.read_text(encoding="utf-8"), once)
+
+    def test_default_install_does_not_create_archived_client_config(self):
+        with tempfile.TemporaryDirectory() as home:
+            subprocess.run(
+                ["bash", str(INSTALL), "-y"],
+                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
+            )
+            self.assertFalse((Path(home) / ".pi").exists())
+            self.assertFalse((Path(home) / ".config" / "opencode").exists())
+
+    def test_archived_client_flags_are_rejected(self):
+        for flag in ("--pi", "--no-pi", "--opencode", "--no-opencode"):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as home:
+                result = subprocess.run(
+                    ["bash", str(INSTALL), flag, "-y"],
+                    capture_output=True, text=True, check=False, env={"HOME": home, "PATH": _path()},
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(f"unknown option: {flag}", result.stderr)
 
 
 def _path() -> str:

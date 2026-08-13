@@ -130,9 +130,11 @@ class PluginHookRegistrationTests(unittest.TestCase):
                 self.assertIn(route, self.dispatch, f"{route} is registered but run.sh cannot route it")
                 self.assertTrue((ROOT / "hooks" / self.dispatch[route]).is_file())
 
-    def test_every_dispatch_route_is_registered(self):
+    def test_every_dispatch_route_is_registered_or_a_compatibility_alias(self):
         registered = {route_of(entry) for _, entry in hook_commands(self.config)}
-        self.assertEqual(set(self.dispatch), registered, "a dispatch route with no registration is dead code")
+        aliases = {"PreCommit"}
+        self.assertEqual(set(self.dispatch) - aliases, registered)
+        self.assertEqual(self.dispatch["PreCommit"], self.dispatch["PreToolUse"])
 
     def test_snippet_and_plugin_hooks_describe_the_same_routes(self):
         snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
@@ -186,7 +188,6 @@ class PluginCommandExecutionTests(unittest.TestCase):
 
 
 class PostToolUseHaikuReviewerTests(unittest.TestCase):
-    """Locks the experimental agent handler shape, because nothing else validates it before it reaches Claude Code."""
 
     def setUp(self):
         self.config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
@@ -200,47 +201,8 @@ class PostToolUseHaikuReviewerTests(unittest.TestCase):
         self.assertIn("PostToolUse", command_routes)
         self.assertEqual(dispatch["PostToolUse"], "record.py")
 
-    def test_exactly_one_agent_handler_is_registered_on_post_tool_use(self):
-        self.assertEqual(len(self._agent_entries()), 1)
-
-    def test_the_agent_handler_uses_haiku_and_continues_on_block(self):
-        entry = self._agent_entries()[0]
-        self.assertEqual(entry["type"], "agent")
-        self.assertEqual(entry["model"], "haiku")
-        self.assertIs(entry["continueOnBlock"], True)
-        self.assertIsInstance(entry.get("prompt"), str)
-        self.assertTrue(entry["prompt"])
-
-    def test_the_agent_matcher_covers_the_direct_writers(self):
-        matcher = next(
-            group["matcher"]
-            for group in self.config["hooks"]["PostToolUse"]
-            if any(hook.get("type") == "agent" for hook in group["hooks"])
-        )
-        for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
-            self.assertRegex(tool, matcher)
-
-    def test_report_path_derivation_is_deterministic(self):
-        """Prove the formula the prompt names matches reporting.tool_use_report_path exactly."""
-        import sys as _sys
-        _sys.path.insert(0, str(ROOT / "hooks"))
-        import reporting
-
-        path_a = reporting.tool_use_report_path("/tmp/x/session.jsonl", "sess-1", "tool-1")
-        path_b = reporting.tool_use_report_path("/tmp/x/session.jsonl", "sess-1", "tool-1")
-        self.assertEqual(path_a, path_b)
-        self.assertNotEqual(
-            path_a, reporting.tool_use_report_path("/tmp/x/session.jsonl", "sess-1", "tool-2")
-        )
-
-    @unittest.skip(
-        "requires a live Claude Code loader on the minimum supported release to prove PostToolUse "
-        "agent support, Haiku model selection, ok:false handling, and continueOnBlock; not runnable "
-        "in this sandbox. Reported as not run, not as passed."
-    )
-    def test_live_loader_proves_haiku_post_tool_use_agent_support(self):
-        binary = shutil.which("claude")
-        self.assertIsNotNone(binary, "claude CLI required for the live loader proof")
+    def test_no_unconditional_agent_handler_is_registered_on_post_tool_use(self):
+        self.assertEqual(self._agent_entries(), [])
 
 
 class PluginLoaderTests(unittest.TestCase):

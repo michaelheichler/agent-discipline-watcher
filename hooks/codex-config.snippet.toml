@@ -16,7 +16,7 @@ timeout = 30
 matcher = "Bash"
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "__SKILL_DIR__/hooks/run.sh PreCommit"
+command = "__SKILL_DIR__/hooks/run.sh PreToolUse"
 timeout = 30
 
 [[hooks.PostToolUse]]
