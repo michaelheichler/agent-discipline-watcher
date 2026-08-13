@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.1 - 2026-08-13
+
+### Fixed
+
+- Restored a non-blocking file-length reminder at 500 lines.
+- Added a stronger non-blocking file-length reminder at 750 lines.
+- Kept the 1000-line source-file limit as an unconditional hard block.
+- Made all three tiers survive clean-code switches, rule gates, kill switches,
+  path exemptions, committed baselines, byte-scan caps, and staged-blob scans.
+
+### Verification
+
+- Passed 1,022 tests and 212 subtests.
+- Passed pylint at 10.00/10 with `hooks/lib/scanner.py` at exactly 1000 lines.
+- Verified live `run.sh PreToolUse` responses at 499, 500, 749, 750, 999,
+  1000, and 1001 lines.
+
 ## 0.16.0 - 2026-08-13
 
 ### Changed
