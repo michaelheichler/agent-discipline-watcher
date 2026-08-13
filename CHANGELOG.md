@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.0+shame.2 - 2026-08-13
+
+### Fixed
+
+- Restored the fixed repository-wide pylint gate to 10.00/10 without disabling
+  messages, lowering thresholds, narrowing checked files, or pinning an older
+  linter.
+- Made `hooks/lib` an explicit package and aligned tests with production imports.
+- Split scanner input policy and batch CLI tests into focused modules.
+- Preserved exact built-in payload type checks without coercion.
+
+### Verification
+
+- Passed pylint at 10.00/10 with the unchanged CI command.
+- Passed 1,007 tests and 202 subtests.
+
 ## 0.15.0+shame.1 - 2026-08-13
 
 ### Changed
