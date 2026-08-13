@@ -123,6 +123,10 @@ def mask_script_strings(text: str, regions: tuple[Region, ...]) -> str:
     return "".join(visible)
 
 
+def mask_source_strings(text: str) -> str:
+    return SCRIPT_STRING_RE.sub(_blank_keep_newlines, text)
+
+
 def _mask_markup(path: str, text: str) -> str:
     """Mask non-prose syntax because its tokens are not sentences."""
     suffix = PurePath(path.lower()).suffix

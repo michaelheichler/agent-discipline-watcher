@@ -15,7 +15,6 @@ from typing import TypeGuard, TypeVar, cast
 import pre_bash
 
 from lib import payloads, reporting
-from lib import adjudication
 from lib.config import effective_config, resolve_outcome
 from lib.hookio import advise, read_payload, write_payload
 from lib.reporting import run_with_ledger
@@ -477,9 +476,6 @@ def _scan_path(path: Path, cfg: dict, session_id: str) -> list[dict]:
         return []
     findings = []
     findings = strip_committed(path, scan_all(str(path), text, cfg), cfg)
-    findings = adjudication.filter_cached_releases(
-        findings, text, session_id, cfg.get("state_root")
-    )
     stamped = []
     for finding in findings:
         item = dict(finding)

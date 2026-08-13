@@ -1,5 +1,5 @@
 {
-  "description": "Agent Discipline Watcher: deterministic and bounded semantic gates for Claude Code.",
+  "description": "Agent Discipline Watcher: deterministic hard-block gates for Claude Code.",
   "hooks": {
     "SessionStart": [
       {
@@ -75,6 +75,28 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SubagentStop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh Stop",
             "timeout": 10
           }
         ]

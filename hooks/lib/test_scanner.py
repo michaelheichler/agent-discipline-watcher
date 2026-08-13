@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from lib import scanner
-from lib.config import effective_config
+from lib.config import ALWAYS_BLOCKING_RULES, effective_config
 from lib.scanner import scan_all
 
 
@@ -434,14 +434,15 @@ if __name__ == "__main__":
         test_project_config_is_found_from_child_directory(Path(directory))
 
 
-def test_exempt_paths_config_skips_configurable_families():
+def test_exempt_paths_cannot_skip_strict_comment_rules():
     text = (
         "# first narrating line of prose\n"
         "# second narrating line of prose\n"
         "x = 1\n"
     )
     cfg = {"exempt_paths": ["scripts/legacy_contract_test.py"]}
-    assert scanner.scan_all("/repo/scripts/legacy_contract_test.py", text, cfg) == []
+    rules = {row["rule"] for row in scanner.scan_all("/repo/scripts/legacy_contract_test.py", text, cfg)}
+    assert {"what_comment", "prose_comment_block"} <= rules
     assert scanner.scan_all("/repo/scripts/other_file.py", text, cfg) != []
 
 
@@ -487,7 +488,7 @@ def _what_rows(path, line, config=None):
     return [item for item in findings if item["rule"] == "what_comment"]
 
 
-def test_why_marker_gate():
+def test_strict_why_marker_gate():
     for line in (
         "# increments the counter",
         "# resets the counter",
@@ -495,13 +496,6 @@ def test_why_marker_gate():
     ):
         assert len(_what_rows("sample.py", line)) == 1, line
     for line in (
-        "# cached since v2",
-        "# deprecated since 2024",
-        "# unchanged since release 3",
-        "# since 2020",
-        "# valid since v1.4.2",
-        "# skip since the file is locked",
-        "# since the lock is held, bail out early",
         "# retry otherwise the socket leaks",
         "# poll twice, otherwise the race wins",
         "# because the socket leaks",
@@ -509,11 +503,11 @@ def test_why_marker_gate():
         assert _what_rows("sample.py", line) == [], line
 
 
-def test_what_comment_respects_exempt_paths_and_the_clean_code_switch():
+def test_what_comment_ignores_exempt_paths_and_the_clean_code_switch():
     line = "# increments the counter"
     switches_off = {"punctuation": False, "english": False, "clean_code": False}
-    assert not _what_rows("sample.py", line, switches_off)
-    assert not _what_rows(
+    assert _what_rows("sample.py", line, switches_off)
+    assert _what_rows(
         "/repo/generated/sample.py",
         line,
         {"exempt_paths": ["generated/*"], "clean_code": False},
@@ -580,9 +574,9 @@ def test_exempt_families_cannot_silence_an_always_blocking_rule():
     assert "suppression_escape_hatch" in _rules("a.py", "# " + marker + "\n", cfg)
 
 
-def test_exempt_families_can_silence_what_comment():
+def test_exempt_families_cannot_silence_what_comment():
     cfg = {"exempt_families": {"a.py": ["clean_code"]}}
-    assert "what_comment" not in _rules("a.py", "# increments the counter\nx = 1\n", cfg)
+    assert "what_comment" in _rules("a.py", "# increments the counter\nx = 1\n", cfg)
 
 
 def test_exempt_families_ignores_an_unknown_family_name():
@@ -624,12 +618,12 @@ def test_public_identifier_echo_is_a_what_docstring():
     assert "what_docstring" in _rules("sample.py", camel, {})
 
 
-def test_public_first_line_summary_that_does_not_echo_is_allowed():
+def test_public_first_line_summary_without_why_is_blocked():
     text = 'def fetch_record():\n    """Load one stable row from storage."""\n'
-    assert "what_docstring" not in _rules("sample.py", text, {})
+    assert "what_docstring" in _rules("sample.py", text, {})
 
 
-def test_docstring_why_markers_allow_private_lines_and_public_details():
+def test_only_one_line_why_docstrings_are_allowed():
     private = 'def _fetch():\n    """Keep the local copy because callers rely on object identity."""\n'
     public = (
         'def fetch_record():\n'
@@ -638,7 +632,7 @@ def test_docstring_why_markers_allow_private_lines_and_public_details():
         '    """\n'
     )
     assert "what_docstring" not in _rules("sample.py", private, {})
-    assert "what_docstring" not in _rules("sample.py", public, {})
+    assert "docstring_narration" in _rules("sample.py", public, {})
 
 
 def test_public_later_docstring_line_without_why_is_blocked():
@@ -688,9 +682,9 @@ def test_identifier_echo_uses_camel_snake_params_and_jaccard_threshold():
     assert not scanner._identifier_echo(("fetch_record",), (), "Load one stable row from storage")
 
 
-def test_middle_band_docstring_is_not_what_without_escalation():
+def test_middle_band_docstring_without_why_is_blocked():
     text = 'def validate_cache_item():\n    """Cache item validator."""\n'
-    assert "what_docstring" not in _rules("sample.py", text, {})
+    assert "what_docstring" in _rules("sample.py", text, {})
 
 
 def test_prose_semicolon_fires_in_prose_and_comments():
@@ -769,7 +763,7 @@ def test_table_separator_rows_are_hidden_without_hiding_cell_content():
         assert not scanner._is_table_separator_row(text)
 
 
-def test_google_style_public_docstring_is_structured_not_narration():
+def test_google_style_multiline_docstring_is_blocked():
     text = (
         'def fetch(items):\n'
         '    """Load stable rows from storage.\n\n'
@@ -780,7 +774,8 @@ def test_google_style_public_docstring_is_structured_not_narration():
         '    """\n'
         '    return items\n'
     )
-    assert scan_all("sample.py", text, {}) == []
+    rules = {row["rule"] for row in scan_all("sample.py", text, {})}
+    assert "docstring_narration" in rules
 
 
 def test_self_and_cls_do_not_dilute_identifier_echo():
@@ -800,7 +795,8 @@ def test_weak_why_markers_do_not_bypass_a_what_opener():
         "# Returns the row, or None instead of raising",
     )
     for line in lines:
-        assert _what_rows("sample.py", line), line
+        rules = _rules("sample.py", line + "\n", {})
+        assert "weak_why_comment" in rules or "what_comment" in rules, line
 
 
 def test_strong_causal_markers_clear_a_what_opener():
@@ -815,17 +811,17 @@ def test_strong_causal_markers_clear_a_what_opener():
         assert _what_rows("sample.py", line) == [], line
 
 
-def test_dunder_scope_is_public_and_budget_docstring_is_exempt():
+def test_dunder_and_budget_docstrings_without_why_are_blocked():
     dunder = 'class A:\n    def __repr__(self):\n        """Render one diagnostic form."""\n'
     budget = 'def _wait():\n    """5ms budget"""\n'
-    assert "what_docstring" not in _rules("sample.py", dunder, {})
-    assert "what_docstring" not in _rules("sample.py", budget, {})
+    assert "what_docstring" in _rules("sample.py", dunder, {})
+    assert "what_docstring" in _rules("sample.py", budget, {})
 
 
-def test_what_docstring_respects_family_and_path_switches():
+def test_what_docstring_ignores_family_and_path_switches():
     text = 'def _scan():\n    """Scan."""\n'
     config = {"clean_code": False, "exempt_paths": ["sample.py"]}
-    assert "what_docstring" not in _rules("sample.py", text, config)
+    assert "what_docstring" in _rules("sample.py", text, config)
 
 
 def test_identifier_split_keeps_acronym_before_digits():
@@ -850,7 +846,7 @@ def _corpus_source(row):
     return "sample.py", f'def {name}():\n    """{row["text"]}"""\n'
 
 
-def test_what_comment_corpus_precision_and_recall_stay_above_floor():
+def test_what_comment_corpus_keeps_recall_for_what_examples():
     corpus = Path(__file__).with_name("corpus_what_comments.jsonl")
     rows = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line]
     predicted = []
@@ -860,11 +856,8 @@ def test_what_comment_corpus_precision_and_recall_stay_above_floor():
         hit = bool(target_rules & set(_rules(path, source, {})))
         predicted.append((index, row["label"] == "what", hit))
     true_positive = sum(expected and actual for _index, expected, actual in predicted)
-    false_positive = sum(not expected and actual for _index, expected, actual in predicted)
     false_negative = sum(expected and not actual for _index, expected, actual in predicted)
-    precision = true_positive / (true_positive + false_positive)
     recall = true_positive / (true_positive + false_negative)
-    assert precision >= 0.9, predicted
     assert recall >= 0.9, predicted
 
 
@@ -904,21 +897,22 @@ def test_weak_why_comment_spares_a_strong_marker_comment():
     assert "weak_why_comment" not in {row["rule"] for row in rows}
 
 
-def test_weak_why_comment_defaults_to_observe():
-    assert effective_config({})["rule_gates"]["weak_why_comment"] == "observe"
+def test_weak_why_comment_is_an_unconditional_blocker():
+    assert "weak_why_comment" in ALWAYS_BLOCKING_RULES
+    assert effective_config({})["rule_gates"].get("weak_why_comment") is None
 
 
-def test_why_line_protects_a_multiline_docstring_from_narration():
+def test_why_line_does_not_protect_a_multiline_docstring():
     text = "\n".join([
         '"""module summary',
         'second line because callers rely on this exact ordering"""',
         "x = 1",
     ])
     rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
-    assert "docstring_narration" not in rules
+    assert "docstring_narration" in rules
 
 
-def test_why_line_protects_a_comment_block_from_prose_comment_block():
+def test_why_line_does_not_protect_a_comment_block():
     text = "# first line\n# second line because docs live in the wiki\nprint(1)\n"
     rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
-    assert "prose_comment_block" not in rules
+    assert "prose_comment_block" in rules

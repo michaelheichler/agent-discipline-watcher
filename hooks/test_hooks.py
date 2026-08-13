@@ -24,12 +24,6 @@ def _assert_style_row(response: dict, path: str | Path, line: int, rule: str) ->
     assert f"/{rule}:" in advice
 
 
-def _confirm_violation(request):
-    lines = [line for line in request.source.splitlines() if line.strip()]
-    evidence = next((line for line in lines if "Validate" in line or "Reads" in line or "Sets" in line), lines[0])
-    return {"verdict": "block", "evidence": evidence, "reason": "The comment narrates code."}
-
-
 def _disable_git_background_tasks() -> None:
     config = {
         "maintenance.auto": "false",
@@ -60,7 +54,6 @@ def _edit_config(tmp_path):
         "ledger_path": _ledger_path(),
         "clean_code": True,
         "baseline": "none",
-        "adjudicator": _confirm_violation,
     }
 
 
@@ -159,14 +152,14 @@ WHAT_PAYLOAD = {"tool_input": {"file_path": "a.py", "content": "# Validate the c
 
 def test_pre_write_enforces_what_comment_by_default():
     response = pre_write.run(WHAT_PAYLOAD, {
-        "ledger_path": _ledger_path(), "clean_code": True, "adjudicator": _confirm_violation,
+        "ledger_path": _ledger_path(), "clean_code": True,
     })
     _assert_style_row(response, "a.py", 1, "what_comment")
 
 
 def test_pre_write_advises_what_comment_once_the_rule_is_enforced():
     config = {"ledger_path": _ledger_path(), "clean_code": True,
-              "rule_gates": {"what_comment": "enforce"}, "adjudicator": _confirm_violation}
+              "rule_gates": {"what_comment": "enforce"}}
     response = pre_write.run(WHAT_PAYLOAD, config)
     _assert_style_row(response, "a.py", 1, "what_comment")
 
@@ -181,18 +174,19 @@ def test_pre_write_allows_a_why_comment():
     assert pre_write.run(why_payload, {"ledger_path": _ledger_path(), "clean_code": True}) == {}
 
 
-def test_what_comment_is_silenced_by_the_clean_code_switch_and_path_exemption():
+def test_what_comment_ignores_the_clean_code_switch_and_path_exemption():
     disabled_and_exempt = {
         "ledger_path": _ledger_path(),
         "clean_code": False,
         "exempt_paths": ["a.py"],
     }
-    assert pre_write.run(WHAT_PAYLOAD, disabled_and_exempt) == {}
+    response = pre_write.run(WHAT_PAYLOAD, disabled_and_exempt)
+    _assert_style_row(response, "a.py", 1, "what_comment")
 
 
 def test_pre_write_enforces_vue_comment_contract():
     config = {
-        "ledger_path": _ledger_path(), "clean_code": True, "adjudicator": _confirm_violation,
+        "ledger_path": _ledger_path(), "clean_code": True,
     }
     two_comments = {
         "tool_input": {

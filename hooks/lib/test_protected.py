@@ -178,12 +178,16 @@ def test_a_config_that_releases_a_self_protection_rule_blocks_on_creation(tmp_pa
 @pytest.mark.parametrize("payload", [
     {},
     {"clean_code": False},
-    {"rule_gates": {"what_comment": "off"}},
     {"rule_gates": {"suppression_escape_hatch": "enforce"}},
     {protected.AUTH_KEY: False},
 ])
 def test_a_config_that_releases_nothing_protected_still_creates(tmp_path, payload):
     assert rules(str(_config(tmp_path)), tmp_path, None, json.dumps(payload)) == []
+
+
+def test_a_config_cannot_release_a_strict_comment_rule(tmp_path):
+    payload = {"rule_gates": {"what_comment": "off"}}
+    assert rules(str(_config(tmp_path)), tmp_path, None, json.dumps(payload)) == ["config_seal"]
 
 
 @pytest.mark.parametrize("text", ["", "not json", "[]", "null", '{"gates": ["off"]}'])

@@ -1,5 +1,3 @@
-"""Inject-first discipline firewall for UserPromptSubmit."""
-
 from __future__ import annotations
 
 import operator
@@ -10,7 +8,7 @@ import unicodedata
 from contextlib import suppress
 from typing import NamedTuple, cast
 
-from lib import payloads, reporting, session_state
+from lib import payloads, reporting
 from lib.config import effective_config, gate_state
 from lib.hookio import read_payload, write_payload
 from lib.scanner import scan_all, scannable_text
@@ -427,14 +425,6 @@ def _config_root(cfg: dict[str, object], key: str) -> str | None:
     return _exact_text(cfg.get(key), _MAX_CONFIG_TEXT) or None
 
 
-def _advance_turn(session_id: str, cfg: dict[str, object]) -> None:
-    """Advance here because a submitted prompt starts the ledger turn."""
-    try:
-        session_state.advance_turn(session_id, _config_root(cfg, "state_root"))
-    except Exception:  # noqa: BLE001
-        sys.stderr.write("agent-discipline-watcher: turn advance failed\n")
-
-
 def _evaluate(
     text: str,
     cfg: dict[str, object],
@@ -471,7 +461,6 @@ def _evaluate(
 
 
 def run(payload: object, config: object = None) -> dict:
-    """Evaluate one prompt without persisting prompt-derived content."""
     response: dict[str, object] = {}
     try:
         text = _prompt(payload)
@@ -504,7 +493,6 @@ def run(payload: object, config: object = None) -> dict:
 
         if not session_id:
             return gate("")
-        _advance_turn(session_id, cfg)
         try:
             return reporting.run_with_ledger(
                 hook="prompt_submit",

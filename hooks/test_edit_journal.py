@@ -77,7 +77,7 @@ class EditJournalTests(unittest.TestCase):
         self.assertIn("clean_code/deferred_work_comment", response["reason"])
         self.assertEqual(len(self._journal_rows()), 1)
 
-    def test_an_observed_finding_advises_and_is_recorded_as_would_block(self):
+    def test_a_strict_comment_finding_blocks_and_is_recorded(self):
         target = self.root / "a.py"
         target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
         payload = {
@@ -88,11 +88,11 @@ class EditJournalTests(unittest.TestCase):
         }
         config = {**self.cfg, "rule_gates": {"what_comment": "observe"}}
         response = record.run(payload, config)
-        self.assertNotIn("decision", response)
-        self.assertIn("clean_code/what_comment", response["systemMessage"])
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("clean_code/what_comment", response["reason"])
         decisions = [row for row in self._ledger_rows() if row["event"] == "PostToolUse"]
         self.assertEqual([(row["rule"], row["outcome"]) for row in decisions],
-                         [("what_comment", "would_block")])
+                          [("what_comment", "block")])
         self.assertEqual(decisions[0]["tool_use_id"], "toolu_2")
 
     def test_an_enforced_finding_is_recorded_as_block(self):

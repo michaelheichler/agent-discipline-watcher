@@ -19,6 +19,8 @@ DISPATCH = {
     "PostToolBatch": "batch.py",
     "PostToolUseFailure": "failure.py",
     "SubagentStart": "subagent_start.py",
+    "SubagentStop": "subagent_stop.py",
+    "Stop": "stop.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)

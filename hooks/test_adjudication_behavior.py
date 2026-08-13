@@ -1,23 +1,10 @@
-import json
+from __future__ import annotations
+
 import subprocess
-from copy import deepcopy
-from dataclasses import dataclass, field
 from pathlib import Path
 
-import batch
 import pre_write
 import record
-from lib import session_state
-
-
-@dataclass
-class RecordingAdjudicator:
-    result: object
-    requests: list[object] = field(default_factory=list, init=False)
-
-    def __call__(self, request: object) -> object:
-        self.requests.append(request)
-        return self.result
 
 
 def _payload(content: str, session_id: str = "") -> dict:
@@ -29,111 +16,57 @@ def _payload(content: str, session_id: str = "") -> dict:
     }
 
 
-def test_deterministic_finding_blocks_without_adjudication_or_mutation() -> None:
-    adjudicator = RecordingAdjudicator({"verdict": "release", "evidence": "x", "reason": "x"})
-    response = pre_write.run(_payload("bad\u2014dash\n"), {"adjudicator": adjudicator})
+def test_deterministic_finding_blocks_without_mutation() -> None:
+    payload = _payload("bad\u2014dash\n")
+    response = pre_write.run(payload, {})
 
     assert response["decision"] == "block"
     assert "banned_dash" in response["reason"]
     assert "updatedInput" not in response["hookSpecificOutput"]
-    assert adjudicator.requests == []
 
 
-def test_clean_write_makes_no_adjudication_call() -> None:
-    adjudicator = RecordingAdjudicator({"verdict": "release", "evidence": "x", "reason": "x"})
+def test_clean_write_passes_without_mutation() -> None:
+    payload = _payload("value = 1\n")
 
-    assert pre_write.run(_payload("value = 1\n"), {"adjudicator": adjudicator}) == {}
-    assert adjudicator.requests == []
+    assert pre_write.run(payload, {}) == {}
+    assert payload["tool_input"]["content"] == "value = 1\n"
 
 
-def test_ambiguous_what_comment_uses_one_bounded_request_and_releases() -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
+def test_what_comment_blocks_without_external_adjudication() -> None:
+    calls: list[object] = []
+
+    def release(request: object) -> dict[str, str]:
+        calls.append(request)
+        return {"verdict": "release", "evidence": "x", "reason": "release"}
 
     response = pre_write.run(
         _payload("# Validate the cache entry\nvalidate()\n"),
-        {"adjudicator": adjudicator},
+        {"adjudicator": release},
     )
 
-    assert response == {}
-    assert len(adjudicator.requests) == 1
-    request = adjudicator.requests[0]
-    assert request.rule == "what_comment"
-    assert request.path == "a.py"
-    assert request.line == 1
-    assert "Validate the cache entry" in request.source
-    assert len(json.dumps(request.to_dict())) < 2_000
+    assert response["decision"] == "block"
+    assert "what_comment" in response["reason"]
+    assert calls == []
 
 
-def test_ambiguous_release_reuses_semantic_result_across_tool_calls(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-
-    first = _payload("# Validate the cache entry\nvalidate()\n", "session-1")
-    second = deepcopy(first)
-    second["tool_use_id"] = "tool-2"
-
-    assert pre_write.run(first, config) == {}
-    assert pre_write.run(second, config) == {}
-    assert len(adjudicator.requests) == 1
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
-def test_ambiguous_release_is_reused_by_post_tool_use(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-    target = tmp_path / "a.py"
-    content = "# Validate the cache entry\nvalidate()\n"
+def _committed_file(root: Path, content: str) -> Path:
+    target = root / "legacy.py"
     target.write_text(content, encoding="utf-8")
-    payload = _payload(content, "session-1")
-    payload["cwd"] = str(tmp_path)
-    payload["tool_input"]["file_path"] = str(target)
-
-    assert pre_write.run(payload, config) == {}
-    response = record.run(
-        {
-            "session_id": "session-1",
-            "cwd": str(tmp_path),
-            "tool_name": "Write",
-            "tool_use_id": "tool-2",
-            "tool_input": {"file_path": str(target)},
-        },
-        config,
-    )
-
-    assert response == {}
-    assert len(adjudicator.requests) == 1
-    assert target.read_text(encoding="utf-8") == content
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    _git(root, "add", "legacy.py")
+    _git(root, "commit", "-q", "-m", "seed")
+    return target
 
 
-def test_relative_pre_write_path_uses_payload_cwd_for_baseline(tmp_path: Path) -> None:
-    target = tmp_path / "legacy.py"
+def test_relative_write_path_uses_payload_cwd_for_baseline(tmp_path: Path) -> None:
     content = "# Validate the cache entry\nvalidate()\n"
-    target.write_text(content, encoding="utf-8")
-
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "add", "legacy.py"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=tmp_path, check=True)
+    _committed_file(tmp_path, content)
 
     response = pre_write.run(
         {
@@ -149,17 +82,10 @@ def test_relative_pre_write_path_uses_payload_cwd_for_baseline(tmp_path: Path) -
     assert "already carried 1 findings you did not write" in response["systemMessage"]
 
 
-def test_relative_pre_write_edit_path_uses_payload_cwd_for_baseline(tmp_path: Path) -> None:
-    target = tmp_path / "legacy.py"
+def test_relative_edit_path_uses_payload_cwd_for_baseline(tmp_path: Path) -> None:
     before = "# Validate the cache entry\nvalue = 1\n"
     after = "# Validate the cache entry\nvalue = 2\n"
-    target.write_text(before, encoding="utf-8")
-
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "add", "legacy.py"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=tmp_path, check=True)
+    _committed_file(tmp_path, before)
 
     response = pre_write.run(
         {
@@ -178,177 +104,12 @@ def test_relative_pre_write_edit_path_uses_payload_cwd_for_baseline(tmp_path: Pa
     assert "decision" not in response
 
 
-def test_changed_content_invalidates_released_result(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the changed cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-
-    assert pre_write.run(
-        _payload("# Validate the changed cache entry\nvalidate()\n", "session-1"),
-        config,
-    ) == {}
-    assert pre_write.run(
-        _payload("# Validate the changed cache entry now\nvalidate()\n", "session-1"),
-        config,
-    ) == {}
-    assert len(adjudicator.requests) == 2
-
-
-def test_cached_release_does_not_hide_a_later_deterministic_finding(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-    session_state.write_state("session-1", {"turn_id": "turn-1"}, config["state_root"])
-    target = tmp_path / "a.py"
-    first = _payload("# Validate the cache entry\nvalidate()\n", "session-1")
-    first["cwd"] = str(tmp_path)
-    first["tool_input"]["file_path"] = str(target)
-
-    assert pre_write.run(first, config) == {}
-    target.write_text("# Validate the cache entry\nvalue = 1\u2014bad\n", encoding="utf-8")
-    post = {
-        "session_id": "session-1",
-        "cwd": str(tmp_path),
-        "tool_name": "Write",
-        "tool_use_id": "tool-2",
-        "tool_input": {"file_path": str(target)},
-    }
-
-    response = record.run(post, config)
-
-    assert response["decision"] == "block"
-    assert "banned_dash" in response["reason"]
-    assert len(adjudicator.requests) == 1
-
-
-def test_cached_release_is_reused_by_batch_scan_without_mutation(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-    session_state.write_state("session-1", {"turn_id": "turn-1"}, config["state_root"])
-    target = tmp_path / "a.py"
-    target.write_text("# Validate the cache entry\nvalidate()\n", encoding="utf-8")
-    payload = _payload(target.read_text(encoding="utf-8"), "session-1")
-    payload["cwd"] = str(tmp_path)
-    payload["tool_input"]["file_path"] = str(target)
-    before = deepcopy(payload)
-
-    assert pre_write.run(payload, config) == {}
-    findings = batch.findings_for_batch(
-        {
-            "session_id": "session-1",
-            "cwd": str(tmp_path),
-            "tool_calls": [{
-                "tool_use_id": "tool-2",
-                "tool_name": "Write",
-                "tool_input": {"file_path": str(target)},
-            }],
-        },
-        config,
-        "turn-1",
-    )
-
-    assert findings == []
-    assert payload == before
-    assert len(adjudicator.requests) == 1
-
-
-def test_batch_scan_keeps_a_later_deterministic_finding(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment records a constraint.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-    session_state.write_state("session-1", {"turn_id": "turn-1"}, config["state_root"])
+def test_post_write_blocks_strict_findings_without_mutating_file(tmp_path: Path) -> None:
     target = tmp_path / "a.py"
     content = "# Validate the cache entry\nvalidate()\n"
     target.write_text(content, encoding="utf-8")
-    payload = _payload(content, "session-1")
-    payload["cwd"] = str(tmp_path)
-    payload["tool_input"]["file_path"] = str(target)
 
-    assert pre_write.run(payload, config) == {}
-    target.write_text("# Validate the cache entry\nvalue = 1\u2014bad\n", encoding="utf-8")
-    findings = batch.findings_for_batch(
-        {
-            "session_id": "session-1",
-            "cwd": str(tmp_path),
-            "tool_calls": [{
-                "tool_use_id": "tool-2",
-                "tool_name": "Write",
-                "tool_input": {"file_path": str(target)},
-            }],
-        },
-        config,
-        "turn-1",
-    )
-
-    assert "banned_dash" in {finding["rule"] for finding in findings}
-    assert len(adjudicator.requests) == 1
-
-
-def test_ambiguous_confirmed_violation_blocks() -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "block",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment only narrates the next call.",
-    })
-
-    response = pre_write.run(
-        _payload("# Validate the cache entry\nvalidate()\n"),
-        {"adjudicator": adjudicator},
-    )
-
-    assert response["decision"] == "block"
-    assert "a.py:1 clean_code/what_comment" in response["reason"]
-    assert len(adjudicator.requests) == 1
-
-
-def test_confirmed_violation_is_reused_as_a_block_across_hooks(tmp_path: Path) -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "block",
-        "evidence": "# Validate the cache entry",
-        "reason": "The comment only narrates the next call.",
-    })
-    config = {
-        "adjudicator": adjudicator,
-        "state_root": str(tmp_path / "state"),
-        "ledger_root": str(tmp_path / "ledger"),
-    }
-    target = tmp_path / "a.py"
-    target.write_text("# Validate the cache entry\nvalidate()\n", encoding="utf-8")
-    payload = _payload(target.read_text(encoding="utf-8"), "session-1")
-    payload["cwd"] = str(tmp_path)
-    payload["tool_input"]["file_path"] = str(target)
-
-    response = pre_write.run(payload, config)
-    later = record.run(
+    response = record.run(
         {
             "session_id": "session-1",
             "cwd": str(tmp_path),
@@ -356,45 +117,9 @@ def test_confirmed_violation_is_reused_as_a_block_across_hooks(tmp_path: Path) -
             "tool_use_id": "tool-2",
             "tool_input": {"file_path": str(target)},
         },
-        config,
+        {"baseline": "none"},
     )
 
     assert response["decision"] == "block"
-    assert later["decision"] == "block"
-    assert len(adjudicator.requests) == 1
-    assert target.read_text(encoding="utf-8") == "# Validate the cache entry\nvalidate()\n"
-
-
-def test_unavailable_adjudication_blocks_with_retry_reason() -> None:
-    def unavailable(_request):
-        raise TimeoutError("haiku timed out")
-
-    response = pre_write.run(
-        _payload("# Validate the cache entry\nvalidate()\n"),
-        {"adjudicator": unavailable},
-    )
-
-    assert response["decision"] == "block"
-    assert "adjudication unavailable" in response["reason"]
-    assert "retry" in response["reason"].lower()
-    assert "a.py:1" in response["reason"]
-
-
-def test_enforced_weak_why_comment_uses_adjudication() -> None:
-    adjudicator = RecordingAdjudicator({
-        "verdict": "release",
-        "evidence": "# Skip unless the lock is held",
-        "reason": "The comment gives a concrete reason.",
-    })
-
-    response = pre_write.run(
-        _payload("# Skip unless the lock is held\nvalidate()\n"),
-        {
-            "adjudicator": adjudicator,
-            "rule_gates": {"weak_why_comment": "enforce"},
-        },
-    )
-
-    assert response == {}
-    assert len(adjudicator.requests) == 1
-    assert adjudicator.requests[0].rule == "weak_why_comment"
+    assert "what_comment" in response["reason"]
+    assert target.read_text(encoding="utf-8") == content

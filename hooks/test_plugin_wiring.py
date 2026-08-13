@@ -58,6 +58,10 @@ def route_of(entry: dict) -> str:
 
 
 class PluginManifestTests(unittest.TestCase):
+    def test_hook_description_matches_deterministic_runtime(self):
+        config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+        self.assertNotIn("semantic", config["description"].lower())
+
     def test_manifest_does_not_redeclare_the_auto_discovered_hooks_file(self):
         manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "agent-discipline-watcher")
@@ -187,7 +191,7 @@ class PluginCommandExecutionTests(unittest.TestCase):
         self.assertTrue(result.stdout.strip().endswith("pre_tool.py"), result.stdout)
 
 
-class PostToolUseHaikuReviewerTests(unittest.TestCase):
+class PostToolUseWiringTests(unittest.TestCase):
 
     def setUp(self):
         self.config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
@@ -203,6 +207,13 @@ class PostToolUseHaikuReviewerTests(unittest.TestCase):
 
     def test_no_unconditional_agent_handler_is_registered_on_post_tool_use(self):
         self.assertEqual(self._agent_entries(), [])
+
+    def test_plugin_and_legacy_snippet_scan_bash_post_tool_use(self):
+        plugin = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
+        for config in (plugin, snippet):
+            groups = config["hooks"]["PostToolUse"]
+            self.assertTrue(any("Bash" in group.get("matcher", "") for group in groups))
 
 
 class PluginLoaderTests(unittest.TestCase):

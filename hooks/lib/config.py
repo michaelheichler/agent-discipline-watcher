@@ -15,20 +15,29 @@ except ImportError:
 
 
 ALWAYS_ON_RULES = (
-    "Only suppression_escape_hatch ignores the family and path switches below. "
-    "scanner.scan_all emits it from _unconditional_findings before exemptions, and it sits "
-    "in ALWAYS_BLOCKING_RULES. what_comment and what_docstring are ordinary clean_code rules: "
-    "they respect the clean_code switch and exempt_paths, and ship with enforcing rule_gates "
-    "so a project must opt out rather than being unable to. Enforcing means the tool call is denied."
+    "Strict code-discipline rules ignore family switches, rule switches, kill switches, and "
+    "path exemptions. scanner.scan_all emits them before configurable scanning, and "
+    "resolve_outcome always blocks them."
 )
 # Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
-SCANNER_ALWAYS_BLOCKING_RULES = frozenset({"suppression_escape_hatch"})
+SCANNER_ALWAYS_BLOCKING_RULES = frozenset({
+    "suppression_escape_hatch",
+})
+STRICT_HARD_BLOCK_RULES = frozenset({
+    "what_comment",
+    "what_docstring",
+    "weak_why_comment",
+    "prose_comment_block",
+    "docstring_narration",
+})
 # Kept apart from the scanner set because protected.py and pre_bash.py emit these from a path and a command, not from file content.
 SELF_PROTECTION_RULES = frozenset({
     "live_client_surface", "config_seal", "install_without_sandbox_home",
     "commit_gate_bypass", "cap_override", "state_deletion",
 })
-ALWAYS_BLOCKING_RULES = SCANNER_ALWAYS_BLOCKING_RULES | SELF_PROTECTION_RULES
+ALWAYS_BLOCKING_RULES = (
+    SCANNER_ALWAYS_BLOCKING_RULES | STRICT_HARD_BLOCK_RULES | SELF_PROTECTION_RULES
+)
 
 GATE_STATES = ("off", "observe", "enforce")
 
@@ -52,15 +61,12 @@ DEFAULTS = {
     # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
     # "enforce" resolves to a hard block.
     "rule_gates": {
-        "what_comment": "enforce",
-        "what_docstring": "enforce",
         "ai_closer": "observe",
         "greeting_opener": "observe",
         "hedge_stack": "observe",
         "corporate_idiom": "observe",
         "long_sentence": "observe",
         "oversized_list": "observe",
-        "weak_why_comment": "observe",
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},

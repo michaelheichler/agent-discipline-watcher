@@ -1,12 +1,12 @@
 # Agent Discipline Watcher
 
-Agent Discipline Watcher is a Claude Code plugin that keeps agent output disciplined. Deterministic findings block at the configured gate, and only ambiguous comment findings use bounded Haiku adjudication. The main session model never changes.
+Agent Discipline Watcher is a Claude Code plugin that keeps agent output disciplined. Findings block at their configured gate. Strict code-comment findings always block.
 
 ## How It Works
 
 Every tool call goes through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
-Pending writes are scanned before execution. Certain findings block without a model call. The ambiguous allowlist is `what_comment`, `what_docstring`, and `weak_why_comment`. Claude Code sends each such finding one bounded source request to the configured Haiku adjudicator. A confirmed violation blocks, a release allows the write, and an unavailable or malformed adjudication blocks with a retry-specific reason.
+Pending writes are scanned before execution. The scanner is deterministic and never asks another model to release a finding.
 
 PostToolUse rescans the written file and can block continuation. It never mutates the file. Commit messages are scanned in place and are never rewritten.
 
@@ -14,7 +14,7 @@ The scanner uses one region extractor for mixed-language files. Markup, attribut
 
 ## Comment Policy
 
-Ordinary code comments are scanned by deterministic rules. Ambiguous WHAT and WHY classifications go through the bounded adjudicator. A concrete WHY comment can be released, while a confirmed narration comment blocks.
+Code comments and docstrings may contain one strict WHY line. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
 
 ## Install
 
@@ -28,7 +28,7 @@ Ordinary code comments are scanned by deterministic rules. Ambiguous WHAT and WH
 
 ### Codex
 
-`install.sh` wires Codex from this checkout. Codex uses deterministic blockers and does not use semantic adjudication.
+`install.sh` wires Codex from this checkout. Codex uses the same deterministic blockers.
 
 ```bash
 ./install.sh

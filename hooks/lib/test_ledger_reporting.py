@@ -499,14 +499,14 @@ class PreGateEvidenceTests(unittest.TestCase):
         self.assertEqual([row["rule"] for row in rows], ["commit_gate_bypass"])
         self.assertEqual(rows[0]["outcome"], "block")
 
-    def test_an_observed_finding_is_recorded_as_would_block(self):
+    def test_a_strict_comment_finding_is_recorded_as_block(self):
         import pre_write
         payload = {"session_id": "probe", "tool_use_id": "w2",
                    "tool_input": {"file_path": "a.py", "content": "# increments the counter\nx = 1\n"}}
         config = {**self.cfg, "rule_gates": {"what_comment": "observe"}}
         pre_write.run(payload, config)
         rows = self._decisions("pre_write")
-        self.assertEqual([(row["rule"], row["outcome"]) for row in rows], [("what_comment", "would_block")])
+        self.assertEqual([(row["rule"], row["outcome"]) for row in rows], [("what_comment", "block")])
 
     def test_both_gates_emit_a_heartbeat(self):
         import pre_bash

@@ -4,9 +4,8 @@ import re
 import time
 from pathlib import Path
 
-from lib import adjudication
 from lib.baseline import changed_lines, split_committed, subtract
-from lib.config import effective_config, resolve_outcome
+from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, advise, allow, deny, read_payload, write_payload
 from lib.protected import path_findings
 from lib.reporting import (
@@ -115,7 +114,6 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         cfg["session_id"] = payload["session_id"]
     findings, inherited = _pending_findings(payload, cfg)
     findings = _unique_findings(findings)
-    findings = _adjudicated_findings(findings, payload, cfg)
     decisions = _record(payload, cfg, turn_id, findings, started) if findings else []
     kind, message = verdict_message(decisions, cfg)
     if kind == "block":
@@ -124,64 +122,6 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if kind == "observe":
         return advise("\n".join(part for part in (message, notice) if part), "PreToolUse")
     return {"systemMessage": notice} if notice else allow()
-
-
-def _adjudicated_findings(findings: list[dict], payload: dict, cfg: dict) -> list[dict]:
-    ambiguous = [
-        row for row in findings
-        if row.get("rule") in adjudication.AMBIGUOUS_RULES
-        and resolve_outcome(row, cfg) == "block"
-    ]
-    deterministic = [row for row in findings if row.get("rule") not in adjudication.AMBIGUOUS_RULES]
-    if any(resolve_outcome(row, cfg) == "block" for row in deterministic):
-        return findings
-    released = [
-        row for row in findings
-        if row.get("rule") in adjudication.AMBIGUOUS_RULES
-        and resolve_outcome(row, cfg) != "block"
-    ]
-    if not ambiguous:
-        return deterministic + released
-    text_by_path = dict(pending_writes(payload))
-    session_id = str(cfg.get("session_id") or payload.get("session_id") or "")
-    state_root = cfg.get("state_root")
-    confirmed: list[dict] = []
-    for finding in ambiguous:
-        path, request = _pending_adjudication_request(
-            finding, payload, text_by_path
-        )
-        try:
-            result = adjudication.adjudicate_with_cache(
-                request,
-                adjudication.configured_adjudicator(cfg),
-                session_id,
-                state_root,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                f"adjudication unavailable at {path}:{request.line}; repair Haiku access and retry: {exc}"
-            ) from exc
-        if result["verdict"] == "block":
-            confirmed.append({**finding, "detail": result["reason"], "snippet": result["evidence"]})
-    return deterministic + released + confirmed
-
-
-def _pending_adjudication_request(
-    finding: dict,
-    payload: dict,
-    text_by_path: dict[str, str],
-) -> tuple[str, adjudication.Request]:
-    path = str(finding.get("path") or "<pending>")
-    tool_input = _tool_input(payload)
-    resolved = _resolved_path(path, Path(payload.get("cwd") or "."))
-    applied = _apply_edits(tool_input, str(resolved))
-    text = applied[1] if applied else text_by_path.get(
-        path, _pending_edit_text(tool_input)
-    )
-    request = adjudication.request_for(
-        finding, text, finding.get("line") if applied else None
-    )
-    return path, request
 
 
 def _stamped(findings: list[dict], path: str) -> list[dict]:

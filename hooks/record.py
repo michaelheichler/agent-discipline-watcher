@@ -10,7 +10,6 @@ from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
 import pre_bash
-from lib import adjudication
 from lib.config import effective_config
 from lib.hookio import advise, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
@@ -92,12 +91,6 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
         if text is None:
             continue
         owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
-        owned = adjudication.filter_cached_releases(
-            owned,
-            text,
-            str(cfg.get("session_id") or ""),
-            cfg.get("state_root"),
-        )
         owned_rows.extend(_stamped(owned, path))
         inherited_rows.extend(_stamped(inherited, path))
     return owned_rows, inherited_rows

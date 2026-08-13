@@ -36,7 +36,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash",
         "hooks": [
           {
             "type": "command",
@@ -74,6 +74,28 @@
           {
             "type": "command",
             "command": "\"__SKILL_DIR__/hooks/run.sh\" SubagentStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" SubagentStop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"__SKILL_DIR__/hooks/run.sh\" Stop",
             "timeout": 10
           }
         ]

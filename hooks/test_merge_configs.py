@@ -352,14 +352,11 @@ def merge_twice(script: Path, payload: dict) -> tuple[str, str]:
 
 
 def assert_arbitrary_event_prune(merged: dict) -> None:
-    """The watcher no longer wires SubagentStop, so the merge must strip the stale entry and add nothing back."""
     text = json.dumps(merged)
     assert "punctuation-discipline" not in text
     assert "/stale/agent-discipline-watcher" not in text
     subagent_entries = merged["hooks"]["SubagentStop"]
-    assert "run.sh SubagentStop" not in json.dumps(subagent_entries), (
-        "the watcher does not ship a SubagentStop hook, so none should be merged back in"
-    )
+    assert "SubagentStop" in json.dumps(subagent_entries)
     assert "unrelated-subagent.py" in json.dumps(subagent_entries)
     assert "ConfigChange" not in merged["hooks"] or "punctuation-discipline" not in json.dumps(
         merged["hooks"]["ConfigChange"]
@@ -369,6 +366,7 @@ def assert_arbitrary_event_prune(merged: dict) -> None:
 CLAUDE_ROUTES = (
     "SessionStart", "UserPromptSubmit", "PreToolUse",
     "PostToolUse", "PostToolBatch", "PostToolUseFailure", "SubagentStart",
+    "SubagentStop", "Stop",
 )
 # Listed separately because Codex wires a reduced set and must not gain Claude-only routes.
 CODEX_ROUTES = ("SessionStart", "PreToolUse", "PostToolUse")

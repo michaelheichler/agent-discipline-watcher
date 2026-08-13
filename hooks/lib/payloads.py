@@ -186,6 +186,10 @@ def is_interrupt(payload: object) -> bool:
     return _read_exact_bool(exact_string_dict(payload), "is_interrupt")
 
 
+def stop_hook_active(payload: object) -> bool:
+    return _read_exact_bool(exact_string_dict(payload), "stop_hook_active")
+
+
 def duration_ms(payload: object) -> int:
     """Return the failure-event duration in milliseconds, or 0 when absent."""
     return _exact_int(exact_string_dict(payload), "duration_ms")

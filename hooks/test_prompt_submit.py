@@ -10,6 +10,7 @@ from unittest import mock
 
 import prompt_submit
 import pytest
+from lib import session_state
 from lib.scanner import scan_all
 
 
@@ -55,10 +56,12 @@ def context(response: dict) -> str:
     return response["hookSpecificOutput"]["additionalContext"]
 
 
-def test_session_prompt_advances_the_ledger_turn() -> None:
-    with mock.patch.object(prompt_submit.session_state, "advance_turn") as advance:
-        prompt_submit.run(payload("Implement it.", session_id="s1"))
-    advance.assert_called_once()
+def test_session_prompt_does_not_advance_the_ledger_turn(tmp_path: Path) -> None:
+    prompt_submit.run(
+        payload("Implement it.", session_id="s1"),
+        {"state_root": str(tmp_path)},
+    )
+    assert session_state.read_state("s1", tmp_path).get("turn_count") is None
 
 
 @pytest.mark.parametrize(

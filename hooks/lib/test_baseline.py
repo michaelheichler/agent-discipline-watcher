@@ -266,7 +266,7 @@ class BaselineRuntimeTests(unittest.TestCase):
         self.assertEqual(path.read_text(encoding="utf-8"), updated)
         self.assertIn(":3 clean_code/deferred_work_comment", message)
         self.assertNotIn("[flagged]", message)
-        self.assertIn("already carried 1 findings you did not write", message)
+        self.assertIn("already carried 2 findings you did not write", message)
 
     def test_report_mode_names_the_inherited_debt_in_the_advisory(self):
         message = self._record_response(CLEAN_ADDITION)["systemMessage"]

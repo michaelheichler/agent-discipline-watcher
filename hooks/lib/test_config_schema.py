@@ -116,7 +116,7 @@ class ResolveOutcomeTests(unittest.TestCase):
         always_on = [f for f in findings if f["rule"] in config.ALWAYS_BLOCKING_RULES]
         self.assertEqual(
             {f["rule"] for f in always_on},
-            set(config.SCANNER_ALWAYS_BLOCKING_RULES),
+            {"suppression_escape_hatch", "what_comment"},
         )
         for finding in always_on:
             self.assertEqual(config.resolve_outcome(finding, defeat), "block")

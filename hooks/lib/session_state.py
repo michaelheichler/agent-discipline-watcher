@@ -124,7 +124,7 @@ def _next_turn(state: dict) -> dict:
 def advance_turn(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> dict:
-    """Advance at prompt start because Stop no longer owns turn accounting."""
+    """Advance the turn for lifecycle callers that own the boundary."""
     return update_state(session_id, _next_turn, root)
 
 

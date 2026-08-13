@@ -101,6 +101,30 @@ def test_embedded_script_strings_are_not_scanned_as_comments() -> None:
     assert not {rule for rule, _line in rows} & {"deferred_work_comment", "commented_code"}
 
 
+def test_html_what_comment_is_a_hard_block() -> None:
+    rows = _rows("component.vue", "<template>\n<!-- Increment the counter. -->\n</template>\n")
+    assert ("what_comment", 2) in rows
+
+
+def test_javascript_block_comment_is_a_hard_block() -> None:
+    source = "<script>\n/**\n * Increment the counter.\n */\nconst value = 1\n</script>\n"
+    rows = _rows("component.vue", source)
+    assert ("what_comment", 3) in rows
+    assert ("prose_comment_block", 2) in rows
+
+
+def test_javascript_template_string_comment_markers_are_not_comments() -> None:
+    source = "const example = `/*\n * Increment the counter.\n */`\nconst value = 1\n"
+    rows = _rows("example.js", source)
+    assert not {rule for rule, _line in rows} & {"what_comment", "prose_comment_block"}
+
+
+def test_spdx_block_header_is_not_a_prose_comment() -> None:
+    source = "/*\n * SPDX-License-Identifier: MIT\n * Copyright 2026 Example\n */\nint value = 1;\n"
+    rows = _rows("example.c", source)
+    assert not {rule for rule, _line in rows} & {"what_comment", "prose_comment_block"}
+
+
 def test_protected_rules_still_scan_ignored_regions() -> None:
     marker = "craftsman" + "-ignore: PY002"
     source = f"<style>/* {marker} */</style>\n"

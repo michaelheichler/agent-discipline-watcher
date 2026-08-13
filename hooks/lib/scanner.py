@@ -9,11 +9,11 @@ from typing import NamedTuple
 try:
     from . import scan_input
     from .config import GATE_FAMILIES, effective_config
-    from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
+    from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, mask_source_strings, render_regions
 except ImportError:
     import scan_input
     from config import GATE_FAMILIES, effective_config
-    from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, render_regions
+    from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, mask_source_strings, render_regions
 
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
@@ -101,6 +101,7 @@ BUG_LABEL_RE = re.compile(r"(?://|#|/\*)\s*(bug|case|fix|issue|step|note)\s+[A-Z
 APOLOGY_WORDS = "|".join(("ha" + "cky", "not sure why", "work" + "around", "ug" + "ly"))
 APOLOGY_RE = re.compile(r"(?://|#|/\*)\s*.*\b(?:" + APOLOGY_WORDS + r")\b", re.IGNORECASE)
 COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)")
+BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]")
@@ -116,6 +117,14 @@ STRONG_WHY_COMMENT_RE = re.compile(
     r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
     re.IGNORECASE,
 )
+CAUSAL_REASON_RE = re.compile(
+    r"(?:^why:|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
+    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)\s*(?P<reason>.+)$",
+    re.IGNORECASE,
+)
+VAGUE_REASON_RE = re.compile(r"^(?:yes|no|reason|reasons|needed|necessary|stuff|things|logic)[.!]?$", re.IGNORECASE)
+GENERIC_REASON_WORDS = frozenset({"break", "breaks", "needed", "necessary", "reason", "reasons"})
+TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)
 WHY_COMMENT_RE = re.compile(
     r"(?:^why:\s*\S|\b(?:because|otherwise|unless|assumes|requires|guarantees)\b|"
     r"\bdue to\b|\bso that\b|\bin order to\b|\bexcept when\b|\binstead of\b|"
@@ -218,16 +227,30 @@ def _python_tree(path: str, text: str):
     except SyntaxError:
         return None
 
-
-def _unconditional_findings(path: str, text: str, _config: dict, _tree, _code_file: bool) -> list[dict]:
+def _unconditional_findings(
+    path: str, text: str, config: dict, tree, code_file: bool,
+    comment_text: str | None = None,
+) -> list[dict]:
     lines = text.splitlines() or [""]
-    return [
+    findings = [
         _finding("clean_code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + path, line,
                  "Remove the marker and fix the reported issue.")
         for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
     ]
-
+    comment_source = comment_text if comment_text is not None else text
+    if not code_file:
+        return findings
+    findings.extend(_multiline_comment_findings(path, comment_source))
+    comment_source = _normalize_block_comments(comment_source)
+    findings.extend(_what_comment_rows(path, comment_source, config, tree))
+    findings.extend(_what_docstring_findings(path, tree, config))
+    findings.extend(_scan_clean_code_blocks(path, comment_source))
+    findings.extend(_scan_docstrings(path, tree))
+    if tree is None and path.lower().endswith(".py"):
+        findings.extend(_lexical_docstring_findings(path, text))
+    findings.extend(_weak_why_findings(path, comment_source.splitlines() or [""]))
+    return findings
 
 class _ScanContext(NamedTuple):
     config: dict
@@ -250,17 +273,24 @@ def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     context = _scan_context(path, text, config)
-    findings = _unconditional_findings(
-        path, text, context.config, context.tree, context.code_file
-    )
-    if _is_exempt(path, context.config):
-        return findings
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
-    masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
     comment_source = render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}) if mixed else text
     if mixed:
         comment_source = mask_script_strings(comment_source, regions)
+    elif PurePath(path.lower()).suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
+        comment_source = mask_source_strings(comment_source)
+    findings = _unconditional_findings(
+        path,
+        text,
+        context.config,
+        context.tree,
+        context.code_file,
+        comment_source,
+    )
+    if _is_exempt(path, context.config):
+        return findings
+    masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
     punct_lines = _strip_punctuation_blocks(path, masked, context.prose).splitlines() or [""]
     english_lines = _strip_english_hidden(masked).splitlines() or [""]
     comment_lines = comment_source.splitlines() or [""]
@@ -396,6 +426,38 @@ def _comment_text(line: str) -> str | None:
     return text
 
 
+def _normalize_block_comments(text: str) -> str:
+    def replace(match: re.Match) -> str:
+        output = []
+        for line in match.group(0).splitlines(keepends=True):
+            ending = line[len(line.rstrip("\r\n")):]
+            body = line.rstrip("\r\n").strip()
+            if body not in {"/*", "/**", "*/", "<!--", "-->"}:
+                body = re.sub(r"^(?:/\*+|<!--|\*)\s*", "", body)
+                body = re.sub(r"\s*(?:\*/|-->)$", "", body)
+            else:
+                body = ""
+            output.append(("// " + body if body else "//") + ending)
+        return "".join(output)
+    return BLOCK_COMMENT_RE.sub(replace, text)
+
+
+def _multiline_comment_findings(path: str, text: str) -> list[dict]:
+    return [
+        _finding("clean_code", "prose_comment_block", text.count("\n", 0, match.start()) + 1,
+                 "Comment block narrates in " + path, match.group(0).splitlines()[0],
+                 "Keep one strict WHY line or delete the comment.")
+        for match in BLOCK_COMMENT_RE.finditer(text)
+        if "\n" in match.group(0) and LETTER_RE.search(match.group(0))
+        and not _structured_block_comment(match.group(0))
+    ]
+
+
+def _structured_block_comment(text: str) -> bool:
+    normalized = _normalize_block_comments(text)
+    rows = [row[3:].strip() for row in normalized.splitlines() if row[3:].strip()]
+    return bool(rows) and all(HEADER_COMMENT_RE.search(row) for row in rows)
+
 def _has_why_marker(text: str) -> bool:
     if WHY_COMMENT_RE.search(text):
         return True
@@ -404,32 +466,11 @@ def _has_why_marker(text: str) -> bool:
 
 def _has_strong_why_marker(text: str) -> bool:
     if STRONG_WHY_COMMENT_RE.search(text):
-        return True
+        match = CAUSAL_REASON_RE.search(text)
+        if match and not VAGUE_REASON_RE.fullmatch(match.group("reason").strip()):
+            words = _identifier_tokens(match.group("reason")) - GENERIC_REASON_WORDS
+            return len(words) >= 2
     return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
-
-
-HEADER_BLOCK_MIN_LINES = 2
-
-
-def _header_block_end(lines: list[str]) -> int:
-    """Return the last line of a leading banner, which needs a divider, blank comment, or tag line, so that plain stacked sentences stay narration."""
-    end = 0
-    counted = 0
-    structural = 0
-    for number, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#!"):
-            continue
-        body = COMMENT_RE.match(line)
-        if not body:
-            break
-        end = number
-        counted += 1
-        structural += 0 if _narrates_code(body.group(1).strip()) else 1
-    if counted < HEADER_BLOCK_MIN_LINES or not structural:
-        return 0
-    return end
-
 
 def _narrates_code(text: str) -> bool:
     if not text or not LETTER_RE.search(text):
@@ -464,64 +505,22 @@ def _identifier_echo(name_tokens, param_tokens, text: str) -> bool:
     return ratio >= IDENTIFIER_ECHO_THRESHOLD
 
 
-def _scope_identity(scope, path: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    if isinstance(scope, ast.Module):
-        return (PurePath(path).stem,), ()
-    args = getattr(scope, "args", None)
-    if args is None:
-        return (scope.name,), ()
-    params = [
-        arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)
-        if arg.arg not in ("self", "cls")
-    ]
-    params.extend(arg.arg for arg in (args.vararg, args.kwarg) if arg is not None)
-    return (scope.name,), tuple(params)
-
-
-def _scope_identities(path: str, text: str, tree) -> list[tuple[int, int, tuple[str, ...], tuple[str, ...]]]:
-    if tree is None:
-        return [(1, len(text.splitlines()) + 1, (PurePath(path).stem,), ())]
-    scopes = [tree]
-    scopes.extend(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
-    rows = []
-    for scope in scopes:
-        start = getattr(scope, "lineno", 1)
-        end = getattr(scope, "end_lineno", len(text.splitlines()) + 1)
-        names, params = _scope_identity(scope, path)
-        rows.append((start, end, names, params))
-    return rows
-
-
-def _identity_at_line(identities, line_number: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    matches = [row for row in identities if row[0] <= line_number <= row[1]]
-    if not matches:
-        return (), ()
-    _start, _end, names, params = min(matches, key=lambda row: row[1] - row[0])
-    return names, params
-
-
 def _comment_is_what(text: str, names, params, _config: dict) -> bool:
-    """Require a strong marker to clear an opener because a weak causal word must not excuse plain narration."""
+    del names, params
     if WHAT_OPENER_RE.match(text):
         return not _has_strong_why_marker(text)
-    if _has_why_marker(text):
-        return False
-    return _identifier_echo(names, params, text)
+    return not _has_why_marker(text)
 
 
 def _what_comment_rows(path: str, text: str, config: dict, tree) -> list[dict]:
+    del config, tree
     lines = text.splitlines() or [""]
     rows = []
-    header_end = _header_block_end(lines)
-    identities = _scope_identities(path, text, tree)
     for line_number, line in enumerate(lines, 1):
-        if line_number <= header_end:
-            continue
         comment = _comment_text(line)
         if comment is None or not _narrates_code(comment) or IMPLICIT_BUDGET_RE.match(comment):
             continue
-        names, params = _identity_at_line(identities, line_number)
-        if not _comment_is_what(comment, names, params, config):
+        if not _comment_is_what(comment, (), (), {}):
             continue
         rows.append(_finding(
             "clean_code", "what_comment", line_number,
@@ -548,13 +547,21 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
         for pattern, rule, action in READABILITY_RULES
         if pattern.search(text)
     )
-    if _has_why_marker(text) and not _has_strong_why_marker(text):
-        rows.append(_finding(
+    return rows
+
+
+def _weak_why_findings(path: str, lines: list[str]) -> list[dict]:
+    findings = []
+    for line_number, line in enumerate(lines, 1):
+        text = _comment_text(line)
+        if text is None or not _has_why_marker(text) or _has_strong_why_marker(text):
+            continue
+        findings.append(_finding(
             "clean_code", "weak_why_comment", line_number,
             "Causal wording lacks a concrete reason in " + path, line,
-            "Name the constraint, invariant, or consequence, or drop the causal wording.",
+            "Name the constraint, invariant, or consequence, or delete the comment.",
         ))
-    return rows
+    return findings
 
 
 def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
@@ -579,11 +586,7 @@ def _scan_clean_code(path: str, line_number: int, line: str) -> list[dict]:
 
 def _scan_clean_code_file(path: str, text: str, config: dict, tree) -> list[dict]:
     lines = text.splitlines()
-    findings = _what_comment_rows(path, text, config, tree)
-    findings.extend(_what_docstring_findings(path, tree, config))
-    findings.extend(_scan_clean_code_blocks(path, text))
-    findings.extend(_scan_docstrings(path, tree))
-    findings.extend(_scan_lengths(path, lines, config, tree))
+    findings = _scan_lengths(path, lines, config, tree)
     findings.extend(_scan_hollow_test_blocks(path, lines))
     return findings
 
@@ -608,10 +611,8 @@ def comment_runs(path: str, text: str) -> list[list[tuple[int, str]]]:
 
 def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
     findings: list[dict] = []
-    lines = text.splitlines()
-    header_end = _header_block_end(lines)
     for run in comment_runs(path, text):
-        _flush_comment_run(path, run, findings, header_end)
+        _flush_comment_run(path, run, findings)
     return findings
 
 
@@ -627,32 +628,15 @@ def _scope_docstring(scope) -> tuple[int, str] | None:
 
 
 def _narrating_docstring(scope) -> tuple[int, str] | None:
-    """Spare a block that carries one WHY line because that line already answers for the whole block."""
     hit = _scope_docstring(scope)
     if not hit or "\n" not in hit[1].strip():
         return None
-    lines = [line.strip() for line in hit[1].splitlines() if line.strip()]
-    if any(TAG_LINE_RE.match(line) for line in lines[1:]):
-        return None
-    return None if any(_has_why_marker(line) for line in lines) else hit
-
-
-def _public_scope(scope) -> bool:
-    if isinstance(scope, ast.Module):
-        return True
-    return not scope.name.startswith("_") or (scope.name.startswith("__") and scope.name.endswith("__"))
+    return hit
 
 
 def _docstring_line_is_what(scope, path: str, line: str, first_line: bool, _config: dict) -> bool:
-    names, params = _scope_identity(scope, path)
-    echo = _identifier_echo(names, params, line)
-    if _public_scope(scope) and first_line and not echo:
-        return False
-    if WHAT_OPENER_RE.match(line):
-        return not _has_strong_why_marker(line)
-    if _has_why_marker(line):
-        return False
-    return echo
+    del scope, path, first_line
+    return not _has_strong_why_marker(line)
 
 
 def _what_docstring_rows(path: str, scope, hit: tuple[int, str], config: dict) -> list[dict]:
@@ -665,7 +649,7 @@ def _what_docstring_rows(path: str, scope, hit: tuple[int, str], config: dict) -
         if not _narrates_code(line):
             structured = structured or bool(TAG_LINE_RE.match(line))
             continue
-        if structured or IMPLICIT_BUDGET_RE.match(line):
+        if structured:
             continue
         first_line = content_index == 0
         content_index += 1
@@ -699,13 +683,37 @@ def _scan_docstrings(path: str, tree) -> list[dict]:
     for scope in _docstring_scopes(tree):
         narration = _narrating_docstring(scope)
         if narration:
-            findings.append(_finding(
-                "clean_code", "docstring_narration", narration[0],
-                "Multi-line docstring narrates in " + path, narration[1],
-                "Move the explanation to a wiki page. Create one or update the existing page.",
-            ))
+            findings.append(_finding("clean_code", "docstring_narration", narration[0],
+                                     "Multi-line docstring narrates in " + path, narration[1],
+                                     "Keep one strict WHY line or delete the docstring."))
     return findings
 
+
+def _lexical_docstring_findings(path: str, text: str) -> list[dict]:
+    findings = []
+    for match in TRIPLE_STRING_RE.finditer(text):
+        value = match.group(0)[3:-3]
+        if "\n" not in value.strip():
+            continue
+        line = text.count("\n", 0, match.start()) + 1
+        before = [row.strip() for row in text[:match.start()].splitlines() if row.strip()]
+        if before and not _lexical_scope_header(before):
+            continue
+        findings.append(_finding("clean_code", "docstring_narration", line,
+                                 "Multi-line docstring narrates in " + path, value,
+                                 "Keep one strict WHY line or delete the docstring."))
+    return findings
+
+
+def _lexical_scope_header(lines: list[str]) -> bool:
+    for line in reversed(lines):
+        if re.match(r"(?:async\s+)?def\b|class\b", line):
+            return True
+        if line.endswith(":") and line not in {"):", "]:", "}:"}:
+            return False
+        if re.match(r"(?:return|raise|yield|import|from|[A-Za-z_]\w*\s*=)\b", line):
+            return False
+    return False
 
 def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
     hard = _int_setting(config, "file_block_lines", "ADW_FILE_BLOCK_LINES", 1000)
@@ -717,14 +725,12 @@ def _file_length_findings(path: str, count: int, config: dict) -> list[dict]:
         )]
     return []
 
-
 def _long_functions(tree, func_limit: int):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             span = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno + 1
             if span > func_limit:
                 yield node
-
 
 def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
     if tree is None:
@@ -915,14 +921,11 @@ def _test_block(lines: list[str], start: int) -> tuple[list[str], int]:
 
 
 def _flush_comment_run(
-    path: str, run: list[tuple[int, str]], findings: list[dict], header_end: int = 0
+    path: str, run: list[tuple[int, str]], findings: list[dict]
 ) -> None:
-    """Spare a run that carries one WHY line because that line already answers for the block."""
     if len(run) < 2:
         return
-    if run[-1][0] <= header_end or _is_header_run(run):
-        return
-    if any(_has_why_marker(_comment_text(line) or "") for _number, line in run):
+    if _is_header_run(run):
         return
     line_number, line = run[0]
     findings.append(_finding(
