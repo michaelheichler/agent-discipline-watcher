@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.2 - 2026-08-14
+
+### Fixed
+
+- Updated the Claude `PreToolUse` response to the current documented
+  `permissionDecision: "deny"` shape without the deprecated top-level block.
+- Enabled `continueOnBlock` for Claude `PostToolUse` hooks in plugin and legacy
+  settings, so findings return to the agent for correction instead of ending the turn.
+- Kept internal hard-block responses unchanged for tests and non-Claude clients.
+
+### Verification
+
+- Passed 1,026 tests and 212 subtests.
+- Passed pylint at 10.00/10 and strict Claude plugin validation.
+- Verified with a real Claude Code session: the first Write was denied, Claude
+  corrected the comment, retried successfully, and completed without user input.
+
 ## 0.16.1 - 2026-08-13
 
 ### Fixed
