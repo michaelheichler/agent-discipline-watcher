@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.16.0 - 2026-08-13
+
+### Changed
+
+- Restored the complete pre-rewrite hard-block behavior while preserving later
+  security, mixed-language, packaging, and pylint fixes.
+- Enforced one strict WHY line for code comments and docstrings.
+- Made WHAT comments, weak reasons, consecutive prose comments, and multi-line
+  docstrings unconditional blockers that config and model output cannot release.
+- Restored `Stop` and `SubagentStop` lifecycle routes and turn accounting.
+
+### Fixed
+
+- Removed semantic adjudication and cached release paths from write, post-write,
+  and batch enforcement.
+- Blocked strict findings in HTML comments, JavaScript block comments, malformed
+  Python, tagged leading comments, and vague causal wording.
+- Preserved JavaScript strings and structured license headers during comment scans.
+- Kept Bash post-write scanning aligned across plugin and legacy Claude installs.
+
+### Verification
+
+- Passed 1,016 tests and 212 subtests.
+- Passed pylint at 10.00/10 with the unchanged repository-wide command.
+- Passed plugin validation, Python compilation, shell syntax, and black-box
+  strict-policy probes.
+
 ## 0.15.0+shame.2 - 2026-08-13
 
 ### Fixed
