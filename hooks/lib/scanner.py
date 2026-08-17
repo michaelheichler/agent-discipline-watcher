@@ -9,11 +9,11 @@ from typing import NamedTuple
 try:
     from . import scan_input
     from .config import GATE_FAMILIES, effective_config
-    from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, mask_source_strings, render_regions
+    from .markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, comment_scan_source, extract_regions, render_regions
 except ImportError:
     import scan_input
     from config import GATE_FAMILIES, effective_config
-    from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, extract_regions, mask_script_strings, mask_source_strings, render_regions
+    from markup import RegionKind, _blank_keep_newlines, _mask_markup, _sniff_prose, comment_scan_source, extract_regions, render_regions
 
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
@@ -276,11 +276,7 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     context = _scan_context(path, text, config)
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
-    comment_source = render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}) if mixed else text
-    if mixed:
-        comment_source = mask_script_strings(comment_source, regions)
-    elif PurePath(path.lower()).suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
-        comment_source = mask_source_strings(comment_source)
+    comment_source = comment_scan_source(path, text, regions, mixed)
     findings = _unconditional_findings(
         path,
         text,

@@ -1,6 +1,8 @@
-"""Classify mixed-language source without changing host coordinates."""
+"""Masks source in place here because every downstream scan and hook needs the original path:line coordinates to stay intact."""
 
+import io
 import re
+import tokenize
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePath
@@ -125,6 +127,52 @@ def mask_script_strings(text: str, regions: tuple[Region, ...]) -> str:
 
 def mask_source_strings(text: str) -> str:
     return SCRIPT_STRING_RE.sub(_blank_keep_newlines, text)
+
+
+def comment_scan_source(path: str, text: str, regions: tuple[Region, ...], mixed: bool) -> str:
+    """Kept in one place because every caller must mask strings the same way per language, not re-derive its own order."""
+    if mixed:
+        return mask_script_strings(render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}), regions)
+    suffix = PurePath(path.lower()).suffix
+    if suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
+        return mask_source_strings(text)
+    if suffix == ".py":
+        return mask_python_strings(text)
+    return text
+
+
+def mask_python_strings(text: str) -> str:
+    """Blanked with the tokenizer, not a regex, because Python string bodies can span lines and nest quotes in ways a regex cannot track reliably."""
+    try:
+        spans = [
+            (tok.start[0], tok.start[1], tok.end[0], tok.end[1])
+            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
+            if tok.type == tokenize.STRING
+        ]
+    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError):
+        return text
+    if not spans:
+        return text
+    lines = text.splitlines(keepends=True)
+    for start_row, start_col, end_row, end_col in spans:
+        _blank_token_span(lines, start_row, start_col, end_row, end_col)
+    return "".join(lines)
+
+
+def _blank_token_span(lines: list[str], start_row: int, start_col: int, end_row: int, end_col: int) -> None:
+    if start_row == end_row:
+        line = lines[start_row - 1]
+        lines[start_row - 1] = line[:start_col] + " " * (end_col - start_col) + line[end_col:]
+        return
+    first = lines[start_row - 1]
+    ending = "\n" if first.endswith("\n") else ""
+    lines[start_row - 1] = first[:start_col] + " " * (len(first) - start_col - len(ending)) + ending
+    for row in range(start_row, end_row - 1):
+        middle = lines[row]
+        ending = "\n" if middle.endswith("\n") else ""
+        lines[row] = " " * (len(middle) - len(ending)) + ending
+    last = lines[end_row - 1]
+    lines[end_row - 1] = " " * end_col + last[end_col:]
 
 
 def _mask_markup(path: str, text: str) -> str:

@@ -67,7 +67,7 @@ def split_patch(patch: str) -> list[tuple[str, str]]:
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Scan a pending write, blocking rather than passing the call through when the gate itself cannot decide."""
+    """Blocks rather than passes a pending write through on error, because a gate that cannot decide must fail closed, not silently allow."""
     try:
         if payload is PARSE_FAILURE:
             return deny(UNDECIDABLE + "unreadable hook payload")
