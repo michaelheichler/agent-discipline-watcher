@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.16.3 (2026-08-17)
+
+### Fixed
+
+- Named `ADW_ALLOW_PROTECTED_EDIT` in the `live_client_surface` block message, so a
+  blocked `.claude/settings*.json` write no longer reads as unconditionally
+  unblockable. The override already existed and stays env-var only.
+- Masked Python string content before comment scanning. `.py` files were never
+  string-masked the way JS and TS files are. A string literal starting with `//`
+  or `/*` after whitespace was misread as a real comment. An unclosed `/*` inside
+  a string, such as a glob fixture like `"generated/*"`, made the block comment
+  regex swallow the rest of the file, corrupting every line after it.
+
+### Verification
+
+- Passed 1,055 tests and 213 subtests.
+- pylint was not available in this environment and was not run.
+
 ## 0.16.2 - 2026-08-14
 
 ### Fixed
