@@ -1,4 +1,4 @@
-"""Protected-path policy so an agent cannot edit a live client install or seal off the project gate config."""
+"""Hard-blocked here because an agent that can edit its own watcher's live config or install can also disable the watcher."""
 from __future__ import annotations
 
 import json
@@ -25,7 +25,12 @@ CLAUDE_EXEMPT_DIRS = frozenset({
 CLAUDE_WIRING_DIRS = frozenset({"skills", "agents", "hooks", "commands"})
 CLIENT_HOME_DIRS = frozenset({".codex", ".pi"})
 
-LIVE_ACTION = "Change the repo source and reinstall instead of editing the live install."
+LIVE_ACTION = (
+    "Change the repo source and reinstall instead of editing the live install. If this edit "
+    "is intentional, ask the human to export "
+    + AUTH_ENV
+    + " in the hook environment, which is the only supported escape."
+)
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
 STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
 GRANT_ACTION = (
@@ -46,7 +51,7 @@ def authorized(config: dict | None = None) -> bool:
 
 
 def grants_escape(text: str | None) -> bool:
-    """Report whether gate-config text would release a self-protection rule, the one edit no config may authorize."""
+    """Checked because a rule kill switch or self-authorization key written to the gate config would let an agent turn off its own hard blocks."""
     if not text:
         return False
     try:
@@ -95,7 +100,7 @@ def path_findings(
 
 
 def is_live_client_path(path: str, home: str | os.PathLike[str] | None = None) -> bool:
-    """Return whether a raw token names a live client install, used by the Bash gate where no tool_input path exists."""
+    """Needed because the Bash gate only has a raw command string, not a parsed tool_input path, so it must resolve live-client paths from text instead."""
     resolved = _resolve(path, home)
     if resolved is None:
         return False

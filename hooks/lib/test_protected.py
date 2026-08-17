@@ -1,4 +1,4 @@
-"""Protected-path policy tests: live client surfaces, the gate-config seal, and the authorization escape."""
+"""Kept separate from scanner tests because these assert path policy, not source-content rules."""
 from __future__ import annotations
 
 import json
@@ -244,6 +244,11 @@ def test_the_grant_block_survives_an_existing_authorizing_config(tmp_path):
 
 def test_the_grant_block_names_the_environment_escape(tmp_path):
     finding = protected.path_findings(str(_config(tmp_path)), None, tmp_path, GRANT)[0]
+    assert protected.AUTH_ENV in finding["action"]
+
+
+def test_the_live_client_block_names_the_environment_escape(tmp_path):
+    finding = protected.path_findings(str(tmp_path / ".claude/settings.json"), None, tmp_path)[0]
     assert protected.AUTH_ENV in finding["action"]
 
 
