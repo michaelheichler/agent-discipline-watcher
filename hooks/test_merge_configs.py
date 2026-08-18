@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -12,10 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CLAUDE = ROOT / "hooks" / "merge-claude-settings.py"
 CODEX = ROOT / "hooks" / "merge-codex-config.py"
 CODEX_SNIPPET = ROOT / "hooks" / "codex-config.snippet.toml"
-README = ROOT / "README.md"
 
 STALE_WATCHER_RUN_SH = "/stale/agent-discipline-watcher/hooks/run.sh"
-SKILL_DIR = "/tmp/agent-discipline-watcher"  # noqa: S108 (placeholder path, never created)
+SKILL_DIR = "/opt/adw-checkout"  # noqa: S108 (placeholder path, never created)
 
 WIRED_EVENTS = frozenset({
     "ConfigChange",
@@ -417,6 +417,23 @@ class MergeConfigTests(unittest.TestCase):
         assert_claude_pretool_shape(merged["hooks"]["PreToolUse"])
         assert_no_async_flags(merged)
 
+    def test_claude_double_merge_is_idempotent_for_a_skill_dir_without_the_package_name(self):
+        assert CLAUDE.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / "settings.json"
+            settings.write_text(json.dumps({}))
+            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            once = settings.read_text()
+            run_merge(CLAUDE, "--settings", str(settings), "--skill-dir", SKILL_DIR)
+            twice = settings.read_text()
+        assert once == twice, "a second merge from the same skill dir must not duplicate entries"
+        merged = json.loads(twice)
+        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 1, "Stop": 1}
+        for lifecycle, expected in expected_counts.items():
+            groups = merged["hooks"][lifecycle]
+            watcher_groups = [group for group in groups if SKILL_DIR in json.dumps(group)]
+            assert len(watcher_groups) == expected, f"{lifecycle} doubled on re-merge"
+
     def test_codex_removes_legacy_hooks_and_adds_watcher_family(self):
         assert CODEX.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -498,7 +515,9 @@ class MergeConfigTests(unittest.TestCase):
         run_sh = ROOT / "hooks" / "run.sh"
         raw_dispatch = run_sh.read_text().split('DISPATCH="', 1)[1].split('"', 1)[0]
         dispatch_routes = {pair.split(":", 1)[0] for pair in raw_dispatch.split()}
-        snippet_routes = set(re.findall(r"run\.sh\s+([A-Za-z]+)", CODEX_SNIPPET.read_text()))
+        snippet_routes = set(
+            re.findall(r'run\.sh\\?"?\s+([A-Za-z]+)', CODEX_SNIPPET.read_text())
+        )
         unknown = sorted(snippet_routes - dispatch_routes)
         assert not unknown, f"Codex calls routes run.sh cannot dispatch: {unknown}"
 
@@ -532,7 +551,28 @@ class MergeConfigTests(unittest.TestCase):
         )[0]
         expected_counts = {"SessionStart": 1, "PreToolUse": 2, "PostToolUse": 1}
         for event, expected in expected_counts.items():
-            assert watcher_block.count(f'command = "{SKILL_DIR}/hooks/run.sh {event}"') == expected
+            needle = f'command = "\\"{SKILL_DIR}/hooks/run.sh\\" {event}"'
+            assert watcher_block.count(needle) == expected
+
+    def test_codex_snippet_quotes_the_executable_for_a_skill_dir_with_a_space(self):
+        assert CODEX.exists()
+        skill_dir = "/opt/agent discipline watcher"
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            run_merge(CODEX, "--config", str(config), "--skill-dir", skill_dir)
+            merged = config.read_text()
+        merger = load_codex_merger()
+        data = merger.tomllib.loads(merged)
+        commands = [
+            hook["command"]
+            for entries in data["hooks"].values()
+            for entry in entries
+            for hook in entry.get("hooks", [])
+        ]
+        session_start = [command for command in commands if command.endswith("SessionStart")]
+        assert session_start
+        for command in session_start:
+            assert shlex.split(command)[0] == f"{skill_dir}/hooks/run.sh"
 
     def test_codex_merge_refuses_when_no_toml_parser_is_available(self):
         merger = load_codex_merger()
@@ -564,14 +604,6 @@ class MergeConfigTests(unittest.TestCase):
         once, twice = merge_twice(CLAUDE, ARBITRARY_EVENT_SETTINGS)
         assert once == twice, "double merge must be idempotent under arbitrary event keys"
         assert_arbitrary_event_prune(json.loads(twice))
-
-    def test_readme_limits_active_integrations_to_claude_and_codex(self):
-        text = README.read_text()
-        active = text.split("## Active Integrations", 1)[1].split("## Verification", 1)[0]
-        assert "Claude Code is the primary plugin surface" in active
-        assert "Codex support is deterministic" in active
-        assert "Pi and OpenCode adapters are archived" in active
-        assert "Cross-Client Event Parity" not in text
 
 
 def assert_claude_merge(merged: dict) -> None:

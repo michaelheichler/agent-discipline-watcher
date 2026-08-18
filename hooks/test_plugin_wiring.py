@@ -1,6 +1,7 @@
 """Plugin wiring tests: every registered event reaches a real module through run.sh, with no checkout path baked in."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -12,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
-SNIPPET = ROOT / "hooks" / "claude-settings.snippet.json"
+CLAUDE_MERGE = ROOT / "hooks" / "merge-claude-settings.py"
 PLUGIN_MANIFEST = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 RUN_SH = ROOT / "hooks" / "run.sh"
@@ -55,6 +56,17 @@ def hook_commands(config: dict) -> list[tuple[str, dict]]:
 
 def route_of(entry: dict) -> str:
     return entry["command"].rsplit(" ", 1)[1]
+
+
+def load_claude_merger():
+    spec = importlib.util.spec_from_file_location("agent_discipline_claude_merge", CLAUDE_MERGE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def merged_watcher_hooks(skill_dir: str) -> dict:
+    return load_claude_merger().watcher_hooks(skill_dir)
 
 
 class PluginManifestTests(unittest.TestCase):
@@ -143,25 +155,25 @@ class PluginHookRegistrationTests(unittest.TestCase):
         self.assertEqual(set(self.dispatch) - aliases, registered)
         self.assertEqual(self.dispatch["PreCommit"], self.dispatch["PreToolUse"])
 
-    def test_snippet_and_plugin_hooks_describe_the_same_routes(self):
-        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
-        self.assertEqual(set(snippet["hooks"]), set(self.config["hooks"]))
+    def test_claude_merge_watcher_hooks_describe_the_same_routes(self):
+        merged = merged_watcher_hooks("/tmp/skill-dir")
+        self.assertEqual(set(merged), set(self.config["hooks"]))
         plugin_routes = sorted(route_of(entry) for _, entry in hook_commands(self.config))
-        legacy_routes = sorted(route_of(entry) for _, entry in hook_commands(snippet))
-        self.assertEqual(plugin_routes, legacy_routes)
+        merged_config = {"hooks": merged}
+        merged_routes = sorted(route_of(entry) for _, entry in hook_commands(merged_config))
+        self.assertEqual(plugin_routes, merged_routes)
+        self.assertIn('\\"/tmp/skill-dir\\"/hooks/run.sh', json.dumps(merged))
 
-    def test_snippet_and_plugin_hooks_share_if_filters(self):
-        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
+    def test_claude_merge_watcher_hooks_share_if_filters(self):
+        merged_config = {"hooks": merged_watcher_hooks("/tmp/skill-dir")}
         plugin_filters = {route_of(e): e.get("if") for _, e in hook_commands(self.config)}
-        legacy_filters = {route_of(e): e.get("if") for _, e in hook_commands(snippet)}
-        self.assertEqual(plugin_filters, legacy_filters)
+        merged_filters = {route_of(e): e.get("if") for _, e in hook_commands(merged_config)}
+        self.assertEqual(plugin_filters, merged_filters)
 
     def test_post_tool_use_command_uses_response_feedback_not_prompt_option(self):
-        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
-        for config in (self.config, snippet):
-            entries = [entry for event, entry in hook_commands(config) if event == "PostToolUse"]
-            self.assertTrue(entries)
-            self.assertTrue(all("continueOnBlock" not in entry for entry in entries))
+        entries = [entry for event, entry in hook_commands(self.config) if event == "PostToolUse"]
+        self.assertTrue(entries)
+        self.assertTrue(all("continueOnBlock" not in entry for entry in entries))
 
 
     def test_pretool_command_does_not_use_prompt_hook_continuation_option(self):
@@ -224,10 +236,9 @@ class PostToolUseWiringTests(unittest.TestCase):
     def test_no_unconditional_agent_handler_is_registered_on_post_tool_use(self):
         self.assertEqual(self._agent_entries(), [])
 
-    def test_plugin_and_legacy_snippet_scan_bash_post_tool_use(self):
-        plugin = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
-        for config in (plugin, snippet):
+    def test_plugin_and_claude_merge_scan_bash_post_tool_use(self):
+        merged = {"hooks": merged_watcher_hooks("/tmp/skill-dir")}
+        for config in (self.config, merged):
             groups = config["hooks"]["PostToolUse"]
             self.assertTrue(any("Bash" in group.get("matcher", "") for group in groups))
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from lib.hookio import CONTRACT, read_payload, write_payload
@@ -20,14 +21,15 @@ def _strip_frontmatter(text: str) -> str:
     if not text.startswith("---\n"):
         return text
     _frontmatter, separator, body = text[4:].partition("\n---\n")
-    return body if separator else ""
+    return body if separator else text
 
 
 def readable_output_context(path: Path | None = None) -> str:
     skill_path = path or READABLE_OUTPUT_SKILL
     try:
         text = skill_path.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError) as exc:
+        sys.stderr.write(f"agent-discipline-watcher: readable-output skill unreadable: {exc}\n")
         return ""
     body = _strip_frontmatter(text).strip()
     return f"{READABLE_OUTPUT_HEADING}\n\n{body}" if body else ""

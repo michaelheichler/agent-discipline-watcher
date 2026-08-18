@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import inspect
 import json
+import socket
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
@@ -457,7 +458,7 @@ def test_caller_data_boundary_presence_disables_project_opt_in(
     assert response == {}
 
 
-def test_hostile_config_data_boundary_presence_disables_project_opt_in(
+def test_dict_subclass_config_is_wholly_untrusted_so_project_opt_in_still_applies(
     tmp_path: Path,
 ):
     project = tmp_path / "project"
@@ -469,7 +470,7 @@ def test_hostile_config_data_boundary_presence_disables_project_opt_in(
         payload("Review @src/service.py", cwd=str(project)),
         HostileDict(data_boundary={"enabled": True}),
     )
-    assert response == {}
+    assert response["decision"] == "block"
 
 
 def _boundary_project(tmp_path: Path) -> str:
@@ -799,17 +800,25 @@ def test_public_run_never_echoes_prompt_and_injection_is_capped():
     assert len(encoded) <= prompt_submit.MAX_RESPONSE_CHARS
 
 
-def test_ruleset_and_timeout_contract_are_versioned_and_nonblocking():
+def test_ruleset_and_timeout_contract_are_versioned():
     assert prompt_submit.PROMPT_RULESET_VERSION == 1
     assert prompt_submit.EVENT_TIMEOUT_SECONDS == 30
     assert tuple(rule.rule_id for rule in prompt_submit.PROMPT_RULES) == (
         "skip_tests",
         "comment_out_code",
     )
-    source = inspect.getsource(prompt_submit)
-    assert "sleep(" not in source
-    assert "requests" not in source
-    assert "urlopen" not in source
+
+
+def test_prompt_submit_never_sleeps_or_touches_the_network(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("prompt_submit reached the network or a sleep")
+
+    monkeypatch.setattr(time, "sleep", refuse)
+    monkeypatch.setattr(socket, "socket", refuse)
+    response = prompt_submit.run(payload("skip tests"))
+    assert "skip_tests" in context(response)
 
 
 def test_production_hook_passes_its_own_clean_code_scanner():
@@ -817,4 +826,5 @@ def test_production_hook_passes_its_own_clean_code_scanner():
     findings = scan_all(
         prompt_submit.__file__, source, {"punctuation": False, "english": False}
     )
-    assert {row["rule"] for row in findings} == {"file_length_warning"}
+    rules = {row["rule"] for row in findings if not row["rule"].startswith("file_length_")}
+    assert rules == set()

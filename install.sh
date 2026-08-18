@@ -6,14 +6,23 @@ install_claude=1
 install_codex=1
 assume_yes=0
 claude_legacy=0
+picked_target=0
+
+pick_target() {
+  if [ "$picked_target" -eq 0 ]; then
+    install_claude=0
+    install_codex=0
+    picked_target=1
+  fi
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --claude) install_claude=1 ;;
-    --codex) install_codex=1 ;;
+    --claude) pick_target; install_claude=1 ;;
+    --codex) pick_target; install_codex=1 ;;
     --no-claude) install_claude=0 ;;
     --no-codex) install_codex=0 ;;
-    --claude-legacy) install_claude=1; claude_legacy=1 ;;
+    --claude-legacy) pick_target; install_claude=1; claude_legacy=1 ;;
     -y) assume_yes=1 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
