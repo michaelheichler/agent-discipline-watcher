@@ -168,7 +168,7 @@ class EditJournalTests(unittest.TestCase):
         self.assertTrue(blocker_state.snapshot("s1", "", self.state_root)[0])
         self.assertFalse(redirected.exists())
 
-    def test_block_response_survives_state_write_failure(self):
+    def test_state_write_failure_blocks_undecidable_instead_of_losing_the_finding(self):
         target = self.root / "a.py"
         target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
         payload = {
@@ -179,7 +179,9 @@ class EditJournalTests(unittest.TestCase):
         with mock.patch.object(blocker_state, "touch_paths", side_effect=OSError("read only")):
             response = record.run(payload, self.cfg)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("what_comment", response["reason"])
+        self.assertIn("could not evaluate this edit", response["reason"])
+        reasons, _paths = blocker_state.snapshot("s1", "", self.state_root)
+        self.assertTrue(any("read only" in reason for reason in reasons))
 
     def test_relative_path_is_persisted_against_event_cwd(self):
         project = self.root / "project"

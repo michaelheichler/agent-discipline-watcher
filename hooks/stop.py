@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import os
-
 from lib import payloads, session_state
 from lib.config import effective_hook_config
 from lib.end_turn import unresolved_reason
-from lib.hookio import PARSE_FAILURE, read_payload, stop_block, write_payload
+from lib.hookio import PARSE_FAILURE, STATE_FAILURE, read_payload, stop_block, write_payload
 from lib.reporting import run_with_ledger
 
 STOP_EVENT = "Stop"
-STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
@@ -20,7 +17,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
         session_id = payloads.session_id(payload)
         retry = payloads.stop_hook_active(payload)
         if session_id and not retry:
-            _advance_turn(session_id, cfg.get("state_root"))
+            session_state.advance_turn(session_id, cfg.get("state_root"))
 
         def gate(_turn_id: str) -> dict:
             reason = unresolved_reason(payload, cfg)
@@ -35,23 +32,6 @@ def run(payload: dict, config: dict | None = None) -> dict:
         )
     except Exception as exc:
         return stop_block(STATE_FAILURE + str(exc))
-
-
-def _advance_turn(
-    session_id: str, state_root: str | os.PathLike[str] | None
-) -> None:
-    try:
-        session_state.update_state_strict(session_id, _next_turn, state_root)
-    except Exception as exc:
-        raise RuntimeError(f"turn advance failed: {exc}") from exc
-
-
-def _next_turn(state: dict) -> dict:
-    count = state.get("turn_count")
-    if not isinstance(count, int) or isinstance(count, bool):
-        count = 0
-    count += 1
-    return {**state, "turn_count": count, "turn_id": f"turn-{count}"}
 
 
 if __name__ == "__main__":

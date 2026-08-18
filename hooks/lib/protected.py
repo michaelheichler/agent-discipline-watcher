@@ -40,6 +40,10 @@ GRANT_ACTION = (
 )
 
 
+class UnresolvableTildePath(ValueError):
+    """Raised when a ~user token cannot be expanded, since the target cannot be verified as safe."""
+
+
 def _env_authorized() -> bool:
     return os.environ.get(AUTH_ENV, "").strip().lower() in TRUTHY
 
@@ -81,15 +85,28 @@ def path_findings(
     """Return blocking findings for a pending write target, with config inert because only the environment can release these rules."""
     if not path or path == "<pending>":
         return []
-    resolved = _resolve(path, home)
+    try:
+        resolved = _resolve(path, home)
+    except UnresolvableTildePath:
+        if _env_authorized():
+            return []
+        return [_finding("live_client_surface", path, "Unresolvable ~user path in " + path, LIVE_ACTION)]
     if resolved is None or _env_authorized():
         return []
+    return _write_target_findings(resolved, path, home, content)
+
+
+def _write_target_findings(
+    resolved: Path,
+    path: str,
+    home: str | os.PathLike[str] | None,
+    content: str | None,
+) -> list[dict]:
     if _is_gate_config(resolved) and grants_escape(content):
         return [_finding("config_seal", path, "Self-granted gate escape in " + path, GRANT_ACTION)]
     if _is_state_path(resolved, home):
         return [_finding("state_mutation", path, "Watcher state path in " + path, STATE_ACTION)]
-    root = Path(home).expanduser() if home is not None else Path.home()
-    rule = _live_client_rule(resolved, _normalize(root))
+    rule = _live_client_rule(resolved, _normalize(_home_root(home)))
     if rule is not None:
         return [_finding(rule, path, "Live client install path in " + path, LIVE_ACTION)]
     return (
@@ -101,11 +118,13 @@ def path_findings(
 
 def is_live_client_path(path: str, home: str | os.PathLike[str] | None = None) -> bool:
     """Needed because the Bash gate only has a raw command string, not a parsed tool_input path, so it must resolve live-client paths from text instead."""
-    resolved = _resolve(path, home)
+    try:
+        resolved = _resolve(path, home)
+    except UnresolvableTildePath:
+        return True
     if resolved is None:
         return False
-    root = Path(home).expanduser() if home is not None else Path.home()
-    return _live_client_rule(resolved, _normalize(root)) is not None
+    return _live_client_rule(resolved, _normalize(_home_root(home))) is not None
 
 
 def _finding(rule: str, path: str, detail: str, action: str) -> dict:
@@ -120,29 +139,35 @@ def _finding(rule: str, path: str, detail: str, action: str) -> dict:
     }
 
 
+def _home_root(home: str | os.PathLike[str] | None) -> Path:
+    return Path(home).expanduser() if home is not None else Path.home()
+
+
 def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
     try:
         candidate = Path(path)
     except (TypeError, ValueError):
         return None
-    if str(candidate).startswith("~"):
-        base = Path(home).expanduser() if home is not None else Path.home()
-        candidate = base / str(candidate).lstrip("~").lstrip("/")
+    text = str(candidate)
+    if text == "~" or text.startswith("~/"):
+        candidate = _home_root(home) / text[2:]
+    elif text.startswith("~"):
+        candidate = _expand_other_user(text)
     if not candidate.is_absolute():
         candidate = Path(os.getcwd()) / candidate
     return _normalize(candidate)
 
 
+def _expand_other_user(text: str) -> Path:
+    expanded = os.path.expanduser(text)
+    if expanded == text:
+        raise UnresolvableTildePath(text)
+    return Path(expanded)
+
+
 def _normalize(path: Path) -> Path:
-    parts: list[str] = []
-    for part in path.parts:
-        if part == ".":
-            continue
-        if part == ".." and parts and parts[-1] not in ("", os.sep):
-            parts.pop()
-            continue
-        parts.append(part)
-    return Path(os.path.realpath(Path(*parts) if parts else path))
+    """Resolve symlinks and ".." together via realpath, since popping ".." textually before resolving symlinks lets a symlink plus ".." land outside the intended target."""
+    return Path(os.path.realpath(path))
 
 
 def _relative_parts(path: Path, home: Path) -> list[str] | None:
@@ -197,9 +222,7 @@ def _is_gate_config(path: Path) -> bool:
 
 def _is_state_path(path: Path, home: str | os.PathLike[str] | None) -> bool:
     override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
-    root = Path(override).expanduser() if override else (
-        Path(home).expanduser() / ".agent-discipline" if home is not None else Path.home() / ".agent-discipline"
-    )
+    root = Path(override).expanduser() if override else _home_root(home) / ".agent-discipline"
     try:
         path.relative_to(_normalize(root))
     except ValueError:

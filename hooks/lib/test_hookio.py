@@ -22,6 +22,12 @@ def test_malformed_json_returns_parse_failure_signal(monkeypatch, capsys) -> Non
     assert capsys.readouterr().err.startswith("agent-discipline-watcher: unreadable hook payload")
 
 
+def test_deeply_nested_json_is_a_parse_failure_not_a_crash(monkeypatch) -> None:
+    nested = "[" * 20000 + "]" * 20000
+    monkeypatch.setattr(hookio.sys, "stdin", io.StringIO(nested))
+    assert hookio.read_payload() is hookio.PARSE_FAILURE
+
+
 def test_write_payload_hard_bounds_repeated_hook_text(capsys) -> None:
     reason = "x" * 100_000
 
@@ -38,6 +44,21 @@ def test_write_payload_hard_bounds_repeated_hook_text(capsys) -> None:
     output = capsys.readouterr().out
     assert len(output.encode("utf-8")) <= hookio.MAX_RESPONSE_BYTES + 1
     assert json.loads(output)["decision"] == "block"
+
+
+def test_fail_closed_returns_the_function_result_when_it_does_not_raise() -> None:
+    assert hookio.fail_closed("write", lambda: {"ok": True}) == {"ok": True}
+
+
+def test_fail_closed_denies_naming_the_subject_and_cause_on_exception() -> None:
+    def _raise() -> dict:
+        raise ValueError("bad state")
+
+    response = hookio.fail_closed("write", _raise)
+
+    assert response["decision"] == "block"
+    assert "this write" in response["reason"]
+    assert "Cause: bad state" in response["reason"]
 
 
 def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:

@@ -7,26 +7,15 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pre_commit
+from testing import init_repo, make_repo, run_git as git
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_SH = ROOT / "hooks" / "run.sh"
 DIRTY = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation family blocks.\n"
 CLEAN = "This sentence is plain and blocks nothing.\n"
-
-
-def git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
-
-
-def make_repo(root: Path) -> Path:
-    repo = root / "repo"
-    repo.mkdir()
-    git(repo, "init", "-q")
-    git(repo, "config", "user.email", "gate@example.test")
-    git(repo, "config", "user.name", "Gate Test")
-    return repo
 
 
 def stage(repo: Path, name: str, body: str) -> None:
@@ -122,6 +111,44 @@ class CommitGateRuntimeTests(unittest.TestCase):
         self.assertEqual(result["decision"], "block")
         self.assertIn("commit_message.md:1 punctuation/pronoun_apostrophe", result["reason"])
         self.assertEqual(pre_commit._commit_messages(command), ["your's"])
+
+    def test_git_off_path_fails_closed_instead_of_allowing(self):
+        stage(self.repo, "notes.md", DIRTY)
+        with mock.patch.dict(os.environ, {"PATH": ""}):
+            result = self.gate('git commit -m "docs(x): add notes"')
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("Cause:", result["reason"])
+
+    def test_git_dir_override_fails_closed_instead_of_silently_passing(self):
+        non_repo = self.root / "non_repo"
+        non_repo.mkdir()
+        payload = {
+            "tool_input": {"command": "GIT_DIR=/nowhere GIT_WORK_TREE=/nowhere git commit -m x"},
+            "cwd": str(non_repo),
+        }
+        result = pre_commit.run(payload, None, ledger_root=self.ledger, state_root=self.state)
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("Cause:", result["reason"])
+        self.assertIn("GIT_DIR", result["reason"])
+
+    def test_two_repos_are_each_adjudicated_under_their_own_config(self):
+        other = self.root / "other"
+        other.mkdir()
+        init_repo(other)
+        (other / ".agent-discipline.json").write_text(
+            json.dumps({"gates": {"punctuation": "off"}}), encoding="utf-8",
+        )
+        stage(other, "notes.md", DIRTY)
+        command = f"git -C {self.repo} commit --allow-empty -m empty && git -C {other} commit -m test"
+        result = pre_commit.run(
+            {"tool_input": {"command": command}, "cwd": str(self.root)},
+            None,
+            ledger_root=self.ledger, state_root=self.state,
+        )
+
+        self.assertEqual(result, {})
 
     def test_run_sh_pretooluse_route_blocks_a_commit_end_to_end(self):
         stage(self.repo, "notes.md", DIRTY)

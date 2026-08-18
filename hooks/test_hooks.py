@@ -10,6 +10,7 @@ import pre_commit
 import pre_write
 import record
 import session_start
+from testing import run_git as _git
 
 
 def _style_advice(response: dict) -> str:
@@ -24,32 +25,13 @@ def _assert_style_row(response: dict, path: str | Path, line: int, rule: str) ->
     assert f"/{rule}:" in advice
 
 
-def _disable_git_background_tasks() -> None:
-    config = {
-        "maintenance.auto": "false",
-        "gc.auto": "0",
-        "core.fsmonitor": "false",
-    }
-    try:
-        offset = int(os.environ.get("GIT_CONFIG_COUNT", "0") or "0")
-    except ValueError:
-        offset = 0
-    for index, (key, value) in enumerate(config.items(), start=offset):
-        os.environ[f"GIT_CONFIG_KEY_{index}"] = key
-        os.environ[f"GIT_CONFIG_VALUE_{index}"] = value
-    os.environ["GIT_CONFIG_COUNT"] = str(offset + len(config))
-
-
-_disable_git_background_tasks()
-
-
 def test_pre_write_advises_a_forced_pending_write():
     payload = {"tool_input": {"file_path": "a.txt", "content": "bad\u2014dash"}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
     _assert_style_row(response, "a.txt", 1, "banned_dash")
 
 
-def _edit_config(tmp_path):
+def _edit_config():
     return {
         "ledger_path": _ledger_path(),
         "clean_code": True,
@@ -63,7 +45,7 @@ def test_pre_write_maps_edit_finding_to_post_edit_line(tmp_path):
     response = pre_write.run(
         {"tool_input": {"file_path": str(target), "old_string": "value_49 = 49\n",
                          "new_string": "# Validate the cache entry\nvalue_49 = 49\n"}},
-        _edit_config(tmp_path),
+        _edit_config(),
     )
     _assert_style_row(response, target, 50, "what_comment")
 
@@ -73,7 +55,7 @@ def test_pre_write_edit_ignores_preexisting_debt(tmp_path):
     target.write_text("# Validate the old entry\nvalue = 1\n", encoding="utf-8")
     response = pre_write.run(
         {"tool_input": {"file_path": str(target), "old_string": "value = 1\n", "new_string": "value = 2\n"}},
-        _edit_config(tmp_path),
+        _edit_config(),
     )
     assert response == {}
 
@@ -86,7 +68,7 @@ def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):
             {"old_string": "value_19 = 19\n", "new_string": "# Validate the first entry\nvalue_19 = 19\n"},
             {"old_string": "value_79 = 79\n", "new_string": "# Validate the second entry\nvalue_79 = 79\n"},
         ]}},
-        _edit_config(tmp_path),
+        _edit_config(),
     )
     _assert_style_row(response, target, 20, "what_comment")
     _assert_style_row(response, target, 81, "what_comment")
@@ -97,7 +79,7 @@ def test_pre_write_edit_keeps_hollow_test_finding_anchored_on_unchanged_line(tmp
     target.write_text("def test_case():\n    value = 1\n    assert value\n", encoding="utf-8")
     response = pre_write.run(
         {"tool_input": {"file_path": str(target), "old_string": "    assert value\n", "new_string": ""}},
-        _edit_config(tmp_path),
+        _edit_config(),
     )
     _assert_style_row(response, target, 1, "hollow_test")
 
@@ -108,7 +90,7 @@ def test_pre_write_edit_keeps_file_length_finding_anchored_on_unchanged_line(tmp
     response = pre_write.run(
         {"tool_input": {"file_path": str(target), "old_string": "value_990 = 990\n",
                          "new_string": "value_990 = 990\n" + "value_added = 1\n" * 10}},
-        _edit_config(tmp_path),
+        _edit_config(),
     )
     _assert_style_row(response, target, 1, "file_too_long")
 
@@ -136,7 +118,8 @@ def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     target = tmp_path / "missing.py"
     tool_input = {"file_path": str(target), "old_string": "not present\n",
                   "new_string": "# Validate the cache entry\n"}
-    findings = pre_write._edit_findings(tool_input, str(target), target, _edit_config(tmp_path))
+    decoded = pre_write._decode(tool_input)
+    findings = pre_write._edit_findings(decoded, target, _edit_config())
     assert "pending edit text" in findings[0]["detail"]
 
 
@@ -581,10 +564,6 @@ def _ledger_path():
     os.close(handle)
     os.unlink(path)
     return path
-
-
-def _git(cwd: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True)
 
 
 def _stage_bad_python(cwd: Path) -> None:

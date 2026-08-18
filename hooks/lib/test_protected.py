@@ -83,6 +83,27 @@ def test_nonexistent_live_client_target_blocks(tmp_path):
     assert rules(str(target), tmp_path) == ["live_client_surface"]
 
 
+def test_symlink_plus_dotdot_still_reaches_the_live_client_path(tmp_path):
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / "tmp").mkdir()
+    link = home / "tmp" / "link"
+    os.symlink("../.claude", link)
+    sneaky = str(link) + "/../.claude/settings.json"
+    assert rules(sneaky, home) == ["live_client_surface"]
+
+
+def test_unresolvable_tilde_user_is_treated_as_protected(tmp_path):
+    sneaky = "~definitely-nonexistent-adw-test-user/.claude/settings.json"
+    assert rules(sneaky, tmp_path) == ["live_client_surface"]
+
+
+def test_unresolvable_tilde_user_releases_under_env_authorization(tmp_path, monkeypatch):
+    monkeypatch.setenv(protected.AUTH_ENV, "1")
+    sneaky = "~definitely-nonexistent-adw-test-user/.claude/settings.json"
+    assert rules(sneaky, tmp_path) == []
+
+
 def test_symlinked_home_still_matches_live_client_path(tmp_path):
     real_home = tmp_path / "real-home"
     real_home.mkdir()

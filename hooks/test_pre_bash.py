@@ -227,8 +227,12 @@ def test_mutation_and_live_path_in_the_same_segment_still_block(tmp_path):
     assert "live_client_surface" in rules(f"ls /tmp && rm {settings}", tmp_path)
 
 
-def test_sandbox_home_in_any_segment_releases_the_installer_rule():
+def test_sandbox_home_in_the_installer_segment_releases_the_installer_rule():
     assert rules('HOME="$(mktemp -d)" ./install.sh -y') == []
+
+
+def test_sandbox_home_in_an_unrelated_segment_does_not_release_the_installer_rule():
+    assert rules('HOME=/tmp/box true && ./install.sh -y') == ["install_without_sandbox_home"]
 
 
 def test_redirect_text_inside_quotes_is_not_a_mutation(tmp_path):

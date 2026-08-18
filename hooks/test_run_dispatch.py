@@ -81,6 +81,33 @@ class RunDispatchTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stderr.strip(), EXPECTED_USAGE)
 
+    def test_missing_target_script_exits_2(self):
+        isolated = Path(self.tmp.name) / "isolated"
+        isolated.mkdir()
+        run_copy = isolated / "run.sh"
+        run_copy.write_text(RUN_SH.read_text(encoding="utf-8"), encoding="utf-8")
+        run_copy.chmod(0o755)
+
+        result = subprocess.run(
+            [str(run_copy), "SessionStart"], env=self.env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(result.stdout.strip())
+
+    def test_missing_interpreter_exits_2(self):
+        no_python = Path(self.tmp.name) / "no-python"
+        no_python.mkdir()
+        for tool in ("dirname", "sh"):
+            source = Path("/usr/bin") / tool if (Path("/usr/bin") / tool).exists() else Path("/bin") / tool
+            (no_python / tool).symlink_to(source)
+        env = os.environ.copy()
+        env["PATH"] = str(no_python)
+
+        result = subprocess.run(
+            [str(RUN_SH), "SessionStart"], env=env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
