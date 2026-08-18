@@ -67,6 +67,12 @@ def test_no_space_todo_marker_is_a_hard_block() -> None:
     assert "deferred_work_comment" in response["reason"]
 
 
+def test_no_space_lowercase_hash_markers_are_not_css_comments() -> None:
+    for marker in ("to" + "do", "fix" + "me", "x" + "xx", "ha" + "ck"):
+        css = "#" + marker + " { color: #fff; }\n"
+        assert [row["rule"] for row in scan_all("style.css", css, {})] == []
+
+
 def test_preprocessor_and_css_hash_tokens_are_not_comments() -> None:
     source = (
         "#include <stdio.h>\n#define MAX 10\n#ifdef DEBUG\n"
