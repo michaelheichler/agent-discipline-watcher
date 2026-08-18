@@ -87,8 +87,7 @@ def _block_kind(match: re.Match) -> RegionKind:
 def extract_regions(path: str, text: str) -> tuple[Region, ...]:
     suffix = PurePath(path.lower()).suffix
     if suffix not in MIXED_LANGUAGE_EXTS:
-        kind = RegionKind.VISIBLE_PROSE if suffix in {".html", ".htm", ".xml", ".svg"} else RegionKind.CODE
-        return (_region(kind, text, 0, len(text)),)
+        return (_region(RegionKind.CODE, text, 0, len(text)),)
     if suffix in {".vue", ".svelte"} and "<" not in text:
         return (_region(RegionKind.SCRIPT, text, 0, len(text)),)
     regions: list[Region] = []
@@ -143,20 +142,49 @@ def comment_scan_source(path: str, text: str, regions: tuple[Region, ...], mixed
 
 def mask_python_strings(text: str) -> str:
     """Blanked with the tokenizer, not a regex, because Python string bodies can span lines and nest quotes in ways a regex cannot track reliably."""
+    spans = []
+    last_end = (1, 0)
+    failure_start = None
     try:
-        spans = [
-            (tok.start[0], tok.start[1], tok.end[0], tok.end[1])
-            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
-            if tok.type == tokenize.STRING
-        ]
-    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError):
-        return text
-    if not spans:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.STRING:
+                spans.append((tok.start[0], tok.start[1], tok.end[0], tok.end[1]))
+            last_end = tok.end
+    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError) as exc:
+        failure_start = _token_error_offset(exc) or last_end
+    if not spans and failure_start is None:
         return text
     lines = text.splitlines(keepends=True)
     for start_row, start_col, end_row, end_col in spans:
         _blank_token_span(lines, start_row, start_col, end_row, end_col)
+    if failure_start is not None:
+        _blank_from(lines, failure_start)
     return "".join(lines)
+
+
+def _token_error_offset(exc: Exception) -> tuple[int, int] | None:
+    if len(exc.args) >= 2 and isinstance(exc.args[1], tuple) and len(exc.args[1]) == 2:
+        return exc.args[1]
+    lineno = getattr(exc, "lineno", None)
+    offset = getattr(exc, "offset", None)
+    if lineno is not None and offset is not None:
+        return (lineno, max(offset - 1, 0))
+    return None
+
+
+def _blank_from(lines: list[str], start: tuple[int, int]) -> None:
+    """Blank onward from a tokenize failure because a marker past a broken literal must stay hidden, not just the part the tokenizer reached."""
+    if not lines:
+        return
+    row = max(1, min(start[0], len(lines)))
+    index = row - 1
+    line = lines[index]
+    ending = "\n" if line.endswith("\n") else ""
+    col = max(0, min(start[1], len(line) - len(ending)))
+    lines[index] = line[:col] + " " * (len(line) - col - len(ending)) + ending
+    for later in range(index + 1, len(lines)):
+        ending = "\n" if lines[later].endswith("\n") else ""
+        lines[later] = " " * (len(lines[later]) - len(ending)) + ending
 
 
 def _blank_token_span(lines: list[str], start_row: int, start_col: int, end_row: int, end_col: int) -> None:
@@ -208,3 +236,18 @@ def _sniff_prose(text: str) -> bool:
     letters = sum(char.isalpha() for char in head)
     spaces = sum(char.isspace() for char in head)
     return bool(re.search(r"[.!?](?:\s|$)", head) and letters + spaces and (letters + spaces) / len(head) > 0.7)
+
+
+HTML_HIDDEN_RE = re.compile(r"<!--.*?-->|<(script|style|code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+HTML_ENTITY_RE = re.compile(r"&[a-zA-Z]+;|&#\d+;")
+INLINE_CODE_RE = re.compile(r"`[^`]*`")
+
+
+def _strip_english_hidden(text: str) -> str:
+    text = HTML_HIDDEN_RE.sub(_blank_keep_newlines, text)
+    return TAG_RE.sub(_blank_keep_newlines, text)
+
+
+def _strip_inline_code(text: str) -> str:
+    text = HTML_ENTITY_RE.sub("  ", text)
+    return INLINE_CODE_RE.sub("  ", text)

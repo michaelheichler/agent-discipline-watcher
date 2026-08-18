@@ -29,7 +29,7 @@ def file_length_policy(count: int) -> tuple[str, str] | None:
     return None
 
 
-def file_line_count(path: Path) -> int | None:
+def file_line_count(path: Path) -> tuple[int, bool] | None:
     try:
         with path.open("rb") as handle:
             count = 0
@@ -38,18 +38,20 @@ def file_line_count(path: Path) -> int | None:
                     return None
                 count += 1
                 if count >= FILE_LENGTH_BLOCK:
-                    return count
-            return count
+                    return count, True
+            return count, False
     except OSError:
         return None
 
 
 def fallback_findings(path: Path) -> list[dict]:
-    count = file_line_count(path)
+    result = file_line_count(path)
+    count, capped = result if result is not None else (None, False)
     policy = file_length_policy(count) if count is not None else None
     if policy is not None and policy[0] == "file_too_long":
         rule, action = policy
-        detail = f"File has {count} lines in {path}"
+        shown = f"at least {count}" if capped else str(count)
+        detail = f"File has {shown} lines in {path}"
     else:
         rule = "unscannable_file"
         action = "Make the file readable UTF-8 text within the scan byte limit."
