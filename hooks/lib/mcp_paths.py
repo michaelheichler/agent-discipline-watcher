@@ -9,6 +9,7 @@ except ImportError:
 
 _PATH_KEYS = ("path", "file_path", "relative_path")
 _PATH_LIST_KEY = "paths"
+_CONTENT_KEYS = ("content", "contents", "text", "data", "new_string", "new_source", "file_text")
 
 
 def mcp_target_paths(tool_input: object) -> list[str]:
@@ -23,3 +24,18 @@ def mcp_target_paths(tool_input: object) -> list[str]:
     if isinstance(raw_list, list):
         found.extend(item for item in raw_list if isinstance(item, str) and item)
     return found
+
+
+def mcp_write_content(tool_input: object) -> str | None:
+    """Collected across every recognized key because the escape scan must see the body a server would write, whichever field name it uses."""
+    fields = exact_string_dict(tool_input)
+    parts: list[str] = []
+    for key in _CONTENT_KEYS:
+        value = fields.get(key)
+        if isinstance(value, str) and value:
+            parts.append(value)
+        elif isinstance(value, list):
+            parts.extend(item for item in value if isinstance(item, str) and item)
+    if not parts:
+        return None
+    return "\n".join(parts)

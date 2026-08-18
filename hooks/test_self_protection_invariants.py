@@ -207,6 +207,30 @@ class SelfGrantChainTests(unittest.TestCase):
     def test_an_ordinary_mcp_write_stays_allowed(self):
         self.assertEqual(self._mcp({"path": str(self.root / "ok.py")}), {})
 
+    def test_an_mcp_write_without_a_session_id_still_blocks_a_protected_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        payload = {
+            "cwd": str(self.root), "tool_name": "mcp__fs__write_file",
+            "tool_input": {"path": str(self.config)},
+        }
+        response = pre_mcp.run(payload, self.cfg)
+        self.assertEqual(
+            response["hookSpecificOutput"]["permissionDecision"], "deny"
+        )
+
+    def test_an_mcp_gate_crash_still_blocks_a_protected_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        with mock.patch.object(pre_mcp, "normalize_payload", side_effect=RuntimeError("boom")):
+            response = self._mcp({"path": str(self.config)})
+        self.assertEqual(
+            response["hookSpecificOutput"]["permissionDecision"], "deny"
+        )
+
+    def test_an_mcp_write_planting_an_escape_config_is_blocked_by_content(self):
+        target = self.root / "sub" / CONFIG_NAME
+        response = self._mcp({"path": str(target), "content": '{"state_root": "/tmp/steal"}'})
+        self.assertIn("self_protection", self._blocked(response))
+
     def test_an_mcp_write_to_the_gate_config_is_blocked_through_the_pretool_dispatcher(self):
         self.config.write_text("{}", encoding="utf-8")
         payload = {

@@ -23,7 +23,7 @@ from failure import (
 from lib import session_state
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
-from lib.mcp_paths import mcp_target_paths
+from lib.mcp_paths import mcp_target_paths, mcp_write_content
 from lib.payloads import exact_string_dict
 from lib.protected import path_findings
 from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
@@ -100,10 +100,30 @@ def _resolved_path(path: str, cwd: str) -> str:
 
 def _protected_findings(raw_payload: object, cwd: str) -> list[dict]:
     tool_input = _mcp_tool_input(raw_payload)
+    content = mcp_write_content(tool_input)
     findings: list[dict] = []
     for path in mcp_target_paths(tool_input):
-        findings.extend(path_findings(_resolved_path(path, cwd)))
+        findings.extend(path_findings(_resolved_path(path, cwd), content=content))
     return findings
+
+
+def _protected_verdict(raw_payload: object, cwd: str) -> dict:
+    """Denied without a ledger row because this path runs exactly when session identity or config state is unusable, and observability must not gate protection."""
+    findings = _protected_findings(raw_payload, cwd)
+    if not findings:
+        return allow()
+    summary = " ".join(f"{item['detail']}. {item['action']}" for item in findings[:3])
+    return deny(summary)
+
+
+def _fail_safe(raw_payload: object) -> dict:
+    """Backoff may degrade to allow, the protected scan may not, so an errored run still re-checks the write target before letting the call through."""
+    try:
+        fields = exact_string_dict(raw_payload)
+        raw_cwd = fields.get("cwd")
+        return _protected_verdict(raw_payload, raw_cwd if isinstance(raw_cwd, str) else "")
+    except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
+        return deny(UNDECIDABLE + str(exc))
 
 
 def _protected_response(
@@ -195,7 +215,7 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
     try:
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:
-            return allow()
+            return _protected_verdict(payload, trusted_payload["cwd"])
         trusted_config = _safe_config(config)
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
@@ -206,7 +226,7 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         )
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: pre-MCP hook failed: {exc}\n")
-        return allow()
+        return _fail_safe(payload)
 
 
 if __name__ == "__main__":
