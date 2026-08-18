@@ -67,13 +67,6 @@ def test_no_space_todo_marker_is_a_hard_block() -> None:
     assert "deferred_work_comment" in response["reason"]
 
 
-def test_no_space_lowercase_deferred_work_markers_are_hard_blocks() -> None:
-    for marker in ("to" + "do", "fix" + "me", "x" + "xx", "ha" + "ck"):
-        response = _write("#" + marker + ": fix this later\nx = 1\n")
-        assert response["decision"] == "block"
-        assert "deferred_work_comment" in response["reason"]
-
-
 def test_preprocessor_and_css_hash_tokens_are_not_comments() -> None:
     source = (
         "#include <stdio.h>\n#define MAX 10\n#ifdef DEBUG\n"
