@@ -59,7 +59,7 @@ VC_COMMENT_RE = re.compile(
     r"to|from|into|with|previously|used to|formerly|instead of)\b",
     re.IGNORECASE,
 )
-# No-space "#" counts as a comment only before a deferred-work marker, because #include, #define, and CSS #id or hex tokens are code, not comments.
+# Uppercase-only lookahead because lowercase forms collide with CSS id selectors and preprocessor tokens.
 _NO_SPACE_HASH = "(?=(?:" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK")) + r")\b)"
 COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")|/\*[ \t]*)(.*)")
 # Kept to "#" only mid-line so that "//" is not misread as Python floor division.
