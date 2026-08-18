@@ -23,7 +23,7 @@ from failure import (
 from lib import session_state
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
-from lib.mcp_paths import mcp_target_paths, mcp_write_content
+from lib.mcp_paths import mcp_target_paths, mcp_write_contents
 from lib.payloads import exact_string_dict
 from lib.protected import path_findings
 from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
@@ -99,11 +99,19 @@ def _resolved_path(path: str, cwd: str) -> str:
 
 
 def _protected_findings(raw_payload: object, cwd: str) -> list[dict]:
+    """Scanned once per candidate body because grants_escape must judge each field alone, and rows dedupe because the path-based findings repeat per candidate."""
     tool_input = _mcp_tool_input(raw_payload)
-    content = mcp_write_content(tool_input)
+    candidates = mcp_write_contents(tool_input) or [None]
     findings: list[dict] = []
+    seen: set[tuple[str, str]] = set()
     for path in mcp_target_paths(tool_input):
-        findings.extend(path_findings(_resolved_path(path, cwd), content=content))
+        resolved = _resolved_path(path, cwd)
+        for content in candidates:
+            for row in path_findings(resolved, content=content):
+                key = (row["rule"], row["detail"])
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(row)
     return findings
 
 

@@ -231,6 +231,15 @@ class SelfGrantChainTests(unittest.TestCase):
         response = self._mcp({"path": str(target), "content": '{"state_root": "/tmp/steal"}'})
         self.assertIn("self_protection", self._blocked(response))
 
+    def test_a_decoy_field_does_not_hide_an_escape_payload_in_another_field(self):
+        target = self.root / "sub" / CONFIG_NAME
+        response = self._mcp({
+            "path": str(target),
+            "text": "not json at all",
+            "content": '{"state_root": "/tmp/steal"}',
+        })
+        self.assertIn("self_protection", self._blocked(response))
+
     def test_an_mcp_write_to_the_gate_config_is_blocked_through_the_pretool_dispatcher(self):
         self.config.write_text("{}", encoding="utf-8")
         payload = {
