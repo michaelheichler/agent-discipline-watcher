@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from lib import review
+from testing import init_repo, run_git as _git
 
 
 def _args(cwd: Path, **overrides) -> Namespace:
@@ -21,20 +22,8 @@ def _args(cwd: Path, **overrides) -> Namespace:
     return Namespace(**values)
 
 
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-
-
 def _repository(path: Path) -> None:
-    _git(path, "init", "-q")
-    _git(path, "config", "user.email", "test@example.com")
-    _git(path, "config", "user.name", "Test User")
+    init_repo(path)
 
 
 def _commit(repo: Path, message: str) -> None:
@@ -124,6 +113,21 @@ def test_commit_scope_uses_head_content_and_new_side_lines_only(tmp_path) -> Non
     assert revision == expected_revision
 
 
+def test_commit_scope_still_reports_line_one_anchored_rules(tmp_path) -> None:
+    _repository(tmp_path)
+    source = tmp_path / "big.py"
+    lines = [f"value_{number} = {number}" for number in range(1300)]
+    source.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _commit(tmp_path, "initial")
+    lines[600] = "value_600 = 601"
+    source.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _commit(tmp_path, "edit line 601")
+
+    findings, _, _, _ = review.run_review(_args(tmp_path, commits=1))
+
+    assert any(item["rule"] == "file_too_long" for item in findings)
+
+
 def test_commit_scope_takes_precedence_over_positional_paths(tmp_path) -> None:
     _repository(tmp_path)
     source = tmp_path / "sample.md"
@@ -185,11 +189,16 @@ def test_gitnexus_degradation_states(tmp_path, monkeypatch) -> None:
             side_effect=subprocess.TimeoutExpired("gitnexus", 2),
         ):
             assert review._gitnexus(tmp_path) == "gitnexus: stale"
+        failed = subprocess.CompletedProcess(
+            args=["gitnexus", "status"], returncode=3, stdout="", stderr="index missing\n",
+        )
+        with patch("lib.review.subprocess.run", return_value=failed):
+            assert review._gitnexus(tmp_path) == "gitnexus: error (exit 3): index missing"
         with patch(
             "lib.review.subprocess.run",
-            side_effect=subprocess.CalledProcessError(1, "gitnexus"),
+            side_effect=FileNotFoundError("gitnexus vanished"),
         ):
-            assert review._gitnexus(tmp_path) == "gitnexus: error"
+            assert review._gitnexus(tmp_path) == "gitnexus: error (gitnexus vanished)"
 
 
 def test_gitnexus_metadata_does_not_change_review_status(tmp_path, monkeypatch, capsys) -> None:

@@ -1,13 +1,15 @@
-"""Resolve review scopes and attach paths and severities to scanner findings."""
+"""Centralized here so that the CLI paths, commits, and full-repo scopes all attach the same severities instead of each caller reimplementing gate resolution."""
 
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from . import config, render, scanner
+from . import bm25, config, render, scanner
 
 SEVERITY_ORDER = {"block": 0, "would_block": 1, "release": 2}
+# Excluded from the --commits hunk filter because file_too_long and its siblings report at line 1 no matter which line changed.
+RANGE_EXEMPT_RULES = config.SCANNER_ALWAYS_BLOCKING_RULES | config.FIXED_OBSERVE_RULES
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 10) -> str:
@@ -157,28 +159,42 @@ def _head_text(root: Path, relative: str, cfg: dict) -> str | None:
     return scanner.scannable_text(text, cfg)
 
 
-def _scan_path(path: Path, context: tuple) -> list[dict]:
-    root, ranges, from_head = context
+def _source_text(root: Path, path: Path, relative: str, cfg: dict, base: str | None) -> str | None:
+    """Read from HEAD when a commit range is active, because the working tree may have moved past the range being reviewed."""
+    return _head_text(root, relative, cfg) if base is not None else scanner.read_scannable(path, cfg)
+
+
+def _ranged_rows(rows: list[dict], relative: str, ranges: dict[str, list[tuple[int, int]]] | None) -> list[dict]:
+    if ranges is None:
+        return rows
+    allowed = ranges.get(relative, [])
+    return [
+        row
+        for row in rows
+        if row["rule"] in RANGE_EXEMPT_RULES
+        or any(first <= row["line"] <= last for first, last in allowed)
+    ]
+
+
+def _finding_row(row: dict, relative: str, cfg: dict) -> dict:
+    return {
+        "rule": row["rule"],
+        "severity": config.resolve_outcome(row, cfg),
+        "path": relative,
+        "line": row["line"],
+        "excerpt": row["snippet"],
+        "hint": row["action"],
+    }
+
+
+def _scan_path(path: Path, root: Path, ranges: dict[str, list[tuple[int, int]]] | None, base: str | None) -> list[dict]:
     relative = _relative(path, root)
     cfg = config.effective_config(cwd=path)
-    text = _head_text(root, relative, cfg) if from_head else scanner.read_scannable(path, cfg)
+    text = _source_text(root, path, relative, cfg, base)
     if text is None:
         return []
-    rows = scanner.scan_all(relative, text, cfg)
-    if ranges is not None:
-        allowed = ranges.get(relative, [])
-        rows = [row for row in rows if any(first <= row["line"] <= last for first, last in allowed)]
-    return [
-        {
-            "rule": row["rule"],
-            "severity": config.resolve_outcome(row, cfg),
-            "path": relative,
-            "line": row["line"],
-            "excerpt": row["snippet"],
-            "hint": row["action"],
-        }
-        for row in rows
-    ]
+    rows = _ranged_rows(scanner.scan_all(relative, text, cfg), relative, ranges)
+    return [_finding_row(row, relative, cfg) for row in rows]
 
 
 def _gitnexus(root: Path) -> str:
@@ -189,26 +205,29 @@ def _gitnexus(root: Path) -> str:
         result = subprocess.run(
             [executable, "status"],
             cwd=root,
-            check=True,
             capture_output=True,
             text=True,
             timeout=2,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return "gitnexus: stale"
-    except (OSError, subprocess.CalledProcessError):
-        return "gitnexus: error"
+    except OSError as exc:
+        # Named instead of collapsed to "error", because a probe result an operator cannot act on is no better than none.
+        return f"gitnexus: error ({exc})"
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        return f"gitnexus: error (exit {result.returncode}): {detail}"
     detail = result.stdout.strip().splitlines()
     return f"gitnexus: {detail[0]}" if detail else "gitnexus: available"
 
 
 def run_review(args) -> tuple[list[dict], str, str, str | None]:
-    """Return scanner findings and report metadata for one resolved scope."""
+    """Scope resolved once here so that findings, revision, and the gitnexus probe all describe the exact same file set."""
     cwd = Path(getattr(args, "cwd", ".")).resolve()
     root, paths, scope, base = _scope(args, cwd)
     ranges = _changed_ranges(root, base) if base is not None else None
-    context = (root, ranges, base is not None)
-    findings = [row for path in paths for row in _scan_path(path, context)]
+    findings = [row for path in paths for row in _scan_path(path, root, ranges, base)]
     findings.sort(
         key=lambda row: (
             SEVERITY_ORDER[row["severity"]],
@@ -223,23 +242,37 @@ def run_review(args) -> tuple[list[dict], str, str, str | None]:
 
 
 def code_documents(args) -> list[dict]:
-    """Return bounded source documents from the same scope used by review."""
-    from . import bm25
-
+    """Reuses review scope resolution here so that search results and review findings can never drift onto different file sets."""
     cwd = Path(getattr(args, "cwd", ".")).resolve()
     root, paths, _, base = _scope(args, cwd)
     documents = []
     for path in paths:
         relative = _relative(path, root)
         cfg = config.effective_config(cwd=path)
-        text = _head_text(root, relative, cfg) if base is not None else scanner.read_scannable(path, cfg)
+        text = _source_text(root, path, relative, cfg, base)
         if text is not None:
-            documents.extend(bm25.chunks(relative, text))
+            documents.extend(bm25.chunks(relative, text, bm25.CHUNK_LINES))
     return documents
 
 
+def add_review_parser(subparsers) -> None:
+    """Build the review subcommand once here, because bin/agent-discipline and bin/adw-cli had drifted apart wiring it twice."""
+    parser = subparsers.add_parser("review", help="scan files, commits, or the repository")
+    parser.add_argument("paths", nargs="*")
+    parser.add_argument("--commits", type=int, metavar="N")
+    parser.add_argument(
+        "--format",
+        choices=("text", "md", "json"),
+        default="json",
+        help="report format. JSON v1 fields: [rule,severity,path,line,excerpt,hint]",
+    )
+    parser.add_argument("--output", metavar="FILE")
+    parser.add_argument("--gitnexus", action="store_true")
+    parser.set_defaults(func=emit)
+
+
 def emit(args) -> int:
-    """Write the selected report format and return a CI-ready finding status."""
+    """Exit status reflects only block severity here so that CI fails on real violations without also failing on would-block observations."""
     findings, scope, revision, metadata = run_review(args)
     renderers = {
         "text": lambda: render.render_text(findings, scope, revision),
@@ -256,3 +289,39 @@ def emit(args) -> int:
     if metadata and args.format == "json":
         print(metadata, file=sys.stderr)
     return 1 if any(item["severity"] == "block" for item in findings) else 0
+
+
+def _finding_documents(findings: list[dict]) -> list[dict]:
+    return [
+        {
+            "text": f"{row['rule']} {row['excerpt']} {row['hint']}",
+            "path": row["path"],
+            "line": row["line"],
+            "corpus": "finding",
+        }
+        for row in findings
+    ]
+
+
+def run_search(args) -> list[dict]:
+    """Skip a corpus the caller did not ask for, because scanning both doubles the work when only one is wanted."""
+    use_findings = args.findings or not args.code
+    use_code = args.code or not args.findings
+    documents = []
+    if use_findings:
+        findings, _, _, _ = run_review(args)
+        documents.extend(_finding_documents(findings))
+    if use_code:
+        documents.extend(code_documents(args))
+    return bm25.rank(args.query, documents)
+
+
+def emit_search(args) -> int:
+    """Print through stdout instead of returning rows, because a CLI subcommand's output must stay pipeable to other tools."""
+    for row in run_search(args):
+        first_line = row["text"].splitlines()[0] if row["text"] else ""
+        print(
+            f"{row['score']:.3f}\t{row['corpus']}\t"
+            f"{row['path']}:{row.get('line', 1)}\t{first_line}"
+        )
+    return 0

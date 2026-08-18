@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,13 +53,27 @@ def test_standalone_json_output_and_search_work_in_subprocess(tmp_path) -> None:
 
 
 
-def test_install_script_links_both_commands() -> None:
-    source = (ROOT / "install.sh").read_text(encoding="utf-8")
+def test_install_script_links_both_commands(tmp_path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
 
-    assert '"$HOME/.local/bin/agent-discipline"' in source
-    assert '"$HOME/.local/bin/adw-cli"' in source
-    assert "# >>> agent-discipline-watcher >>>" in source
-    assert '[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ]' in source
+    result = subprocess.run(
+        ["bash", str(ROOT / "install.sh"), "-y", "--no-claude", "--no-codex"],
+        cwd=ROOT,
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    agent_discipline_link = home / ".local" / "bin" / "agent-discipline"
+    adw_cli_link = home / ".local" / "bin" / "adw-cli"
+    assert agent_discipline_link.resolve() == AGENT_DISCIPLINE.resolve()
+    assert adw_cli_link.resolve() == ADW_CLI.resolve()
+    rc_block = (home / ".zshrc").read_text(encoding="utf-8")
+    assert "agent-discipline-watcher" in rc_block
+    assert '$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash' in rc_block
     completion = ROOT / "scripts" / "adw-completion.bash"
     assert completion.exists()
     assert "adw-cli" in completion.read_text(encoding="utf-8")

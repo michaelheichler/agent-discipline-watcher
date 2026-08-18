@@ -8,12 +8,10 @@ from pathlib import Path
 # Resolve through the script's real path, because install.sh symlinks this file into ~/.local/bin.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
 
-from lib import reporting, review  # noqa: E402
+from lib import config, reporting, review  # noqa: E402
 
 
-CHECKS = ("punctuation", "english", "clean_code")
-DEFAULT_CHECKS = {name: True for name in CHECKS}
-CONFIG_NAME = ".agent-discipline.json"
+CHECKS = config.GATE_FAMILIES
 
 
 def project_root(path):
@@ -26,15 +24,7 @@ def project_root(path):
 
 
 def config_path(root):
-    return root / CONFIG_NAME
-
-
-def find_config(root):
-    for parent in (root, *root.parents):
-        path = config_path(parent)
-        if path.exists():
-            return path
-    return config_path(root)
+    return root / config.CONFIG_NAME
 
 
 def parse_checks(raw):
@@ -82,15 +72,14 @@ def write_raw(root, data):
 
 
 def load_config(root):
-    path = find_config(root)
-    data = read_raw(path)
-    checks = dict(DEFAULT_CHECKS)
-    checks.update(data.get("checks") or {})
-    families = data.get("exempt_families")
+    """Resolve through flatten_settings over DEFAULTS, because a top-level key overrides the checks block for the gate too."""
+    path = config.project_config_path(root)
+    settings = config.effective_config(cwd=root)
+    families = settings.get("exempt_families")
     return {
         "project": str(root),
         "config_path": str(path),
-        "checks": {name: bool(checks.get(name, True)) for name in CHECKS},
+        "checks": {name: bool(settings.get(name, True)) for name in CHECKS},
         "exempt_families": families if isinstance(families, dict) else {},
     }
 
@@ -108,11 +97,27 @@ def choose_checks(root):
     return parse_selected_checks(raw, current)
 
 
+def _refuse_shadow(root, own_path):
+    """Block a write here when an ancestor config exists, because a subdirectory config would silently drop the inherited settings."""
+    if own_path.exists():
+        return
+    found = config.project_config_path(root)
+    if found != own_path:
+        raise SystemExit(
+            f"refusing to create {own_path}: it would shadow the existing config at {found}. "
+            "Edit that file directly, or run this command from a project with no ancestor config."
+        )
+
+
 def configure(args):
     root = project_root(args.project)
+    own_path = config_path(root)
+    _refuse_shadow(root, own_path)
     checks = choose_checks(root) if args.checks is None else parse_checks(args.checks)
-    data = read_raw(config_path(root))
+    data = read_raw(own_path)
     data["checks"] = checks
+    for name in CHECKS:
+        data.pop(name, None)
     write_raw(root, data)
     print(json.dumps(load_config(root), indent=2, sort_keys=True))
 
@@ -129,7 +134,9 @@ def parse_families(raw):
 
 def exempt_family(args):
     root = project_root(args.project)
-    data = read_raw(config_path(root))
+    own_path = config_path(root)
+    _refuse_shadow(root, own_path)
+    data = read_raw(own_path)
     current = data.get("exempt_families")
     mapping = dict(current) if isinstance(current, dict) else {}
     if args.clear:
@@ -146,21 +153,25 @@ def status(args):
     print(json.dumps(load_config(root), indent=2, sort_keys=True))
 
 
-def ledger_rows(family, root):
-    """Read the ledger through reporting, turning an absent or unreadable file into an exit instead of a traceback."""
-    directory = reporting._ledger_dir(root)
-    path = directory / reporting.LEDGER_FILENAME
+def _ledger_path(root):
+    return reporting._ledger_dir(root) / reporting.LEDGER_FILENAME
+
+
+def require_ledger(root):
+    """Raise before any parse, because a caller that only needs to know the ledger exists should not pay for reading it."""
+    path = _ledger_path(root)
     if not path.exists():
         raise SystemExit(f"no ledger at {path}")
-    try:
-        return reporting.observe_report(family, root)
-    except OSError as exc:
-        raise SystemExit(f"cannot read ledger at {path}: {exc}")
+    return path
 
 
 def observe_report(args):
     project_root(args.project)
-    rows = ledger_rows(args.family, args.root)
+    require_ledger(args.root)
+    try:
+        rows = reporting.observe_report(args.family, args.root)
+    except OSError as exc:
+        raise SystemExit(f"cannot read ledger at {_ledger_path(args.root)}: {exc}")
     if not rows:
         print(f"{args.family}: no would_block rows recorded")
         return
@@ -173,7 +184,7 @@ def observe_report(args):
 
 def false_signal_rate(args):
     project_root(args.project)
-    ledger_rows(args.family, args.root)
+    require_ledger(args.root)
     rate = reporting.false_signal_rate(args.family, args.root)
     if rate is None:
         print(f"{args.family}: below the 20-turn floor, no rate yet")
@@ -213,22 +224,6 @@ def add_reporting_parsers(sub):
     judge.set_defaults(func=adjudicate)
 
 
-def add_review_parser(sub):
-    """Keep review setup outside main because the command list is near its size gate."""
-    parser = sub.add_parser("review", help="scan files, commits, or the repository")
-    parser.add_argument("paths", nargs="*")
-    parser.add_argument("--commits", type=int, metavar="N")
-    parser.add_argument(
-        "--format",
-        choices=("text", "md", "json"),
-        default="json",
-        help="report format. JSON v1 rows: [rule,severity,path,line,excerpt,hint]",
-    )
-    parser.add_argument("--output", metavar="FILE")
-    parser.add_argument("--gitnexus", action="store_true")
-    parser.set_defaults(func=review.emit)
-
-
 def dispatch(parser, args):
     """Map review input and file errors to the documented usage status."""
     try:
@@ -238,13 +233,8 @@ def dispatch(parser, args):
     return result if isinstance(result, int) else 0
 
 
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if not argv:
-        status(argparse.Namespace(project="."))
-        print("Hint: run agent-discipline configure to choose checks.")
-        return 0
-
+def build_parser():
+    """Build one parser so subprocess and direct-call behavior stay aligned."""
     parser = argparse.ArgumentParser(prog="agent-discipline")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -271,8 +261,18 @@ def main(argv=None):
     status_parser.set_defaults(func=status)
 
     add_reporting_parsers(sub)
-    add_review_parser(sub)
+    review.add_review_parser(sub)
+    return parser
 
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        status(argparse.Namespace(project="."))
+        print("Hint: run agent-discipline configure to choose checks.")
+        return 0
+
+    parser = build_parser()
     args = parser.parse_args(argv)
     return dispatch(parser, args)
 

@@ -1,4 +1,4 @@
-"""Central gate-state schema and resolution helpers shared by the discipline hooks."""
+"""Centralized here because every hook and the CLI must agree on one gate-resolution order, or a rule could block in one surface and pass in another."""
 from __future__ import annotations
 
 import copy
@@ -14,12 +14,7 @@ except ImportError:
     from payloads import exact_string_dict
 
 
-ALWAYS_ON_RULES = (
-    "Strict code-discipline rules ignore family switches, rule switches, kill switches, and "
-    "path exemptions. scanner.scan_all emits them before configurable scanning, and "
-    "resolve_outcome always blocks them."
-)
-# Paired with scanner._unconditional_findings because resolve_outcome and the emitter must agree on which rules bypass every gate.
+# Bypass every switch and exemption because scanner._unconditional_findings and resolve_outcome must always agree here.
 SCANNER_ALWAYS_BLOCKING_RULES = frozenset({
     "suppression_escape_hatch",
     "file_too_long",
@@ -61,8 +56,7 @@ DEFAULTS = {
     "baseline": "report",
     # Absent families fall back to the legacy boolean above because existing single-key configs must keep working.
     "gates": {},
-    # Per-rule states beat the family, so that one lexical rule can burn in without demoting its whole family.
-    # "enforce" resolves to a hard block.
+    # Per-rule states beat the family because a lexical rule can burn in without demoting the family, and enforce always means a hard block.
     "rule_gates": {
         "ai_closer": "observe",
         "greeting_opener": "observe",
@@ -82,7 +76,7 @@ CONFIG_NAME = ".agent-discipline.json"
 
 
 def flatten_settings(data: object) -> dict:
-    """Lift the checks block into one namespace, shared so a reader of config text judges it the way a loader would."""
+    """Flattened once here so that every caller checks one namespace instead of guessing whether a setting lives at the top level or under checks."""
     fields = exact_string_dict(data)
     settings = exact_string_dict(fields.get("checks"))
     settings.update({key: value for key, value in fields.items() if key != "checks"})
@@ -90,17 +84,19 @@ def flatten_settings(data: object) -> dict:
 
 
 def _project_settings(cwd: str | os.PathLike[str]) -> dict:
+    path = _find_project_config(Path(cwd))
     try:
-        path = _find_project_config(Path(cwd))
         if not path.exists():
             return {}
         return flatten_settings(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError) as exc:
+        # Named on stderr, because a config that silently fails closed still costs the user their exemptions and gates.
+        sys.stderr.write(f"agent-discipline-watcher: could not read project config at {path}: {exc}\n")
         return {}
 
 
 def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> dict:
-    """Return the merged config as a deep copy so callers can mutate it without aliasing DEFAULTS."""
+    """Deep-copied here so that a caller mutating the merged result never corrupts the shared DEFAULTS dict for every other caller."""
     merged = copy.deepcopy(DEFAULTS)
     if cwd is not None:
         merged.update(_project_settings(cwd))
@@ -130,14 +126,17 @@ def _find_project_config(cwd: Path) -> Path:
     return current / CONFIG_NAME
 
 
+def project_config_path(cwd: str | os.PathLike[str]) -> Path:
+    """Expose the upward search publicly, because the CLI must resolve the same config file the gate would read."""
+    return _find_project_config(Path(cwd))
+
+
 def gate_map(cfg: dict, key: str) -> dict:
-    """Project a gate map to exact string keys, so a wrong type reads as empty and the family falls back to enforcing."""
+    """Coerced to exact string keys here so that a malformed gate value reads as empty and the family falls back to the safer enforce state."""
     return exact_string_dict(cfg.get(key))
 
 
-def gate_state(family: str, config: dict | None = None) -> str:
-    """Resolve a family to off, observe, or enforce, honoring kill switch then gates then the legacy boolean."""
-    cfg = effective_config(config)
+def _gate_state_from(cfg: dict, family: str) -> str:
     if gate_map(cfg, "kill_switches").get(family):
         return "off"
     state = gate_map(cfg, "gates").get(family)
@@ -146,12 +145,21 @@ def gate_state(family: str, config: dict | None = None) -> str:
     return "enforce" if cfg.get(family, True) else "off"
 
 
-def rule_state(rule: str, config: dict | None = None) -> str | None:
-    """Return a rule's own state when one is configured, so a single rule can burn in inside an enforcing family."""
+def gate_state(family: str, config: dict | None = None) -> str:
+    """Merge DEFAULTS here, because a standalone caller has no already-merged cfg the way resolve_outcome does."""
+    return _gate_state_from(effective_config(config), family)
+
+
+def _rule_state_from(cfg: dict, rule: str) -> str | None:
     if not rule:
         return None
-    state = gate_map(effective_config(config), "rule_gates").get(rule)
+    state = gate_map(cfg, "rule_gates").get(rule)
     return state if state in GATE_STATES else None
+
+
+def rule_state(rule: str, config: dict | None = None) -> str | None:
+    """Merge DEFAULTS here, because a standalone caller has no already-merged cfg the way resolve_outcome does."""
+    return _rule_state_from(effective_config(config), rule)
 
 
 def _outcome_for(state: str) -> str:
@@ -161,17 +169,19 @@ def _outcome_for(state: str) -> str:
 
 
 def resolve_outcome(finding: dict, config: dict | None = None) -> str:
-    """Return the configured blocking, observing, or release outcome for one finding."""
+    """Centralized here because every gate, family, per-rule, and always-blocking, must resolve through the same order or hooks would disagree on precedence."""
     rule = finding.get("rule", "") if isinstance(finding, dict) else ""
     if rule in ALWAYS_BLOCKING_RULES:
         return "block"
     if rule in FIXED_OBSERVE_RULES:
         return "would_block"
-    own = rule_state(rule, config)
+    # Merged once here because gate_state and rule_state each re-merging DEFAULTS doubled the cost of every finding.
+    cfg = effective_config(config)
+    own = _rule_state_from(cfg, rule)
     if own is not None:
         return _outcome_for(own)
     family = finding.get("family", "") if isinstance(finding, dict) else ""
-    return _outcome_for(gate_state(family, config))
+    return _outcome_for(_gate_state_from(cfg, family))
 
 
 def record_state_transitions(
@@ -185,7 +195,8 @@ def record_state_transitions(
         return []
     try:
         return _record_transitions(session_id, config, state_root, ledger_root)
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError) as exc:
+        # Narrowed to storage failures, because a defeat-to-off transition is exactly the kind of change an observed agent wants unlogged.
         sys.stderr.write(f"agent-discipline-watcher: state-transition log failed: {exc}\n")
         return []
 
@@ -218,7 +229,7 @@ def _record_transitions(
         captured.extend(_transition_rows(session_id, previous, current))
         return {**state, "gate_states": current}
 
-    session_state.update_state(session_id, diff_and_snapshot, state_root)
+    session_state.update_state_strict(session_id, diff_and_snapshot, state_root)
     for row in captured:
         reporting.append_row(row, ledger_root)
     return captured
