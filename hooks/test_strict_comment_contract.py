@@ -68,8 +68,6 @@ def test_no_space_todo_marker_is_a_hard_block() -> None:
 
 
 def test_preprocessor_and_css_hash_tokens_are_not_comments() -> None:
-    from lib.scanner import scan_all
-
     source = (
         "#include <stdio.h>\n#define MAX 10\n#ifdef DEBUG\n"
         "#endif\nint main(void) { return 0; }\n"
