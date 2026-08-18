@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 (2026-08-18)
 
 ### Fixed
 
@@ -50,10 +50,12 @@
 
 ### Verification
 
-- Passed 1,112 tests and 227 subtests.
+- Passed 1,157 tests and 227 subtests after review triage.
 - Passed pylint at 10.00/10 on all tracked Python files.
 - Ran the repository's own review against itself. No blocking findings remain
   that were introduced by this change set.
+- Triaged 39 automated PR review findings. 32 were confirmed by reproduction
+  and fixed with regression tests, 7 were declined with stated reasons.
 
 ## 0.16.3 (2026-08-17)
 
@@ -73,7 +75,7 @@
 - Passed 1,055 tests and 213 subtests.
 - pylint was not available in this environment and was not run.
 
-## 0.16.2 - 2026-08-14
+## 0.16.2 (2026-08-14)
 
 ### Fixed
 
@@ -90,7 +92,7 @@
 - Verified with a real Claude Code session: the first Write was denied, Claude
   corrected the comment, retried successfully, and completed without user input.
 
-## 0.16.1 - 2026-08-13
+## 0.16.1 (2026-08-13)
 
 ### Fixed
 
@@ -107,7 +109,7 @@
 - Verified live `run.sh PreToolUse` responses at 499, 500, 749, 750, 999,
   1000, and 1001 lines.
 
-## 0.16.0 - 2026-08-13
+## 0.16.0 (2026-08-13)
 
 ### Changed
 
@@ -134,7 +136,7 @@
 - Passed plugin validation, Python compilation, shell syntax, and black-box
   strict-policy probes.
 
-## 0.15.0+shame.2 - 2026-08-13
+## 0.15.0+shame.2 (2026-08-13)
 
 ### Fixed
 
@@ -150,7 +152,7 @@
 - Passed pylint at 10.00/10 with the unchanged CI command.
 - Passed 1,007 tests and 202 subtests.
 
-## 0.15.0+shame.1 - 2026-08-13
+## 0.15.0+shame.1 (2026-08-13)
 
 ### Changed
 
