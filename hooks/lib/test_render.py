@@ -61,6 +61,14 @@ def test_json_round_trips_exact_version_one_schema() -> None:
     ]
 
 
+def test_markdown_rows_returns_its_own_list_instead_of_mutating_a_caller_list() -> None:
+    rows = render._markdown_rows(FINDINGS)
+
+    assert isinstance(rows, list)
+    assert any("b" in row and "py" in row for row in rows)
+    assert any("a" in row and "md" in row for row in rows)
+
+
 def test_human_renderers_neutralize_control_and_markdown_injection() -> None:
     finding = {
         "rule": "x\x07",

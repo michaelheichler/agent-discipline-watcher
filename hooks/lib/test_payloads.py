@@ -1,4 +1,4 @@
-"""Contract tests for hook payload accessors, with literal on-stdin fixtures."""
+"""Contract tests for hook payload accessors, with literal on-stdin fixtures, because every hook must agree on the same field names and coercions."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import unittest
 
 import record
 from lib import payloads
+from testing import CollidingKey, HostileDict, HostileString
 
 PRE_TOOL_USE: dict[str, object] = {
     "session_id": "sess-1",
@@ -17,65 +18,32 @@ PRE_TOOL_USE: dict[str, object] = {
 }
 
 
-class HostileDict(dict):
-    calls = 0
-
-    def get(self, key, default=None):
-        type(self).calls += 1
-        raise AssertionError("hostile get called")
-
-    def items(self):
-        type(self).calls += 1
-        raise AssertionError("hostile items called")
-
-
-class HostileString(str):
-    calls = 0
-
-    def __str__(self) -> str:
-        type(self).calls += 1
-        return super().__str__()
-
-
-class CollidingKey:
-    calls = 0
-
-    def __hash__(self):
-        type(self).calls += 1
-        return hash("session_id")
-
-    def __eq__(self, other):
-        type(self).calls += 1
-        return False
-
-
 class BoundaryProjectionTests(unittest.TestCase):
+    HOSTILE_FAILURE_PAYLOAD = {
+        "session_id": HostileString("hidden"),
+        "cwd": "/repo",
+        "tool_name": "Write",
+        "tool_use_id": "call-1",
+        "tool_input": {"file_path": HostileString("secret.py")},
+        "error": "failed",
+        "is_interrupt": 1,
+        "duration_ms": True,
+    }
+    EXPECTED_FAILURE_PROJECTION = {
+        "session_id": "",
+        "cwd": "/repo",
+        "tool_name": "Write",
+        "tool_use_id": "call-1",
+        "file_path": "",
+        "error": "failed",
+        "is_interrupt": False,
+        "duration_ms": 0,
+    }
+
     def test_failure_projection_accepts_only_exact_schema_types(self):
-        projected = payloads.failure_payload(
-            {
-                "session_id": HostileString("hidden"),
-                "cwd": "/repo",
-                "tool_name": "Write",
-                "tool_use_id": "call-1",
-                "tool_input": {"file_path": HostileString("secret.py")},
-                "error": "failed",
-                "is_interrupt": 1,
-                "duration_ms": True,
-            }
-        )
-        self.assertEqual(
-            projected,
-            {
-                "session_id": "",
-                "cwd": "/repo",
-                "tool_name": "Write",
-                "tool_use_id": "call-1",
-                "file_path": "",
-                "error": "failed",
-                "is_interrupt": False,
-                "duration_ms": 0,
-            },
-        )
+        projected = payloads.failure_payload(self.HOSTILE_FAILURE_PAYLOAD)
+
+        self.assertEqual(projected, self.EXPECTED_FAILURE_PROJECTION)
         self.assertEqual(HostileString.calls, 0)
 
     def test_record_projection_rejects_hostile_containers_without_dispatch(self):

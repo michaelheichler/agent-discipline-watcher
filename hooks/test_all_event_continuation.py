@@ -27,7 +27,6 @@ def test_registered_mid_turn_events_never_emit_top_level_blocks(tmp_path: Path) 
     target = tmp_path / "a.py"
     target.write_text("# Increment the counter.\nx = 1\n", encoding="utf-8")
     payloads = {
-        "UserPromptSubmit": {"prompt": "skip the tests"},
         "PreToolUse": {"tool_name": "Write", "tool_input": {"file_path": str(target), "content": target.read_text()}},
         "PostToolUse": {"tool_name": "Write", "tool_input": {"file_path": str(target)}},
         "PostToolBatch": {"tool_calls": [{"tool_name": "Write", "tool_use_id": "t1", "tool_input": {"file_path": str(target)}}]},

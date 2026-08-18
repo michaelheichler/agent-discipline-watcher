@@ -3,15 +3,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from lib import reporting, session_state
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 class LedgerRootTests(unittest.TestCase):
@@ -455,10 +452,6 @@ class InheritedAdviceTests(unittest.TestCase):
         self.assertEqual(sum(f"old.py:{line}" in message for line in range(1, 13)), 3)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PreGateEvidenceTests(unittest.TestCase):
     """The edit and command gates must leave rows, because a block nobody can count cannot be reviewed."""
 
@@ -570,3 +563,52 @@ def test_compact_block_deduplicates_path_line_and_rule() -> None:
     message, _report = reporting.compact_block([finding, dict(finding)], {})
 
     assert message.count("a.py:1 punctuation/banned_dash") == 1
+
+
+class WriteFullReportTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._patch = mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": self._tmp.name})
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        self._tmp.cleanup()
+
+    def _finding(self) -> dict:
+        return {"path": "a.py", "family": "clean_code", "rule": "what_comment",
+                "line": 1, "action": "fix", "snippet": "x"}
+
+    def test_report_lands_under_the_plugin_reports_directory(self):
+        report = reporting.write_full_report([self._finding()])
+        expected_dir = Path(self._tmp.name) / "reports"
+        self.assertEqual(Path(report).parent, expected_dir)
+        self.assertEqual(oct(os.stat(report).st_mode & 0o777), "0o600")
+
+    def test_report_name_carries_session_and_turn(self):
+        report = reporting.write_full_report(
+            [self._finding()], {"session_id": "sess-9", "turn_id": "turn-3"}
+        )
+        self.assertIn("sess-9", Path(report).name)
+        self.assertIn("turn-3", Path(report).name)
+
+    def test_pruning_keeps_only_the_newest_reports(self):
+        directory = Path(self._tmp.name) / "reports"
+        with mock.patch.object(reporting, "MAX_REPORT_FILES", 3):
+            for index in range(5):
+                reporting.write_full_report(
+                    [self._finding()], {"session_id": f"s{index}", "turn_id": "t"}
+                )
+        self.assertEqual(len(list(directory.glob("*.json"))), 3)
+
+    def test_hostile_session_and_turn_components_stay_confined_to_the_directory(self):
+        report = reporting.write_full_report(
+            [self._finding()],
+            {"session_id": "../../escape", "turn_id": "../../../escape"},
+        )
+        expected_dir = Path(self._tmp.name) / "reports"
+        self.assertEqual(Path(report).parent, expected_dir)
+
+
+if __name__ == "__main__":
+    unittest.main()

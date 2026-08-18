@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import operator
+import re
+from pathlib import Path
 from typing import TypedDict, cast
 
 _TOOL_INPUT_KEYS = ("tool_input", "toolInput", "input")
@@ -10,6 +12,7 @@ _FILE_PATH_KEYS = ("file_path", "path")
 _PROMPT_KEYS = ("prompt", "user_prompt")
 _TASK_SUBJECT_KEYS = ("task_subject", "task_name")
 _EDIT_TEXT_KEYS = ("patch", "command", "input")
+_PATCH_FILE_RE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
 
 
 class FailurePayload(TypedDict):
@@ -52,12 +55,9 @@ def _exact_string(fields: dict[str, object], key: str) -> str:
     return cast(str, value) if operator.is_(type(value), str) else ""
 
 
-def _is_exact_bool_field(fields: dict[str, object], key: str) -> bool:
+def _exact_bool(fields: dict[str, object], key: str) -> bool:
     value = fields.get(key)
     return cast(bool, value) if operator.is_(type(value), bool) else False
-
-
-_read_exact_bool = _is_exact_bool_field
 
 
 def _exact_int(fields: dict[str, object], key: str) -> int:
@@ -104,7 +104,7 @@ def failure_payload(payload: object) -> FailurePayload:
         "tool_use_id": _exact_string(fields, "tool_use_id"),
         "file_path": _file_path_from(tool_input),
         "error": _exact_string(fields, "error"),
-        "is_interrupt": _read_exact_bool(fields, "is_interrupt"),
+        "is_interrupt": _exact_bool(fields, "is_interrupt"),
         "duration_ms": _exact_int(fields, "duration_ms"),
     }
 
@@ -187,11 +187,11 @@ def error(payload: object) -> str:
 
 def is_interrupt(payload: object) -> bool:
     """Return the failure-event interrupt flag, or False when absent."""
-    return _read_exact_bool(exact_string_dict(payload), "is_interrupt")
+    return _exact_bool(exact_string_dict(payload), "is_interrupt")
 
 
 def stop_hook_active(payload: object) -> bool:
-    return _read_exact_bool(exact_string_dict(payload), "stop_hook_active")
+    return _exact_bool(exact_string_dict(payload), "stop_hook_active")
 
 
 def duration_ms(payload: object) -> int:
@@ -224,3 +224,32 @@ def task_subject(payload: object) -> str:
         if operator.is_(type(value), str):
             return cast(str, value)
     return ""
+
+
+def patch_file_paths(text: str) -> tuple[str, ...]:
+    """Shared because batch and record must recognize identical patch headers, or their ledger rows stop matching."""
+    return tuple(match.strip().strip('"') for match in _PATCH_FILE_RE.findall(text))
+
+
+def edited_paths(payload: object) -> tuple[str, ...]:
+    """One implementation because batch and record used to diverge here, which silently broke the ledger dedup key."""
+    fields = exact_string_dict(payload)
+    tool_input = _tool_input_from(fields)
+    path = _file_path_from(tool_input)
+    if path:
+        return (path,)
+    text = _edit_text_from(tool_input)
+    found = patch_file_paths(text)
+    if _exact_string(fields, "tool_name").lower() == "bash":
+        try:
+            from . import pre_bash
+        except ImportError:
+            import pre_bash
+        found = (*found, *pre_bash.write_paths(text))
+    return found
+
+
+def resolved_path(raw_path: str, cwd: Path) -> Path:
+    """Expand a leading ~ here because batch used to skip it, so a tilde path keyed differently than the scan that read it."""
+    path = Path(raw_path).expanduser()
+    return path if path.is_absolute() else cwd / path
