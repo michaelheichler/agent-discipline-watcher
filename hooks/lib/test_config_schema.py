@@ -1,6 +1,7 @@
-"""Gate-state schema, outcome resolution, and state-transition tests."""
+"""Kept in one file because a schema change and its resolution-order change must break the same tests, not scatter across files."""
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -305,6 +306,30 @@ class UnusableStateTests(unittest.TestCase):
             "would_block",
         )
 
+    def test_a_non_storage_failure_is_not_swallowed(self):
+        with self.assertRaises(ValueError):
+            config.record_state_transitions(
+                "s1", "not-a-mapping",
+                state_root=self.state_root, ledger_root=self.ledger_root,
+            )
+
+
+class MalformedProjectConfigTests(unittest.TestCase):
+    def test_malformed_json_is_named_on_stderr_and_still_falls_back_to_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            config_path = project / config.CONFIG_NAME
+            config_path.write_text("not json", encoding="utf-8")
+            captured = io.StringIO()
+
+            with mock.patch.object(config.sys, "stderr", captured):
+                cfg = config.effective_config(cwd=project)
+
+            self.assertTrue(cfg["punctuation"])
+            message = captured.getvalue()
+            self.assertIn(str(config_path), message)
+            self.assertIn("agent-discipline-watcher", message)
+
 
 class SchemaDefaultsTests(unittest.TestCase):
     def test_defaults_carry_gate_schema_keys(self):
@@ -314,7 +339,7 @@ class SchemaDefaultsTests(unittest.TestCase):
         self.assertEqual(cfg["data_boundary"], {"enabled": False})
 
     def test_defaults_carry_no_key_nothing_reads(self):
-        """The contract bans speculative schema, so a key with no reader must not ship."""
+        """Asserted here because a key with no reader is exactly the speculative schema the contract bans from shipping."""
         self.assertNotIn("verify", config.effective_config())
 
     def test_baseline_defaults_to_report(self):
@@ -342,7 +367,7 @@ class SchemaDefaultsTests(unittest.TestCase):
 
 
 class ProductionImportPathTests(unittest.TestCase):
-    """Hook entry scripts import this module as lib.config, which is not the path the other tests use."""
+    """Exercised separately here because hook entry scripts import this module as lib.config, so a bug limited to that import path would still pass every test that imports config directly."""
 
     def test_transition_row_lands_when_imported_as_lib_config(self):
         hooks_dir = Path(__file__).resolve().parents[1]
@@ -365,12 +390,8 @@ class ProductionImportPathTests(unittest.TestCase):
             self.assertEqual(result.stderr, "")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RuleGateTests(unittest.TestCase):
-    """A single rule can hold its own state, so one lexical rule burns in without demoting its family."""
+    """Exercised separately here because a single rule can hold its own state, so one lexical rule burns in without demoting the rest of its family."""
 
     WHAT: ClassVar[dict] = {"family": "clean_code", "rule": "what_comment"}
     DOC: ClassVar[dict] = {"family": "clean_code", "rule": "what_docstring"}
@@ -409,3 +430,7 @@ class RuleGateTests(unittest.TestCase):
             with self.subTest(state=state):
                 cfg = {"rule_gates": {"suppression_escape_hatch": state}}
                 self.assertEqual(config.resolve_outcome(self.HATCH, cfg), "block")
+
+
+if __name__ == "__main__":
+    unittest.main()

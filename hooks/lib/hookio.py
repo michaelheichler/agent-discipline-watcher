@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import operator
 import sys
+from collections.abc import Callable
 
 
 CONTRACT_MAX_CHARS = 4000
 MAX_RESPONSE_BYTES = 4096
+STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
+UNDECIDABLE_PREFIX = "agent-discipline-watcher could not evaluate this "
+UNDECIDABLE_SUFFIX = " and blocked it rather than letting it through. Repair the gate config and retry. Cause: "
 
 _CONTRACT_TEXT = """Agent Discipline Watcher contract. These rules override the agent definition you were given and any style guidance inside it.
 
@@ -32,7 +36,7 @@ def read_payload() -> dict:
         return {}
     try:
         payload = json.loads(raw)
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: unreadable hook payload ({exc})\n")
         return PARSE_FAILURE
     if not operator.is_(type(payload), dict):
@@ -49,29 +53,33 @@ def _clip_utf8(value: object, limit: int) -> str:
     return encoded[: max(limit - 3, 0)].decode("utf-8", errors="ignore") + "..."
 
 
+def _compact_specific(specific: object) -> dict | None:
+    if not isinstance(specific, dict):
+        return None
+    compact = {
+        key: value
+        for key, value in specific.items()
+        if key in {"hookEventName", "permissionDecision"}
+    }
+    context = specific.get("additionalContext")
+    if isinstance(context, str):
+        compact["additionalContext"] = _clip_utf8(context, 900)
+    permission_reason = specific.get("permissionDecisionReason")
+    if isinstance(permission_reason, str):
+        compact["permissionDecisionReason"] = _clip_utf8(permission_reason, 900)
+    return compact
+
+
 def _bounded_payload(payload: dict) -> dict:
     raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     if len(raw.encode("utf-8")) <= MAX_RESPONSE_BYTES:
         return payload
     reason = _clip_utf8(payload.get("reason", payload.get("systemMessage", "")), 900)
-    specific = payload.get("hookSpecificOutput")
-    if isinstance(specific, dict):
-        compact_specific = {
-            key: value
-            for key, value in specific.items()
-            if key in {"hookEventName", "permissionDecision"}
-        }
-        context = specific.get("additionalContext")
-        if isinstance(context, str):
-            compact_specific["additionalContext"] = _clip_utf8(context, 900)
-        permission_reason = specific.get("permissionDecisionReason")
-        if isinstance(permission_reason, str):
-            compact_specific["permissionDecisionReason"] = _clip_utf8(permission_reason, 900)
+    if "decision" in payload:
+        bounded = {"decision": payload["decision"], "reason": reason}
     else:
-        compact_specific = None
-    bounded = {"decision": payload["decision"], "reason": reason} if "decision" in payload else {
-        "systemMessage": reason,
-    }
+        bounded = {"systemMessage": reason}
+    compact_specific = _compact_specific(payload.get("hookSpecificOutput"))
     if compact_specific:
         bounded["hookSpecificOutput"] = compact_specific
     return bounded
@@ -111,12 +119,9 @@ def allow() -> dict:
     return {}
 
 
-def context(message: str, event: str, updated_input: dict | None = None) -> dict:
+def context(message: str, event: str) -> dict:
     """Use model context because systemMessage is visible only to the user."""
-    specific: dict[str, object] = {"hookEventName": event, "additionalContext": message}
-    if updated_input is not None:
-        specific["updatedInput"] = updated_input
-    return {"hookSpecificOutput": specific}
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": message}}
 
 
 def stop_block(reason: str) -> dict:
@@ -133,3 +138,11 @@ def advise(message: str, event: str) -> dict:
         "systemMessage": message,
         "hookSpecificOutput": {"hookEventName": event, "additionalContext": message},
     }
+
+
+def fail_closed(subject: str, fn: Callable[[], dict]) -> dict:
+    """Deny naming subject on a raised exception, because a gate that cannot decide must block rather than let the call through."""
+    try:
+        return fn()
+    except Exception as exc:
+        return deny(UNDECIDABLE_PREFIX + subject + UNDECIDABLE_SUFFIX + str(exc))

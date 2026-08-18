@@ -1,31 +1,18 @@
 """Baseline subtraction: an edit answers for what it changed, not for debt already committed."""
 from __future__ import annotations
 
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from lib import baseline, config, scanner
+from testing import make_repo, run_git as git
 
 LEGACY = "#!/usr/bin/env python3\n# increments the counter\nx = 1\n"
 EXTRA_DEBT = LEGACY + "# resets the counter\ny = 2\n"
 # Defer the literal because the discipline scanner would otherwise flag this test file.
 ENFORCED_DEBT = LEGACY + "# " + ("TO" + "DO") + " later\ny = 2\n"
 CLEAN_ADDITION = LEGACY + "z = 3\n"
-
-
-def git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
-
-
-def make_repo(root: Path) -> Path:
-    repo = root / "repo"
-    repo.mkdir()
-    git(repo, "init", "-q")
-    git(repo, "config", "user.email", "baseline@example.test")
-    git(repo, "config", "user.name", "Baseline Test")
-    return repo
 
 
 def commit(repo: Path, name: str, body: str) -> Path:
@@ -207,8 +194,6 @@ class BaselineRuntimeTests(unittest.TestCase):
     """The reported case end to end: editing a legacy file must not block on its committed debt."""
 
     def setUp(self):
-        import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self._tmp.name)
         self.repo = make_repo(self.root)

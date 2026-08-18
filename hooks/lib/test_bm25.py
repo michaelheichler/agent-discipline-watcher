@@ -1,5 +1,6 @@
 from argparse import Namespace
 
+import pytest
 from lib import bm25, review
 
 
@@ -29,7 +30,7 @@ def test_term_in_every_document_keeps_positive_idf() -> None:
 def test_chunks_keep_eighty_line_boundaries() -> None:
     text = "\n".join(f"line {number}" for number in range(1, 166))
 
-    documents = bm25.chunks("sample.py", text)
+    documents = bm25.chunks("sample.py", text, bm25.CHUNK_LINES)
 
     assert [row["line"] for row in documents] == [1, 81, 161]
     assert len(documents[0]["text"].splitlines()) == 80
@@ -40,12 +41,8 @@ def test_empty_documents_and_invalid_chunk_size_are_safe() -> None:
     assert bm25.rank("query", []) == []
     assert bm25.rank("query", [{"text": "", "path": "empty"}]) == []
 
-    try:
+    with pytest.raises(ValueError, match="positive"):
         bm25.chunks("sample.py", "text", 0)
-    except ValueError as exc:
-        assert "positive" in str(exc)
-    else:
-        raise AssertionError("zero chunk size must fail")
 
 
 def test_planted_source_chunk_wins_scope_integration(tmp_path) -> None:

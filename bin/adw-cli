@@ -7,25 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
 
-from lib import bm25, review
-
-JSON_HELP = "v1 fields: [rule,severity,path,line,excerpt,hint]"
-
-
-def add_review_parser(subparsers) -> None:
-    """Keep review options identical at this standalone entry point."""
-    parser = subparsers.add_parser("review", help="scan files, commits, or the repository")
-    parser.add_argument("paths", nargs="*")
-    parser.add_argument("--commits", type=int, metavar="N")
-    parser.add_argument(
-        "--format",
-        choices=("text", "md", "json"),
-        default="json",
-        help=f"report format. JSON {JSON_HELP}",
-    )
-    parser.add_argument("--output", metavar="FILE")
-    parser.add_argument("--gitnexus", action="store_true")
-    parser.set_defaults(func=review.emit)
+from lib import review
 
 
 def add_search_parser(subparsers) -> None:
@@ -36,14 +18,14 @@ def add_search_parser(subparsers) -> None:
     parser.add_argument("--commits", type=int, metavar="N")
     parser.add_argument("--findings", action="store_true")
     parser.add_argument("--code", action="store_true")
-    parser.set_defaults(func=bm25.emit, gitnexus=False)
+    parser.set_defaults(func=review.emit_search, gitnexus=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build one parser so subprocess and direct-call behavior stay aligned."""
     parser = argparse.ArgumentParser(prog="adw-cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    add_review_parser(subparsers)
+    review.add_review_parser(subparsers)
     add_search_parser(subparsers)
     return parser
 

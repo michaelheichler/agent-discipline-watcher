@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Narrowed `config.record_state_transitions` to catch only `(OSError, json.JSONDecodeError)`
+  instead of a broad exception handler, and made a ledger write failure block the turn
+  as undecidable instead of silently swallowing the error.
+- Made `record.run` fail closed (block) instead of returning an empty response when
+  `session_state.update_state` or `update_state_strict` raises on a write failure.
+- Named the parse error and path on stderr when `.agent-discipline.json` is malformed,
+  instead of falling back to defaults without any signal.
+- Included the exit code and stderr detail in the `gitnexus` probe's degraded-state
+  message instead of a bare "error" string.
+- Fixed a non-atomic write in `merge-claude-settings.py` by reusing the same
+  write-to-temp-then-rename pattern already used in `merge-codex-config.py`.
+- Unified the two divergent trust predicates in `prompt_submit.py` (`prompt_firewall_mode`
+  and `data_boundary`) so a dict-subclass config object is treated as untrusted
+  consistently by both checks.
+- Removed `hooks/claude-settings.snippet.json`. The Claude settings merge now writes
+  its merged JSON directly and atomically instead of merging in a separate snippet file.
+
+### Changed
+
+- Split `hooks/lib/scanner.py` into `hooks/lib/comment_rules.py` and
+  `hooks/lib/prose_structure.py`, and moved inline-code and hidden-text stripping
+  into `hooks/lib/markup.py`, to keep the scanner module cohesive and avoid an
+  import cycle across the split.
+- Split shell-command parsing out of `hooks/pre_bash.py` into `hooks/lib/shell_parse.py`.
+- Extracted `hooks/lib/canonical.py` and `hooks/lib/mcp_paths.py` from `hooks/batch.py`
+  and `hooks/pre_mcp.py`, and consolidated duplicate test fixtures
+  (`HostileDict`, `HostileString`, `CollidingKey`, batch test setup helpers) into
+  shared `hooks/testing.py` and `hooks/conftest.py` modules.
+- Extracted `scripts/eval_scoring.py` out of `scripts/run_evals.py`.
+- Deleted the unused `_exact_string_dict` alias from `hooks/pre_mcp.py`.
+- Reworked `hooks/lib/config.py`: removed `ALWAYS_ON_RULES`, added
+  `project_config_path()`, and split gate/rule state resolution into
+  `_gate_state_from` and `_rule_state_from`.
+
+### Tests
+
+- Added `hooks/test_batch_canonical.py`, `hooks/test_batch_correlation.py`, and
+  `hooks/test_batch_race.py` to cover the batch module split.
+- Added coverage for `gitnexus` degradation states, malformed `.agent-discipline.json`
+  diagnostics, and ledger write failures.
+- Updated `test_success_state_write_failure_preserves_record_response` in
+  `hooks/test_failure.py` to assert the new fail-closed block response instead of
+  the old empty-response behavior.
+
+### Verification
+
+- Passed 1,112 tests and 227 subtests.
+- Passed pylint at 10.00/10 on all tracked Python files.
+- Ran the repository's own review against itself. No blocking findings remain
+  that were introduced by this change set.
+
 ## 0.16.3 (2026-08-17)
 
 ### Fixed

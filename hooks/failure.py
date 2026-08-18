@@ -74,10 +74,6 @@ class StreakData(TypedDict):
     duration_ms: int
 
 
-def _exact_string_dict(value: object) -> dict[str, object]:
-    return exact_string_dict(value)
-
-
 def _has_exact_type(value: object, expected: type) -> bool:
     return operator.is_(type(value), expected)
 
@@ -166,7 +162,7 @@ def normalize_payload(payload: object) -> TrustedPayload:
 
 
 def _safe_config(config: object) -> dict[str, object]:
-    source = _exact_string_dict(config)
+    source = exact_string_dict(config)
     result: dict[str, object] = {}
     for key in ("state_root", "ledger_root"):
         value = _bounded_text(source.get(key), _MAX_CWD_LENGTH)
@@ -201,16 +197,11 @@ def _is_valid_mcp_part(value: str, maximum: int) -> bool:
     return all(character in _MCP_PART_CHARACTERS for character in value)
 
 
-def failure_target(payload: dict) -> str:
-    """Return one bounded scalar target without serializing arbitrary tool input."""
-    return str(normalize_payload(payload)["target"])
-
-
 def _next_streak(
     previous: object, error: str, *, interrupt: bool, duration_ms: int
 ) -> StreakData:
     count = 1
-    prior = _exact_string_dict(previous)
+    prior = exact_string_dict(previous)
     if prior:
         prior_count = prior.get("count")
         same_signature = (
@@ -264,9 +255,9 @@ def _update_streak(
 def _updated_streaks(
     state: dict, event: FailureEventData, captured: FailureCounts
 ) -> dict:
-    streaks = _exact_string_dict(state.get(FAILURE_STREAKS_KEY))
-    tools = _exact_string_dict(streaks.get("tools"))
-    targets = _exact_string_dict(streaks.get("targets"))
+    streaks = exact_string_dict(state.get(FAILURE_STREAKS_KEY))
+    tools = exact_string_dict(streaks.get("tools"))
+    targets = exact_string_dict(streaks.get("targets"))
     tool = event["tool"]
     target = event["target"]
     if tool:
@@ -282,9 +273,9 @@ def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
         return None
     server, _ = parsed
     raw_health = state.get(MCP_HEALTH_KEY)
-    health = _exact_string_dict(raw_health)
+    health = exact_string_dict(raw_health)
     raw_server = health.get(server)
-    server_state = _exact_string_dict(raw_server)
+    server_state = exact_string_dict(raw_server)
     count = _valid_nonnegative_int(server_state.get("failure_count")) + 1
     previous_time = _valid_timestamp(server_state.get("last_failure_at"), event["now"])
     failure_time = max(event["now"], previous_time)
@@ -303,7 +294,7 @@ def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
 def _record_failure(
     state: dict, event: FailureEventData, captured: FailureCounts
 ) -> dict:
-    trusted_state = _exact_string_dict(state)
+    trusted_state = exact_string_dict(state)
     updated = dict(trusted_state)
     updated[FAILURE_STREAKS_KEY] = _updated_streaks(trusted_state, event, captured)
     health = _updated_mcp_health(trusted_state, event)
@@ -315,7 +306,7 @@ def _record_failure(
 def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
     if not key or not _has_exact_type(mapping, dict):
         return mapping, False
-    copied = _exact_string_dict(mapping)
+    copied = exact_string_dict(mapping)
     if key not in copied:
         return mapping, False
     del copied[key]
@@ -325,11 +316,11 @@ def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
 def _record_success(state: dict, payload: TrustedPayload) -> dict:
     if not _has_exact_type(state, dict):
         return state
-    trusted_state = _exact_string_dict(state)
+    trusted_state = exact_string_dict(state)
     updated = dict(trusted_state)
     streaks = trusted_state.get(FAILURE_STREAKS_KEY)
     if _has_exact_type(streaks, dict):
-        streak_map = _exact_string_dict(streaks)
+        streak_map = exact_string_dict(streaks)
         tools, tool_removed = _remove_key(streak_map.get("tools"), payload["tool_name"])
         targets, target_removed = _remove_key(
             streak_map.get("targets"), payload["target"]
@@ -361,7 +352,7 @@ def record_success(payload: dict, config: dict | None = None) -> None:
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
         state_root, _ = _config_roots(trusted_config)
-        session_state.update_state(
+        session_state.update_state_strict(
             session_id,
             lambda state: _record_success(state, trusted_payload),
             state_root,
@@ -407,7 +398,7 @@ def _capture_failure(
 ) -> FailureCounts | None:
     captured: FailureCounts = {}
     try:
-        session_state.update_state(
+        session_state.update_state_strict(
             session_id,
             lambda state: _record_failure(state, event, captured),
             state_root,

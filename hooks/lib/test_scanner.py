@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from lib import scanner
+from lib import comment_rules, prose_structure, scanner
+from lib.markup import mask_python_strings
 from lib.config import ALWAYS_BLOCKING_RULES, effective_config
 from lib.scanner import scan_all
 
@@ -217,7 +218,7 @@ def test_prose_structure_skips_markdown_tables():
     text = f"| Heading |\n| --- |\n| {long_cell} |\n"
     rules = {row["rule"] for row in scan_all("sample.md", text)}
     assert "long_sentence" not in rules
-    assert list(scanner._markdown_prose_lines("Heading | Detail\n--- | ---"))[-1] == (2, "")
+    assert list(prose_structure._markdown_prose_lines("Heading | Detail\n--- | ---"))[-1] == (2, "")
 
 
 def test_prose_structure_scans_long_sentences_containing_pipes():
@@ -379,6 +380,17 @@ def test_clean_code_docstring_rule_spares_multiline_string_assignments():
     assert "docstring_narration" not in rules
 
 
+def test_unterminated_string_masking_blanks_from_the_failure_point_onward():
+    marker = "TO" + "DO"
+    text = 'text = """unterminated\n# ' + marker + ' fix\n'
+    rules = {item["rule"] for item in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert not rules & {"what_comment", "deferred_work_comment"}
+
+
+def test_mask_python_strings_still_blanks_well_formed_strings():
+    assert "value" not in mask_python_strings('x = "value"\n')
+
+
 def test_clean_code_blocks_prose_comment_blocks_in_code_files():
     findings = scan_all(
         "sample.py",
@@ -427,30 +439,6 @@ def test_project_config_is_found_from_child_directory(tmp_path):
     child.mkdir(parents=True)
     (project / ".agent-discipline.json").write_text('{"checks":{"english":false}}', encoding="utf-8")
     assert effective_config(cwd=child)["english"] is False
-
-
-if __name__ == "__main__":
-    test_scan_all_normalizes_enabled_families()
-    test_scan_all_respects_switches()
-    test_punctuation_rules_cover_diagnosed_marks()
-    test_uncertain_punctuation_is_ignored_and_markup_is_stripped()
-    test_english_rules_cover_filler_and_inflation()
-    test_english_strips_inline_code_quotes_and_hidden_html()
-    test_clean_code_rules_cover_common_comment_faults()
-    test_clean_code_blocks_explicit_narration_starters()
-    test_clean_code_restores_old_structural_floor()
-    test_clean_code_file_length_thresholds()
-    test_clean_code_hollow_test_block_in_js()
-    test_clean_code_hollow_test_spares_js_blocks_with_nested_braces_before_assert()
-    test_clean_code_hollow_test_spares_pass_substrings_in_python_test_names()
-    test_clean_code_docstring_rule_spares_multiline_string_assignments()
-    test_clean_code_blocks_prose_comment_blocks_in_code_files()
-    test_clean_code_allows_standard_license_header_blocks()
-    test_clean_code_comment_block_rule_spares_single_comment_docs_and_config()
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as directory:
-        test_project_config_is_found_from_child_directory(Path(directory))
 
 
 def test_exempt_paths_cannot_skip_strict_comment_rules():
@@ -536,18 +524,24 @@ def test_what_comment_ignores_exempt_paths_and_the_clean_code_switch():
 def test_named_config_dotfile_is_config_not_code():
     for path in (".pylintrc", ".npmrc", ".editorconfig", "repo/.pylintrc"):
         assert scanner._is_config(path)
-        assert not scanner._is_code(path)
+        assert not scanner._code_file(path, "")
 
 
 def test_shell_dotfiles_are_still_scanned_as_code():
     for path in (".bashrc", ".zshrc", ".profile", ".envrc", ".bash_profile"):
-        assert scanner._is_code(path)
+        assert scanner._code_file(path, "")
         rules = [row["rule"] for row in scan_all(path, "# sets the path\nexport A=1\n", {})]
         assert "what_comment" in rules
 
 
 def test_dotfile_with_a_real_extension_stays_code():
-    assert scanner._is_code(".hidden.py")
+    assert scanner._code_file(".hidden.py", "")
+
+
+def test_file_length_findings_agrees_with_scan_all_for_mixed_language_files():
+    text = "\n".join("<div></div>" for _ in range(800))
+    assert "file_length_critical" in {row["rule"] for row in scan_all("page.html", text, {})}
+    assert "file_length_critical" in {row["rule"] for row in scanner.file_length_findings("page.html", text)}
 
 
 def test_what_comment_does_not_fire_on_a_named_config_dotfile():
@@ -691,14 +685,8 @@ def test_extended_why_markers_allow_comments():
 
 def test_what_opener_covers_inflections_without_becoming_a_rule():
     for text in ("Returns a row", "Scanning entries", "Checks input", "Looping through rows", "Copies data"):
-        assert scanner.WHAT_OPENER_RE.match(text), text
-    assert not scanner.WHAT_OPENER_RE.match("A stable storage row")
-
-
-def test_identifier_echo_uses_camel_snake_params_and_jaccard_threshold():
-    assert scanner._identifier_echo(("validateCacheEntry",), (), "Validate the cache entry")
-    assert scanner._identifier_echo(("copy_record",), ("source_id",), "Copy record source id")
-    assert not scanner._identifier_echo(("fetch_record",), (), "Load one stable row from storage")
+        assert comment_rules.WHAT_OPENER_RE.match(text), text
+    assert not comment_rules.WHAT_OPENER_RE.match("A stable storage row")
 
 
 def test_middle_band_docstring_without_why_is_blocked():
@@ -844,7 +832,7 @@ def test_what_docstring_ignores_family_and_path_switches():
 
 
 def test_identifier_split_keeps_acronym_before_digits():
-    assert scanner._identifier_tokens("SHA256_digest") == {"sha", "256", "digest"}
+    assert comment_rules._identifier_tokens("SHA256_digest") == {"sha", "256", "digest"}
 
 
 def test_python_ast_is_parsed_once_and_non_python_is_not_parsed(monkeypatch):

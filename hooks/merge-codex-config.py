@@ -20,7 +20,8 @@ LEGACY = (
     "uncle-bobs-cc",
     "agent-discipline-watcher",
 )
-STALE_HOOK_COMMANDS = LEGACY
+# Excludes our own name: strip_fences already removes our fenced block explicitly, by markers, not by name.
+PRIOR_PACKAGES = tuple(name for name in LEGACY if name != "agent-discipline-watcher")
 HOOK_LIFECYCLES = {
     "ConfigChange",
     "InstructionsLoaded",
@@ -47,9 +48,17 @@ def strip_fences(text: str) -> str:
         text,
         flags=re.S,
     )
-    for name in LEGACY[:-1]:
+    for name in PRIOR_PACKAGES:
         text = re.sub(rf"# >>> {re.escape(name)} >>>.*?# <<< {re.escape(name)} <<<\n?", "", text, flags=re.S)
     return text
+
+
+def _mentions_legacy(text: str) -> bool:
+    # Bounded, because a bare substring check also strips a differently-named fork.
+    return any(
+        re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", text)
+        for name in LEGACY
+    )
 
 
 def preserve_non_hook_tables(text: str) -> str:
@@ -72,12 +81,12 @@ def strip_legacy_tables(text: str) -> str:
             kept.append(table)
             continue
         table, trailer = split_hook_table_trailer(table)
-        if not any(name in table for name in STALE_HOOK_COMMANDS):
+        if not _mentions_legacy(table):
             kept.append(table + trailer)
             continue
         parts = re.split(r"(?=^\[\[hooks\.[A-Za-z]+\.hooks\]\])", table, flags=re.M)
         head = parts[0]
-        hook_parts = [part for part in parts[1:] if not any(name in part for name in STALE_HOOK_COMMANDS)]
+        hook_parts = [part for part in parts[1:] if not _mentions_legacy(part)]
         if hook_parts:
             kept.append(head + "".join(hook_parts))
         kept.append(trailer)
@@ -96,14 +105,14 @@ def split_hook_table_trailer(table: str) -> tuple[str, str]:
 
 
 def strip_legacy_inline_array(line: str) -> str:
-    if not any(name in line for name in STALE_HOOK_COMMANDS) or "[" not in line or "]" not in line:
+    if not _mentions_legacy(line) or "[" not in line or "]" not in line:
         return line
     match = re.match(r"^\s*([A-Za-z]+)\s*=\s*\[(.*)\]\s*$", line)
     if not match or match.group(1) not in HOOK_LIFECYCLES:
         return line
     lifecycle = match.group(1)
     items = re.findall(r"\{[^{}]*\}", match.group(2))
-    kept = [item for item in items if not any(name in item for name in STALE_HOOK_COMMANDS)]
+    kept = [item for item in items if not _mentions_legacy(item)]
     if not kept:
         return ""
     blocks = []
@@ -128,21 +137,25 @@ def strip_stale_inline_hook_arrays(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _next_nonblank(lines: list[str], index: int) -> str:
+    for candidate in lines[index + 1 :]:
+        if candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+def _is_empty_hook_header(line: str, lines: list[str], index: int) -> bool:
+    if not re.match(r"^\s*\[\[hooks\.[A-Za-z]+\]\]\s*$", line):
+        return False
+    next_line = _next_nonblank(lines, index)
+    if not next_line or re.match(r"^\[\[hooks\.[A-Za-z]+\]\]$", next_line):
+        return True
+    return next_line.startswith("[") and not next_line.startswith("[[hooks.")
+
+
 def strip_empty_hook_headers(text: str) -> str:
     lines = text.splitlines()
-    kept = []
-    for index, line in enumerate(lines):
-        if re.match(r"^\s*\[\[hooks\.[A-Za-z]+\]\]\s*$", line):
-            next_line = ""
-            for candidate in lines[index + 1:]:
-                if candidate.strip():
-                    next_line = candidate.strip()
-                    break
-            if not next_line or re.match(r"^\[\[hooks\.[A-Za-z]+\]\]$", next_line):
-                continue
-            if next_line.startswith("[") and not next_line.startswith("[[hooks."):
-                continue
-        kept.append(line)
+    kept = [line for index, line in enumerate(lines) if not _is_empty_hook_header(line, lines, index)]
     return "\n".join(kept) + "\n"
 
 

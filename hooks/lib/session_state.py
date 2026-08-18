@@ -159,8 +159,8 @@ def _next_turn(state: dict) -> dict:
 def advance_turn(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> dict:
-    """Advance the turn for lifecycle callers that own the boundary."""
-    return update_state(session_id, _next_turn, root)
+    """Raise instead of resetting a corrupt state file, because a lifecycle caller that owns the turn boundary must not erase unresolved_blockers by accident."""
+    return update_state_strict(session_id, _next_turn, root)
 
 
 def cleanup_session(

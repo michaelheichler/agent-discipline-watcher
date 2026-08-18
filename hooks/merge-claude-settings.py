@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
+import re
+import tempfile
 from pathlib import Path
 
 
@@ -13,19 +16,29 @@ LEGACY = (
     "agent-discipline-watcher",
     "uncle-bobs-cc",
 )
-STALE_HOOK_COMMANDS = LEGACY
 DROP = object()
+
+# Shape-based, because a skill dir is not guaranteed to spell out the package name.
+_WATCHER_HOOK_COMMAND_RE = re.compile(r'/hooks/run\.sh"?\s+[A-Za-z]+\Z')
 
 
 def has_legacy(value):
     return any(name in json.dumps(value, sort_keys=True) for name in LEGACY)
 
 
+def is_watcher_hook_command(value):
+    if not isinstance(value, dict):
+        return False
+    command = value.get("command")
+    return isinstance(command, str) and bool(_WATCHER_HOOK_COMMAND_RE.search(command))
+
+
 def is_legacy_command(value):
     if not isinstance(value, dict):
         return False
     command = value.get("command")
-    return isinstance(command, str) and any(name in command for name in STALE_HOOK_COMMANDS)
+    is_named_legacy = isinstance(command, str) and any(name in command for name in LEGACY)
+    return is_named_legacy or is_watcher_hook_command(value)
 
 
 def prune(value):
@@ -59,8 +72,8 @@ def load_json(path):
 
 
 def watcher_hooks(skill_dir):
-    snippet = Path(__file__).with_name("claude-settings.snippet.json")
-    raw = snippet.read_text(encoding="utf-8").replace("__SKILL_DIR__", str(skill_dir))
+    manifest = Path(__file__).with_name("hooks.json")
+    raw = manifest.read_text(encoding="utf-8").replace("${CLAUDE_PLUGIN_ROOT}", str(skill_dir))
     return json.loads(raw)["hooks"]
 
 
@@ -75,7 +88,6 @@ def merge(settings_path, skill_dir):
 
 
 def remove_legacy(settings_path):
-    """Drop path-based watcher entries so the plugin install is the only registration, returning whether anything changed."""
     original = load_json(settings_path)
     cleaned = prune(original)
     if cleaned is DROP:
@@ -99,8 +111,31 @@ def _drop_emptied_lifecycles(original, cleaned):
 
 
 def _write(settings_path, settings):
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # Resolved, because os.replace on a symlink path destroys the link instead of its target.
+    target_path = settings_path.resolve() if settings_path.is_symlink() else settings_path
+    text = json.dumps(settings, indent=2, sort_keys=True) + "\n"
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    mode = target_path.stat().st_mode & 0o777 if target_path.exists() else 0o600
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target_path.parent,
+            prefix=f".{target_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(text)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        temporary_path.chmod(mode)
+        os.replace(temporary_path, target_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def main():

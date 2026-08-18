@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pre_bash
+import pre_mcp
+import pre_tool
 import pre_write
 from lib import protected
 from lib.config import CONFIG_NAME
@@ -27,7 +31,7 @@ ATTACK = json.dumps({
 })
 # Deferred because the discipline scanner would otherwise flag this test file.
 MARKER = "# " + ("TO" + "DO") + " later\nx = 1\n"
-ENTRY_POINTS = ("pre_write.py", "pre_bash.py", "record.py", "pre_commit.py", "batch.py")
+ENTRY_POINTS = ("pre_write.py", "pre_bash.py", "pre_mcp.py", "record.py", "pre_commit.py", "batch.py")
 MALFORMED = (
     {"gates": ["off"]},
     {"gates": "off"},
@@ -156,6 +160,93 @@ class SelfGrantChainTests(unittest.TestCase):
 
     def test_an_ordinary_shell_write_stays_allowed(self):
         self.assertEqual(self._bash("echo 'x = 1' > " + str(self.root / "ok.py")), {})
+
+    def _mcp(self, tool_input: dict, config: dict | None = None) -> dict:
+        payload = {
+            "session_id": "s1", "cwd": str(self.root), "tool_name": "mcp__fs__write_file",
+            "tool_input": tool_input,
+        }
+        return pre_mcp.run(payload, {**self.cfg, **(config or {})})
+
+    def test_an_mcp_write_to_an_existing_gate_config_is_blocked_via_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        self.assertIn("self_protection/config_seal", self._blocked(self._mcp({"path": str(self.config)})))
+        self.assertEqual(self.config.read_text(encoding="utf-8"), "{}")
+
+    def test_an_mcp_write_to_an_existing_gate_config_is_blocked_via_file_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        self.assertIn(
+            "self_protection/config_seal", self._blocked(self._mcp({"file_path": str(self.config)}))
+        )
+
+    def test_an_mcp_write_using_relative_path_resolves_against_cwd(self):
+        self.config.write_text("{}", encoding="utf-8")
+        self.assertIn(
+            "self_protection/config_seal", self._blocked(self._mcp({"relative_path": CONFIG_NAME}))
+        )
+
+    def test_an_mcp_write_targeting_a_paths_list_is_blocked(self):
+        self.config.write_text("{}", encoding="utf-8")
+        other = self.root / "ok.py"
+        response = self._mcp({"paths": [str(other), str(self.config)]})
+        self.assertIn("self_protection/config_seal", self._blocked(response))
+
+    def test_an_mcp_write_to_watcher_state_is_blocked(self):
+        plugin_data = self.root / "plugin-data"
+        target = plugin_data / "state" / "s1" / "state.json"
+        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": str(plugin_data)}):
+            response = self._mcp({"path": str(target)})
+        self.assertIn("self_protection/state_mutation", self._blocked(response))
+
+    def test_an_mcp_write_to_a_live_client_surface_is_blocked_by_path(self):
+        target = Path.home() / ".claude" / "settings.json"
+        self.assertIn(
+            "self_protection/live_client_surface", self._blocked(self._mcp({"path": str(target)}))
+        )
+
+    def test_an_ordinary_mcp_write_stays_allowed(self):
+        self.assertEqual(self._mcp({"path": str(self.root / "ok.py")}), {})
+
+    def test_an_mcp_write_without_a_session_id_still_blocks_a_protected_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        payload = {
+            "cwd": str(self.root), "tool_name": "mcp__fs__write_file",
+            "tool_input": {"path": str(self.config)},
+        }
+        response = pre_mcp.run(payload, self.cfg)
+        self.assertEqual(
+            response["hookSpecificOutput"]["permissionDecision"], "deny"
+        )
+
+    def test_an_mcp_gate_crash_still_blocks_a_protected_path(self):
+        self.config.write_text("{}", encoding="utf-8")
+        with mock.patch.object(pre_mcp, "normalize_payload", side_effect=RuntimeError("boom")):
+            response = self._mcp({"path": str(self.config)})
+        self.assertEqual(
+            response["hookSpecificOutput"]["permissionDecision"], "deny"
+        )
+
+    def test_an_mcp_write_planting_an_escape_config_is_blocked_by_content(self):
+        target = self.root / "sub" / CONFIG_NAME
+        response = self._mcp({"path": str(target), "content": '{"state_root": "/tmp/steal"}'})
+        self.assertIn("self_protection", self._blocked(response))
+
+    def test_a_decoy_field_does_not_hide_an_escape_payload_in_another_field(self):
+        target = self.root / "sub" / CONFIG_NAME
+        response = self._mcp({
+            "path": str(target),
+            "text": "not json at all",
+            "content": '{"state_root": "/tmp/steal"}',
+        })
+        self.assertIn("self_protection", self._blocked(response))
+
+    def test_an_mcp_write_to_the_gate_config_is_blocked_through_the_pretool_dispatcher(self):
+        self.config.write_text("{}", encoding="utf-8")
+        payload = {
+            "session_id": "s1", "cwd": str(self.root), "tool_name": "mcp__fs__write_file",
+            "tool_input": {"path": str(self.config)},
+        }
+        self.assertIn("self_protection/config_seal", self._blocked(pre_tool.run(payload, self.cfg)))
 
 
 class MalformedConfigFailClosedTests(unittest.TestCase):

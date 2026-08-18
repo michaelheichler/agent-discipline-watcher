@@ -55,6 +55,41 @@ def test_generic_causal_tails_are_hard_blocks() -> None:
         assert response["decision"] == "block"
 
 
+def test_inline_trailing_todo_is_a_hard_block() -> None:
+    response = _write("x = 1  # " + ("TO" + "DO") + ": fix this later\n")
+    assert response["decision"] == "block"
+    assert "deferred_work_comment" in response["reason"]
+
+
+def test_no_space_todo_marker_is_a_hard_block() -> None:
+    response = _write("#" + ("TO" + "DO") + ": fix this later\nx = 1\n")
+    assert response["decision"] == "block"
+    assert "deferred_work_comment" in response["reason"]
+
+
+def test_no_space_lowercase_hash_markers_are_not_css_comments() -> None:
+    for marker in ("to" + "do", "fix" + "me", "x" + "xx", "ha" + "ck"):
+        css = "#" + marker + " { color: #fff; }\n"
+        assert [row["rule"] for row in scan_all("style.css", css, {})] == []
+
+
+def test_preprocessor_and_css_hash_tokens_are_not_comments() -> None:
+    source = (
+        "#include <stdio.h>\n#define MAX 10\n#ifdef DEBUG\n"
+        "#endif\nint main(void) { return 0; }\n"
+    )
+    assert [row["rule"] for row in scan_all("main.c", source, {})] == []
+    css = "#id { color: #fff; }\n.box { background: #a1b2c3; }\n"
+    assert [row["rule"] for row in scan_all("style.css", css, {})] == []
+
+
+def test_trailing_code_cannot_launder_a_vague_because_into_a_strong_why() -> None:
+    source = "/* Skip because it. */avoid_expensive_computation()\n"
+    response = _write(source)
+    assert response["decision"] == "block"
+    assert "what_comment" in response["reason"] or "weak_why_comment" in response["reason"]
+
+
 def test_malformed_python_cannot_hide_a_multiline_docstring() -> None:
     source = 'def value():\n    """First line.\n    Second line.\n    """\n    return 1\ninvalid syntax\n'
     response = _write(source)

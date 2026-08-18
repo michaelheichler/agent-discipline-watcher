@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import re
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from failure import _config_roots, normalize_payload, record_success
-import pre_bash
 from lib import blocker_state, payloads, scan_input
-from lib.config import effective_config
+from lib.config import effective_config, effective_hook_config
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
 from lib.baseline import split_committed
@@ -25,26 +23,16 @@ from lib.reporting import (
 )
 from lib.scanner import read_scannable, scan_all
 
-PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
-
-
-def _edited_paths(payload: RecordPayload) -> list[str]:
-    paths: list[str] = []
-    path = payload["file_path"]
-    if path:
-        paths.append(path)
-    else:
-        paths.extend(
-            match.strip().strip('"') for match in PATCH_FILE.findall(payload["edit_text"])
-        )
-    if payload["tool_name"] == "Bash":
-        paths.extend(pre_bash.write_paths(payload["edit_text"]))
-    return paths
+UNDECIDABLE_KEY = "<record-error>"
+UNDECIDABLE = (
+    "agent-discipline-watcher could not evaluate this edit. Treat the turn as unscanned and rerun the check "
+    "after repairing the gate config. Cause: "
+)
 
 
 def edited_paths(payload: object) -> list[str]:
     """Return edited paths from the central exact-type event projection."""
-    return _edited_paths(record_payload(payload))
+    return list(payloads.edited_paths(payload))
 
 
 def _journal_edits(
@@ -83,9 +71,7 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = cwd / path
+        path = payloads.resolved_path(raw_path, cwd)
         if not path.exists() or not path.is_file():
             continue
         text = read_scannable(path, cfg)
@@ -96,14 +82,6 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
         owned_rows.extend(_stamped(owned, path))
         inherited_rows.extend(_stamped(inherited, path))
     return owned_rows, inherited_rows
-
-
-def _resolved_paths(paths: list[str], cwd: Path) -> list[str]:
-    resolved = []
-    for raw_path in paths:
-        path = Path(raw_path).expanduser()
-        resolved.append(str(path if path.is_absolute() else cwd / path))
-    return resolved
 
 
 def _projected_payload(payload: dict) -> RecordPayload:
@@ -122,14 +100,6 @@ def _scan_config(trusted_config: dict) -> dict:
     return scan_config
 
 
-def _resolved_config(scan_config: dict, cwd_text: str) -> dict:
-    """Resolve project config, falling back to defaults so that an unreadable cwd never fails the hook."""
-    try:
-        return effective_config(scan_config, cwd_text or None)
-    except Exception:
-        return effective_config(scan_config, None)
-
-
 def _note_success(projected: RecordPayload, trusted_config: dict) -> None:
     record_success(
         {
@@ -143,18 +113,25 @@ def _note_success(projected: RecordPayload, trusted_config: dict) -> None:
     )
 
 
-def _response(
-    decisions: list[tuple[dict, str]],
-    inherited: list[dict],
-    cfg: dict,
-) -> dict:
+def _response(kind: str, message: str, inherited: list[dict], cfg: dict) -> dict:
     """Block enforced findings after a post-write scan without mutating the file."""
-    kind, message = verdict_message(decisions, cfg)
     notice = inherited_advice(inherited, cfg)
     content = "\n".join(part for part in (message, notice) if part)
     if kind == "block":
         return {"decision": "block", "reason": content}
     return advise(content, "PostToolUse") if content else {}
+
+
+def _clear_blocker_state(
+    session_id: str, agent_id: str, tracked_paths: list[str], cfg: dict, kind: str, reason: str,
+) -> None:
+    """Leaves UNDECIDABLE_KEY untouched, because an unrelated edit succeeding is not evidence the earlier unscanned write was safe, and only Stop-time reconciliation of that specific failure may release it."""
+    blocker_state.touch_paths(session_id, agent_id, tracked_paths, cfg.get("state_root"))
+    for path in tracked_paths:
+        if kind == "block":
+            blocker_state.set_pending(session_id, agent_id, path, reason, cfg.get("state_root"))
+        else:
+            blocker_state.clear_pending(session_id, agent_id, path, cfg.get("state_root"))
 
 
 def _gate_for(projected: RecordPayload, paths: list[str], tracked_paths: list[str], cwd: Path, cfg: dict, ledger_root, agent_id: str) -> Callable[[str], dict]:
@@ -171,20 +148,11 @@ def _gate_for(projected: RecordPayload, paths: list[str], tracked_paths: list[st
             duration_ms=int((time.monotonic() - started) * 1000),
             root=ledger_root, config=cfg,
         )
-        response = _response(decisions, inherited, cfg)
+        report_cfg = {**cfg, "session_id": projected["session_id"], "turn_id": turn_id}
+        kind, reason = verdict_message(decisions, report_cfg)
+        response = _response(kind, reason, inherited, report_cfg)
         if projected["session_id"]:
-            try:
-                blocker_state.touch_paths(projected["session_id"], agent_id, tracked_paths, cfg.get("state_root"))
-                kind, reason = verdict_message(decisions, cfg)
-                for path in tracked_paths:
-                    if kind == "block":
-                        blocker_state.set_pending(
-                            projected["session_id"], agent_id, path, reason, cfg.get("state_root"),
-                        )
-                    else:
-                        blocker_state.clear_pending(projected["session_id"], agent_id, path, cfg.get("state_root"))
-            except Exception as exc:
-                sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {exc}\n")
+            _clear_blocker_state(projected["session_id"], agent_id, tracked_paths, cfg, kind, reason)
         return response
 
     return gate
@@ -195,14 +163,14 @@ def _run_record(payload: dict, config: dict | None) -> dict:
     trusted_config = exact_string_dict(config)
     state_root, ledger_root = _config_roots(trusted_config)
     cwd_text = projected["cwd"]
-    cfg = _resolved_config(_scan_config(trusted_config), cwd_text)
+    cfg = effective_config(_scan_config(trusted_config), cwd_text or None)
     cfg["state_root"] = state_root
     if projected["session_id"]:
         cfg["session_id"] = projected["session_id"]
         _note_success(projected, trusted_config)
     cwd = Path(cwd_text or ".")
-    paths = _edited_paths(projected)
-    tracked_paths = _resolved_paths(paths, cwd)
+    paths = list(payloads.edited_paths(payload))
+    tracked_paths = [str(payloads.resolved_path(raw_path, cwd)) for raw_path in paths]
     agent_id = payloads.agent_id(payload)
     return run_with_ledger(
         hook="record",
@@ -214,12 +182,21 @@ def _run_record(payload: dict, config: dict | None) -> dict:
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Scan edited paths, swallowing every exception class so that a broken config cannot take the hook process down."""
+    """Block on failure here, mirroring batch.py, because returning {} let a broken gate silently release the turn."""
     try:
         return _run_record(payload, config)
     except Exception as exc:
-        sys.stderr.write(f"agent-discipline-watcher: record hook failed: {exc}\n")
-        return {}
+        reason = UNDECIDABLE + str(exc)
+        session_id = payloads.session_id(payload)
+        if session_id:
+            try:
+                root = effective_hook_config(config, payloads.cwd(payload) or None).get("state_root")
+                blocker_state.set_pending(
+                    session_id, blocker_state.scope(payload), UNDECIDABLE_KEY, reason, root,
+                )
+            except Exception as state_exc:
+                sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
+        return {"decision": "block", "reason": reason}
 
 
 if __name__ == "__main__":

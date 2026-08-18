@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pre_write
 import record
+from testing import init_repo, run_git as _git
 
 
 def _payload(content: str, session_id: str = "") -> dict:
@@ -49,16 +49,10 @@ def test_what_comment_blocks_without_external_adjudication() -> None:
     assert calls == []
 
 
-def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
-
-
 def _committed_file(root: Path, content: str) -> Path:
     target = root / "legacy.py"
     target.write_text(content, encoding="utf-8")
-    _git(root, "init", "-q")
-    _git(root, "config", "user.email", "test@example.com")
-    _git(root, "config", "user.name", "Test")
+    init_repo(root)
     _git(root, "add", "legacy.py")
     _git(root, "commit", "-q", "-m", "seed")
     return target

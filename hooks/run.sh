@@ -17,11 +17,12 @@ do
   if [ "$event" = "$name" ]
   then
     script=${pair#*:}
-    if [ -n "$script" ]
+    if ! command -v "$PYTHON" >/dev/null 2>&1 || [ ! -f "$DIR/$script" ]
     then
-      exec "$PYTHON" "$DIR/$script"
+      echo "run.sh: misconfigured install: missing $PYTHON or $DIR/$script" >&2
+      exit 2
     fi
-    exit 0
+    exec "$PYTHON" "$DIR/$script"
   fi
 done
 echo "$usage" >&2

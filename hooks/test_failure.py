@@ -1,4 +1,4 @@
-"""Tests for failure streaks and the session-scoped MCP circuit breaker."""
+"""Tests for failure streaks and the session-scoped MCP circuit breaker, because a repeated failure must interrupt the agent before it burns the same retry again."""
 
 from __future__ import annotations
 
@@ -13,38 +13,7 @@ import failure
 import pre_mcp
 import record
 from lib import reporting, session_state
-
-
-class HostileDict(dict):
-    calls = 0
-
-    def get(self, key, default=None):
-        type(self).calls += 1
-        raise AssertionError("hostile get called")
-
-    def items(self):
-        type(self).calls += 1
-        raise AssertionError("hostile items called")
-
-
-class HostileString(str):
-    calls = 0
-
-    def __str__(self) -> str:
-        type(self).calls += 1
-        return super().__str__()
-
-
-class CollidingKey:
-    calls = 0
-
-    def __hash__(self):
-        type(self).calls += 1
-        return hash("session_id")
-
-    def __eq__(self, other):
-        type(self).calls += 1
-        return False
+from testing import CollidingKey, HostileDict, HostileString
 
 
 class HostileNumber:
@@ -433,66 +402,52 @@ class FailureHookTests(HookTestCase):
             effective.assert_not_called()
             ledger.assert_not_called()
 
+    EXPECTED_DECISION_ROW = {
+        "session_id": "s1",
+        "hook": "failure",
+        "event": "PostToolUseFailure",
+        "family": "tool_failure",
+        "rule": "repeated_failure",
+        "path": "/work/a.py",
+        "tool_use_id": "call-1",
+        "turn_id": "",
+        "outcome": "inject",
+        "duration_ms": 12,
+    }
+
     def test_guidance_and_heartbeat_ledger_rows_are_exact(self):
         for when in (1.0, 2.0, 3.0):
             failure.run(self.payload(), self.cfg, now=when)
         rows = self.rows()
         decisions = [row for row in rows if row["event"] == "PostToolUseFailure"]
         heartbeats = [row for row in rows if row["event"] == "observed"]
+
         self.assertEqual(len(decisions), 1)
-        self.assertEqual(
-            {
-                key: decisions[0][key]
-                for key in (
-                    "session_id",
-                    "hook",
-                    "event",
-                    "family",
-                    "rule",
-                    "path",
-                    "tool_use_id",
-                    "turn_id",
-                    "outcome",
-                    "duration_ms",
-                )
-            },
-            {
-                "session_id": "s1",
-                "hook": "failure",
-                "event": "PostToolUseFailure",
-                "family": "tool_failure",
-                "rule": "repeated_failure",
-                "path": "/work/a.py",
-                "tool_use_id": "call-1",
-                "turn_id": "",
-                "outcome": "inject",
-                "duration_ms": 12,
-            },
-        )
+        projected = {key: decisions[0][key] for key in self.EXPECTED_DECISION_ROW}
+        self.assertEqual(projected, self.EXPECTED_DECISION_ROW)
         self.assertEqual(len(heartbeats), 3)
         self.assertTrue(all(row["hook"] == "failure" for row in heartbeats))
 
-    def test_corrupt_and_legacy_state_self_heal(self):
+    def test_corrupt_state_blocks_the_update_without_replacing_it(self):
         state_dir = Path(self.cfg["state_root"]) / "s1"
         state_dir.mkdir(parents=True)
-        (state_dir / session_state.STATE_FILENAME).write_text(
-            "{broken", encoding="utf-8"
-        )
-        failure.run(self.payload(), self.cfg, now=1.0)
-        self.assertEqual(
-            self.state()[failure.FAILURE_STREAKS_KEY]["tools"]["Write"]["count"], 1
-        )
+        state_file = state_dir / session_state.STATE_FILENAME
+        state_file.write_text("{broken", encoding="utf-8")
+        self.assertEqual(failure.run(self.payload(), self.cfg, now=1.0), {})
+        self.assertEqual(state_file.read_text(encoding="utf-8"), "{broken")
+
+    def test_legacy_shaped_streaks_self_heal(self):
         session_state.write_state(
             "s1", {failure.FAILURE_STREAKS_KEY: ["legacy"]}, self.cfg["state_root"]
         )
-        failure.run(self.payload(), self.cfg, now=2.0)
+        failure.run(self.payload(), self.cfg, now=1.0)
         self.assertEqual(
             self.state()[failure.FAILURE_STREAKS_KEY]["tools"]["Write"]["count"], 1
         )
 
     def test_state_update_failure_allows(self):
         with mock.patch.object(
-            failure.session_state, "update_state", side_effect=OSError("read only")
+            failure.session_state, "update_state_strict", side_effect=OSError("read only")
         ):
             self.assertEqual(failure.run(self.payload(), self.cfg, now=1.0), {})
 
@@ -568,24 +523,12 @@ class SuccessResetTests(HookTestCase):
             self.state()[failure.FAILURE_STREAKS_KEY]["tools"]["Write"]["count"], 1
         )
 
-    def test_success_removes_only_matching_entries_and_mcp_server(self):
+    def _seed_streaks_for_removal_test(self) -> None:
         failure.run(self.payload(tool="Write", target="a"), self.cfg, now=1.0)
         failure.run(self.payload(tool="Read", target="b"), self.cfg, now=2.0)
-        failure.run(
-            self.payload(tool="mcp__github__search", target="mcp-a"),
-            self.cfg,
-            now=3.0,
-        )
-        failure.run(
-            self.payload(tool="mcp__github__other", target="mcp-b"),
-            self.cfg,
-            now=4.0,
-        )
-        failure.run(
-            self.payload(tool="mcp__linkup__search", target="linkup"),
-            self.cfg,
-            now=5.0,
-        )
+        failure.run(self.payload(tool="mcp__github__search", target="mcp-a"), self.cfg, now=3.0)
+        failure.run(self.payload(tool="mcp__github__other", target="mcp-b"), self.cfg, now=4.0)
+        failure.run(self.payload(tool="mcp__linkup__search", target="linkup"), self.cfg, now=5.0)
         session_state.update_state(
             "s1",
             lambda state: {
@@ -599,6 +542,22 @@ class SuccessResetTests(HookTestCase):
             self.cfg["state_root"],
         )
 
+    def assert_only_matching_mcp_entry_was_removed(self, state: dict) -> None:
+        streaks = state[failure.FAILURE_STREAKS_KEY]
+        self.assertNotIn("mcp__github__search", streaks["tools"])
+        self.assertNotIn("mcp-a", streaks["targets"])
+        self.assertIn("mcp__github__other", streaks["tools"])
+        self.assertIn("mcp-b", streaks["targets"])
+        self.assertIn("Write", streaks["tools"])
+        self.assertIn("a", streaks["targets"])
+        self.assertEqual(streaks["metadata"], {"owner": "keep", "nested": {"version": 7}})
+        self.assertEqual(state["unrelated"], {"keep": True})
+        self.assertNotIn("github", state[failure.MCP_HEALTH_KEY])
+        self.assertIn("linkup", state[failure.MCP_HEALTH_KEY])
+
+    def test_success_removes_only_matching_entries_and_mcp_server(self):
+        self._seed_streaks_for_removal_test()
+
         with ThreadPoolExecutor(max_workers=8) as executor:
             list(
                 executor.map(
@@ -607,30 +566,18 @@ class SuccessResetTests(HookTestCase):
                 )
             )
 
-        state = self.state()
-        streaks = state[failure.FAILURE_STREAKS_KEY]
-        self.assertNotIn("mcp__github__search", streaks["tools"])
-        self.assertNotIn("mcp-a", streaks["targets"])
-        self.assertIn("mcp__github__other", streaks["tools"])
-        self.assertIn("mcp-b", streaks["targets"])
-        self.assertIn("Write", streaks["tools"])
-        self.assertIn("a", streaks["targets"])
-        self.assertEqual(
-            streaks["metadata"],
-            {"owner": "keep", "nested": {"version": 7}},
-        )
-        self.assertEqual(state["unrelated"], {"keep": True})
-        self.assertNotIn("github", state[failure.MCP_HEALTH_KEY])
-        self.assertIn("linkup", state[failure.MCP_HEALTH_KEY])
+        self.assert_only_matching_mcp_entry_was_removed(self.state())
 
-    def test_success_state_write_failure_preserves_record_response(self):
+    def test_success_state_write_failure_blocks_undecidable_instead_of_losing_state(self):
         failure.run(self.payload(), self.cfg, now=1.0)
         before = self.state()
         with (
             mock.patch.object(failure.session_state, "update_state", side_effect=OSError("read only")),
             mock.patch.object(failure.session_state, "update_state_strict", side_effect=OSError("read only")),
         ):
-            self.assertEqual(self.succeed(), {})
+            response = self.succeed()
+        self.assertEqual(response["decision"], "block")
+        self.assertIn("could not evaluate this edit", response["reason"])
         self.assertEqual(self.state(), before)
 
     def test_invalid_success_session_writes_no_state_or_ledger(self):

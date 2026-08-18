@@ -51,7 +51,8 @@ def render_text(findings: list[dict], scope: str, revision: str = "working tree"
     return "\n".join(lines) + "\n"
 
 
-def _markdown_rows(rows: list[dict], lines: list[str]) -> None:
+def _markdown_rows(rows: list[dict]) -> list[str]:
+    lines: list[str] = []
     for path, grouped in sorted(_groups(rows).items()):
         lines.append(f"### `{_markdown(path)}`")
         for item in sorted(grouped, key=lambda row: (row["line"], row["rule"])):
@@ -59,6 +60,7 @@ def _markdown_rows(rows: list[dict], lines: list[str]) -> None:
                 f"- Line {item['line']}, `{_markdown(item['rule'])}`: "
                 f"{_markdown(item['excerpt'])}. Fix: {_markdown(item['hint'])}"
             )
+    return lines
 
 
 def render_md(findings: list[dict], scope: str, revision: str = "working tree") -> str:
@@ -80,7 +82,7 @@ def render_md(findings: list[dict], scope: str, revision: str = "working tree") 
         rows = [item for item in findings if item["severity"] == severity]
         if rows:
             lines.extend(["", f"## {severity}"])
-            _markdown_rows(rows, lines)
+            lines.extend(_markdown_rows(rows))
     return "\n".join(lines) + "\n"
 
 

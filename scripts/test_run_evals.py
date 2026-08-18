@@ -133,6 +133,15 @@ class EvaluationHarnessTest(unittest.TestCase):
             "notes": "fixture",
         }
 
+    def test_boolean_score_value_is_rejected(self) -> None:
+        rows = [
+            self._score_row("direct-answer", "baseline", 3),
+            {**self._score_row("direct-answer", "candidate", 4), "correctness": True},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "correctness must be between 1 and 5"):
+            run_evals.summarize_scores(rows)
+
     def test_duplicate_case_ids_are_rejected(self) -> None:
         case = {
             "id": "duplicate",

@@ -1,4 +1,4 @@
-"""Contract tests for hook payload accessors, with literal on-stdin fixtures."""
+"""Contract tests for hook payload accessors, with literal on-stdin fixtures, because every hook must agree on the same field names and coercions."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import unittest
 
 import record
 from lib import payloads
+from testing import CollidingKey, HostileDict, HostileString
 
 PRE_TOOL_USE: dict[str, object] = {
     "session_id": "sess-1",
@@ -17,65 +18,32 @@ PRE_TOOL_USE: dict[str, object] = {
 }
 
 
-class HostileDict(dict):
-    calls = 0
-
-    def get(self, key, default=None):
-        type(self).calls += 1
-        raise AssertionError("hostile get called")
-
-    def items(self):
-        type(self).calls += 1
-        raise AssertionError("hostile items called")
-
-
-class HostileString(str):
-    calls = 0
-
-    def __str__(self) -> str:
-        type(self).calls += 1
-        return super().__str__()
-
-
-class CollidingKey:
-    calls = 0
-
-    def __hash__(self):
-        type(self).calls += 1
-        return hash("session_id")
-
-    def __eq__(self, other):
-        type(self).calls += 1
-        return False
-
-
 class BoundaryProjectionTests(unittest.TestCase):
+    HOSTILE_FAILURE_PAYLOAD = {
+        "session_id": HostileString("hidden"),
+        "cwd": "/repo",
+        "tool_name": "Write",
+        "tool_use_id": "call-1",
+        "tool_input": {"file_path": HostileString("secret.py")},
+        "error": "failed",
+        "is_interrupt": 1,
+        "duration_ms": True,
+    }
+    EXPECTED_FAILURE_PROJECTION = {
+        "session_id": "",
+        "cwd": "/repo",
+        "tool_name": "Write",
+        "tool_use_id": "call-1",
+        "file_path": "",
+        "error": "failed",
+        "is_interrupt": False,
+        "duration_ms": 0,
+    }
+
     def test_failure_projection_accepts_only_exact_schema_types(self):
-        projected = payloads.failure_payload(
-            {
-                "session_id": HostileString("hidden"),
-                "cwd": "/repo",
-                "tool_name": "Write",
-                "tool_use_id": "call-1",
-                "tool_input": {"file_path": HostileString("secret.py")},
-                "error": "failed",
-                "is_interrupt": 1,
-                "duration_ms": True,
-            }
-        )
-        self.assertEqual(
-            projected,
-            {
-                "session_id": "",
-                "cwd": "/repo",
-                "tool_name": "Write",
-                "tool_use_id": "call-1",
-                "file_path": "",
-                "error": "failed",
-                "is_interrupt": False,
-                "duration_ms": 0,
-            },
-        )
+        projected = payloads.failure_payload(self.HOSTILE_FAILURE_PAYLOAD)
+
+        self.assertEqual(projected, self.EXPECTED_FAILURE_PROJECTION)
         self.assertEqual(HostileString.calls, 0)
 
     def test_record_projection_rejects_hostile_containers_without_dispatch(self):
@@ -317,6 +285,23 @@ class TaskSubjectTests(unittest.TestCase):
 
     def test_absent_returns_empty_string(self):
         self.assertEqual(payloads.task_subject({}), "")
+
+
+class PatchFilePathsTests(unittest.TestCase):
+    def test_reads_add_and_update_headers(self):
+        patch = "*** Add File: src/new.py\n+print(1)\n*** Update File: src/old.py\n+print(2)\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/new.py", "src/old.py"))
+
+    def test_reads_delete_header(self):
+        patch = "*** Delete File: src/gone.py\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/gone.py",))
+
+    def test_reads_move_to_destination_alongside_its_update_header(self):
+        patch = "*** Update File: src/old.py\n*** Move to: src/new.py\n@@\n-x = 1\n+x = 2\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/old.py", "src/new.py"))
+
+    def test_absent_returns_empty_tuple(self):
+        self.assertEqual(payloads.patch_file_paths("no headers here"), ())
 
 
 if __name__ == "__main__":

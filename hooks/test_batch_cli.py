@@ -90,3 +90,39 @@ class BatchBlockTests(unittest.TestCase):
                 response = batch.run(payload, {})
         self.assertEqual(response["decision"], "block")
         self.assertIn("broken gate", response["reason"])
+
+
+class FindingsForPathsTests(unittest.TestCase):
+    """Covered separately from findings_for_batch because end_turn calls this entry point directly, not through a payload."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.cfg = {}
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_scans_each_path_and_finds_cross_file_duplicates(self):
+        dirty = self.root / "dirty.py"
+        dirty.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
+        duplicated_text = "def duplicated(value):\n    return value + 1\n" * 6
+        left = self.root / "left.py"
+        right = self.root / "right.py"
+        left.write_text(duplicated_text, encoding="utf-8")
+        right.write_text(duplicated_text, encoding="utf-8")
+
+        findings = batch.findings_for_paths(
+            "s1", str(self.root), [str(dirty), str(left), str(right)], self.cfg, "<end-turn>",
+        )
+
+        self.assertIn("deferred_work_comment", {row["rule"] for row in findings})
+        self.assertIn("duplicate_file_content", {row["rule"] for row in findings})
+
+    def test_a_single_clean_path_yields_no_findings(self):
+        clean = self.root / "clean.py"
+        clean.write_text("value = 1\n", encoding="utf-8")
+
+        findings = batch.findings_for_paths("s1", str(self.root), [str(clean)], self.cfg, "<end-turn>")
+
+        self.assertEqual(findings, [])

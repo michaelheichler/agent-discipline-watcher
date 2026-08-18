@@ -29,20 +29,11 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
 
 
 def _batch_findings(session_id: str, cwd: str, paths: list[str], cfg: dict) -> list[dict]:
+    """Call batch directly here because a fabricated multi-call payload never correlated with a real journal row, so its ledger dedup was always inert."""
     if len(paths) < 2:
         return []
     import batch
-    calls = [
-        {
-            "tool_name": "Write",
-            "tool_use_id": f"end-{index}",
-            "tool_input": {"file_path": path},
-        }
-        for index, path in enumerate(paths)
-    ]
-    rows = batch.findings_for_batch(
-        {"session_id": session_id, "cwd": cwd, "tool_calls": calls}, cfg, "end-turn",
-    )
+    rows = batch.findings_for_paths(session_id, cwd, paths, cfg, "<end-turn>")
     return [row for row in rows if resolve_outcome(row, cfg) == "block"]
 
 

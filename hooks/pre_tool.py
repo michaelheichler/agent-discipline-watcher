@@ -4,7 +4,7 @@ from __future__ import annotations
 import operator
 
 from lib import payloads
-from lib.hookio import PARSE_FAILURE, claude_pretool_response, deny, read_payload, write_payload
+from lib.hookio import PARSE_FAILURE, claude_pretool_response, context, deny, read_payload, write_payload
 from lib.payloads import exact_string_dict
 import pre_bash
 import pre_commit
@@ -12,10 +12,6 @@ import pre_mcp
 import pre_write
 
 DIRECT_WRITERS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
-READ_ONLY_TOOLS = frozenset({
-    "Read", "Glob", "Grep", "WebFetch", "WebSearch", "ToolSearch", "ListAgents",
-    "TaskGet", "TaskList", "TaskOutput",
-})
 
 UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this tool call and blocked it rather than letting it through. "
@@ -71,27 +67,29 @@ def _merge(responses: list[dict]) -> dict:
     ]
     if not messages and not system_messages:
         return {}
-    from lib.hookio import context
     merged = context("\n".join(dict.fromkeys(messages)), "PreToolUse") if messages else {}
     return {**merged, "systemMessage": "\n".join(dict.fromkeys(system_messages))} if system_messages else merged
 
 
-def run(payload: dict, config: dict | None = None) -> dict:
-    """Route here so one process owns input mutation and permission outcomes."""
+def _dispatch(payload: dict, config: dict | None) -> dict:
     if _invalid_payload(payload):
         return deny(UNDECIDABLE + "unreadable hook payload")
     name = payloads.tool_name(payload)
-    if name in READ_ONLY_TOOLS:
-        return {}
     if name in DIRECT_WRITERS:
-        response = _merge([pre_write.run(payload, config)])
-    elif name == "Bash":
-        response = _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
-    elif name.startswith("mcp__"):
-        response = _merge([pre_mcp.run(payload, config)])
-    else:
-        response = {}
-    return response
+        return pre_write.run(payload, config)
+    if name == "Bash":
+        return _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
+    if name.startswith("mcp__"):
+        return pre_mcp.run(payload, config)
+    return {}
+
+
+def run(payload: dict, config: dict | None = None) -> dict:
+    """Route here so that one process owns input mutation and permission outcomes, blocking rather than passing the call through when the dispatcher itself cannot decide."""
+    try:
+        return _dispatch(payload, config)
+    except Exception as exc:
+        return deny(UNDECIDABLE + str(exc))
 
 
 if __name__ == "__main__":

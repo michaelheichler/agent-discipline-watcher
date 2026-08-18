@@ -49,8 +49,9 @@ and the exact snippet before assuming the hook failed.
 ## Do Not
 
 - Do not end a turn while a finding remains in your own changes.
-- Do not silence a hook, delete hook state, or change config to get past a
-  finding unless the user explicitly asked for configuration work.
+- Do not silence a hook, delete hook state, or edit configuration to get past
+  a finding. Configuration changes go through `agent-discipline configure`,
+  not direct edits.
 - Do not add a Craftsman suppression marker. It is an unconditional blocker.
   Fix the reported issue.
 - Do not add prose comments to explain code that should be clearer through names

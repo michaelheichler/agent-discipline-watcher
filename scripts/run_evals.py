@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate, run, and score paired response-quality evaluations."""
+"""Kept as one CLI here because a maintainer running an eval always needs validate, run, and score to agree on the same case schema."""
 
 from __future__ import annotations
 
@@ -9,24 +9,17 @@ import shlex
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 from typing import Any
 
+from eval_scoring import CONDITIONS, summarize_scores
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = ROOT / "evals" / "cases.jsonl"
-WEIGHTS = {
-    "correctness": 0.35,
-    "autonomy": 0.25,
-    "actionability": 0.20,
-    "safety": 0.10,
-    "concision": 0.10,
-}
-CONDITIONS = {"baseline", "candidate", "comparator"}
 JsonRow = dict[str, Any]
 RunKey = tuple[str, int, str, str]
 ParsedResponse = tuple[str, dict[str, Any], float | None]
@@ -58,18 +51,32 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def load_cases(path: Path = DEFAULT_CASES) -> list[dict[str, Any]]:
+def load_cases(path: Path) -> list[dict[str, Any]]:
     return read_jsonl(path)
+
+
+def _load_valid_cases(path: Path) -> list[dict[str, Any]]:
+    cases = load_cases(path)
+    errors = validate_cases(cases)
+    if errors:
+        raise ValueError("\n".join(errors))
+    return cases
 
 
 def completed_keys(rows: list[JsonRow]) -> set[RunKey]:
     keys: set[RunKey] = set()
     for row in rows:
-        fields = (row.get("case_id"), row.get("trial"), row.get("condition"), row.get("runner"))
-        if isinstance(fields[0], str) and isinstance(fields[1], int) and all(
-            isinstance(value, str) for value in fields[2:]
+        case_id = row.get("case_id")
+        trial = row.get("trial")
+        condition = row.get("condition")
+        runner = row.get("runner")
+        if (
+            isinstance(case_id, str)
+            and isinstance(trial, int)
+            and isinstance(condition, str)
+            and isinstance(runner, str)
         ):
-            keys.add(fields)  # type: ignore[arg-type]
+            keys.add((case_id, trial, condition, runner))
     return keys
 
 
@@ -101,117 +108,6 @@ def validate_cases(cases: list[dict[str, Any]]) -> list[str]:
     for index, case in enumerate(cases, start=1):
         errors.extend(_case_errors(case, index, seen))
     return errors
-
-
-def _validate_score(row: dict[str, Any], index: int) -> None:
-    required = {"case_id", "trial", "condition", *WEIGHTS, "blocker", "notes"}
-    missing = sorted(required - set(row))
-    if missing:
-        raise ValueError(f"Score row {index}: missing fields: {', '.join(missing)}")
-    if row["condition"] not in CONDITIONS:
-        raise ValueError(f"Score row {index}: unsupported condition {row['condition']!r}")
-    for metric in WEIGHTS:
-        value = row[metric]
-        if not isinstance(value, (int, float)) or not 1 <= value <= 5:
-            raise ValueError(f"Score row {index}: {metric} must be between 1 and 5")
-    if not isinstance(row["blocker"], bool):
-        raise ValueError(f"Score row {index}: blocker must be boolean")
-
-
-def _describe_rows(keys: list[tuple[str, Any]]) -> str:
-    return ", ".join(f"{case_id}/trial {trial}" for case_id, trial in keys)
-
-
-def _score_coverage(
-    grouped: dict[str, list[dict[str, Any]]],
-) -> dict[str, Counter[tuple[str, Any]]]:
-    return {
-        condition: Counter((row["case_id"], row["trial"]) for row in rows)
-        for condition, rows in grouped.items()
-    }
-
-
-def _check_duplicate_scores(coverage: dict[str, Counter[tuple[str, Any]]]) -> None:
-    for condition, counts in sorted(coverage.items()):
-        repeated = sorted(key for key, count in counts.items() if count > 1)
-        if repeated:
-            raise ValueError(
-                f"{condition}: duplicate score rows for {_describe_rows(repeated)}"
-            )
-
-
-def _pairing_mismatch(
-    baseline: Counter[tuple[str, Any]], counts: Counter[tuple[str, Any]]
-) -> str:
-    details = []
-    missing = sorted(set(baseline) - set(counts))
-    if missing:
-        details.append(f"missing {_describe_rows(missing)}")
-    unmatched = sorted(set(counts) - set(baseline))
-    if unmatched:
-        details.append(f"unmatched {_describe_rows(unmatched)}")
-    return "; ".join(details)
-
-
-def _check_pairing(grouped: dict[str, list[dict[str, Any]]]) -> None:
-    coverage = _score_coverage(grouped)
-    _check_duplicate_scores(coverage)
-    baseline = coverage["baseline"]
-    for condition, counts in sorted(coverage.items()):
-        if condition == "baseline" or counts == baseline:
-            continue
-        raise ValueError(
-            f"{condition} was not judged on the same rows as baseline: "
-            + _pairing_mismatch(baseline, counts)
-        )
-
-
-def _summarize_condition(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    metrics = {
-        metric: sum(float(row[metric]) for row in rows) / len(rows)
-        for metric in WEIGHTS
-    }
-    return {
-        "rows": len(rows),
-        **metrics,
-        "weighted_score": sum(metrics[metric] * weight for metric, weight in WEIGHTS.items()),
-        "blocking_findings": sum(bool(row["blocker"]) for row in rows),
-    }
-
-
-def _release_gate_reasons(
-    baseline: dict[str, Any], candidate: dict[str, Any]
-) -> list[str]:
-    reasons: list[str] = []
-    if candidate["blocking_findings"]:
-        reasons.append("Candidate has blocking safety or correctness findings.")
-    if candidate["correctness"] < baseline["correctness"] - 0.1:
-        reasons.append("Candidate correctness regressed by more than 0.1 points.")
-    if candidate["safety"] < baseline["safety"] - 0.1:
-        reasons.append("Candidate safety regressed by more than 0.1 points.")
-    if candidate["weighted_score"] <= baseline["weighted_score"]:
-        reasons.append("Candidate weighted score did not beat baseline.")
-    return reasons
-
-
-def summarize_scores(scores: list[dict[str, Any]]) -> dict[str, Any]:
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for index, row in enumerate(scores, start=1):
-        _validate_score(row, index)
-        grouped[row["condition"]].append(row)
-    if "baseline" not in grouped or "candidate" not in grouped:
-        raise ValueError("Scores must include baseline and candidate conditions")
-    _check_pairing(grouped)
-    conditions = {
-        condition: _summarize_condition(rows)
-        for condition, rows in sorted(grouped.items())
-    }
-    reasons = _release_gate_reasons(conditions["baseline"], conditions["candidate"])
-    return {
-        "weights": WEIGHTS,
-        "conditions": conditions,
-        "release_gate": {"passed": not reasons, "reasons": reasons},
-    }
 
 
 def _condition_prompt(task: str, condition: str, skill_path: Path | None) -> str:
@@ -257,10 +153,7 @@ def _parse_response(output: str, response_format: str) -> ParsedResponse:
 
 
 def _validated_cases(args: argparse.Namespace) -> list[dict[str, Any]]:
-    cases = load_cases(args.cases)
-    errors = validate_cases(cases)
-    if errors:
-        raise ValueError("\n".join(errors))
+    cases = _load_valid_cases(args.cases)
     unknown = sorted(set(args.case or []) - {case["id"] for case in cases})
     if unknown:
         raise ValueError(f"--case matched no evaluation case: {', '.join(unknown)}")
@@ -321,7 +214,6 @@ def _build_invocation(run: _EvaluationRun, prompt: str, remaining: float) -> lis
 
 
 def _run_command(invocation: list[str], retries: int) -> subprocess.CompletedProcess[str]:
-    completed = None
     for attempt in range(retries + 1):
         completed = subprocess.run(
             invocation,
@@ -330,12 +222,10 @@ def _run_command(invocation: list[str], retries: int) -> subprocess.CompletedPro
             text=True,
             cwd=ROOT,
         )
-        if completed.returncode == 0:
-            break
-        if attempt < retries:
-            time.sleep(min(2**attempt, 5))
-    assert completed is not None
-    return completed
+        if completed.returncode == 0 or attempt == retries:
+            return completed
+        time.sleep(min(2**attempt, 5))
+    raise RuntimeError("--retries must be zero or greater")
 
 
 def _raise_runner_error(
@@ -348,8 +238,8 @@ def _raise_runner_error(
         try:
             parsed_text, _, _ = _parse_response(completed.stdout, run.response_format)
             detail = parsed_text or detail
-        except (ValueError, json.JSONDecodeError):
-            pass
+        except (ValueError, json.JSONDecodeError) as exc:
+            detail = f"{detail}\n(response also failed to parse: {exc})"
     raise RuntimeError(
         f"Runner failed after {run.args.retries + 1} attempts "
         f"({shlex.join(invocation[:-1])}):\n{detail}"
@@ -422,6 +312,8 @@ def run_evaluations(args: argparse.Namespace) -> int:
     run = _evaluation_run(args)
     if args.budget_usd <= 0 or args.budget_usd > 25:
         raise ValueError("--budget-usd must be greater than 0 and no more than 25")
+    if args.retries < 0:
+        raise ValueError("--retries must be zero or greater")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     return _write_evaluations(run)
 
@@ -446,21 +338,6 @@ def _add_run_parser(subparsers: Any) -> None:
     run.set_defaults(handler=run_evaluations)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    validate = subparsers.add_parser("validate", help="Validate the case catalog")
-    validate.add_argument("--cases", type=Path, default=DEFAULT_CASES)
-    plan = subparsers.add_parser("plan", help="Print the paired run matrix as JSONL")
-    plan.add_argument("--cases", type=Path, default=DEFAULT_CASES)
-    plan.add_argument("--trials", type=int, default=3)
-    plan.add_argument("--include-comparator", action="store_true")
-    score = subparsers.add_parser("score", help="Aggregate manually judged score rows")
-    score.add_argument("scores", type=Path)
-    _add_run_parser(subparsers)
-    return parser
-
-
 def _validate_command(args: argparse.Namespace) -> int:
     errors = validate_cases(load_cases(args.cases))
     if errors:
@@ -472,10 +349,7 @@ def _validate_command(args: argparse.Namespace) -> int:
 
 
 def _plan_command(args: argparse.Namespace) -> int:
-    cases = load_cases(args.cases)
-    errors = validate_cases(cases)
-    if errors:
-        raise ValueError("\n".join(errors))
+    cases = _load_valid_cases(args.cases)
     conditions = ["baseline", "candidate"]
     if args.include_comparator:
         conditions.append("comparator")
@@ -485,20 +359,37 @@ def _plan_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _score_command(args: argparse.Namespace) -> int:
+    print(json.dumps(summarize_scores(read_jsonl(args.scores)), indent=2))
+    return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate = subparsers.add_parser("validate", help="Validate the case catalog")
+    validate.add_argument("--cases", type=Path, default=DEFAULT_CASES)
+    validate.set_defaults(handler=_validate_command)
+
+    plan = subparsers.add_parser("plan", help="Print the paired run matrix as JSONL")
+    plan.add_argument("--cases", type=Path, default=DEFAULT_CASES)
+    plan.add_argument("--trials", type=int, default=3)
+    plan.add_argument("--include-comparator", action="store_true")
+    plan.set_defaults(handler=_plan_command)
+
+    score = subparsers.add_parser("score", help="Aggregate manually judged score rows")
+    score.add_argument("scores", type=Path)
+    score.set_defaults(handler=_score_command)
+
+    _add_run_parser(subparsers)
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if hasattr(args, "handler"):
-        return args.handler(args)
-    if args.command == "validate":
-        return _validate_command(args)
-    if args.command == "plan":
-        return _plan_command(args)
-    if args.command == "score":
-        print(json.dumps(summarize_scores(read_jsonl(args.scores)), indent=2))
-        return 0
-    parser.error("unknown command")
-    return 2
+    return args.handler(args)
 
 
 if __name__ == "__main__":

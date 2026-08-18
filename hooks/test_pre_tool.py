@@ -32,6 +32,27 @@ def test_non_object_stdin_is_rejected_by_the_pretool_entrypoint() -> None:
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_deeply_nested_stdin_blocks_instead_of_crashing_the_entrypoint() -> None:
+    nested = "[" * 20000 + "]" * 20000
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).with_name("pre_tool.py"))],
+        input=nested, text=True, capture_output=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    response = json.loads(result.stdout)
+    assert "decision" not in response
+    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_dispatcher_crash_denies_instead_of_raising() -> None:
+    with patch.object(pre_tool, "_dispatch", side_effect=RecursionError("too deep")):
+        response = pre_tool.run({"tool_name": "Write", "tool_input": {"file_path": "a.py", "content": "x"}})
+
+    assert response["decision"] == "block"
+    assert "Cause: too deep" in response["reason"]
+
+
 def test_pretool_entrypoint_denial_returns_feedback_without_ending_turn() -> None:
     payload = {
         "tool_name": "Write",

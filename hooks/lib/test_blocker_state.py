@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from lib import blocker_state
 
 
@@ -30,3 +32,8 @@ def test_reconcile_preserves_concurrent_changes(tmp_path) -> None:
         {"a.py": "new"},
         ["a.py", "b.py", "c.py"],
     )
+
+
+def test_empty_session_id_raises_instead_of_silently_dropping_the_write(tmp_path) -> None:
+    with pytest.raises(ValueError):
+        blocker_state.set_pending("", "", "a.py", "fix a", tmp_path)

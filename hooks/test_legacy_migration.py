@@ -134,7 +134,7 @@ class InstallScriptTests(unittest.TestCase):
             )
             self.assertIn("legacy path-based wiring", result.stdout)
             settings = json.loads((Path(home) / ".claude" / "settings.json").read_text(encoding="utf-8"))
-            self.assertIn('run.sh\\" PreToolUse', json.dumps(settings))
+            self.assertRegex(json.dumps(settings), r'run\.sh\\?"?\s*PreToolUse')
 
     def test_default_claude_branch_is_idempotent(self):
         with tempfile.TemporaryDirectory() as home:
@@ -147,6 +147,25 @@ class InstallScriptTests(unittest.TestCase):
             once = settings.read_text(encoding="utf-8")
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             self.assertEqual(settings.read_text(encoding="utf-8"), once)
+
+    def test_codex_only_flag_does_not_also_run_the_claude_branch(self):
+        with tempfile.TemporaryDirectory() as home:
+            result = subprocess.run(
+                ["bash", str(INSTALL), "--codex", "-y"],
+                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
+            )
+            self.assertNotIn("/plugin marketplace add", result.stdout)
+            self.assertFalse((Path(home) / ".claude" / "settings.json").exists())
+            self.assertTrue((Path(home) / ".codex" / "config.toml").exists())
+
+    def test_claude_only_flag_does_not_also_run_the_codex_branch(self):
+        with tempfile.TemporaryDirectory() as home:
+            result = subprocess.run(
+                ["bash", str(INSTALL), "--claude", "-y"],
+                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
+            )
+            self.assertIn("/plugin marketplace add", result.stdout)
+            self.assertFalse((Path(home) / ".codex" / "config.toml").exists())
 
     def test_default_install_does_not_create_archived_client_config(self):
         with tempfile.TemporaryDirectory() as home:

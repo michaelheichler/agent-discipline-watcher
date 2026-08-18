@@ -11,10 +11,10 @@ CLI = ROOT / "bin" / "agent-discipline"
 
 
 class ConfigCliTests(unittest.TestCase):
-    def run_cli(self, *args, input_text=None, cwd=None):
+    def run_cli(self, *args, input_text=None, cwd=None, check=True):
         return subprocess.run(
             [sys.executable, str(CLI), *args],
-            check=True,
+            check=check,
             text=True,
             capture_output=True,
             input=input_text,
@@ -106,6 +106,54 @@ class ConfigCliTests(unittest.TestCase):
                 "clean_code": True,
             }
 
+    def test_status_reads_a_conflicting_top_level_key_like_the_gate(self):
+        assert CLI.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            (project / ".agent-discipline.json").write_text(
+                json.dumps({"punctuation": False, "checks": {"english": True, "punctuation": True}})
+            )
+
+            result = self.run_cli("status", str(project))
+
+            assert json.loads(result.stdout)["checks"] == {
+                "punctuation": False,
+                "english": True,
+                "clean_code": True,
+            }
+
+    def test_configure_clears_a_conflicting_top_level_check_key(self):
+        assert CLI.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            (project / ".agent-discipline.json").write_text(json.dumps({"punctuation": False}))
+
+            self.run_cli("configure", str(project), "--checks", "punctuation,english")
+
+            config = json.loads((project / ".agent-discipline.json").read_text())
+            assert "punctuation" not in config
+            assert config["checks"] == {
+                "punctuation": True,
+                "english": True,
+                "clean_code": False,
+            }
+
+    def test_configure_refuses_to_shadow_an_ancestor_config(self):
+        assert CLI.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            child = project / "src"
+            child.mkdir(parents=True)
+            (project / ".agent-discipline.json").write_text(json.dumps({"checks": {"english": False}}))
+
+            result = self.run_cli("configure", str(child), "--checks", "punctuation", check=False)
+
+            assert result.returncode != 0
+            assert "shadow" in result.stderr
+            assert not (child / ".agent-discipline.json").exists()
+
     def test_interactive_configure_accepts_numbers(self):
         assert CLI.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,6 +239,19 @@ class ExemptFamilyCliTests(unittest.TestCase):
                          "--families", "english")
             written = self._config(project)["exempt_families"]
             self.assertEqual(written, {"last_assistant_message.md": ["english"]})
+
+    def test_exempt_family_refuses_to_shadow_an_ancestor_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(tmp)
+            child = project / "src"
+            child.mkdir()
+            (project / ".agent-discipline.json").write_text(json.dumps({"exempt_families": {}}))
+
+            result = self.run_cli("exempt-family", "a.md", str(child), "--families", "english", check=False)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("shadow", result.stderr)
+            self.assertFalse((child / ".agent-discipline.json").exists())
 
     def test_clear_removes_one_pattern_and_keeps_the_rest(self):
         with tempfile.TemporaryDirectory() as tmp:

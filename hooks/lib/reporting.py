@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
-import tempfile
+import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,19 +19,52 @@ except ImportError:
 
 LEDGER_FILENAME = "ledger.jsonl"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
+REPORT_DIRNAME = "reports"
+MAX_REPORT_FILES = 300
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
 OUTCOMES = ("block", "inject", "would_block", "no_edits", "release")
 
+_UNSAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_.-]")
 
-def write_full_report(findings: list[dict]) -> str:
-    descriptor, raw_path = tempfile.mkstemp(prefix="agent-discipline-watcher-", suffix=".json")
-    path = Path(raw_path)
+
+def _reports_dir() -> Path:
+    return session_state.plugin_data_home() / REPORT_DIRNAME
+
+
+def _safe_component(value: object, fallback: str) -> str:
+    text = _UNSAFE_COMPONENT_RE.sub("_", str(value or "")).strip("._")[:48]
+    return text or fallback
+
+
+def _prune_reports(directory: Path, keep: int) -> None:
+    """Bounded here because nothing ever deleted a written report, and one blocking gate can write three per turn."""
+    try:
+        entries = sorted(directory.glob("*.json"), key=lambda entry: entry.stat().st_mtime)
+    except OSError:
+        return
+    for stale in entries[: max(len(entries) - keep, 0)]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
+def write_full_report(findings: list[dict], config: dict | None = None) -> str:
+    """Named by session and turn, and pruned on write, because the prior tempfile never got deleted by anything."""
+    fields = config or {}
+    session_id = _safe_component(fields.get("session_id"), "session")
+    turn_id = _safe_component(fields.get("turn_id"), "turn")
+    directory = _reports_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{session_id}-{turn_id}-{uuid.uuid4().hex}.json"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.fchmod(descriptor, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump(findings, handle, ensure_ascii=True, indent=2)
+    _prune_reports(directory, MAX_REPORT_FILES)
     return str(path)
 
 
@@ -48,7 +82,7 @@ def compact_block(
 ) -> tuple[str, str]:
     max_rows = int((config or {}).get("max_rows", 8))
     unique = _deduplicated(findings)
-    report = write_full_report(unique)
+    report = write_full_report(unique, config)
     rows = [format_row(item) for item in unique[:max_rows]]
     extra = len(unique) - len(rows)
     if extra > 0:
@@ -121,6 +155,11 @@ def _default_ledger_root() -> Path:
 
 def _ledger_dir(root: str | os.PathLike[str] | None) -> Path:
     return Path(root) if root is not None else _default_ledger_root()
+
+
+def ledger_path(root: str | os.PathLike[str] | None = None) -> Path:
+    """Exposed because bin/agent-discipline needs the ledger file location without reaching into this module's private layout."""
+    return _ledger_dir(root) / LEDGER_FILENAME
 
 
 def now_iso() -> str:
@@ -262,7 +301,8 @@ def run_with_ledger(
             )
 
 
-def _read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> list[dict]:
+def read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> list[dict]:
+    """Public because batch.py must read this same ledger without duplicating the file's own parsing loop."""
     path = _ledger_dir(root) / filename
     if not path.exists():
         return []
@@ -279,13 +319,17 @@ def _read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> li
     return rows
 
 
+# Kept because callers outside this module referenced the old private name before it was promoted.
+_read_jsonl = read_jsonl
+
+
 def observe_report(
     family: str, root: str | os.PathLike[str] | None = None
 ) -> list[dict]:
     """Return a family's would_block rows, oldest first."""
     return [
         row
-        for row in _read_jsonl(LEDGER_FILENAME, root)
+        for row in read_jsonl(LEDGER_FILENAME, root)
         if row.get("outcome") == "would_block" and row.get("family") == family
     ]
 
@@ -316,14 +360,14 @@ def false_signal_rate(
     # Denominator is distinct turn ids, not row count, because a turn that fired many rows is one exposure.
     turn_ids = {
         row["turn_id"]
-        for row in _read_jsonl(LEDGER_FILENAME, root)
+        for row in read_jsonl(LEDGER_FILENAME, root)
         if isinstance(row.get("turn_id"), str) and row.get("turn_id")
     }
     if len(turn_ids) < 20:
         return None
     false_count = sum(
         1
-        for row in _read_jsonl(ADJUDICATION_FILENAME, root)
+        for row in read_jsonl(ADJUDICATION_FILENAME, root)
         if row.get("family") == family and row.get("label") is False
     )
     return false_count * 20 / len(turn_ids)

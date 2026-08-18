@@ -1,17 +1,18 @@
-"""Block MCP calls while their session-scoped server backoff is active."""
+"""Blocked here because any MCP server with a filesystem-write tool could otherwise edit the watcher's own config, state, or install without passing through any other gate."""
 
 from __future__ import annotations
 
 import math
+import os
 import sys
 import time
+from pathlib import Path
 
 from failure import (
     _MAX_TIMESTAMP,
     MCP_HEALTH_KEY,
     TrustedPayload,
     _config_roots,
-    _exact_string_dict,
     _is_exact_int,
     _is_exact_number,
     _safe_config,
@@ -22,7 +23,10 @@ from failure import (
 from lib import session_state
 from lib.config import effective_config
 from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
-from lib.reporting import record_decision, run_with_ledger
+from lib.mcp_paths import mcp_target_paths, mcp_write_contents
+from lib.payloads import exact_string_dict
+from lib.protected import path_findings
+from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
 
 PRE_TOOL_EVENT = "PreToolUse"
 UNDECIDABLE = (
@@ -32,11 +36,11 @@ UNDECIDABLE = (
 
 
 def _active_backoff(state: dict, server: str, now: float) -> tuple[int, float] | None:
-    trusted_state = _exact_string_dict(state)
-    health = _exact_string_dict(trusted_state.get(MCP_HEALTH_KEY))
+    trusted_state = exact_string_dict(state)
+    health = exact_string_dict(trusted_state.get(MCP_HEALTH_KEY))
     if not health:
         return None
-    entry = _exact_string_dict(health.get(server))
+    entry = exact_string_dict(health.get(server))
     if not entry:
         return None
     count = entry.get("failure_count")
@@ -77,7 +81,83 @@ def _record_backoff(
     )
 
 
-def _pre_mcp_gate(
+def _mcp_tool_input(raw_payload: object) -> dict[str, object]:
+    fields = exact_string_dict(raw_payload)
+    for key in ("tool_input", "toolInput", "input"):
+        value = exact_string_dict(fields.get(key))
+        if value:
+            return value
+    return {}
+
+
+def _resolved_path(path: str, cwd: str) -> str:
+    """Left tilde-prefixed here for path_findings to expand, since Path.expanduser() raises on an unresolvable ~user and path_findings already has a dedicated fallback finding for that case."""
+    if path.startswith("~"):
+        return path
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return str(candidate)
+    base = Path(cwd) if cwd else Path(os.getcwd())
+    return str(base / candidate)
+
+
+def _protected_findings(raw_payload: object, cwd: str) -> list[dict]:
+    """Scanned once per candidate body because grants_escape must judge each field alone, and rows dedupe because the path-based findings repeat per candidate."""
+    tool_input = _mcp_tool_input(raw_payload)
+    candidates = mcp_write_contents(tool_input) or [None]
+    findings: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for path in mcp_target_paths(tool_input):
+        resolved = _resolved_path(path, cwd)
+        for content in candidates:
+            for row in path_findings(resolved, content=content):
+                key = (row["rule"], row["detail"])
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(row)
+    return findings
+
+
+def _protected_verdict(raw_payload: object, cwd: str) -> dict:
+    """Denied without a ledger row because this path runs exactly when session identity or config state is unusable, and observability must not gate protection."""
+    findings = _protected_findings(raw_payload, cwd)
+    if not findings:
+        return allow()
+    summary = " ".join(f"{item['detail']}. {item['action']}" for item in findings[:3])
+    return deny(summary)
+
+
+def _fail_safe(raw_payload: object) -> dict:
+    """Backoff may degrade to allow, the protected scan may not, so an errored run still re-checks the write target before letting the call through."""
+    try:
+        fields = exact_string_dict(raw_payload)
+        raw_cwd = fields.get("cwd")
+        return _protected_verdict(raw_payload, raw_cwd if isinstance(raw_cwd, str) else "")
+    except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
+        return deny(UNDECIDABLE + str(exc))
+
+
+def _protected_response(
+    raw_payload: object,
+    payload: TrustedPayload,
+    config: dict,
+    ledger_root: str | None,
+    turn_id: str,
+) -> dict:
+    started = time.monotonic()
+    findings = _protected_findings(raw_payload, payload["cwd"])
+    if not findings:
+        return {}
+    decisions = record_findings(
+        session_id=payload["session_id"], hook="pre_mcp", event=PRE_TOOL_EVENT,
+        findings=findings, turn_id=turn_id, tool_use_id=payload["tool_use_id"],
+        duration_ms=int((time.monotonic() - started) * 1000), root=ledger_root, config=config,
+    )
+    kind, message = verdict_message(decisions, config)
+    return deny(message) if kind == "block" else {}
+
+
+def _backoff_response(
     payload: TrustedPayload,
     state_root: str | None,
     ledger_root: str | None,
@@ -105,8 +185,25 @@ def _pre_mcp_gate(
     return deny(reason)
 
 
-def _run_pre_mcp(
+def _pre_mcp_gate(
+    raw_payload: object,
     payload: TrustedPayload,
+    config: dict,
+    state_root: str | None,
+    ledger_root: str | None,
+    current_time: float | None,
+    turn_id: str,
+) -> dict:
+    protected = _protected_response(raw_payload, payload, config, ledger_root, turn_id)
+    if protected:
+        return protected
+    return _backoff_response(payload, state_root, ledger_root, current_time, turn_id)
+
+
+def _run_pre_mcp(
+    raw_payload: object,
+    payload: TrustedPayload,
+    config: dict,
     state_root: str | None,
     ledger_root: str | None,
     current_time: float | None,
@@ -115,7 +212,7 @@ def _run_pre_mcp(
         hook="pre_mcp",
         payload=dict(payload),
         gate=lambda turn_id: _pre_mcp_gate(
-            payload, state_root, ledger_root, current_time, turn_id,
+            raw_payload, payload, config, state_root, ledger_root, current_time, turn_id,
         ),
         ledger_root=ledger_root,
         state_root=state_root,
@@ -123,27 +220,24 @@ def _run_pre_mcp(
 
 
 def run(payload: dict, config: dict | None = None, now: float | None = None) -> dict:
-    """Deny a known-unhealthy MCP server until expiry, otherwise fail safe."""
+    """Deny an MCP call that targets a protected path, or a known-unhealthy server until expiry, otherwise fail safe."""
     if payload is PARSE_FAILURE:
         return deny(UNDECIDABLE + "unreadable hook payload")
     try:
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:
-            return allow()
+            return _protected_verdict(payload, trusted_payload["cwd"])
         trusted_config = _safe_config(config)
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
         state_root, ledger_root = _config_roots(trusted_config)
         clock = time.time() if now is None else now
         return _run_pre_mcp(
-            trusted_payload,
-            state_root,
-            ledger_root,
-            _valid_now(clock),
+            payload, trusted_payload, trusted_config, state_root, ledger_root, _valid_now(clock),
         )
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: pre-MCP hook failed: {exc}\n")
-        return allow()
+        return _fail_safe(payload)
 
 
 if __name__ == "__main__":

@@ -4,13 +4,13 @@ import operator
 import re
 import sys
 import time
-import unicodedata
 from contextlib import suppress
 from typing import NamedTuple, cast
 
 from lib import payloads, reporting
 from lib.config import effective_hook_config, gate_state
 from lib.hookio import read_payload, write_payload
+from lib.prompt_text import has_file_token, mask_examples
 from lib.scanner import scan_all, scannable_text
 
 PROMPT_RULESET_VERSION = 1
@@ -56,11 +56,6 @@ PROMPT_RULES = (
     ),
 )
 
-_QUOTED_RE = re.compile(
-    r"(?<!\w)\"(?:\\.|[^\"\\\n])*\"|"
-    r"(?<!\w)'(?:\\.|[^'\\\n])*'|"
-    r"(?<!\w)\u201c[^\u201d\n]*\u201d|(?<!\w)\u2018[^\u2019\n]*\u2019"
-)
 _NEGATION_OPERATOR = (
     r"(?:do\s+not|don['\u2019]t|never|avoid|refuse\s+to|must\s+not|"
     r"should\s+not|shouldn['\u2019]t)"
@@ -71,12 +66,6 @@ _EXPLANATORY_RE = re.compile(
     r"\b(?:phrase|wording|example)\b[^,;:.!?\n]*$", re.IGNORECASE
 )
 _SESSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z", re.ASCII)
-_AT_ALNUM = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-_AT_SEGMENT = _AT_ALNUM | frozenset("_+~.-")
-_AT_BOUNDARY_EXCLUDED = _AT_ALNUM | frozenset("_@./+~-")
-_AT_TERMINATORS = frozenset(" \t\n\r\v\f,;:!?()[]{}")
-_MIN_FENCE_WIDTH = 3
-_MAX_FENCE_INDENT = 3
 _MAX_CONFIG_DEPTH = 5
 _MAX_CONFIG_ITEMS = 256
 _MAX_CONFIG_TEXT = 4096
@@ -137,21 +126,8 @@ def _safe_config(config: object) -> dict[str, object]:
     return cast(dict[str, object], copied) if operator.is_(type(copied), dict) else {}
 
 
-def _caller_mentions(config: object, key: str) -> bool:
-    if not isinstance(config, dict):
-        return False
-    with suppress(Exception):
-        for candidate in dict.keys(cast("dict[object, object]", config)):
-            if operator.is_(type(candidate), str) and candidate == key:
-                return True
-    return False
-
-
 def _resolved_config(config: dict[str, object], cwd: str) -> dict[str, object]:
-    try:
-        return effective_hook_config(config, cwd or None)
-    except (OSError, ValueError, TypeError, RuntimeError):
-        return effective_hook_config(config, None)
+    return effective_hook_config(config, cwd or None)
 
 
 def _prompt(payload: object) -> str:
@@ -168,139 +144,6 @@ def _session_id(payload: object) -> str:
     return session_id if _SESSION_RE.fullmatch(session_id) else ""
 
 
-def _mask_quoted(text: str) -> str:
-    return _QUOTED_RE.sub(lambda match: " " * len(match.group(0)), text)
-
-
-def _fence_body(line: str) -> str:
-    indent = len(line) - len(line.lstrip(" "))
-    return line[indent:] if indent <= _MAX_FENCE_INDENT else ""
-
-
-def _fence_opener_width(line: str) -> int:
-    body = _fence_body(line)
-    width = len(body) - len(body.lstrip("`"))
-    if width < _MIN_FENCE_WIDTH:
-        return 0
-    return width if "`" not in body[width:] else 0
-
-
-def _is_fence_closer(line: str, width: int) -> bool:
-    body = _fence_body(line)
-    backticks = len(body) - len(body.lstrip("`"))
-    return backticks >= width and not body[backticks:].strip(" \t\r\n")
-
-
-def _mask_fenced(text: str) -> str:
-    if "```" not in text:
-        return text
-    lines = text.splitlines(keepends=True)
-    offsets = [0] * len(lines)
-    for index in range(1, len(lines)):
-        offsets[index] = offsets[index - 1] + len(lines[index - 1])
-    masked = list(text)
-    index = 0
-    while index < len(lines):
-        width = _fence_opener_width(lines[index])
-        if not width:
-            index += 1
-            continue
-        start = offsets[index]
-        end = start + len(lines[index])
-        index += 1
-        while index < len(lines):
-            end = offsets[index] + len(lines[index])
-            closer = _is_fence_closer(lines[index], width)
-            index += 1
-            if closer:
-                break
-        for position in range(start, end):
-            if masked[position] != "\n":
-                masked[position] = " "
-    return "".join(masked)
-
-
-def _find_backtick_run(text: str, start: int, width: int) -> int:
-    index = start
-    while index < len(text):
-        if text[index] != "`":
-            index += 1
-            continue
-        end = index + 1
-        while end < len(text) and text[end] == "`":
-            end += 1
-        if end - index == width:
-            return index
-        index = end
-    return -1
-
-
-def _mask_code_width(text: str, width: int) -> str:
-    if "`" * width not in text:
-        return text
-    masked = list(text)
-    start = _find_backtick_run(text, 0, width)
-    while start != -1:
-        close = _find_backtick_run(text, start + width, width)
-        if close == -1:
-            break
-        for position in range(start, close + width):
-            if masked[position] != "\n":
-                masked[position] = " "
-        start = _find_backtick_run(text, close + width, width)
-    return "".join(masked)
-
-
-def _mask_inline_code(text: str) -> str:
-    return _mask_code_width(_mask_code_width(text, 2), 1)
-
-
-def _mask_examples(text: str) -> str:
-    return _mask_quoted(_mask_inline_code(_mask_fenced(text)))
-
-
-def _file_token_end(text: str, at: int) -> int:
-    end = at + 1
-    has_alnum = False
-    segment_open = False
-    for index in range(at + 1, len(text) + 1):
-        char = text[index] if index < len(text) else ""
-        if char in _AT_SEGMENT:
-            has_alnum = has_alnum or char in _AT_ALNUM
-            segment_open = True
-            end = index + 1
-        elif char == "/" and segment_open:
-            segment_open = False
-        else:
-            break
-    if end == at + 1 or not has_alnum:
-        return -1
-    return end if end == len(text) or _is_token_terminator(text[end]) else -1
-
-
-def _is_token_terminator(char: str) -> bool:
-    return char in _AT_TERMINATORS or char.isspace() or char == "`"
-
-
-def _is_token_boundary(char: str) -> bool:
-    return (
-        char in _AT_BOUNDARY_EXCLUDED
-        or char.isalnum()
-        or unicodedata.category(char).startswith("M")
-    )
-
-
-def _has_file_token(text: str) -> bool:
-    at = text.find("@")
-    while at != -1:
-        if (at == 0 or not _is_token_boundary(text[at - 1])) and (
-            _file_token_end(text, at) != -1
-        ):
-            return True
-        at = text.find("@", at + 1)
-    return False
-
-
 def _is_explanatory(text: str, start: int) -> bool:
     prefix = text[max(0, start - _MAX_PHRASE_CONTEXT) : start]
     chain = _NEGATION_CHAIN_RE.search(prefix)
@@ -311,7 +154,7 @@ def _is_explanatory(text: str, start: int) -> bool:
 
 
 def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
-    scan_text = _mask_examples(text)
+    scan_text = mask_examples(text)
     matches: dict[tuple[str, str], str] = {}
     for rule in PROMPT_RULES:
         if any(
@@ -333,7 +176,7 @@ def _data_boundary_enabled(cfg: dict[str, object]) -> bool:
 def _data_boundary_findings(
     text: str, cfg: dict[str, object]
 ) -> dict[tuple[str, str], str]:
-    if not _data_boundary_enabled(cfg) or not _has_file_token(_mask_examples(text)):
+    if not _data_boundary_enabled(cfg) or not has_file_token(mask_examples(text)):
         return {}
     return {DATA_BOUNDARY_FINDING: "Use the Read tool explicitly."}
 
@@ -468,7 +311,7 @@ def run(payload: object, config: object = None) -> dict:
             FIREWALL_MODE_KEY in caller_fields,
             caller_fields.get(FIREWALL_MODE_KEY),
         )
-        boundary_supplied = _caller_mentions(config, "data_boundary")
+        boundary_supplied = "data_boundary" in caller_fields
         safe_config = _safe_config(config)
         cfg = _resolved_config(safe_config, _cwd(payload))
         if boundary_supplied and "data_boundary" not in safe_config:

@@ -1,6 +1,6 @@
 if [ -n "${ZSH_VERSION:-}" ]; then
-  autoload -Uz +X compinit && compinit
-  autoload -Uz +X bashcompinit && bashcompinit
+  typeset -f compdef >/dev/null 2>&1 || { autoload -Uz +X compinit && compinit; }
+  typeset -f complete >/dev/null 2>&1 || { autoload -Uz +X bashcompinit && bashcompinit; }
 fi
 _adw_cli() {
   local cur="${COMP_WORDS[COMP_CWORD]}" prev="${COMP_WORDS[COMP_CWORD-1]}"

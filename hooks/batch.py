@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import json
-import math
-import operator
 import os
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeGuard, TypeVar, cast
-
-import pre_bash
+from typing import cast
 
 from lib import blocker_state, payloads, reporting
+from lib.canonical import (
+    _INVALID,
+    Canonical,
+    _canonical_value,
+    _is_exact_type,
+    _validated_mapping,
+)
 from lib.config import effective_config, effective_hook_config, resolve_outcome
 from lib.hookio import advise, read_payload, write_payload
 from lib.reporting import run_with_ledger
@@ -25,7 +26,6 @@ BATCH_EVENT = "PostToolBatch"
 UNDECIDABLE_KEY = "<batch-error>"
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
-PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
 # Mirrors the PostToolUse matcher in hooks/hooks.json, including Bash, because PostToolBatch has no matcher of its own.
 WRITE_TOOL_NAMES = frozenset({
     "write", "edit", "multiedit", "notebookedit", "apply_patch", "bash",
@@ -33,85 +33,6 @@ WRITE_TOOL_NAMES = frozenset({
 
 
 StatFingerprint = tuple[int, int, int, int, int]
-ExactType = TypeVar("ExactType")
-
-
-def _is_exact_type(value: object, expected: type[ExactType]) -> TypeGuard[ExactType]:
-    return operator.is_(type(value), expected)
-
-
-class _CanonicalNode:
-
-    __slots__ = ("children", "keys", "kind", "scalar", "structural_hash")
-    children: tuple[_CanonicalNode, ...]
-    keys: tuple[str, ...]
-    kind: str
-    scalar: object
-    structural_hash: int
-
-    def __init__(
-        self,
-        kind: str,
-        *,
-        scalar: object = None,
-        keys: tuple[str, ...] = (),
-        children: tuple[_CanonicalNode, ...] = (),
-    ) -> None:
-        self.kind = kind
-        self.scalar = scalar
-        self.keys = keys
-        self.children = children
-        self.structural_hash = hash(
-            (kind, scalar, keys, tuple(child.structural_hash for child in children))
-        )
-
-    def __hash__(self) -> int:
-        return self.structural_hash
-
-    def __eq__(self, other: object) -> bool:
-        if not _is_exact_type(other, _CanonicalNode):
-            return NotImplemented
-        candidate = other
-        if self.structural_hash != candidate.structural_hash:
-            return False
-        pending = [(self, candidate)]
-        compared: set[tuple[int, int]] = set()
-        while pending:
-            left, right = pending.pop()
-            pair = (id(left), id(right))
-            if pair in compared:
-                continue
-            compared.add(pair)
-            if (
-                left.kind != right.kind
-                or left.scalar != right.scalar
-                or left.keys != right.keys
-                or len(left.children) != len(right.children)
-            ):
-                return False
-            pending.extend(zip(left.children, right.children, strict=True))
-        return True
-
-
-Canonical = _CanonicalNode
-CanonicalTask = tuple[str, object, object]
-
-
-@dataclass(frozen=True, slots=True)
-class _CanonicalFrame:
-    identity: int
-    kind: str
-    keys: tuple[str, ...]
-    child_count: int
-
-
-@dataclass(slots=True)
-class _CanonicalTraversal:
-    tasks: list[CanonicalTask]
-    values: list[Canonical]
-    active: set[int]
-    completed: dict[int, Canonical]
-
 
 NormalizedSignature = tuple[str, str, Canonical | None, tuple[str, ...]]
 NormalizedCall = tuple[str, str, Canonical | None, tuple[str, ...], tuple[str, ...]]
@@ -138,138 +59,14 @@ def _selected_tool_input(call: dict) -> object:
     return selected
 
 
-_INVALID = object()
-
-
-def _canonical_atom(value: object) -> Canonical | object:
-    if value is None:
-        return Canonical("none")
-    if _is_exact_type(value, bool):
-        return Canonical("bool", scalar=value)
-    if _is_exact_type(value, int):
-        return Canonical("int", scalar=value)
-    if _is_exact_type(value, float):
-        return (
-            Canonical("float", scalar=value.hex()) if math.isfinite(value) else _INVALID
-        )
-    if _is_exact_type(value, str):
-        return Canonical("str", scalar=value)
-    return _INVALID
-
-
-def _exact_dict_keys(mapping: dict[object, object]) -> tuple[object, ...]:
-    return tuple(mapping)
-
-
-def _validated_mapping(value: object) -> dict[str, object] | None:
-    if not _is_exact_type(value, dict):
-        return None
-    mapping = cast(dict[object, object], value)
-    if any(not _is_exact_type(key, str) for key in _exact_dict_keys(mapping)):
-        return None
-    return cast(dict[str, object], mapping)
-
-
-def _finish_container(state: _CanonicalTraversal, frame: _CanonicalFrame) -> None:
-    child_start = len(state.values) - frame.child_count
-    children = tuple(state.values[child_start:])
-    del state.values[child_start:]
-    state.active.remove(frame.identity)
-    node = Canonical(frame.kind, keys=frame.keys, children=children)
-    state.completed[frame.identity] = node
-    state.values.append(node)
-
-
-def _schedule_list(sequence: list[object], state: _CanonicalTraversal) -> bool:
-    identity = id(sequence)
-    if identity in state.completed:
-        state.values.append(state.completed[identity])
-        return True
-    if identity in state.active:
-        return False
-    state.active.add(identity)
-    frame = _CanonicalFrame(identity, "list", (), len(sequence))
-    state.tasks.append(("finish", sequence, frame))
-    state.tasks.extend(("visit", child, None) for child in reversed(sequence))
-    return True
-
-
-def _schedule_dict(mapping: dict[object, object], state: _CanonicalTraversal) -> bool:
-    identity = id(mapping)
-    if identity in state.completed:
-        state.values.append(state.completed[identity])
-        return True
-    if identity in state.active:
-        return False
-    state.active.add(identity)
-    raw_keys = _exact_dict_keys(mapping)
-    if any(not _is_exact_type(key, str) for key in raw_keys):
-        return False
-    string_keys = tuple(sorted(cast(str, key) for key in raw_keys))
-    frame = _CanonicalFrame(identity, "dict", string_keys, len(string_keys))
-    state.tasks.append(("finish", mapping, frame))
-    state.tasks.extend(("visit", mapping[key], None) for key in reversed(string_keys))
-    return True
-
-
-def _canonical_value(value: object) -> Canonical | object:
-    state = _CanonicalTraversal([("visit", value, None)], [], set(), {})
-    while state.tasks:
-        action, item, metadata = state.tasks.pop()
-        if action == "finish":
-            _finish_container(state, cast(_CanonicalFrame, metadata))
-            continue
-
-        if _is_exact_type(item, list):
-            if not _schedule_list(cast(list[object], item), state):
-                return _INVALID
-        elif _is_exact_type(item, dict):
-            if not _schedule_dict(cast(dict[object, object], item), state):
-                return _INVALID
-        else:
-            atom = _canonical_atom(item)
-            if atom is _INVALID:
-                return _INVALID
-            state.values.append(cast(Canonical, atom))
-    return state.values[0]
-
-
 def _is_write_tool(tool_name: str) -> bool:
     """Report whether the call can change a file, so that a file the agent only read is never scanned as an edit."""
     return tool_name.lower() in WRITE_TOOL_NAMES
 
 
-def _edited_paths(tool_input: dict) -> tuple[str, ...]:
-    path = tool_input.get("file_path") or tool_input.get("path")
-    if path:
-        return (path,) if _is_exact_type(path, str) else ()
-    command = tool_input.get("command")
-    if command:
-        command_text = command if _is_exact_type(command, str) else (
-            " ".join(str(part) for part in command) if _is_exact_type(command, list) else None
-        )
-        if command_text:
-            bash_paths = tuple(pre_bash.write_paths(command_text))
-            if bash_paths:
-                return bash_paths
-    patch = (
-        tool_input.get("patch")
-        or tool_input.get("command")
-        or tool_input.get("input")
-        or ""
-    )
-    if _is_exact_type(patch, list):
-        if any(not _is_exact_type(part, str) for part in patch):
-            return ()
-        patch = "\n".join(patch)
-    if not _is_exact_type(patch, str):
-        return ()
-    return tuple(match.strip().strip('"') for match in PATCH_FILE.findall(patch))
-
-
 def _normalized_path(raw_path: str, cwd: Path) -> str:
-    path = Path(raw_path).expanduser()
     try:
+        path = Path(raw_path).expanduser()
         return str((path if path.is_absolute() else cwd / path).resolve(strict=False))
     except (OSError, RuntimeError, ValueError):
         return raw_path
@@ -310,7 +107,7 @@ def _normalized_call(call: dict, cwd: Path) -> _NormalizedCall:
     )
     canonical = cast(Canonical, canonical_value) if valid else None
     writes = valid and _is_write_tool(tool_name)
-    raw_paths = _edited_paths(cast(dict, tool_input)) if writes else ()
+    raw_paths = payloads.edited_paths(call) if writes else ()
     signature = (
         call_id,
         tool_name,
@@ -320,28 +117,25 @@ def _normalized_call(call: dict, cwd: Path) -> _NormalizedCall:
     return _NormalizedCall(signature, raw_paths, valid)
 
 
-def _call_entries(payload: dict) -> list[tuple[str, str, Path]]:
-    cwd = Path(payloads.cwd(payload) or ".")
-    calls, _all_valid = _normalized_calls(payload)
+def _entries_from_calls(
+    calls: list[NormalizedCall], cwd: Path
+) -> list[tuple[str, str, Path]]:
     return [
-        (
-            call_id,
-            raw_path,
-            Path(raw_path) if Path(raw_path).is_absolute() else cwd / raw_path,
-        )
+        (call_id, raw_path, payloads.resolved_path(raw_path, cwd))
         for call_id, _tool_name, _tool_input, _normalized, raw_paths in calls
         for raw_path in raw_paths
     ]
 
 
-def _has_complete_unique_ids(payload: dict, turn_id: str) -> bool:
-    calls, all_valid = _normalized_calls(payload)
+def _complete_unique_ids(
+    calls: list[NormalizedCall], all_valid: bool, session_id: str, turn_id: str
+) -> bool:
     ids = [
         call_id for call_id, _tool_name, _tool_input, _normalized, _raw_paths in calls
     ]
     return bool(
         all_valid
-        and payloads.session_id(payload)
+        and session_id
         and turn_id
         and calls
         and all(ids)
@@ -369,49 +163,34 @@ def _exact_calls(payload: dict) -> list[dict] | None:
     return calls
 
 
-def _reported_entries(payload: dict, cfg: dict, turn_id: str) -> set[tuple[str, str]]:
-    session_id = payloads.session_id(payload)
-    calls, _all_valid = _normalized_calls(payload)
-    live_ids = {
-        call_id for call_id, _tool_name, _tool_input, _normalized, _raw_paths in calls
-    }
-    return {
-        (row["tool_use_id"], row["path"])
-        for row in _ledger_rows(cfg.get("ledger_root"))
-        if row.get("session_id") == session_id
-        and row.get("turn_id") == turn_id
-        and row.get("hook") == "record"
+def _is_reported_edit_row(row: dict, live_ids: set[str]) -> bool:
+    return (
+        row.get("hook") == "record"
         and row.get("event") == "edit"
         and isinstance(row.get("tool_use_id"), str)
         and row.get("tool_use_id") in live_ids
         and isinstance(row.get("path"), str)
-        and row.get("path")
-    }
-
-
-def _ledger_rows(root: object) -> list[dict]:
-    directory = (
-        Path(root)
-        if isinstance(root, (str, Path))
-        else Path.home() / ".agent-discipline" / "ledger"
+        and bool(row.get("path"))
     )
-    try:
-        lines = (
-            (directory / reporting.LEDGER_FILENAME)
-            .read_text(encoding="utf-8")
-            .splitlines()
-        )
-    except OSError:
-        return []
-    rows = []
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
+
+
+def _reported_entries(
+    calls: list[NormalizedCall], cfg: dict, session_id: str, turn_id: str
+) -> set[tuple[str, str]]:
+    """Read backward and stop at the session's own prior turn, because the ledger is append-only for the install's life and only the current turn's rows matter here."""
+    live_ids = {
+        call_id for call_id, _tool_name, _tool_input, _normalized, _raw_paths in calls
+    }
+    reported: set[tuple[str, str]] = set()
+    rows = reporting.read_jsonl(reporting.LEDGER_FILENAME, cfg.get("ledger_root"))
+    for row in reversed(rows):
+        if row.get("session_id") != session_id:
             continue
-        if isinstance(row, dict):
-            rows.append(row)
-    return rows
+        if row.get("turn_id") != turn_id:
+            break
+        if _is_reported_edit_row(row, live_ids):
+            reported.add((row["tool_use_id"], row["path"]))
+    return reported
 
 
 def _duplicate_file_findings(
@@ -453,7 +232,6 @@ def _duplicate_row(paths: list[str]) -> dict:
         "rule": "duplicate_file_content",
         "line": 1,
         "detail": "Exact substantive content is duplicated across batch files.",
-        "force": True,
         "snippet": joined[:180],
         "action": "Keep one implementation and remove or extract the duplicate.",
         "path": joined,
@@ -471,18 +249,12 @@ def _stat_fingerprint(file_stat: os.stat_result) -> StatFingerprint:
     )
 
 
-def _scan_path(path: Path, cfg: dict, session_id: str) -> list[dict]:
+def _scan_path(path: Path, cfg: dict) -> list[dict]:
     text = _read_path(path, cfg)
     if text is None:
         return []
-    findings = []
     findings = strip_committed(path, scan_all(str(path), text, cfg), cfg)
-    stamped = []
-    for finding in findings:
-        item = dict(finding)
-        item["path"] = str(path)
-        stamped.append(item)
-    return stamped
+    return [{**finding, "path": str(path)} for finding in findings]
 
 
 def _read_path(path: Path, cfg: dict) -> str | None:
@@ -514,6 +286,28 @@ def _sanitized_payload(payload: object) -> dict:
     return sanitized
 
 
+def _findings_for_calls(
+    calls: list[NormalizedCall],
+    all_valid: bool,
+    entries: list[tuple[str, str, Path]],
+    cfg: dict,
+    session_id: str,
+    turn_id: str,
+) -> list[dict]:
+    findings = _duplicate_file_findings(entries, cfg)
+    if not _complete_unique_ids(calls, all_valid, session_id, turn_id):
+        return findings
+    reported = _reported_entries(calls, cfg, session_id, turn_id)
+    ordered = sorted(entries, key=lambda item: (str(item[2]), item[0]))
+    for call_id, raw_path, path in ordered:
+        if (call_id, raw_path) in reported:
+            continue
+        for finding in _scan_path(path, cfg):
+            finding["_tool_use_id"] = call_id
+            findings.append(finding)
+    return findings
+
+
 def findings_for_batch(
     payload: dict,
     config: dict | None = None,
@@ -521,16 +315,27 @@ def findings_for_batch(
 ) -> list[dict]:
     payload = _sanitized_payload(payload)
     cfg = effective_config(config, payloads.cwd(payload) or None)
-    entries = _call_entries(payload)
+    cwd = Path(payloads.cwd(payload) or ".")
+    calls, all_valid = _normalized_calls(payload)
+    entries = _entries_from_calls(calls, cwd)
+    return _findings_for_calls(
+        calls, all_valid, entries, cfg, payloads.session_id(payload), turn_id
+    )
+
+
+def findings_for_paths(
+    session_id: str,
+    cwd: str,
+    paths: list[str],
+    cfg: dict,
+    source: str,
+) -> list[dict]:
+    """Exists because end_turn used to fabricate a whole batch payload just to reach this same duplicate-and-scan logic."""
+    base = Path(cwd or ".")
+    entries = [(source, raw_path, payloads.resolved_path(raw_path, base)) for raw_path in paths]
     findings = _duplicate_file_findings(entries, cfg)
-    if not _has_complete_unique_ids(payload, turn_id):
-        return findings
-    reported = _reported_entries(payload, cfg, turn_id)
-    ordered = sorted(entries, key=lambda item: (str(item[2]), item[0]))
-    for call_id, raw_path, path in ordered:
-        if (call_id, raw_path) in reported:
-            continue
-        for finding in _scan_path(path, cfg, payloads.session_id(payload)):
+    for call_id, _raw_path, path in entries:
+        for finding in _scan_path(path, cfg):
             finding["_tool_use_id"] = call_id
             findings.append(finding)
     return findings
@@ -544,41 +349,62 @@ def _record_batch_row(session_id: str, cfg: dict, turn_id: str, duration_ms: int
     )
 
 
-def _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload) -> None:
+def _record_decisions(
+    session_id: str,
+    cfg: dict,
+    turn_id: str,
+    duration_ms: int,
+    decisions: list[tuple[dict, str]],
+    payload: dict,
+    calls: list[NormalizedCall],
+    all_valid: bool,
+) -> None:
     for finding, outcome in decisions:
         _record_batch_row(
             session_id, cfg, turn_id, duration_ms,
             family=finding["family"], rule=finding["rule"], path=finding["path"],
             tool_use_id=finding.get("_tool_use_id", ""), outcome=outcome,
         )
-    if _has_nonempty_raw_batch(payload) and not _has_complete_unique_ids(payload, turn_id):
+    if _has_nonempty_raw_batch(payload) and not _complete_unique_ids(calls, all_valid, session_id, turn_id):
         _record_batch_row(
             session_id, cfg, turn_id, duration_ms,
             family="", rule=DEGRADED_RULE, path="", tool_use_id="", outcome="release",
         )
 
 
+def _update_blocker_state(
+    session_id: str,
+    agent_id: str,
+    cfg: dict,
+    entries: list[tuple[str, str, Path]],
+    kind: str,
+    reason: str,
+) -> None:
+    blocker_state.touch_paths(
+        session_id, agent_id, [str(path) for _call, _raw, path in entries], cfg.get("state_root"),
+    )
+    if kind == "block":
+        blocker_state.set_pending(session_id, agent_id, "<batch>", reason, cfg.get("state_root"))
+    else:
+        blocker_state.clear_pending(session_id, agent_id, "<batch>", cfg.get("state_root"))
+    blocker_state.clear_pending(session_id, agent_id, UNDECIDABLE_KEY, cfg.get("state_root"))
+
+
 def _batch_gate(payload: dict, cfg: dict, session_id: str):
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
-        findings = findings_for_batch(payload, cfg, turn_id)
+        cwd = Path(payloads.cwd(payload) or ".")
+        calls, all_valid = _normalized_calls(payload)
+        entries = _entries_from_calls(calls, cwd)
+        findings = _findings_for_calls(calls, all_valid, entries, cfg, session_id, turn_id)
         decisions = [(finding, resolve_outcome(finding, cfg)) for finding in findings]
         duration_ms = int((time.monotonic() - started) * 1000)
         if session_id:
-            _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload)
-        kind, reason = reporting.verdict_message(decisions, cfg)
+            _record_decisions(session_id, cfg, turn_id, duration_ms, decisions, payload, calls, all_valid)
+        report_cfg = {**cfg, "session_id": session_id, "turn_id": turn_id}
+        kind, reason = reporting.verdict_message(decisions, report_cfg)
         if session_id:
-            agent_id = blocker_state.scope(payload)
-            blocker_state.touch_paths(
-                session_id, agent_id,
-                [str(path) for _call, _raw, path in _call_entries(payload)],
-                cfg.get("state_root"),
-            )
-            if kind == "block":
-                blocker_state.set_pending(session_id, agent_id, "<batch>", reason, cfg.get("state_root"))
-            else:
-                blocker_state.clear_pending(session_id, agent_id, "<batch>", cfg.get("state_root"))
-            blocker_state.clear_pending(session_id, agent_id, UNDECIDABLE_KEY, cfg.get("state_root"))
+            _update_blocker_state(session_id, blocker_state.scope(payload), cfg, entries, kind, reason)
         if kind == "block":
             return {"decision": "block", "reason": reason}
         if kind == "observe":
