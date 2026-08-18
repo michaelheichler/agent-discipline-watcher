@@ -159,9 +159,12 @@ def _label_pending_text(findings: list[dict]) -> list[dict]:
 
 
 def _pending_edit_text(decoded: PendingWrite) -> str:
+    """Prefer new_string over new_source, because _apply_edits writes new_string and this text feeds the same protected-path check."""
+    if decoded.edits:
+        return "\n".join(str(edit.get("new_string") or "") for edit in decoded.edits)
     if decoded.notebook_source is not None:
         return decoded.notebook_source
-    return "\n".join(str(edit.get("new_string") or "") for edit in decoded.edits)
+    return ""
 
 
 def _apply_edits(decoded: PendingWrite, path: str) -> tuple[str, str] | None:

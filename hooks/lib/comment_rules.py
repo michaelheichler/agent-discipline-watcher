@@ -59,8 +59,13 @@ VC_COMMENT_RE = re.compile(
     r"to|from|into|with|previously|used to|formerly|instead of)\b",
     re.IGNORECASE,
 )
-COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)")
+COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)[ \t]*|/\*[ \t]*)(.*)")
+# Kept to "#" only mid-line so that "//" is not misread as Python floor division.
+INLINE_HASH_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#(?!\!)[ \t]*(.*)")
 BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
+BLOCK_COMMENT_TAIL_RE = re.compile(
+    r"(?P<block>/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z))(?P<tail>[^\n]*)", re.DOTALL,
+)
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]")
@@ -130,7 +135,7 @@ READABILITY_RULES = (
 
 
 def _comment_text(line: str) -> str | None:
-    body = COMMENT_RE.match(line)
+    body = COMMENT_RE.match(line) or INLINE_HASH_COMMENT_RE.search(line)
     if not body:
         return None
     text = body.group(1).strip()
@@ -152,7 +157,7 @@ def _comment_body_lines(text: str) -> list[tuple[int, str, str]]:
 def _normalize_block_comments(text: str) -> str:
     def replace(match: re.Match) -> str:
         output = []
-        for line in match.group(0).splitlines(keepends=True):
+        for line in match.group("block").splitlines(keepends=True):
             ending = line[len(line.rstrip("\r\n")):]
             body = line.rstrip("\r\n").strip()
             if body not in {"/*", "/**", "*/", "<!--", "-->"}:
@@ -160,8 +165,11 @@ def _normalize_block_comments(text: str) -> str:
             else:
                 body = ""
             output.append(("// " + body if body else "//") + ending)
+        tail = match.group("tail")
+        if tail:
+            output[-1] = output[-1] + " " * len(tail)
         return "".join(output)
-    return BLOCK_COMMENT_RE.sub(replace, text)
+    return BLOCK_COMMENT_TAIL_RE.sub(replace, text)
 
 
 def _multiline_comment_findings(path: str, text: str) -> list[dict]:

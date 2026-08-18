@@ -346,6 +346,12 @@ def test_data_boundary_ignores_non_file_at_syntax(text: str):
         "Review @src/service.py, then continue",
         "Review @src/service.py\u00a0then continue",
         "First line\n@config/settings.toml\nlast line",
+        "Review @/etc/passwd",
+        "Review @/private/etc/shadow now",
+        "Review @caf\u00e9.txt",
+        "Review @\u6587\u4ef6.txt",
+        'Review @notes.txt"',
+        "Review @notes.txt\u2014now",
     ],
 )
 def test_data_boundary_recognizes_reviewed_file_token_boundaries(text: str):

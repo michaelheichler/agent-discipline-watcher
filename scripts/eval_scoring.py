@@ -24,7 +24,7 @@ def _validate_score(row: dict[str, Any], index: int) -> None:
         raise ValueError(f"Score row {index}: unsupported condition {row['condition']!r}")
     for metric in WEIGHTS:
         value = row[metric]
-        if not isinstance(value, (int, float)) or not 1 <= value <= 5:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 1 <= value <= 5:
             raise ValueError(f"Score row {index}: {metric} must be between 1 and 5")
     if not isinstance(row["blocker"], bool):
         raise ValueError(f"Score row {index}: blocker must be boolean")

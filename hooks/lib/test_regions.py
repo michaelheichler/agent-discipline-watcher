@@ -137,3 +137,27 @@ def test_unclosed_embedded_blocks_do_not_leak_into_visible_prose(tag: str) -> No
     source = f"<{tag}>\nfirst clause; second clause\n"
 
     assert not {rule for rule, _line in _rows("component.vue", source)} & {"prose_semicolon"}
+
+
+def test_prose_semicolon_spares_hex_and_alnum_html_entities() -> None:
+    hex_entity = "Use the char &#x2014; in prose here today, plainly.\n"
+    alnum_entity = "Use the char &frac12; in prose here today, plainly.\n"
+
+    assert "prose_semicolon" not in {rule for rule, _line in _rows("notes.md", hex_entity)}
+    assert "prose_semicolon" not in {rule for rule, _line in _rows("notes.md", alnum_entity)}
+
+
+def test_english_hides_code_tag_with_space_before_closing_bracket() -> None:
+    source = (
+        "Prose sentence here.\n"
+        "<code>value = compute() in order to cache it</code >\n"
+        "More prose after.\n"
+    )
+
+    assert "wordiness" not in {rule for rule, _line in _rows("doc.md", source)}
+
+
+def test_oversized_list_counts_items_with_indented_continuation_text() -> None:
+    items = "".join(f"- item {number}\n  continuation text for item {number}\n" for number in range(9))
+
+    assert "oversized_list" in {rule for rule, _line in _rows("doc.md", items)}

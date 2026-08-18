@@ -15,7 +15,9 @@ _MAX_FENCE_INDENT = 3
 _AT_ALNUM = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 _AT_SEGMENT = _AT_ALNUM | frozenset("_+~.-")
 _AT_BOUNDARY_EXCLUDED = _AT_ALNUM | frozenset("_@./+~-")
-_AT_TERMINATORS = frozenset(" \t\n\r\v\f,;:!?()[]{}")
+_AT_TERMINATORS = frozenset(
+    " \t\n\r\v\f,;:!?()[]{}\"'\u201c\u201d\u2018\u2019\u2014\u2013\u2026\u00bb"
+)
 
 
 def _mask_quoted(text: str) -> str:
@@ -109,17 +111,21 @@ def mask_examples(text: str) -> str:
     return _mask_quoted(_mask_inline_code(_mask_fenced(text)))
 
 
+def _is_combining_mark(char: str) -> bool:
+    return bool(char) and unicodedata.category(char).startswith("M")
+
+
 def _file_token_end(text: str, at: int) -> int:
     end = at + 1
     has_alnum = False
     segment_open = False
     for index in range(at + 1, len(text) + 1):
         char = text[index] if index < len(text) else ""
-        if char in _AT_SEGMENT:
-            has_alnum = has_alnum or char in _AT_ALNUM
+        if char in _AT_SEGMENT or char.isalnum() or _is_combining_mark(char):
+            has_alnum = has_alnum or char.isalnum()
             segment_open = True
             end = index + 1
-        elif char == "/" and segment_open:
+        elif char == "/" and (segment_open or index == at + 1):
             segment_open = False
         else:
             break

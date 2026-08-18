@@ -111,16 +111,18 @@ def _drop_emptied_lifecycles(original, cleaned):
 
 
 def _write(settings_path, settings):
+    # Resolved, because os.replace on a symlink path destroys the link instead of its target.
+    target_path = settings_path.resolve() if settings_path.is_symlink() else settings_path
     text = json.dumps(settings, indent=2, sort_keys=True) + "\n"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    mode = settings_path.stat().st_mode & 0o777 if settings_path.exists() else 0o600
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    mode = target_path.stat().st_mode & 0o777 if target_path.exists() else 0o600
     temporary_path = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            dir=settings_path.parent,
-            prefix=f".{settings_path.name}.",
+            dir=target_path.parent,
+            prefix=f".{target_path.name}.",
             suffix=".tmp",
             delete=False,
         ) as temporary:
@@ -129,7 +131,7 @@ def _write(settings_path, settings):
             temporary.flush()
             os.fsync(temporary.fileno())
         temporary_path.chmod(mode)
-        os.replace(temporary_path, settings_path)
+        os.replace(temporary_path, target_path)
         temporary_path = None
     finally:
         if temporary_path is not None:

@@ -91,7 +91,10 @@ def _mcp_tool_input(raw_payload: object) -> dict[str, object]:
 
 
 def _resolved_path(path: str, cwd: str) -> str:
-    candidate = Path(path).expanduser()
+    """Left tilde-prefixed here for path_findings to expand, since Path.expanduser() raises on an unresolvable ~user and path_findings already has a dedicated fallback finding for that case."""
+    if path.startswith("~"):
+        return path
+    candidate = Path(path)
     if candidate.is_absolute():
         return str(candidate)
     base = Path(cwd) if cwd else Path(os.getcwd())

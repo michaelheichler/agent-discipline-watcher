@@ -5,14 +5,15 @@ import re
 import shlex
 from pathlib import PurePosixPath
 
-# The lookbehind drops 2> and the tail of 2>>, because a stderr redirect writes no target file.
-WRITE_REDIRECT_RE = re.compile(r"(?<![2>])>")
-REDIRECT_HEAD_RE = re.compile(r"^\d*>>?")
-HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([A-Za-z_][A-Za-z0-9_]*))")
+# Matches only the exact descriptor 2, because a bare stderr redirect writes no target file.
+STDERR_DESCRIPTOR = "2"
+REDIRECT_HEAD_RE = re.compile(r"^(\d*)(>>?)")
+HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s()<>|&;'\"]+))")
 DYNAMIC_RE = re.compile(r"[$`]")
 LITERAL_PRODUCERS = frozenset({"echo", "printf"})
 ECHO_FLAGS = frozenset({"-n", "-e", "-E", "-ne", "-en"})
-SEPARATORS = frozenset({"&&", "||", ";", "|", "&", "(", ")"})
+SEPARATORS = frozenset({"&&", "||", ";", "|", "|&", "&", "(", ")"})
+PIPE_OPERATORS = frozenset({"|", "|&"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
 # Strips the of= and if= style operands used by dd, because the path hides behind the key.
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -73,14 +74,24 @@ def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str, b
 
 
 def _line_writes(line: str, bodies: list[str | None]) -> list[tuple[str, str]]:
-    segments = _segments(line)
-    targets = [path for segment in segments for path in _write_paths(segment)]
-    if not targets:
-        return []
-    contents = list(bodies) if bodies else _literal_contents(segments)
+    """Because an unrelated command on the same line can also write, a heredoc there must never stand in for this one's content."""
+    rows: list[tuple[str, str]] = []
+    cursor = 0
+    for group in _pipeline_groups(line):
+        heredoc_total = sum(len(HEREDOC_RE.findall(_segment_text(segment))) for segment in group)
+        group_bodies = bodies[cursor:cursor + heredoc_total]
+        cursor += heredoc_total
+        targets = [path for segment in group for path in _write_paths(segment)]
+        if not targets:
+            continue
+        contents = group_bodies if heredoc_total else _literal_contents(group)
+        rows.extend(_paired_writes(targets, contents))
+    return rows
+
+
+def _paired_writes(targets: list[str], contents: list[str | None]) -> list[tuple[str, str]]:
     if not contents or None in contents:
         return []
-    contents = [content for content in contents if content is not None]
     if len(contents) == 1:
         return [(path, contents[0]) for path in targets]
     if len(contents) == len(targets):
@@ -100,7 +111,7 @@ def _redirect_paths(segment: list[str]) -> list[str]:
     paths = []
     for index, token in enumerate(segment):
         match = REDIRECT_HEAD_RE.match(token)
-        if _is_quoted(token) or not match or not WRITE_REDIRECT_RE.search(token):
+        if _is_quoted(token) or not match or match.group(1) == STDERR_DESCRIPTOR:
             continue
         rest = token[match.end():]
         if not rest and index + 1 < len(segment):
@@ -156,17 +167,24 @@ def _producer_text(args: list[str]) -> str | None:
     return " ".join(words).replace("\\n", "\n").replace("\\t", "\t")
 
 
-def _segments(command: str) -> list[list[str]]:
-    """Split into shell segments of raw tokens, keeping quotes so that quoted text can be masked later."""
+CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
+
+
+def _tokens(command: str) -> list[str]:
     try:
         lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()")
         lexer.whitespace_split = True
-        tokens = list(lexer)
+        raw = list(lexer)
     except ValueError:
-        tokens = command.split()
+        raw = command.split()
+    return _merge_clobber_operator(raw)
+
+
+def _segments(command: str) -> list[list[str]]:
+    """Split into shell segments of raw tokens, keeping quotes so that quoted text can be masked later."""
     segments: list[list[str]] = []
     current: list[str] = []
-    for token in tokens:
+    for token in _tokens(command):
         if token in SEPARATORS:
             if current:
                 segments.append(current)
@@ -176,6 +194,51 @@ def _segments(command: str) -> list[list[str]]:
     if current:
         segments.append(current)
     return segments
+
+
+def _pipeline_groups(command: str) -> list[list[list[str]]]:
+    """Because ; && || & ( ) start an unrelated command, only a | may carry one segment's content into the next."""
+    groups: list[list[list[str]]] = []
+    group: list[list[str]] = []
+    current: list[str] = []
+    for token in _tokens(command):
+        if token in PIPE_OPERATORS:
+            if current:
+                group.append(current)
+            current = []
+            continue
+        if token in SEPARATORS:
+            if current:
+                group.append(current)
+            current = []
+            if group:
+                groups.append(group)
+            group = []
+            continue
+        current.append(token)
+    if current:
+        group.append(current)
+    if group:
+        groups.append(group)
+    return groups
+
+
+def _merge_clobber_operator(tokens: list[str]) -> list[str]:
+    """Because the lexer has no notion of >| as one operator, its split halves would otherwise drop the write target."""
+    merged: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if (
+            not _is_quoted(token) and CLOBBER_HEAD_RE.match(token)
+            and index + 1 < len(tokens) and tokens[index + 1] == "|"
+        ):
+            merged.append(token)
+            index += 2
+            continue
+        merged.append(token)
+        index += 1
+    return merged
 
 
 def _is_quoted(token: str) -> bool:

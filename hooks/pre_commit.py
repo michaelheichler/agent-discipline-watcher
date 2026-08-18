@@ -408,6 +408,9 @@ def _skip_env_prefix(segment: list[str], cursor: int) -> int:
         if current in {"-u", "--unset"}:
             cursor += 2
             continue
+        if current == "--":
+            cursor += 1
+            continue
         if "=" in current and not current.startswith("="):
             cursor += 1
             continue
@@ -427,56 +430,40 @@ def _resolve_cwd(cwd: Path, raw: str) -> Path:
     return path
 
 
-def _repo_root(cwd: Path) -> Path | None:
+# Because a bad revision or a corrupt object also exits 128, only git's own no-repository message may stand for one.
+NOT_A_GIT_REPOSITORY_MESSAGE = "not a git repository"
+
+
+def _run_git(args: list[str], cwd: Path, errors: str) -> subprocess.CompletedProcess | None:
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=True,
-            timeout=30,
+        return subprocess.run(
+            ["git", *args], cwd=cwd, text=True, capture_output=True, check=True, timeout=30, errors=errors,
         )
     except subprocess.CalledProcessError as exc:
-        if exc.returncode == NOT_A_REPOSITORY_EXIT_CODE:
+        if exc.returncode == NOT_A_REPOSITORY_EXIT_CODE and NOT_A_GIT_REPOSITORY_MESSAGE in (exc.stderr or "").lower():
             return None
         raise
+
+
+def _repo_root(cwd: Path) -> Path | None:
+    result = _run_git(["rev-parse", "--show-toplevel"], cwd, "strict")
+    if result is None:
+        return None
     root = result.stdout.strip()
     return Path(root) if root else None
 
 
 def _staged(cwd: Path) -> list[str]:
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=True,
-            timeout=30,
-        )
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode == NOT_A_REPOSITORY_EXIT_CODE:
-            return []
-        raise
+    result = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACM"], cwd, "strict")
+    if result is None:
+        return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def _staged_text(repo: Path, path: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "show", ":" + path],
-            cwd=repo,
-            text=True,
-            capture_output=True,
-            check=True,
-            timeout=30,
-            errors="replace",
-        )
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode == NOT_A_REPOSITORY_EXIT_CODE:
-            return None
-        raise
+    result = _run_git(["show", ":" + path], repo, "replace")
+    if result is None:
+        return None
     return result.stdout
 
 

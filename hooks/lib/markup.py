@@ -140,6 +140,17 @@ def comment_scan_source(path: str, text: str, regions: tuple[Region, ...], mixed
     return text
 
 
+STRING_TOKEN_TYPES = frozenset(
+    tok_type for tok_type in (
+        tokenize.STRING,
+        getattr(tokenize, "FSTRING_START", None),
+        getattr(tokenize, "FSTRING_MIDDLE", None),
+        getattr(tokenize, "FSTRING_END", None),
+    )
+    if tok_type is not None
+)
+
+
 def mask_python_strings(text: str) -> str:
     """Blanked with the tokenizer, not a regex, because Python string bodies can span lines and nest quotes in ways a regex cannot track reliably."""
     spans = []
@@ -147,7 +158,7 @@ def mask_python_strings(text: str) -> str:
     failure_start = None
     try:
         for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-            if tok.type == tokenize.STRING:
+            if tok.type in STRING_TOKEN_TYPES:
                 spans.append((tok.start[0], tok.start[1], tok.end[0], tok.end[1]))
             last_end = tok.end
     except (tokenize.TokenError, SyntaxError, IndentationError, ValueError) as exc:
@@ -238,8 +249,8 @@ def _sniff_prose(text: str) -> bool:
     return bool(re.search(r"[.!?](?:\s|$)", head) and letters + spaces and (letters + spaces) / len(head) > 0.7)
 
 
-HTML_HIDDEN_RE = re.compile(r"<!--.*?-->|<(script|style|code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
-HTML_ENTITY_RE = re.compile(r"&[a-zA-Z]+;|&#\d+;")
+HTML_HIDDEN_RE = re.compile(r"<!--.*?-->|<(script|style|code|pre)\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+HTML_ENTITY_RE = re.compile(r"&(?:[a-zA-Z][a-zA-Z0-9]*|#(?:\d+|[xX][0-9A-Fa-f]+));")
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 
 

@@ -55,6 +55,25 @@ def test_generic_causal_tails_are_hard_blocks() -> None:
         assert response["decision"] == "block"
 
 
+def test_inline_trailing_todo_is_a_hard_block() -> None:
+    response = _write("x = 1  # " + ("TO" + "DO") + ": fix this later\n")
+    assert response["decision"] == "block"
+    assert "deferred_work_comment" in response["reason"]
+
+
+def test_no_space_todo_marker_is_a_hard_block() -> None:
+    response = _write("#" + ("TO" + "DO") + ": fix this later\nx = 1\n")
+    assert response["decision"] == "block"
+    assert "deferred_work_comment" in response["reason"]
+
+
+def test_trailing_code_cannot_launder_a_vague_because_into_a_strong_why() -> None:
+    source = "/* Skip because it. */avoid_expensive_computation()\n"
+    response = _write(source)
+    assert response["decision"] == "block"
+    assert "what_comment" in response["reason"] or "weak_why_comment" in response["reason"]
+
+
 def test_malformed_python_cannot_hide_a_multiline_docstring() -> None:
     source = 'def value():\n    """First line.\n    Second line.\n    """\n    return 1\ninvalid syntax\n'
     response = _write(source)

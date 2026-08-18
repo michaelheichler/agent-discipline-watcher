@@ -434,6 +434,21 @@ class MergeConfigTests(unittest.TestCase):
             watcher_groups = [group for group in groups if SKILL_DIR in json.dumps(group)]
             assert len(watcher_groups) == expected, f"{lifecycle} doubled on re-merge"
 
+    def test_claude_merge_writes_through_a_settings_symlink(self):
+        assert CLAUDE.exists()
+        with tempfile.TemporaryDirectory() as tmp:
+            real_dir = Path(tmp) / "real"
+            real_dir.mkdir()
+            real_settings = real_dir / "settings.json"
+            real_settings.write_text(json.dumps({"model": "claude-opus-5"}))
+            link = Path(tmp) / "settings.json"
+            link.symlink_to(real_settings)
+            run_merge(CLAUDE, "--settings", str(link), "--skill-dir", SKILL_DIR)
+            self.assertTrue(link.is_symlink(), "merge must not swap the symlink for a plain file")
+            merged = json.loads(real_settings.read_text())
+        self.assertEqual(merged["model"], "claude-opus-5")
+        self.assertIn("PreToolUse", merged["hooks"])
+
     def test_codex_removes_legacy_hooks_and_adds_watcher_family(self):
         assert CODEX.exists()
         with tempfile.TemporaryDirectory() as tmp:
@@ -452,6 +467,25 @@ class MergeConfigTests(unittest.TestCase):
             merged = config.read_text()
         assert "uncle-bobs-cc" not in merged
         assert "unrelated-stop.py" in merged
+        assert_watcher_hook_family(merged)
+
+    def test_codex_mentions_legacy_requires_a_full_name_not_a_substring(self):
+        merger = load_codex_merger()
+        assert merger._mentions_legacy("professional-agent-helper/hooks/stop.py")
+        assert not merger._mentions_legacy("my-professional-agent-helper-fork/hooks/stop.py")
+
+    def test_codex_preserves_a_differently_named_fork_of_a_legacy_package(self):
+        assert CODEX.exists()
+        config_text = (
+            "[hooks]\n"
+            'Stop = [{ command = "python my-professional-agent-helper-fork/hooks/stop.py" }]\n'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.toml"
+            config.write_text(config_text)
+            run_merge(CODEX, "--config", str(config), "--skill-dir", SKILL_DIR)
+            merged = config.read_text()
+        assert "my-professional-agent-helper-fork" in merged
         assert_watcher_hook_family(merged)
 
     def test_codex_preserves_tables_after_last_legacy_hooks_block(self):

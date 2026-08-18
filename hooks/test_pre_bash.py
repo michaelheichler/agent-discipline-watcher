@@ -57,6 +57,18 @@ def test_installer_in_command_position_still_blocks(command):
 
 
 @pytest.mark.parametrize("command", [
+    "FOO=bar ./install.sh -y",
+    "FOO=bar BAZ=qux ./install.sh -y",
+])
+def test_unrelated_leading_assignment_does_not_hide_the_installer(command):
+    assert rules(command) == ["install_without_sandbox_home"]
+
+
+def test_leading_assignment_alongside_sandbox_home_still_releases_the_rule():
+    assert rules("FOO=bar HOME=/tmp/box ./install.sh -y") == []
+
+
+@pytest.mark.parametrize("command", [
     "git commit --no-verify -m 'x'",
     "git commit -n -m 'x'",
     "git commit -m 'x' --no-verify",
@@ -134,6 +146,18 @@ def test_shell_write_to_live_surface_blocks(tmp_path):
 def test_every_mutating_form_blocks(tmp_path, template):
     target = str(tmp_path / ".codex/config.toml")
     assert "live_client_surface" in rules(template.format(target), tmp_path)
+
+
+@pytest.mark.parametrize("template", [
+    "cp source.txt -t {}",
+    "cp -t {} source.txt",
+    "cp --target-directory {} source.txt",
+    "cp --target-directory={} source.txt",
+    "mv -t {} a.txt b.txt",
+])
+def test_target_directory_flag_blocks_even_when_source_is_last(tmp_path, template):
+    target_dir = str(tmp_path / ".codex")
+    assert "live_client_surface" in rules(template.format(target_dir), tmp_path)
 
 
 @pytest.mark.parametrize("template", [

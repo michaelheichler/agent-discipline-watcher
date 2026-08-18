@@ -54,7 +54,11 @@ def strip_fences(text: str) -> str:
 
 
 def _mentions_legacy(text: str) -> bool:
-    return any(name in text for name in LEGACY)
+    # Bounded, because a bare substring check also strips a differently-named fork.
+    return any(
+        re.search(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", text)
+        for name in LEGACY
+    )
 
 
 def preserve_non_hook_tables(text: str) -> str:

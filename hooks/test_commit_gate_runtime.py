@@ -133,6 +133,36 @@ class CommitGateRuntimeTests(unittest.TestCase):
         self.assertIn("Cause:", result["reason"])
         self.assertIn("GIT_DIR", result["reason"])
 
+    def test_env_dash_dash_git_dir_override_fails_closed(self):
+        non_repo = self.root / "non_repo_env"
+        non_repo.mkdir()
+        payload = {
+            "tool_input": {"command": "env -- GIT_DIR=/nowhere git commit -m x"},
+            "cwd": str(non_repo),
+        }
+        result = pre_commit.run(payload, None, ledger_root=self.ledger, state_root=self.state)
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("Cause:", result["reason"])
+        self.assertIn("GIT_DIR", result["reason"])
+
+    def test_a_fatal_error_other_than_missing_repository_is_not_swallowed(self):
+        with mock.patch(
+            "pre_commit.subprocess.run",
+            side_effect=subprocess.CalledProcessError(128, ["git"], stderr="fatal: bad revision 'x'\n"),
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                pre_commit._repo_root(self.repo)
+
+    def test_missing_repository_message_still_reads_as_no_repository(self):
+        with mock.patch(
+            "pre_commit.subprocess.run",
+            side_effect=subprocess.CalledProcessError(
+                128, ["git"], stderr="fatal: not a git repository (or any of the parent directories): .git\n",
+            ),
+        ):
+            self.assertIsNone(pre_commit._repo_root(self.repo))
+
     def test_two_repos_are_each_adjudicated_under_their_own_config(self):
         other = self.root / "other"
         other.mkdir()

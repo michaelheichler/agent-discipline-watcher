@@ -65,8 +65,8 @@ def _is_write_tool(tool_name: str) -> bool:
 
 
 def _normalized_path(raw_path: str, cwd: Path) -> str:
-    path = Path(raw_path).expanduser()
     try:
+        path = Path(raw_path).expanduser()
         return str((path if path.is_absolute() else cwd / path).resolve(strict=False))
     except (OSError, RuntimeError, ValueError):
         return raw_path

@@ -287,5 +287,22 @@ class TaskSubjectTests(unittest.TestCase):
         self.assertEqual(payloads.task_subject({}), "")
 
 
+class PatchFilePathsTests(unittest.TestCase):
+    def test_reads_add_and_update_headers(self):
+        patch = "*** Add File: src/new.py\n+print(1)\n*** Update File: src/old.py\n+print(2)\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/new.py", "src/old.py"))
+
+    def test_reads_delete_header(self):
+        patch = "*** Delete File: src/gone.py\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/gone.py",))
+
+    def test_reads_move_to_destination_alongside_its_update_header(self):
+        patch = "*** Update File: src/old.py\n*** Move to: src/new.py\n@@\n-x = 1\n+x = 2\n"
+        self.assertEqual(payloads.patch_file_paths(patch), ("src/old.py", "src/new.py"))
+
+    def test_absent_returns_empty_tuple(self):
+        self.assertEqual(payloads.patch_file_paths("no headers here"), ())
+
+
 if __name__ == "__main__":
     unittest.main()

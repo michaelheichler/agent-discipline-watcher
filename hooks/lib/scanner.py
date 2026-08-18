@@ -9,6 +9,7 @@ from typing import NamedTuple
 try:
     from . import scan_input
     from .comment_rules import (
+        COMMENT_RE,
         READABILITY_RULES,
         _clean_code_comment_findings,
         _comment_body_lines,
@@ -39,6 +40,7 @@ try:
 except ImportError:
     import scan_input
     from comment_rules import (
+        COMMENT_RE,
         READABILITY_RULES,
         _clean_code_comment_findings,
         _comment_body_lines,
@@ -72,7 +74,7 @@ scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
 
 
-BAD_DASH_RE = re.compile("[" + "".join(chr(c) for c in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212)) + "]")
+BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212)) + "]")
 PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
@@ -120,7 +122,7 @@ SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b"
 
 
 def _is_exempt(path: str, cfg: dict) -> bool:
-    """Exempt only against a real sequence of patterns, so a wrong type scans more rather than raising."""
+    """Exempt only against a real sequence of patterns so that a wrong type scans more rather than raising."""
     patterns = cfg.get("exempt_paths")
     if not isinstance(patterns, (list, tuple, set, frozenset)):
         return False
@@ -208,42 +210,51 @@ def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
     return _ScanContext(cfg, tree, lines, prose, code_file, _active_families(path, cfg))
 
 
+class _LineSources(NamedTuple):
+    punctuation: list[str]
+    english: list[str]
+    comment: list[str]
+
+
+def _line_sources(path: str, masked: str, comment_source: str, prose: bool) -> _LineSources:
+    return _LineSources(
+        _strip_punctuation_blocks(path, masked, prose).splitlines() or [""],
+        _strip_english_hidden(masked).splitlines() or [""],
+        comment_source.splitlines() or [""],
+    )
+
+
+def _scan_line_families(path: str, number: int, line: str, sources: _LineSources, context: _ScanContext) -> list[dict]:
+    findings: list[dict] = []
+    if "punctuation" in context.active_families:
+        scan_line = _line_or_blank(sources.punctuation, number)
+        findings.extend(_scan_punctuation(path, number, line, scan_line, context.prose))
+    if "english" in context.active_families and context.prose:
+        scan_line = _line_or_blank(sources.english, number)
+        findings.extend(_scan_english(path, number, line, scan_line))
+    if "clean_code" in context.active_families and context.code_file:
+        scan_line = _line_or_blank(sources.comment, number)
+        findings.extend(_clean_code_comment_findings(path, number, scan_line))
+        findings.extend(_hollow_test_line_findings(path, number, scan_line))
+    return findings
+
+
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     context = _scan_context(path, text, config)
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
     comment_source = comment_scan_source(path, text, regions, mixed)
     findings = _unconditional_findings(
-        path,
-        text,
-        context.config,
-        context.tree,
-        context.code_file,
-        comment_source,
+        path, text, context.config, context.tree, context.code_file, comment_source,
     )
     if _is_exempt(path, context.config):
         return findings
     masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
-    punct_lines = _strip_punctuation_blocks(path, masked, context.prose).splitlines() or [""]
-    english_lines = _strip_english_hidden(masked).splitlines() or [""]
-    comment_lines = comment_source.splitlines() or [""]
+    sources = _line_sources(path, masked, comment_source, context.prose)
     if "clean_code" in context.active_families and context.code_file:
-        findings.extend(
-            _scan_clean_code_file(path, comment_source, context.config, context.tree)
-        )
+        findings.extend(_scan_clean_code_file(path, comment_source, context.config, context.tree))
     for number, line in enumerate(context.lines, 1):
-        if "punctuation" in context.active_families:
-            scan_line = _line_or_blank(punct_lines, number)
-            findings.extend(
-                _scan_punctuation(path, number, line, scan_line, context.prose)
-            )
-        if "english" in context.active_families and context.prose:
-            scan_line = _line_or_blank(english_lines, number)
-            findings.extend(_scan_english(path, number, line, scan_line))
-        if "clean_code" in context.active_families and context.code_file:
-            scan_line = _line_or_blank(comment_lines, number)
-            findings.extend(_clean_code_comment_findings(path, number, scan_line))
-            findings.extend(_hollow_test_line_findings(path, number, scan_line))
+        findings.extend(_scan_line_families(path, number, line, sources, context))
     if "english" in context.active_families and context.prose:
         findings.extend(_scan_prose_structure(path, masked, context.config))
     return findings
@@ -461,5 +472,6 @@ def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
         return "" if SHELL_IN_CONFIG_RE.search(line) else line
     if prose:
         return line
-    leading = re.match(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$))|/\*[ \t]*)(.*)", line)
+    # Kept anchored to avoid misreading CSS colors and JS private fields as comments.
+    leading = COMMENT_RE.match(line)
     return leading.group(1) if leading else ""

@@ -270,6 +270,25 @@ class EditJournalTests(unittest.TestCase):
         self.assertEqual(self._journal_rows()[0]["turn_id"], "turn-7")
         self.assertEqual(self._heartbeat_rows()[0]["turn_id"], "turn-7")
 
+    def test_patch_delete_and_move_paths_are_journalled(self):
+        patch = (
+            "*** Delete File: src/gone.py\n"
+            "*** Update File: src/old.py\n"
+            "*** Move to: src/new.py\n"
+            "@@\n-x = 1\n+x = 2\n"
+        )
+        payload = {
+            "session_id": "s1",
+            "tool_name": "Bash",
+            "tool_input": {"command": patch},
+            "cwd": str(self.root),
+        }
+        record.run(payload, self.cfg)
+        paths = [row["path"] for row in self._journal_rows()]
+        self.assertIn("src/gone.py", paths)
+        self.assertIn("src/old.py", paths)
+        self.assertIn("src/new.py", paths)
+
     def test_non_utf8_writeback_is_declined_without_corrupting_original_bytes(self):
         target = self.root / "latin1.py"
         original = b"x = 1  # caf\xe9 latin1 byte\n# " + b"TO" + b"DO later\n"

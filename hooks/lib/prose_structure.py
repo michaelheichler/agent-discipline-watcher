@@ -104,14 +104,26 @@ def _long_sentence_rows(path: str, lines, cap: int) -> list[dict]:
     return rows
 
 
+def _is_list_continuation(line: str, count: int, item_indent: int) -> bool:
+    if not count or not line.strip():
+        return False
+    return len(line) - len(line.lstrip()) > item_indent
+
+
 def _oversized_list_rows(path: str, lines, cap: int) -> list[dict]:
     rows = []
     count = 0
     start = 0
     first_line = ""
+    item_indent = 0
     for number, line in lines:
-        if not LIST_ITEM_RE.match(line):
+        is_item = bool(LIST_ITEM_RE.match(line))
+        if is_item:
+            item_indent = len(line) - len(line.lstrip())
+        elif not _is_list_continuation(line, count, item_indent):
             count = 0
+            continue
+        else:
             continue
         if count == 0:
             start = number

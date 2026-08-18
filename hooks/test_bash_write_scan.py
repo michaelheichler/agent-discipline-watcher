@@ -118,6 +118,36 @@ def test_stderr_redirection_is_not_a_write(command):
 
 
 @pytest.mark.parametrize("command", [
+    "grep tapestry notes.md 22>out.md",
+    "grep tapestry notes.md 102>out.md",
+])
+def test_a_descriptor_merely_ending_in_2_is_a_real_write(command):
+    assert pre_bash.write_paths(command) == ["out.md"]
+
+
+def test_clobber_operator_is_still_a_write_target():
+    assert pre_bash.write_targets(f"echo '{PROSE}' >|out.md") == [("out.md", PROSE)]
+
+
+def test_heredoc_on_a_shared_line_does_not_leak_into_an_unrelated_write():
+    command = f"cat <<EOF > clean.txt; echo '{PROSE}' > out.md\nclean\nEOF"
+    assert pre_bash.write_targets(command) == [("clean.txt", "clean"), ("out.md", PROSE)]
+
+
+def test_pipe_fed_content_still_pairs_across_segments():
+    assert pre_bash.write_targets(f"printf '{PROSE}' | tee out.md") == [("out.md", PROSE)]
+
+
+def test_hyphenated_heredoc_delimiter_still_scans():
+    command = f"cat > out.md <<END-OF\n{PROSE}\nEND-OF"
+    assert pre_bash.write_targets(command) == [("out.md", PROSE)]
+
+
+def test_pipe_with_stderr_operator_is_still_a_write():
+    assert pre_bash.write_targets(f"printf '{PROSE}' |& tee out.md") == [("out.md", PROSE)]
+
+
+@pytest.mark.parametrize("command", [
     "curl https://example.invalid/report | tee out.md",
     "generate-report | cat > out.md",
     'echo "$REPORT_BODY" > out.md',

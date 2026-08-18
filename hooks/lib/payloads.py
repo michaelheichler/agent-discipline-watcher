@@ -12,7 +12,8 @@ _FILE_PATH_KEYS = ("file_path", "path")
 _PROMPT_KEYS = ("prompt", "user_prompt")
 _TASK_SUBJECT_KEYS = ("task_subject", "task_name")
 _EDIT_TEXT_KEYS = ("patch", "command", "input")
-_PATCH_FILE_RE = re.compile(r"^\*\*\*\s+(?:Add|Update)\s+File:\s+(.+)$", re.MULTILINE)
+_PATCH_FILE_RE = re.compile(r"^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)$", re.MULTILINE)
+_PATCH_MOVE_RE = re.compile(r"^\*\*\*\s+Move\s+to:\s+(.+)$", re.MULTILINE)
 
 
 class FailurePayload(TypedDict):
@@ -227,8 +228,10 @@ def task_subject(payload: object) -> str:
 
 
 def patch_file_paths(text: str) -> tuple[str, ...]:
-    """Shared because batch and record must recognize identical patch headers, or their ledger rows stop matching."""
-    return tuple(match.strip().strip('"') for match in _PATCH_FILE_RE.findall(text))
+    """Shared because batch and record must recognize identical patch headers, or their ledger rows stop matching. Move destinations are included so a renamed file's landed content is still journalled and scanned under its new path."""
+    headers = (match.strip().strip('"') for match in _PATCH_FILE_RE.findall(text))
+    moves = (match.strip().strip('"') for match in _PATCH_MOVE_RE.findall(text))
+    return (*headers, *moves)
 
 
 def edited_paths(payload: object) -> tuple[str, ...]:
@@ -250,6 +253,9 @@ def edited_paths(payload: object) -> tuple[str, ...]:
 
 
 def resolved_path(raw_path: str, cwd: Path) -> Path:
-    """Expand a leading ~ here because batch used to skip it, so a tilde path keyed differently than the scan that read it."""
-    path = Path(raw_path).expanduser()
+    """Expand a leading ~ here because batch used to skip it, so a tilde path keyed differently than the scan that read it. An unresolvable ~user is kept literal, since it cannot exist on disk and the read that follows already treats a missing path as unscannable."""
+    try:
+        path = Path(raw_path).expanduser()
+    except (OSError, RuntimeError, ValueError):
+        path = Path(raw_path)
     return path if path.is_absolute() else cwd / path

@@ -5,7 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lib import hookio
+from lib import hookio, protected
+from lib.config import CONFIG_NAME
 import pre_commit
 import pre_write
 import record
@@ -112,6 +113,20 @@ def test_pre_write_reminds_at_500_and_750_then_blocks_at_1000_lines():
     assert "file_length_critical" in critical["hookSpecificOutput"]["additionalContext"]
     assert blocked["decision"] == "block"
     assert "file_too_long" in blocked["reason"]
+
+
+def test_pre_write_edit_blocks_self_grant_hidden_behind_a_mismatched_new_source(tmp_path):
+    target = tmp_path / CONFIG_NAME
+    target.write_text("{}", encoding="utf-8")
+    tool_input = {
+        "file_path": str(target),
+        "old_string": "{}",
+        "new_string": json.dumps({protected.AUTH_KEY: True}),
+        "new_source": "harmless placeholder",
+    }
+    response = pre_write.run({"tool_input": tool_input}, _edit_config())
+    assert response.get("decision") == "block"
+    assert "self_protection/config_seal" in response.get("reason", "")
 
 
 def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):

@@ -125,13 +125,13 @@ def _response(kind: str, message: str, inherited: list[dict], cfg: dict) -> dict
 def _clear_blocker_state(
     session_id: str, agent_id: str, tracked_paths: list[str], cfg: dict, kind: str, reason: str,
 ) -> None:
+    """Leaves UNDECIDABLE_KEY untouched, because an unrelated edit succeeding is not evidence the earlier unscanned write was safe, and only Stop-time reconciliation of that specific failure may release it."""
     blocker_state.touch_paths(session_id, agent_id, tracked_paths, cfg.get("state_root"))
     for path in tracked_paths:
         if kind == "block":
             blocker_state.set_pending(session_id, agent_id, path, reason, cfg.get("state_root"))
         else:
             blocker_state.clear_pending(session_id, agent_id, path, cfg.get("state_root"))
-    blocker_state.clear_pending(session_id, agent_id, UNDECIDABLE_KEY, cfg.get("state_root"))
 
 
 def _gate_for(projected: RecordPayload, paths: list[str], tracked_paths: list[str], cwd: Path, cfg: dict, ledger_root, agent_id: str) -> Callable[[str], dict]:
@@ -189,8 +189,8 @@ def run(payload: dict, config: dict | None = None) -> dict:
         reason = UNDECIDABLE + str(exc)
         session_id = payloads.session_id(payload)
         if session_id:
-            root = effective_hook_config(config, payloads.cwd(payload) or None).get("state_root")
             try:
+                root = effective_hook_config(config, payloads.cwd(payload) or None).get("state_root")
                 blocker_state.set_pending(
                     session_id, blocker_state.scope(payload), UNDECIDABLE_KEY, reason, root,
                 )

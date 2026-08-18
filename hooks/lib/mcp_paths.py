@@ -7,7 +7,7 @@ try:
 except ImportError:
     from payloads import exact_string_dict
 
-_PATH_KEYS = ("path", "file_path", "relative_path")
+_PATH_KEYS = ("path", "file_path", "relative_path", "source", "destination")
 _PATH_LIST_KEY = "paths"
 _CONTENT_KEYS = ("content", "contents", "text", "data", "new_string", "new_source", "file_text")
 
