@@ -67,6 +67,18 @@ def test_no_space_todo_marker_is_a_hard_block() -> None:
     assert "deferred_work_comment" in response["reason"]
 
 
+def test_preprocessor_and_css_hash_tokens_are_not_comments() -> None:
+    from lib.scanner import scan_all
+
+    source = (
+        "#include <stdio.h>\n#define MAX 10\n#ifdef DEBUG\n"
+        "#endif\nint main(void) { return 0; }\n"
+    )
+    assert [row["rule"] for row in scan_all("main.c", source, {})] == []
+    css = "#id { color: #fff; }\n.box { background: #a1b2c3; }\n"
+    assert [row["rule"] for row in scan_all("style.css", css, {})] == []
+
+
 def test_trailing_code_cannot_launder_a_vague_because_into_a_strong_why() -> None:
     source = "/* Skip because it. */avoid_expensive_computation()\n"
     response = _write(source)

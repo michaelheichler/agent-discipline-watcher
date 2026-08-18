@@ -59,9 +59,11 @@ VC_COMMENT_RE = re.compile(
     r"to|from|into|with|previously|used to|formerly|instead of)\b",
     re.IGNORECASE,
 )
-COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)[ \t]*|/\*[ \t]*)(.*)")
+# No-space "#" counts as a comment only before a deferred-work marker, because #include, #define, and CSS #id or hex tokens are code, not comments.
+_NO_SPACE_HASH = "(?=(?:" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK")) + r")\b)"
+COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")|/\*[ \t]*)(.*)")
 # Kept to "#" only mid-line so that "//" is not misread as Python floor division.
-INLINE_HASH_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#(?!\!)[ \t]*(.*)")
+INLINE_HASH_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")(.*)")
 BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
 BLOCK_COMMENT_TAIL_RE = re.compile(
     r"(?P<block>/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z))(?P<tail>[^\n]*)", re.DOTALL,
