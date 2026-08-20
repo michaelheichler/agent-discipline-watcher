@@ -4,28 +4,31 @@ from __future__ import annotations
 import os
 import re
 import time
+from collections.abc import Callable
+from pathlib import Path
 
 from lib import reporting
 from lib.config import effective_hook_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
+from lib.opaque_write import (
+    MUTATING_VERB_RE, SHELL_C_INTERPRETERS, _bare_interpreter_name, decode_pipe_findings, dynamic_heredoc_findings,
+    inline_interpreter_findings, inplace_edit_findings, interpreter_stdin_findings, opaque_source_findings,
+)
 from lib.protected import authorized, is_live_client_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
-from lib.scanner import scan_all, scannable_text
 from lib.shell_parse import (
-    _bare, _basename, _command_word_index, _expand_home, _is_file_target, _is_quoted,
-    _leading_assignments, _logical_lines, _redirect_paths, _segment_paths, _segment_text, _segments, _words,
-    _write_paths, write_paths, write_targets,
+    _basename, _bare, _command_word_index, _expand_home, _is_file_target, _is_quoted,
+    _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths, _segment_paths,
+    _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_paths, write_targets,
 )
+from lib.write_shape import shaped_write_findings
 
 BASH_WRITE_CAP = 100
 OVERSIZE_WRITE = (
     "Shell write of {size} characters exceeds the {cap}-character cap for Bash file writes. "
     "Use the Write or Edit tool for file content."
-)
-MUTATING_VERB_RE = re.compile(
-    r"\b(?:tee|cp|mv|ln|rm|truncate|chmod|chown|dd|shred|unlink)\b|\bsed\s+-i", re.IGNORECASE
 )
 INSTALLER_NAMES = frozenset({
     "install.sh", "merge-claude-settings.py", "merge-codex-config.py",
@@ -39,6 +42,9 @@ CAP_VARS = frozenset({
 NO_VERIFY_FLAGS = frozenset({"--no-verify", "-n"})
 STATE_DELETE_VERBS = frozenset({"rm", "unlink", "shred"})
 STATE_TARGET_RE = re.compile(r"\.agent-discipline\b|agent-discipline/(?:state|ledger)")
+
+WRITE_OR_EDIT_ACTION = "Use the Write or Edit tool for file content."
+MAX_SHELL_PAYLOAD_DEPTH = 1
 
 RULES: dict[str, tuple[str, str]] = {
     "install_without_sandbox_home": (
@@ -59,6 +65,27 @@ RULES: dict[str, tuple[str, str]] = {
     "live_client_surface": (
         "Shell command mutates a live client install",
         "Change the repo source and reinstall instead of editing the live install."),
+    "inline_interpreter_write": (
+        "Inline interpreter payload can write or is unreadable",
+        WRITE_OR_EDIT_ACTION),
+    "shell_payload_block": (
+        "Shell -c payload is unreadable or nested past one level",
+        WRITE_OR_EDIT_ACTION),
+    "interpreter_heredoc_write": (
+        "Heredoc or pipe feeding an interpreter's stdin can write or is unreadable",
+        WRITE_OR_EDIT_ACTION),
+    "dynamic_heredoc_write": (
+        "Dynamic or unterminated heredoc aimed at a file",
+        WRITE_OR_EDIT_ACTION),
+    "decode_pipe_write": (
+        "Decode pipe ends in a file write",
+        WRITE_OR_EDIT_ACTION),
+    "inplace_edit_write": (
+        "In-place editor mutates a file outside the Edit tool",
+        WRITE_OR_EDIT_ACTION),
+    "opaque_source_write": (
+        "Opaque copy source feeds a file write",
+        WRITE_OR_EDIT_ACTION),
 }
 
 
@@ -89,18 +116,34 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     command = _command(payload)
     if not command:
         return allow()
-    findings = command_findings(command, cfg) + target_findings(command, cfg)
+    findings = command_findings(command, cfg) + target_findings(command, cfg) + opaque_write_findings(command, cfg)
     if findings:
         reason, _ = compact_block(findings, cfg)
         _record(payload, cfg, turn_id, findings, started)
         return deny(reason)
-    size = oversize_write(command)
+    scan_targets = (
+        [command] + _literal_shell_c_payloads(command)
+        + _literal_shell_stdin_payloads(command) + _literal_shell_pipe_payloads(command)
+    )
+    size = _largest_oversize(scan_targets)
     if size is not None:
         return deny(OVERSIZE_WRITE.format(size=size, cap=BASH_WRITE_CAP))
-    content = write_findings(command, cfg)
-    if not content:
+    owned, inherited = _write_shape_totals(scan_targets, cfg, Path(payload.get("cwd") or "."))
+    if not owned and not inherited:
         return allow()
-    return _verdict(_record(payload, cfg, turn_id, content, started), cfg)
+    decisions = _record(payload, cfg, turn_id, owned, started) if owned else []
+    return _verdict(decisions, cfg, inherited)
+
+
+def _write_shape_totals(scan_targets: list[str], cfg: dict, cwd: Path) -> tuple[list[dict], list[dict]]:
+    """Pool owned and inherited findings across every scan target, because a shell -c payload adds its own writes to the outer command's."""
+    owned: list[dict] = []
+    inherited: list[dict] = []
+    for target in scan_targets:
+        target_owned, target_inherited = shaped_write_findings(target, cfg, cwd)
+        owned.extend(target_owned)
+        inherited.extend(target_inherited)
+    return owned, inherited
 
 
 def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float) -> list[tuple[dict, str]]:
@@ -113,13 +156,14 @@ def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], starte
     )
 
 
-def _verdict(decisions: list[tuple[dict, str]], cfg: dict) -> dict:
+def _verdict(decisions: list[tuple[dict, str]], cfg: dict, inherited: list[dict] | None = None) -> dict:
     kind, reason = reporting.verdict_message(decisions, cfg)
     if kind == "block":
         return deny(reason)
+    notice = reporting.inherited_advice(inherited or [], cfg)
     if kind == "observe":
-        return advise(reason, "PreToolUse")
-    return allow()
+        return advise("\n".join(part for part in (reason, notice) if part), "PreToolUse")
+    return {"systemMessage": notice} if notice else allow()
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
@@ -162,6 +206,102 @@ def _shell_targets(command: str) -> dict[str, str | None]:
     return targets
 
 
+def opaque_write_findings(command: str, config: dict | None = None) -> list[dict]:
+    """Hard block here, because a write route the scanner cannot read through cannot be judged any other way."""
+    return _opaque_findings(command, config, 0)
+
+
+def _opaque_findings(command: str, config: dict | None, depth: int) -> list[dict]:
+    if not command or authorized(config):
+        return []
+    make_finding = _finding_factory(command)
+    findings: list[dict] = []
+    findings.extend(inline_interpreter_findings(command, make_finding))
+    findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth)))
+    findings.extend(dynamic_heredoc_findings(command, make_finding))
+    findings.extend(decode_pipe_findings(command, make_finding))
+    findings.extend(inplace_edit_findings(command, make_finding))
+    findings.extend(opaque_source_findings(command, make_finding))
+    findings.extend(_shell_payload_findings(command, config, depth))
+    return findings
+
+
+def _stdin_recurse(command: str, config: dict | None, depth: int) -> Callable[[str], list[dict]]:
+    """Close over the outer command and its recursion depth, because a shell consumer's literal stdin body is a fresh command one level deeper, capped the same as a shell -c payload."""
+    def recurse(body: str) -> list[dict]:
+        if depth >= MAX_SHELL_PAYLOAD_DEPTH:
+            return [_finding("interpreter_heredoc_write", command)]
+        return _recursed_findings(body, config, depth + 1)
+    return recurse
+
+
+def _finding_factory(command: str) -> Callable[[str], dict]:
+    """Close over the command once here, because every opaque-write detector needs it only to build the finding's snippet."""
+    def make_finding(rule: str) -> dict:
+        return _finding(rule, command)
+    return make_finding
+
+
+def _shell_payload_findings(command: str, config: dict | None, depth: int) -> list[dict]:
+    findings = []
+    for segment in _segments(command):
+        invocation = interpreter_invocation(segment)
+        if invocation is None or invocation.interpreter not in SHELL_C_INTERPRETERS:
+            continue
+        if invocation.payload is None or depth >= MAX_SHELL_PAYLOAD_DEPTH:
+            findings.append(_finding("shell_payload_block", command))
+            continue
+        findings.extend(_recursed_findings(invocation.payload, config, depth + 1))
+    return findings
+
+
+def _recursed_findings(payload: str, config: dict | None, depth: int) -> list[dict]:
+    """Re-enter one level of the gate's own self-protection checks, because a literal shell -c payload is a fresh command."""
+    return command_findings(payload, config) + target_findings(payload, config) + _opaque_findings(payload, config, depth)
+
+
+def _literal_shell_c_payloads(command: str) -> list[str]:
+    """List one level of literal shell -c payloads, because the oversize cap and content scanner must see through the same wrapper the self-protection checks already re-enter."""
+    payloads = []
+    for segment in _segments(command):
+        invocation = interpreter_invocation(segment)
+        if invocation is not None and invocation.interpreter in SHELL_C_INTERPRETERS and invocation.payload is not None:
+            payloads.append(invocation.payload)
+    return payloads
+
+
+def _literal_shell_stdin_payloads(command: str) -> list[str]:
+    """List one level of literal heredoc bodies feeding a bare shell interpreter's stdin, because the oversize cap and content scanner must see through that wrapper the same way they already see through a literal shell -c payload."""
+    return [
+        event.body for event in heredoc_events(command)
+        if not event.dynamic and _bare_interpreter_name(event.consumer_segment) in SHELL_C_INTERPRETERS
+    ]
+
+
+def _pipe_stdin_payload(group: list[list[str]]) -> str | None:
+    """Return the joined producer text only when every producer segment and the pipe's shape are fully literal, because a guessed body would misreport what the consumer actually receives."""
+    if len(group) < 2 or _bare_interpreter_name(group[-1]) not in SHELL_C_INTERPRETERS:
+        return None
+    producer_texts = _literal_contents(group[:-1])
+    if len(producer_texts) != len(group) - 1 or None in producer_texts:
+        return None
+    return "\n".join(producer_texts)
+
+
+def _literal_shell_pipe_payloads(command: str) -> list[str]:
+    """List one level of literal pipe producer text feeding a bare shell interpreter's stdin, because the oversize cap and content scanner must see through that wrapper the same way they already see through a literal shell -c payload."""
+    groups = [group for line, _, _ in _logical_lines(command) for group in _pipeline_groups(line)]
+    payloads = [_pipe_stdin_payload(group) for group in groups]
+    return [payload for payload in payloads if payload is not None]
+
+
+def _largest_oversize(commands: list[str]) -> int | None:
+    """Check every scan target here, because a write wrapped in a literal shell -c payload must face the same cap as a bare one."""
+    sizes = [oversize_write(command) for command in commands]
+    known = [size for size in sizes if size is not None]
+    return max(known) if known else None
+
+
 def oversize_write(command: str) -> int | None:
     """Return the largest knowable Bash write size when it exceeds the hard cap."""
     sizes = [len(text) for _, text in write_targets(command)]
@@ -177,18 +317,11 @@ def _mutation_paths(command: str) -> list[str]:
     return [path for segment in _segments(command) if _is_mutating(segment) for path in _segment_paths(segment)]
 
 
-def write_findings(command: str, config: dict | None = None) -> list[dict]:
+def write_findings(
+    command: str, config: dict | None = None, cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     """Scan literal shell writes, because PostToolUse never matches Bash and this content would otherwise land unread."""
-    findings = []
-    for path, text in write_targets(command):
-        body = scannable_text(text, config or {})
-        if body is None:
-            continue
-        for finding in scan_all(path, body, config):
-            item = dict(finding)
-            item["path"] = path
-            findings.append(item)
-    return findings
+    return shaped_write_findings(command, config, cwd)[0]
 
 
 def _sets_home(segment: list[str]) -> bool:

@@ -32,6 +32,9 @@ STRICT_HARD_BLOCK_RULES = frozenset({
 SELF_PROTECTION_RULES = frozenset({
     "live_client_surface", "config_seal", "install_without_sandbox_home",
     "commit_gate_bypass", "cap_override", "state_deletion", "state_mutation",
+    # Joined here so that an observed agent cannot gate these open through project config to smuggle a write around the scanner.
+    "inline_interpreter_write", "shell_payload_block", "interpreter_heredoc_write",
+    "dynamic_heredoc_write", "decode_pipe_write", "inplace_edit_write", "opaque_source_write",
 })
 ALWAYS_BLOCKING_RULES = (
     SCANNER_ALWAYS_BLOCKING_RULES | STRICT_HARD_BLOCK_RULES | SELF_PROTECTION_RULES

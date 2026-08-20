@@ -100,6 +100,16 @@ class SelfGrantChainTests(unittest.TestCase):
         command = "cat > " + str(self.config) + " <<'JE'\n" + DOWNGRADE + "\nJE\n"
         self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
 
+    def test_a_heredoc_that_downgrades_a_bash_write_rule_is_blocked(self):
+        for rule in (
+            "inline_interpreter_write", "shell_payload_block", "interpreter_heredoc_write",
+            "dynamic_heredoc_write", "decode_pipe_write", "inplace_edit_write", "opaque_source_write",
+        ):
+            with self.subTest(rule=rule):
+                downgrade = json.dumps({"rule_gates": {rule: "off"}})
+                command = "cat > " + str(self.config) + " <<'JE'\n" + downgrade + "\nJE\n"
+                self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+
     def test_a_write_that_grants_the_escape_is_blocked_before_the_file_exists(self):
         self.assertIn("self_protection/config_seal", self._blocked(self._write(GRANT)))
         self.assertFalse(self.config.exists())

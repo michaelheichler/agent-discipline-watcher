@@ -46,6 +46,21 @@ Keep fixes narrow. Rewrite the offending sentence, comment, test, or function
 instead of disabling checks. If a finding looks wrong, inspect the scanner rule
 and the exact snippet before assuming the hook failed.
 
+## Bash Write Guard
+
+A Bash command that writes file content is judged the same way a Write or Edit
+tool call is judged. A literal write body the watcher can read, such as a clean
+`echo`, `printf`, or heredoc, is scanned for the same rules. A write body the
+watcher cannot read through is blocked outright by one of seven rules:
+`inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`,
+`dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and
+`opaque_source_write`. These cover inline interpreter code such as `python3 -c`,
+a heredoc or pipe feeding an interpreter's stdin, and a dynamic or unterminated
+heredoc aimed at a file. They also cover a decode pipe such as `base64 -d`
+ending in a write, an in-place editor such as `sed -i` or `perl -pi`, and an
+opaque source such as `dd` or process substitution. Use the Write or Edit tool
+for file content instead of routing it through Bash.
+
 ## Do Not
 
 - Do not end a turn while a finding remains in your own changes.
