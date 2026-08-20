@@ -32,7 +32,7 @@ INPLACE_VERBS = frozenset({"sed", "perl", "ruby"})
 AWK_VERBS = frozenset({"awk", "gawk"})
 # Each verb gets its own consuming set because sed's -E takes no argument while perl and ruby's -e/-E/-I do.
 VALUE_CONSUMING_FLAGS: dict[str, frozenset[str]] = {
-    "sed": frozenset({"e"}),
+    "sed": frozenset({"e", "f"}),
     "perl": frozenset({"I", "e", "E"}),
     "ruby": frozenset({"I", "e", "E"}),
 }

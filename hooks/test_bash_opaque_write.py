@@ -254,6 +254,8 @@ def test_inplace_edit_write_blocks(command):
     "ruby -Ilib -e 'puts 1'",
     "sed -E 's/a/b/' file.txt",
     "sed -nE 's/a/b/' file.txt",
+    "sed -fi edits.sed file.txt",
+    "sed -f edits.sed file.txt",
     "awk '{print $1}' f.txt",
     "gawk -i somelib '{print $1}' f.txt",
     "gawk --include somelib '{print $1}' f.txt",
