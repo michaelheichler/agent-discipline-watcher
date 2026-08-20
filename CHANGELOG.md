@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.17.1 (2026-08-20)
+
+Agents were sneaking file writes past the watcher by going through Bash instead of the Write and Edit tools. This release closes those routes.
+
+### Added
+
+- Seven new blocking rules that no project config can turn off. In plain terms, the watcher now blocks:
+  - Inline interpreter code that can write files, like `python -c`, `node -e`, or `php -r` with a write call inside. Harmless one-liners like `python3 -c 'print(1)'` still work.
+  - Scripts fed into an interpreter through a heredoc or a pipe, like `python3 <<EOF` or `echo "..." | sh`. Content piped into a shell is checked as if you had run it directly.
+  - Heredocs aimed at a file whose content the watcher cannot read, for example when the body contains variables that only expand at run time.
+  - Decode pipes that land bytes in a file, like `base64 -d`, `openssl enc -d -out`, or `uudecode`. Decoding to the screen stays allowed.
+  - In-place editors: `sed -i` in all its spellings, `perl -pi`, and `awk`/`gawk` with the inplace extension. Plain `sed` and `awk` transforms to the screen stay allowed.
+  - Opaque copy sources like `dd of=` and process substitution.
+  - Nested shells (`sh -c`, and quoted commands passed through `env -S`), which are unwrapped and checked all the way down.
+- Regular Bash writes now get the same treatment as the Write and Edit tools. Overwriting a committed file reports old debt without blocking you for it. Appending only checks the lines you add, and appends that push a file past the length limit are blocked.
+- Every block message names the rule and tells the agent to use the Write or Edit tool instead.
+
+### Fixed
+
+- Many trick spellings that used to slip through are now caught: quoted or versioned interpreter names (`'python3'`, `python3.12`), fused flags (`bash -lc`, `sed -Ei`), wrappers like `sudo` and `env` in front of the command, redirects placed before the command, interpreters in the middle of a pipeline, and write calls split across adjacent quoted strings.
+- Fewer false alarms: `sed -fi` (a script file, not in-place), `xxd -r -o 16` (an offset, not an output file), `gawk -i somelib` (a library, not in-place), and appending to a file without a trailing newline no longer miscounts the file length.
+
+### Notes
+
+- Known remaining gaps are written down in the test suite so the next hardening pass starts from an honest list: echoing an expanded variable into a file, `curl` piped into `tee`, `python3 -m module` runs, and stream transforms into a new file.
+- The human escape hatch is unchanged: setting `ADW_ALLOW_PROTECTED_EDIT=1` in your own shell releases all of these rules.
+
 ## 0.17.0 (2026-08-18)
 
 ### Fixed
