@@ -5,21 +5,21 @@ import re
 from collections.abc import Callable
 
 from lib.shell_parse import (
-    HeredocEvent, _bare, _basename, _command_word_index, _interpreter_code_flags, _is_file_target, _literal_contents,
-    _logical_lines, _payload_command_index, _pipeline_groups, _segment_text, _segments, _write_path_writes,
-    has_process_substitution, heredoc_events, interpreter_invocation,
+    HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
+    _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
+    _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
 
 WRITE_CAPABLE_TOKEN_RE = re.compile(
-    r"open\(|\.write\(|\bwrite\(|\bexec\(|\beval\(|__|\bsubprocess\b|"
-    r"\bimport\s+(?:os|shutil|pathlib)\b|\bos\.\w|\bshutil\.\w|\bpathlib\.\w|"
+    r"open\(|\.write\(|\bwrite\(|\.write_text\(|\.write_bytes\(|\bexec\(|\beval\(|__|\bsubprocess\b|"
+    r"\bimport\s+(?:os|shutil|pathlib)\b|\bfrom\s+(?:os|shutil|pathlib|io)\s+import\b|"
+    r"\bos\.\w|\bshutil\.\w|\bpathlib\.\w|"
     r"\bfs\.\w|\bFile\.\w|\bIO\.\w|decode\(|`|"
     r"\brequire\(|\bfile_put_contents\(|\bfopen\(|\bfwrite\("
 )
-SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
 DECODE_FLAGS: dict[str, frozenset[str]] = {
     "base64": frozenset({"-d", "--decode"}),
     "xxd": frozenset({"-r"}),
@@ -104,14 +104,23 @@ def _heredoc_stdin_findings(event: HeredocEvent, make_finding: FindingFactory, r
 
 
 def _pipe_interpreter_findings(group: list[list[str]], make_finding: FindingFactory, recurse: RecurseFn) -> list[dict]:
-    """Judge one pipe's producer text against its actual consumer, because a shell consumer reads its stdin as a nested command while any other interpreter reads it as inline code."""
-    if len(group) < 2 or not _is_bare_interpreter_segment(group[-1]):
-        return []
-    producer_texts = _literal_contents(group[:-1])
-    if len(producer_texts) != len(group) - 1 or None in producer_texts:
+    """Judge every bare interpreter stage that has a producer ahead of it, because stdin reaches a middle stage exactly as it reaches the last one."""
+    findings = []
+    for index in range(1, len(group)):
+        if _is_bare_interpreter_segment(group[index]):
+            findings.extend(_stage_interpreter_findings(group[:index], group[index], make_finding, recurse))
+    return findings
+
+
+def _stage_interpreter_findings(
+    producers: list[list[str]], consumer: list[str], make_finding: FindingFactory, recurse: RecurseFn,
+) -> list[dict]:
+    """Judge one interpreter stage's stdin against its own producer text, because a shell consumer reads its stdin as a nested command while any other interpreter reads it as inline code."""
+    producer_texts = _literal_contents(producers)
+    if len(producer_texts) != len(producers) or None in producer_texts:
         return [make_finding("interpreter_heredoc_write")]
     joined = "\n".join(producer_texts)
-    if _bare_interpreter_name(group[-1]) in SHELL_C_INTERPRETERS:
+    if _bare_interpreter_name(consumer) in SHELL_C_INTERPRETERS:
         return recurse(joined)
     if WRITE_CAPABLE_TOKEN_RE.search(joined):
         return [make_finding("interpreter_heredoc_write")]
@@ -217,7 +226,7 @@ def _awk_has_inplace(tokens: list[str]) -> bool:
             continue
         if bare == "--inplace" or bare.startswith("--inplace="):
             return True
-        if bare == "-i" or bare == "--include":
+        if bare in ("-i", "--include"):
             expecting_value = True
         elif bare.startswith("-i") and not bare.startswith("--") and bare[2:].startswith("inplace"):
             return True

@@ -53,6 +53,13 @@ def allowed(command, config=None):
     """env --split-string='python3 -c "import os"'""",
     '''env --split-string="python3 -c 'import os'"''',
     """env -S='python3 -c "import os"'""",
+    """python3 -c 'from pathlib import Path; Path("x.txt").write_text("y")'""",
+    """python3 -c 'from pathlib import Path; Path("x.txt").write_bytes(b"y")'""",
+    """python3 -c 'from os import remove; remove("x.txt")'""",
+    """python3 -c 'from shutil import rmtree; rmtree("x")'""",
+    """python3 -c 'from io import FileIO; FileIO("x.txt","w")'""",
+    """> out.log python3 -c 'open("x.txt", "w").write("y")'""",
+    """< in.txt python3 -c 'open("x.txt", "w").write("y")'""",
 ])
 def test_inline_interpreter_write_blocks(command):
     reason = blocked(command)
@@ -70,6 +77,18 @@ def test_shell_payload_block_blocks(command):
     assert "Write or Edit" in reason
 
 
+# Pin this case because a write token in the first fragment must block even if the fragment join regresses.
+def test_adjacent_quoted_fragments_in_a_python_payload_still_block():
+    reason = blocked("""python3 -c 'open("x'"t.txt"'","w").write("y")'""")
+    assert "inline_interpreter_write" in reason
+
+
+# Pin the exact probe because only the joined word carries the write token, so this test holds the fragment join.
+def test_a_write_call_split_across_the_operand_boundary_still_blocks():
+    reason = blocked("""python3 -c 'a=1'"; open('t.txt','w').write('y')\"""")
+    assert "inline_interpreter_write" in reason
+
+
 def test_a_literal_shell_payload_reenters_the_full_gate():
     reason = blocked("sh -c 'rm -rf ~/.agent-discipline'")
     assert "state_deletion" in reason
@@ -84,6 +103,16 @@ def test_a_literal_shell_payload_content_is_scanned():
     reason = blocked(f'sh -c "{bare}"')
     assert "dead_metaphor" in reason
     assert "inflated_diction" in reason
+
+
+def test_a_literal_shell_payload_with_an_outer_redirect_is_scanned():
+    reason = blocked("""sh -c "echo 'We leverage a rich tapestry of utilities.'" > out.md""")
+    assert "dead_metaphor" in reason
+    assert "inflated_diction" in reason
+
+
+def test_a_literal_shell_payload_with_an_outer_redirect_and_unreadable_content_stays_allowed():
+    assert allowed("sh -c 'cat somefile' > out.md") == {}
 
 
 def test_a_fused_shell_c_flag_still_reenters_the_full_gate():
@@ -140,6 +169,20 @@ def test_a_pipe_into_a_shell_consumer_reenters_the_full_gate():
 def test_a_pipe_into_a_shell_consumer_catches_state_deletion():
     reason = blocked('echo "rm -rf ~/.agent-discipline" | sh')
     assert "state_deletion" in reason
+
+
+def test_a_mid_pipeline_interpreter_with_write_capable_producer_text_blocks():
+    reason = blocked('echo "import os" | python3 | cat')
+    assert "interpreter_heredoc_write" in reason
+
+
+def test_a_mid_pipeline_shell_stage_reenters_the_full_gate():
+    reason = blocked('echo "rm -rf ~/.agent-discipline" | sh | cat')
+    assert "state_deletion" in reason
+
+
+def test_a_mid_pipeline_with_no_interpreter_stage_stays_allowed():
+    assert allowed("cat file | grep x | head") == {}
 
 
 def test_a_clean_literal_heredoc_into_a_shell_consumer_stays_allowed():
@@ -273,6 +316,7 @@ def test_a_config_key_releases_no_rule(command):
     "xxd -r blob.txt",
     "xxd -r -o 0x1000",
     "xxd -r -o 0x1000 infile",
+    "xxd -r -o 16 dump.txt",
     "sed 's/a/b/' file.txt",
     "cat <<EOF\nsome text\nEOF",
     "cat <<EOF | psql\n$VAR\nEOF",
@@ -286,6 +330,7 @@ def test_a_config_key_releases_no_rule(command):
     "dd if=/dev/zero of=/dev/null",
     "printf 'clean text' | python3 -c 'print(1)'",
     "awk '{print $1}' file.txt",
+    "> out.log ls",
 ])
 def test_read_only_idioms_stay_allowed(command):
     assert allowed(command) == {}

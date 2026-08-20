@@ -46,6 +46,9 @@ INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
     "php": frozenset({"-r"}),
     "sh": frozenset({"-c"}), "bash": frozenset({"-c"}), "zsh": frozenset({"-c"}), "dash": frozenset({"-c"}), "ksh": frozenset({"-c"}),
 }
+SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
+# Because a fused file operand must not defeat this match, the file half is optional here.
+LEADING_REDIRECT_RE = re.compile(r"^(\d*)(>>?|>\||<<?)")
 VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
@@ -204,9 +207,13 @@ def _payload_command_index(segment: list[str]) -> int:
 
 
 def _skip_prefixes(segment: list[str], names: frozenset[str]) -> int:
-    """Walk past assignments and named wrappers, including their flags, because quoting or inserting env -i must not hide the verb."""
+    """Walk past redirects, assignments, and named wrappers, including their flags, because a leading redirect or an inserted env -i must not hide the verb."""
     index = 0
     while index < len(segment):
+        redirect_index = _skip_leading_redirect(segment, index)
+        if redirect_index is not None:
+            index = redirect_index
+            continue
         token = segment[index]
         if not _is_quoted(token):
             name, separator, _ = token.partition("=")
@@ -222,6 +229,21 @@ def _skip_prefixes(segment: list[str], names: frozenset[str]) -> int:
             continue
         return index
     return len(segment)
+
+
+def _skip_leading_redirect(segment: list[str], index: int) -> int | None:
+    """Return the index past one redirect operator and its file operand, or None when the token here is not a redirect, because a command word can sit behind a redirect that precedes it on the line."""
+    token = segment[index]
+    if _is_quoted(token):
+        return None
+    match = LEADING_REDIRECT_RE.match(token)
+    if not match:
+        return None
+    rest = token[match.end():]
+    index += 1
+    if not rest and index < len(segment):
+        index += 1
+    return index
 
 
 def _skip_wrapper_options(segment: list[str], index: int) -> int:
@@ -322,7 +344,25 @@ def _literal_contents(segments: list[list[str]]) -> list[str | None]:
         index = _command_word_index(segment)
         if index < len(segment) and _basename(segment[index]) in LITERAL_PRODUCERS:
             contents.append(_producer_text(segment[index + 1:]))
+            continue
+        payload = _shell_c_literal_payload(segment)
+        if payload is not None:
+            contents.append(payload)
     return contents
+
+
+def _shell_c_literal_payload(segment: list[str]) -> str | None:
+    """Read the payload's own literal producer text, because an outer redirect on the sh -c segment captures that inner command's stdout, not the payload's own source line."""
+    invocation = interpreter_invocation(segment)
+    if invocation is None or invocation.interpreter not in SHELL_C_INTERPRETERS or invocation.payload is None:
+        return None
+    inner_segments = _segments(invocation.payload)
+    if len(inner_segments) != 1:
+        return None
+    contents = _literal_contents(inner_segments)
+    if len(contents) != 1:
+        return None
+    return contents[0]
 
 
 def _producer_text(args: list[str]) -> str | None:
@@ -389,7 +429,30 @@ def _tokens(command: str) -> list[str]:
         raw = list(lexer)
     except ValueError:
         raw = command.split()
+    raw = _merge_adjacent_fragments(command, raw)
     return _expand_env_split_strings(_merge_clobber_operator(raw))
+
+
+def _merge_adjacent_fragments(command: str, tokens: list[str]) -> list[str]:
+    """Join fragments that touch with no whitespace between them into one token, because Bash concatenates a quoted span directly against a neighboring quoted or bare span into a single word, while shlex leaves each quoted span as its own token."""
+    merged: list[str] = []
+    search_from = 0
+    prev_end: int | None = None
+    prev_is_word = False
+    for token in tokens:
+        start = command.find(token, search_from)
+        if start == -1:
+            start = search_from
+        end = start + len(token)
+        is_word = token not in SEPARATORS
+        if is_word and prev_is_word and start == prev_end:
+            merged[-1] += token
+        else:
+            merged.append(token)
+        prev_end = end
+        prev_is_word = is_word
+        search_from = end
+    return merged
 
 
 def _expand_env_split_strings(tokens: list[str]) -> list[str]:

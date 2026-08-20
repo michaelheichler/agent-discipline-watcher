@@ -65,6 +65,8 @@ def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | 
     disk = file_line_count(resolved_path)
     before = disk[0] if disk is not None else 0
     total = before + len(body.splitlines())
+    if before and not _ends_with_newline(resolved_path):
+        total -= 1
     policy = file_length_policy(total)
     if policy is None or policy == file_length_policy(before):
         return None
@@ -79,6 +81,16 @@ def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | 
         "snippet": path.strip()[:180],
         "action": action,
     }
+
+
+def _ends_with_newline(resolved_path: Path) -> bool:
+    """Default true on any read failure, because an unreadable file must not be blamed for a break the append did not cause."""
+    try:
+        with resolved_path.open("rb") as handle:
+            handle.seek(-1, 2)
+            return handle.read(1) == b"\n"
+    except OSError:
+        return True
 
 
 def _resolved_path(path: str, cwd: Path) -> Path:

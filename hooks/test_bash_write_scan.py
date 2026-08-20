@@ -465,6 +465,22 @@ def test_bash_append_growing_a_file_past_the_length_limit_blocks(tmp_path):
     assert "file_too_long" in result["reason"]
 
 
+def test_bash_append_onto_a_file_without_a_trailing_newline_does_not_overcount(tmp_path):
+    target = tmp_path / "big.py"
+    target.write_text("x = 1\n" * 998 + "x = 999", encoding="utf-8")
+    command = "echo 'y = 1000' >> big.py"
+    assert pre_bash.run({"tool_input": {"command": command}, "cwd": str(tmp_path)}) == {}
+
+
+def test_bash_append_onto_a_newline_terminated_file_still_blocks_at_the_boundary(tmp_path):
+    target = tmp_path / "big.py"
+    target.write_text("x = 1\n" * 999, encoding="utf-8")
+    command = "echo 'y = 1000' >> big.py"
+    result = pre_bash.run({"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert result["decision"] == "block"
+    assert "file_too_long" in result["reason"]
+
+
 def test_bash_append_under_the_length_limit_stays_clean(tmp_path):
     target = tmp_path / "small.py"
     target.write_text("x = 1\n" * 10, encoding="utf-8")

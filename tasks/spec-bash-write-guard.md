@@ -8,7 +8,7 @@ Agents under observation dodge the discipline watcher by routing file writes thr
 
 ## Solution
 
-Every Bash-mediated write is guarded. Literal write bodies the watcher can fully see are scanned with the same strict hard block on findings as the Write and Edit tools, including the split between whole-file writes and edits. Write bodies the watcher cannot statically see are hard blocked outright, with a deny message directing the agent to the Write or Edit tool. The new rules sit in the always-blocking tier, so no project config can weaken them and only the human-held environment escape releases them.
+Every Bash-mediated write route the gate can attribute to a write is guarded, meaning heredocs, inline interpreters, decode pipes, in-place editors, and literal redirects. Literal write bodies the watcher can fully see are scanned with the same strict hard block on findings as the Write and Edit tools, including the split between whole-file writes and edits. Write bodies the watcher cannot statically see are hard blocked outright, with a deny message directing the agent to the Write or Edit tool. The residual gaps named under Out of Scope below are the documented exception to this guarantee. The new rules sit in the always-blocking tier, so no project config can weaken them and only the human-held environment escape releases them.
 
 ## User Stories
 
