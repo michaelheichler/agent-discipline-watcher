@@ -43,6 +43,11 @@ def allowed(command, config=None):
     """node -pe 'require("fs").writeFileSync("a.txt","body")'""",
     """python3.12 -c 'open("x.txt", "w").write("y")'""",
     """/usr/bin/python3.11 -c 'open("x.txt", "w").write("y")'""",
+    """env -S 'python3 -c "import os"'""",
+    """env --split-string 'python3 -c "import os"'""",
+    """env -S python3 -c 'open("x.txt", "w").write("y")'""",
+    """env --split-string=python3 -c 'open("x.txt", "w").write("y")'""",
+    """env -iS 'python3 -c "import os"'""",
 ])
 def test_inline_interpreter_write_blocks(command):
     reason = blocked(command)
@@ -160,6 +165,10 @@ def test_dynamic_heredoc_write_blocks(command):
     "uudecode file.uu",
     "openssl enc -d -out out.bin",
     "openssl base64 -d -out out.bin",
+    "xxd -r blob.txt > out.bin",
+    "xxd -r | tee out.bin",
+    "env -S 'base64 -d blob.txt > out.bin'",
+    "env -S 'base64 -d blob.txt | tee out.bin'",
 ])
 def test_decode_pipe_write_blocks(command):
     reason = blocked(command)
@@ -182,6 +191,7 @@ def test_decode_pipe_write_blocks(command):
     "gawk -iinplace '{gsub(/a/,\"b\")}1' f.txt",
     "sudo -u root sed -i '' 's/a/b/' file.txt",
     "'sudo' sed -i '' 's/a/b/' file.txt",
+    "env -S 'sed -i s/a/b/ file.txt'",
 ])
 def test_inplace_edit_write_blocks(command):
     reason = blocked(command)
@@ -246,9 +256,14 @@ def test_a_config_key_releases_no_rule(command):
     "python3 -c '1 + 1'",
     "env -i python3 -c 'print(1)'",
     "python3.12 -c 'print(1)'",
+    "env -S 'python3 -c \"print(1)\"'",
+    "env --split-string 'python3 -c \"print(1)\"'",
     "base64 -d blob.txt",
     "base64 -o out.bin blob.txt",
     "openssl enc -out out.bin",
+    "xxd -r blob.txt",
+    "xxd -r -o 0x1000",
+    "xxd -r -o 0x1000 infile",
     "sed 's/a/b/' file.txt",
     "cat <<EOF\nsome text\nEOF",
     "cat <<EOF | psql\n$VAR\nEOF",
@@ -258,6 +273,7 @@ def test_a_config_key_releases_no_rule(command):
     "grep 'sed -i' docs/",
     "grep 'tee -a' docs/",
     "echo 'reminder to run dd if=/dev/zero later'",
+    """echo env -S 'python3 -c "import os"'""",
     "dd if=/dev/zero of=/dev/null",
     "printf 'clean text' | python3 -c 'print(1)'",
     "awk '{print $1}' file.txt",

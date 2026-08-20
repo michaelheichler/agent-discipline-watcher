@@ -25,8 +25,9 @@ INTERPRETERS = frozenset({
 # Excludes true interpreters, because stepping past one here would let a wrapper hide inline code from detection.
 WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec"})
 # Value-taking wrapper flags, because skipping only the wrapper word would treat sudo -u or env -u as the command.
+# env -S/--split-string is not listed here, because its argument is a command line that must be re-parsed rather than skipped.
 WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
-    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"}),
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-a", "--argv0"}),
     "sudo": frozenset({
         "-u", "--user", "-g", "--group", "-h",
         "-C", "--close-from", "-D", "--chdir", "-R", "--chroot",
@@ -35,6 +36,7 @@ WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
     "time": frozenset({"-f", "--format", "-o", "--output"}),
     "exec": frozenset({"-a"}),
 }
+ENV_SPLIT_STRING_FLAGS = frozenset({"-S", "--split-string"})
 TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
 INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
     "python": frozenset({"-c"}), "python3": frozenset({"-c"}), "python2": frozenset({"-c"}),
@@ -387,7 +389,99 @@ def _tokens(command: str) -> list[str]:
         raw = list(lexer)
     except ValueError:
         raw = command.split()
-    return _merge_clobber_operator(raw)
+    return _expand_env_split_strings(_merge_clobber_operator(raw))
+
+
+def _expand_env_split_strings(tokens: list[str]) -> list[str]:
+    """Re-parse env -S/--split-string payloads in command position, because that argument is a command line rather than a wrapper value to skip."""
+    result: list[str] = []
+    index = 0
+    command_position = True
+    while index < len(tokens):
+        token = tokens[index]
+        if token in SEPARATORS:
+            result.append(token)
+            command_position = True
+            index += 1
+            continue
+        if not command_position:
+            result.append(token)
+            index += 1
+            continue
+        if not _is_quoted(token):
+            name, separator, _ = token.partition("=")
+            if separator and name:
+                result.append(token)
+                index += 1
+                continue
+        command_name = _basename(token)
+        if command_name == "env":
+            result.append(token)
+            index = _expand_env_flags(tokens, index + 1, result)
+            continue
+        if command_name in WRAPPER_COMMANDS:
+            result.append(token)
+            child = _skip_wrapper_options(tokens, index)
+            result.extend(tokens[index + 1:child])
+            index = child
+            continue
+        result.append(token)
+        command_position = False
+        index += 1
+    return result
+
+
+def _expand_env_flags(tokens: list[str], index: int, result: list[str]) -> int:
+    """Copy env flags, splicing any -S/--split-string payload into argv, because that payload is the child command line."""
+    value_flags = WRAPPER_VALUE_FLAGS["env"]
+    while index < len(tokens):
+        if tokens[index] in SEPARATORS:
+            return index
+        payload, consumed, keep_prefix = _env_split_string_at(tokens, index)
+        if payload is not None:
+            replacement = ([keep_prefix] if keep_prefix else []) + _tokens(payload)
+            tokens[index:index + consumed] = replacement
+            continue
+        token = tokens[index]
+        bare = _bare(token)
+        if bare == "--":
+            result.append(token)
+            return index + 1
+        if not _is_quoted(token):
+            name, separator, _ = token.partition("=")
+            if separator and name and not bare.startswith("-"):
+                result.append(token)
+                index += 1
+                continue
+        if not bare.startswith("-"):
+            return index
+        result.append(token)
+        if "=" in bare or not _wrapper_consumes_value(bare, value_flags):
+            index += 1
+            continue
+        if index + 1 < len(tokens) and tokens[index + 1] not in SEPARATORS:
+            result.append(tokens[index + 1])
+            index += 2
+        else:
+            index += 1
+    return index
+
+
+def _env_split_string_at(tokens: list[str], index: int) -> tuple[str | None, int, str | None]:
+    """Return the split-string payload and how many tokens it occupies, because -S, --split-string, fused = forms, and a trailing S in a short cluster all name a command line."""
+    bare = _bare(tokens[index])
+    next_token = tokens[index + 1] if index + 1 < len(tokens) and tokens[index + 1] not in SEPARATORS else None
+    if bare in ENV_SPLIT_STRING_FLAGS and next_token is not None:
+        return _bare(next_token), 2, None
+    if bare.startswith("--split-string="):
+        return bare.partition("=")[2], 1, None
+    if bare.startswith("-S") and not bare.startswith("--") and len(bare) > 2:
+        rest = bare[2:]
+        return rest[1:] if rest.startswith("=") else rest, 1, None
+    letters = bare[1:]
+    if next_token is not None and bare.startswith("-") and not bare.startswith("--") and letters.endswith("S") and letters[:-1].isalpha():
+        return _bare(next_token), 2, bare[:-1]
+    return None, 0, None
 
 
 def _segments(command: str) -> list[list[str]]:

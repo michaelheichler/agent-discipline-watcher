@@ -151,12 +151,15 @@ def _openssl_decodes(args: list[str]) -> bool:
 
 
 def _decode_writes_file(segment: list[str]) -> bool:
-    """Treat uudecode and -o/-out destinations as writes, because those tools land bytes on disk with no redirect token."""
+    """Treat uudecode and -o/-out destinations as writes, because those tools land bytes on disk with no redirect token. Skip xxd, because xxd -o is a display offset rather than a file."""
     index = _command_word_index(segment)
     if index >= len(segment):
         return False
-    if _basename(segment[index]) in DECODE_ALWAYS_VERBS:
+    verb = _basename(segment[index])
+    if verb in DECODE_ALWAYS_VERBS:
         return True
+    if verb == "xxd":
+        return False
     return _has_file_output_flag(segment[index + 1:])
 
 
