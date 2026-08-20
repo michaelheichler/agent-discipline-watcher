@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import shlex
 from pathlib import PurePosixPath
+from typing import NamedTuple
 
 # Matches only the exact descriptor 2, because a bare stderr redirect writes no target file.
 STDERR_DESCRIPTOR = "2"
@@ -21,6 +22,41 @@ OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 INTERPRETERS = frozenset({
     "python", "python3", "sh", "bash", "zsh", "dash", "command", "env", "exec", "sudo", "time", "nohup",
 })
+# Excludes true interpreters, because stepping past one here would let a wrapper hide inline code from detection.
+WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec"})
+TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
+INTERPRETER_CODE_FLAGS: dict[str, str] = {
+    "python": "-c", "python3": "-c", "python2": "-c",
+    "node": "-e", "nodejs": "-e",
+    "ruby": "-e",
+    "perl": "-e",
+    "php": "-r",
+    "sh": "-c", "bash": "-c", "zsh": "-c", "dash": "-c", "ksh": "-c",
+}
+QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
+
+
+class LiteralWrite(NamedTuple):
+    """Carries the append flag next to the text, because downstream scanning treats an overwrite and an append as different shapes."""
+    path: str
+    text: str
+    append: bool
+
+
+class InterpreterInvocation(NamedTuple):
+    """Carries None for the payload when it is dynamic, because a guessed literal would misreport what the interpreter actually receives."""
+    interpreter: str
+    flag: str
+    payload: str | None
+
+
+class HeredocEvent(NamedTuple):
+    """Carries the consumer segment and group write-target flag next to the body, because a shared line must not blur one heredoc's context into another's."""
+    consumer_segment: list[str]
+    body: str
+    dynamic: bool
+    group_has_write_target: bool
 
 
 def write_paths(command: str) -> list[str]:
@@ -34,8 +70,13 @@ def write_paths(command: str) -> list[str]:
 
 
 def write_targets(command: str) -> list[tuple[str, str]]:
+    """Stays a path-and-text pair, because existing callers would break if the append flag were forced into their tuples."""
+    return [(write.path, write.text) for write in literal_writes(command)]
+
+
+def literal_writes(command: str) -> list[LiteralWrite]:
     """Drop a write whose text is not knowable here, because a guessed body would misreport what the command actually sends."""
-    rows: list[tuple[str, str]] = []
+    rows: list[LiteralWrite] = []
     for line, bodies, _ in _logical_lines(command):
         rows.extend(_line_writes(line, bodies))
     return rows
@@ -73,42 +114,47 @@ def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str, b
     return "\n".join(collected), True, index
 
 
-def _line_writes(line: str, bodies: list[str | None]) -> list[tuple[str, str]]:
+def _line_writes(line: str, bodies: list[str | None]) -> list[LiteralWrite]:
     """Because an unrelated command on the same line can also write, a heredoc there must never stand in for this one's content."""
-    rows: list[tuple[str, str]] = []
+    rows: list[LiteralWrite] = []
     cursor = 0
     for group in _pipeline_groups(line):
         heredoc_total = sum(len(HEREDOC_RE.findall(_segment_text(segment))) for segment in group)
         group_bodies = bodies[cursor:cursor + heredoc_total]
         cursor += heredoc_total
-        targets = [path for segment in group for path in _write_paths(segment)]
-        if not targets:
+        target_writes = [write for segment in group for write in _write_path_writes(segment)]
+        if not target_writes:
             continue
         contents = group_bodies if heredoc_total else _literal_contents(group)
-        rows.extend(_paired_writes(targets, contents))
+        rows.extend(_paired_writes(target_writes, contents))
     return rows
 
 
-def _paired_writes(targets: list[str], contents: list[str | None]) -> list[tuple[str, str]]:
+def _paired_writes(target_writes: list[tuple[str, bool]], contents: list[str | None]) -> list[LiteralWrite]:
     if not contents or None in contents:
         return []
     if len(contents) == 1:
-        return [(path, contents[0]) for path in targets]
-    if len(contents) == len(targets):
-        return list(zip(targets, contents))
+        return [LiteralWrite(path, contents[0], append) for path, append in target_writes]
+    if len(contents) == len(target_writes):
+        return [LiteralWrite(path, text, append) for (path, append), text in zip(target_writes, contents)]
     return []
 
 
 def _write_paths(segment: list[str]) -> list[str]:
-    paths = _redirect_paths(segment)
-    index = _command_word_index(segment)
-    if index < len(segment) and _basename(segment[index]) == "tee":
-        paths.extend(_bare(token) for token in segment[index + 1:] if not _bare(token).startswith("-"))
-    return [path for path in paths if _is_file_target(path)]
+    return [path for path, _ in _write_path_writes(segment)]
+
+
+def _write_path_writes(segment: list[str]) -> list[tuple[str, bool]]:
+    writes = _redirect_writes(segment) + _tee_writes(segment)
+    return [(path, append) for path, append in writes if _is_file_target(path)]
 
 
 def _redirect_paths(segment: list[str]) -> list[str]:
-    paths = []
+    return [path for path, _ in _redirect_writes(segment)]
+
+
+def _redirect_writes(segment: list[str]) -> list[tuple[str, bool]]:
+    writes = []
     for index, token in enumerate(segment):
         match = REDIRECT_HEAD_RE.match(token)
         if _is_quoted(token) or not match or match.group(1) == STDERR_DESCRIPTOR:
@@ -116,8 +162,17 @@ def _redirect_paths(segment: list[str]) -> list[str]:
         rest = token[match.end():]
         if not rest and index + 1 < len(segment):
             rest = segment[index + 1]
-        paths.append(_bare(rest))
-    return paths
+        writes.append((_bare(rest), match.group(2) == ">>"))
+    return writes
+
+
+def _tee_writes(segment: list[str]) -> list[tuple[str, bool]]:
+    index = _command_word_index(segment)
+    if index >= len(segment) or _basename(segment[index]) != "tee":
+        return []
+    args = segment[index + 1:]
+    append = any(_bare(token) in TEE_APPEND_FLAGS for token in args)
+    return [(_bare(token), append) for token in args if not _bare(token).startswith("-")]
 
 
 def _is_file_target(path: str) -> bool:
@@ -137,6 +192,54 @@ def _command_word_index(segment: list[str]) -> int:
             continue
         return index
     return len(segment)
+
+
+def _payload_command_index(segment: list[str]) -> int:
+    """Stops at an interpreter rather than stepping past it, because interpreter_invocation needs the interpreter itself in command position."""
+    index = 0
+    while index < len(segment):
+        token = segment[index]
+        if _is_quoted(token):
+            return index
+        name, separator, _ = token.partition("=")
+        if (separator and name) or _basename(token) in WRAPPER_COMMANDS:
+            index += 1
+            continue
+        return index
+    return len(segment)
+
+
+def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
+    """Reads only the command-position word, because a quoted mention of an interpreter elsewhere in the segment invokes nothing."""
+    index = _payload_command_index(segment)
+    if index >= len(segment):
+        return None
+    name = _basename(segment[index])
+    flag = INTERPRETER_CODE_FLAGS.get(name)
+    if flag is None:
+        return None
+    args = segment[index + 1:]
+    payload_token = _flag_payload_token(args, flag)
+    if payload_token is None:
+        return None
+    payload = _bare(payload_token) if _is_literal_token(payload_token) else None
+    return InterpreterInvocation(name, flag, payload)
+
+
+def _flag_payload_token(args: list[str], flag: str) -> str | None:
+    """Matches the flag whether it is quoted, bare, or fused with its payload, because quoting or attaching a flag changes none of its meaning to bash."""
+    for i, arg in enumerate(args):
+        if _bare(arg) == flag:
+            return args[i + 1] if i + 1 < len(args) else None
+        if not _is_quoted(arg) and arg.startswith(flag) and len(arg) > len(flag):
+            return arg[len(flag):]
+    return None
+
+
+def _is_literal_token(token: str) -> bool:
+    if token.startswith("'") and token.endswith("'") and len(token) >= 2:
+        return True
+    return not DYNAMIC_RE.search(token)
 
 
 def _literal_contents(segments: list[list[str]]) -> list[str | None]:
@@ -165,6 +268,41 @@ def _producer_text(args: list[str]) -> str | None:
             continue
         words.append(_bare(token))
     return " ".join(words).replace("\\n", "\n").replace("\\t", "\t")
+
+
+def heredoc_events(command: str) -> list[HeredocEvent]:
+    """Walks segments inside each pipeline group, because a heredoc belongs to the one segment that consumes it, not the whole line."""
+    events: list[HeredocEvent] = []
+    for line, bodies, raw_bodies in _logical_lines(command):
+        cursor = 0
+        for group in _pipeline_groups(line):
+            group_events, cursor = _group_heredoc_events(group, bodies, raw_bodies, cursor)
+            events.extend(group_events)
+    return events
+
+
+def _group_heredoc_events(
+    group: list[list[str]], bodies: list[str | None], raw_bodies: list[str], cursor: int,
+) -> tuple[list[HeredocEvent], int]:
+    group_has_write_target = any(_write_path_writes(segment) for segment in group)
+    events: list[HeredocEvent] = []
+    for segment in group:
+        heredoc_count = len(HEREDOC_RE.findall(_segment_text(segment)))
+        for offset in range(heredoc_count):
+            events.append(HeredocEvent(
+                consumer_segment=segment,
+                body=raw_bodies[cursor + offset],
+                dynamic=bodies[cursor + offset] is None,
+                group_has_write_target=group_has_write_target,
+            ))
+        cursor += heredoc_count
+    return events, cursor
+
+
+def has_process_substitution(segment: str) -> bool:
+    """Masks quoted spans first, because a literal mention of <( inside a string must not read as real process substitution."""
+    masked = QUOTED_SPAN_RE.sub(lambda match: "'" * len(match.group()), segment)
+    return bool(PROCESS_SUBSTITUTION_RE.search(masked))
 
 
 CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
