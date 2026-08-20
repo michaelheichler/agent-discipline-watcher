@@ -24,15 +24,27 @@ INTERPRETERS = frozenset({
 })
 # Excludes true interpreters, because stepping past one here would let a wrapper hide inline code from detection.
 WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec"})
-TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
-INTERPRETER_CODE_FLAGS: dict[str, str] = {
-    "python": "-c", "python3": "-c", "python2": "-c",
-    "node": "-e", "nodejs": "-e",
-    "ruby": "-e",
-    "perl": "-e",
-    "php": "-r",
-    "sh": "-c", "bash": "-c", "zsh": "-c", "dash": "-c", "ksh": "-c",
+# Value-taking wrapper flags, because skipping only the wrapper word would treat sudo -u or env -u as the command.
+WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"}),
+    "sudo": frozenset({
+        "-u", "--user", "-g", "--group", "-h",
+        "-C", "--close-from", "-D", "--chdir", "-R", "--chroot",
+        "-T", "--command-timeout", "-p", "--prompt", "-r", "--role", "-t", "--type",
+    }),
+    "time": frozenset({"-f", "--format", "-o", "--output"}),
+    "exec": frozenset({"-a"}),
 }
+TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
+INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
+    "python": frozenset({"-c"}), "python3": frozenset({"-c"}), "python2": frozenset({"-c"}),
+    "node": frozenset({"-e", "--eval", "-p", "--print"}), "nodejs": frozenset({"-e", "--eval", "-p", "--print"}),
+    "ruby": frozenset({"-e"}),
+    "perl": frozenset({"-e", "-E"}),
+    "php": frozenset({"-r"}),
+    "sh": frozenset({"-c"}), "bash": frozenset({"-c"}), "zsh": frozenset({"-c"}), "dash": frozenset({"-c"}), "ksh": frozenset({"-c"}),
+}
+VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
 
@@ -181,32 +193,77 @@ def _is_file_target(path: str) -> bool:
 
 def _command_word_index(segment: list[str]) -> int:
     """Step past env assignments and wrapper interpreters, because the word after them is what actually runs."""
-    index = 0
-    while index < len(segment):
-        token = segment[index]
-        if _is_quoted(token):
-            return index
-        name, separator, _ = token.partition("=")
-        if (separator and name) or _basename(token) in INTERPRETERS:
-            index += 1
-            continue
-        return index
-    return len(segment)
+    return _skip_prefixes(segment, INTERPRETERS)
 
 
 def _payload_command_index(segment: list[str]) -> int:
     """Stops at an interpreter rather than stepping past it, because interpreter_invocation needs the interpreter itself in command position."""
+    return _skip_prefixes(segment, WRAPPER_COMMANDS)
+
+
+def _skip_prefixes(segment: list[str], names: frozenset[str]) -> int:
+    """Walk past assignments and named wrappers, including their flags, because quoting or inserting env -i must not hide the verb."""
     index = 0
     while index < len(segment):
         token = segment[index]
-        if _is_quoted(token):
-            return index
-        name, separator, _ = token.partition("=")
-        if (separator and name) or _basename(token) in WRAPPER_COMMANDS:
-            index += 1
+        if not _is_quoted(token):
+            name, separator, _ = token.partition("=")
+            if separator and name:
+                index += 1
+                continue
+        command_name = _basename(token)
+        if command_name in names:
+            if command_name in WRAPPER_COMMANDS:
+                index = _skip_wrapper_options(segment, index)
+            else:
+                index += 1
             continue
         return index
     return len(segment)
+
+
+def _skip_wrapper_options(segment: list[str], index: int) -> int:
+    """Consume the wrapper word and the flags it owns, because env -i and sudo -u are options, not the child command."""
+    value_flags = WRAPPER_VALUE_FLAGS.get(_basename(segment[index]), frozenset())
+    index += 1
+    while index < len(segment):
+        token = segment[index]
+        bare = _bare(token)
+        if bare == "--":
+            return index + 1
+        if not _is_quoted(token):
+            name, separator, _ = token.partition("=")
+            if separator and name and not bare.startswith("-"):
+                index += 1
+                continue
+        if not bare.startswith("-"):
+            return index
+        if "=" in bare or not _wrapper_consumes_value(bare, value_flags):
+            index += 1
+            continue
+        index += 2
+    return index
+
+
+def _wrapper_consumes_value(bare: str, value_flags: frozenset[str]) -> bool:
+    """Treat a short cluster as value-taking when any letter matches, because sudo -un still consumes the user name."""
+    if bare in value_flags:
+        return True
+    if bare.startswith("--") or len(bare) < 2:
+        return False
+    value_letters = {flag[1] for flag in value_flags if len(flag) == 2}
+    return any(letter in value_letters for letter in bare[1:])
+
+
+def _interpreter_code_flags(name: str) -> frozenset[str] | None:
+    """Resolve flags for a versioned interpreter basename, because python3.12 is the same runtime as python3."""
+    flags = INTERPRETER_CODE_FLAGS.get(name)
+    if flags is not None:
+        return flags
+    match = VERSIONED_PYTHON_RE.fullmatch(name)
+    if match is None:
+        return None
+    return INTERPRETER_CODE_FLAGS.get(match.group(1))
 
 
 def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
@@ -215,24 +272,39 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
     if index >= len(segment):
         return None
     name = _basename(segment[index])
-    flag = INTERPRETER_CODE_FLAGS.get(name)
-    if flag is None:
+    flags = _interpreter_code_flags(name)
+    if flags is None:
         return None
-    args = segment[index + 1:]
-    payload_token = _flag_payload_token(args, flag)
+    matched = _flag_payload_token(segment[index + 1:], flags)
+    if matched is None:
+        return None
+    flag, payload_token = matched
     if payload_token is None:
         return None
     payload = _bare(payload_token) if _is_literal_token(payload_token) else None
     return InterpreterInvocation(name, flag, payload)
 
 
-def _flag_payload_token(args: list[str], flag: str) -> str | None:
-    """Matches the flag whether it is quoted, bare, or fused with its payload, because quoting or attaching a flag changes none of its meaning to bash."""
+def _flag_payload_token(args: list[str], flags: frozenset[str]) -> tuple[str, str | None] | None:
+    """Matches a code flag whether it is clustered, quoted, or fused with its payload, because bash -lc and python3 -c'code' still pass that payload to the interpreter."""
+    long_flags = [flag for flag in flags if flag.startswith("--")]
+    short_flags = [flag for flag in flags if len(flag) == 2 and flag.startswith("-")]
     for i, arg in enumerate(args):
-        if _bare(arg) == flag:
-            return args[i + 1] if i + 1 < len(args) else None
-        if not _is_quoted(arg) and arg.startswith(flag) and len(arg) > len(flag):
-            return arg[len(flag):]
+        bare = _bare(arg)
+        if bare in flags:
+            return bare, args[i + 1] if i + 1 < len(args) else None
+        for flag in long_flags:
+            prefix = flag + "="
+            if bare.startswith(prefix):
+                return flag, bare[len(prefix):]
+        next_arg = args[i + 1] if i + 1 < len(args) else None
+        for flag in short_flags:
+            letter = flag[1]
+            if len(bare) > 2 and bare.startswith("-") and not bare.startswith("--") and bare[-1] == letter and bare[1:-1].isalpha():
+                return flag, next_arg
+        for flag in short_flags:
+            if bare.startswith(flag) and len(bare) > len(flag):
+                return flag, bare[len(flag):]
     return None
 
 

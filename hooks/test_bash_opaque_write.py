@@ -31,6 +31,18 @@ def allowed(command, config=None):
     'python3 -c "$CODE"',
     """node -e 'require("fs").writeFileSync("a.txt","body")'""",
     """php -r 'file_put_contents("a.txt","body");'""",
+    """env -i python3 -c 'open("x.txt", "w").write("y")'""",
+    """sudo -u root python3 -c 'open("x.txt", "w").write("y")'""",
+    """command -p python3 -c 'open("x.txt", "w").write("y")'""",
+    """time -p python3 -c 'open("x.txt", "w").write("y")'""",
+    """'sudo' python3 -c 'open("x.txt", "w").write("y")'""",
+    """python3 -uc 'open("x.txt", "w").write("y")'""",
+    """perl -we 'open(F, ">x")'""",
+    """perl -E 'open(F, ">x")'""",
+    """node --eval 'require("fs").writeFileSync("a.txt","body")'""",
+    """node -pe 'require("fs").writeFileSync("a.txt","body")'""",
+    """python3.12 -c 'open("x.txt", "w").write("y")'""",
+    """/usr/bin/python3.11 -c 'open("x.txt", "w").write("y")'""",
 ])
 def test_inline_interpreter_write_blocks(command):
     reason = blocked(command)
@@ -64,6 +76,13 @@ def test_a_literal_shell_payload_content_is_scanned():
     assert "inflated_diction" in reason
 
 
+def test_a_fused_shell_c_flag_still_reenters_the_full_gate():
+    bare = "echo 'We leverage a rich tapestry of utilities.' > out.md"
+    reason = blocked(f'bash -lc "{bare}"')
+    assert "dead_metaphor" in reason
+    assert "inflated_diction" in reason
+
+
 def test_a_literal_shell_payload_oversize_write_blocks():
     bare = f"echo '{'x' * 200}' > out.md"
     reason = blocked(f'sh -c "{bare}"')
@@ -74,6 +93,8 @@ def test_a_literal_shell_payload_oversize_write_blocks():
     "python3 <<EOF\nimport os\nos.remove('x')\nEOF",
     'python3 <<EOF\n$CODE\nEOF',
     "cat notes.py | python3",
+    "python3.12 <<EOF\nimport os\nos.remove('x')\nEOF",
+    "sudo -u root python3 <<EOF\nimport os\nos.remove('x')\nEOF",
 ])
 def test_interpreter_heredoc_write_blocks(command):
     reason = blocked(command)
@@ -135,6 +156,10 @@ def test_dynamic_heredoc_write_blocks(command):
 @pytest.mark.parametrize("command", [
     "base64 -d blob.txt > out.bin",
     "base64 --decode blob.txt | tee out.bin",
+    "base64 -d -o out.bin blob.txt",
+    "uudecode file.uu",
+    "openssl enc -d -out out.bin",
+    "openssl base64 -d -out out.bin",
 ])
 def test_decode_pipe_write_blocks(command):
     reason = blocked(command)
@@ -155,6 +180,8 @@ def test_decode_pipe_write_blocks(command):
     "gawk -i inplace '{gsub(/a/,\"b\")}1' f.txt",
     "gawk --inplace '{gsub(/a/,\"b\")}1' f.txt",
     "gawk -iinplace '{gsub(/a/,\"b\")}1' f.txt",
+    "sudo -u root sed -i '' 's/a/b/' file.txt",
+    "'sudo' sed -i '' 's/a/b/' file.txt",
 ])
 def test_inplace_edit_write_blocks(command):
     reason = blocked(command)
@@ -178,6 +205,7 @@ def test_include_path_flag_is_not_an_inplace_flag(command):
 @pytest.mark.parametrize("command", [
     "dd if=/dev/zero of=out.bin",
     "cat <(cmd) > out.bin",
+    "env -i dd if=/dev/zero of=out.bin",
 ])
 def test_opaque_source_write_blocks(command):
     reason = blocked(command)
@@ -216,7 +244,11 @@ def test_a_config_key_releases_no_rule(command):
 @pytest.mark.parametrize("command", [
     "python3 -c 'print(1)'",
     "python3 -c '1 + 1'",
+    "env -i python3 -c 'print(1)'",
+    "python3.12 -c 'print(1)'",
     "base64 -d blob.txt",
+    "base64 -o out.bin blob.txt",
+    "openssl enc -out out.bin",
     "sed 's/a/b/' file.txt",
     "cat <<EOF\nsome text\nEOF",
     "cat <<EOF | psql\n$VAR\nEOF",

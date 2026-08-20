@@ -305,9 +305,22 @@ def test_write_targets_stays_a_thin_projection_of_literal_writes():
     ("node -e 'console.log(1)'", "node", "-e"),
     ("env python3 -c 'print(1)'", "python3", "-c"),
     ("sudo python3 -c 'print(1)'", "python3", "-c"),
+    ("env -i python3 -c 'print(1)'", "python3", "-c"),
+    ("sudo -u root python3 -c 'print(1)'", "python3", "-c"),
+    ("command -p python3 -c 'print(1)'", "python3", "-c"),
+    ("time -p python3 -c 'print(1)'", "python3", "-c"),
+    ("'sudo' python3 -c 'print(1)'", "python3", "-c"),
     ("'python3' -c 'print(1)'", "python3", "-c"),
     ('"python3" -c \'print(1)\'', "python3", "-c"),
     ("env 'python3' -c 'x'", "python3", "-c"),
+    ("bash -lc 'echo 1'", "bash", "-c"),
+    ("python3 -uc 'print(1)'", "python3", "-c"),
+    ("perl -we 'print 1'", "perl", "-e"),
+    ("perl -E 'print 1'", "perl", "-E"),
+    ("node --eval '1'", "node", "--eval"),
+    ("node -pe '1'", "node", "-e"),
+    ("python3.12 -c 'print(1)'", "python3.12", "-c"),
+    ("/usr/bin/python3.11 -c 'print(1)'", "python3.11", "-c"),
 ])
 def test_interpreter_invocation_reads_literal_payload(command, interpreter, flag):
     segment = shell_parse._segments(command)[0]

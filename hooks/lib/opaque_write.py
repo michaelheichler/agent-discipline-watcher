@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 
 from lib.shell_parse import (
-    INTERPRETER_CODE_FLAGS, HeredocEvent, _bare, _basename, _command_word_index, _is_file_target, _literal_contents,
+    HeredocEvent, _bare, _basename, _command_word_index, _interpreter_code_flags, _is_file_target, _literal_contents,
     _logical_lines, _payload_command_index, _pipeline_groups, _segment_text, _segments, _write_path_writes,
     has_process_substitution, heredoc_events, interpreter_invocation,
 )
@@ -25,6 +25,9 @@ DECODE_FLAGS: dict[str, frozenset[str]] = {
     "xxd": frozenset({"-r"}),
 }
 DECODE_ALWAYS_VERBS = frozenset({"uudecode"})
+DECODE_OUTPUT_FLAGS = frozenset({"-o", "--output", "-out"})
+OPENSSL_DECODE_SUBCOMMANDS = frozenset({"enc", "base64"})
+OPENSSL_DECODE_FLAGS = frozenset({"-d", "-decrypt"})
 INPLACE_VERBS = frozenset({"sed", "perl", "ruby"})
 AWK_VERBS = frozenset({"awk", "gawk"})
 # Each verb gets its own consuming set because sed's -E takes no argument while perl and ruby's -e/-E/-I do.
@@ -50,7 +53,7 @@ def _bare_interpreter_name(segment: list[str]) -> str | None:
     if index >= len(segment):
         return None
     name = _basename(segment[index])
-    if name not in INTERPRETER_CODE_FLAGS:
+    if _interpreter_code_flags(name) is None:
         return None
     trailing = segment[index + 1:]
     if any(_is_positional_argument(token) for token in trailing):
@@ -133,8 +136,45 @@ def _is_decode_segment(segment: list[str]) -> bool:
     verb = _basename(segment[index])
     if verb in DECODE_ALWAYS_VERBS:
         return True
+    args = segment[index + 1:]
+    if verb == "openssl":
+        return _openssl_decodes(args)
     flags = DECODE_FLAGS.get(verb)
-    return flags is not None and any(_bare(token) in flags for token in segment[index + 1:])
+    return flags is not None and any(_bare(token) in flags for token in args)
+
+
+def _openssl_decodes(args: list[str]) -> bool:
+    """Require an enc or base64 subcommand plus a decrypt flag, because openssl enc without -d encrypts."""
+    if not args or _bare(args[0]) not in OPENSSL_DECODE_SUBCOMMANDS:
+        return False
+    return any(_bare(token) in OPENSSL_DECODE_FLAGS for token in args[1:])
+
+
+def _decode_writes_file(segment: list[str]) -> bool:
+    """Treat uudecode and -o/-out destinations as writes, because those tools land bytes on disk with no redirect token."""
+    index = _command_word_index(segment)
+    if index >= len(segment):
+        return False
+    if _basename(segment[index]) in DECODE_ALWAYS_VERBS:
+        return True
+    return _has_file_output_flag(segment[index + 1:])
+
+
+def _has_file_output_flag(tokens: list[str]) -> bool:
+    """Accept GNU -o/--output and openssl -out, because those flags name a file without using > or tee."""
+    expecting = False
+    for token in tokens:
+        bare = _bare(token)
+        if expecting:
+            return _is_file_target(bare)
+        if bare in DECODE_OUTPUT_FLAGS:
+            expecting = True
+            continue
+        if bare.startswith("--output="):
+            return _is_file_target(bare.partition("=")[2])
+        if bare.startswith("-out=") and len(bare) > 5:
+            return _is_file_target(bare[5:])
+    return False
 
 
 def decode_pipe_findings(command: str, make_finding: FindingFactory) -> list[dict]:
@@ -142,8 +182,10 @@ def decode_pipe_findings(command: str, make_finding: FindingFactory) -> list[dic
     findings = []
     for line, _, _ in _logical_lines(command):
         for group in _pipeline_groups(line):
-            if any(_is_decode_segment(segment) for segment in group) and any(
-                _write_path_writes(segment) for segment in group
+            decode_segments = [segment for segment in group if _is_decode_segment(segment)]
+            if decode_segments and (
+                any(_write_path_writes(segment) for segment in group)
+                or any(_decode_writes_file(segment) for segment in decode_segments)
             ):
                 findings.append(make_finding("decode_pipe_write"))
     return findings
