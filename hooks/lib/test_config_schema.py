@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 import json
 import subprocess
 import sys
@@ -430,6 +431,24 @@ class RuleGateTests(unittest.TestCase):
             with self.subTest(state=state):
                 cfg = {"rule_gates": {"suppression_escape_hatch": state}}
                 self.assertEqual(config.resolve_outcome(self.HATCH, cfg), "block")
+
+    BASH_WRITE_RULES: ClassVar[tuple[str, ...]] = (
+        "inline_interpreter_write", "shell_payload_block", "interpreter_heredoc_write",
+        "dynamic_heredoc_write", "decode_pipe_write", "inplace_edit_write", "opaque_source_write",
+    )
+
+    def test_the_seven_bash_write_rules_are_always_blocking(self):
+        for rule in self.BASH_WRITE_RULES:
+            with self.subTest(rule=rule):
+                self.assertIn(rule, config.ALWAYS_BLOCKING_RULES)
+                self.assertIn(rule, config.SELF_PROTECTION_RULES)
+
+    def test_a_rule_gate_cannot_release_a_bash_write_rule(self):
+        for rule, state in itertools.product(self.BASH_WRITE_RULES, ("off", "observe")):
+            with self.subTest(rule=rule, state=state):
+                finding = {"family": "self_protection", "rule": rule}
+                cfg = {"rule_gates": {rule: state}}
+                self.assertEqual(config.resolve_outcome(finding, cfg), "block")
 
 
 if __name__ == "__main__":
