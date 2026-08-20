@@ -325,6 +325,11 @@ def test_write_targets_stays_a_thin_projection_of_literal_writes():
     ("env --split-string 'python3 -c \"print(1)\"'", "python3", "-c"),
     ("env -S python3 -c 'print(1)'", "python3", "-c"),
     ("env --split-string=python3 -c 'print(1)'", "python3", "-c"),
+    ("env -S'python3 -c \"print(1)\"'", "python3", "-c"),
+    ('''env -S"python3 -c 'print(1)'"''', "python3", "-c"),
+    ("env --split-string='python3 -c \"print(1)\"'", "python3", "-c"),
+    ('''env --split-string="python3 -c 'print(1)'"''', "python3", "-c"),
+    ("env -S='python3 -c \"print(1)\"'", "python3", "-c"),
 ])
 def test_interpreter_invocation_reads_literal_payload(command, interpreter, flag):
     segment = shell_parse._segments(command)[0]

@@ -48,6 +48,11 @@ def allowed(command, config=None):
     """env -S python3 -c 'open("x.txt", "w").write("y")'""",
     """env --split-string=python3 -c 'open("x.txt", "w").write("y")'""",
     """env -iS 'python3 -c "import os"'""",
+    """env -S'python3 -c "import os"'""",
+    '''env -S"python3 -c 'import os'"''',
+    """env --split-string='python3 -c "import os"'""",
+    '''env --split-string="python3 -c 'import os'"''',
+    """env -S='python3 -c "import os"'""",
 ])
 def test_inline_interpreter_write_blocks(command):
     reason = blocked(command)
@@ -169,6 +174,8 @@ def test_dynamic_heredoc_write_blocks(command):
     "xxd -r | tee out.bin",
     "env -S 'base64 -d blob.txt > out.bin'",
     "env -S 'base64 -d blob.txt | tee out.bin'",
+    "env -S'base64 -d blob.txt > out.bin'",
+    "env --split-string='base64 -d blob.txt > out.bin'",
 ])
 def test_decode_pipe_write_blocks(command):
     reason = blocked(command)
@@ -258,6 +265,8 @@ def test_a_config_key_releases_no_rule(command):
     "python3.12 -c 'print(1)'",
     "env -S 'python3 -c \"print(1)\"'",
     "env --split-string 'python3 -c \"print(1)\"'",
+    "env -S'python3 -c \"print(1)\"'",
+    "env --split-string='python3 -c \"print(1)\"'",
     "base64 -d blob.txt",
     "base64 -o out.bin blob.txt",
     "openssl enc -out out.bin",

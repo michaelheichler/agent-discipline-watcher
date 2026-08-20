@@ -474,14 +474,30 @@ def _env_split_string_at(tokens: list[str], index: int) -> tuple[str | None, int
     if bare in ENV_SPLIT_STRING_FLAGS and next_token is not None:
         return _bare(next_token), 2, None
     if bare.startswith("--split-string="):
-        return bare.partition("=")[2], 1, None
+        payload, consumed = _fused_split_string_payload(tokens, index, bare.partition("=")[2])
+        return payload, consumed, None
     if bare.startswith("-S") and not bare.startswith("--") and len(bare) > 2:
         rest = bare[2:]
-        return rest[1:] if rest.startswith("=") else rest, 1, None
+        payload, consumed = _fused_split_string_payload(
+            tokens, index, rest[1:] if rest.startswith("=") else rest,
+        )
+        return payload, consumed, None
     letters = bare[1:]
     if next_token is not None and bare.startswith("-") and not bare.startswith("--") and letters.endswith("S") and letters[:-1].isalpha():
         return _bare(next_token), 2, bare[:-1]
     return None, 0, None
+
+
+def _fused_split_string_payload(tokens: list[str], index: int, rest: str) -> tuple[str, int]:
+    """Rejoin a fused remainder and strip wrapping quotes, because posix=False shlex leaves -S'…' quotes attached and splits on the spaces they were meant to protect."""
+    payload = rest
+    consumed = 1
+    cursor = index + 1
+    while payload and payload[0] in "'\"" and not _is_quoted(payload) and cursor < len(tokens) and tokens[cursor] not in SEPARATORS:
+        payload = payload + " " + tokens[cursor]
+        consumed += 1
+        cursor += 1
+    return _bare(payload), consumed
 
 
 def _segments(command: str) -> list[list[str]]:
