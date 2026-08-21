@@ -9,10 +9,7 @@
   "plugins": [
     {
       "name": "agent-discipline-watcher",
-      "source": {
-        "source": "github",
-        "repo": "michaelheichler/agent-discipline-watcher"
-      },
+      "source": "./",
       "description": "Deterministic discipline gates for agent output and edits.",
       "license": "MIT",
       "category": "productivity",
