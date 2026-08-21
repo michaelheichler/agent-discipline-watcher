@@ -8,11 +8,9 @@
   "plugins": [
     {
       "name": "agent-discipline-watcher",
-      "source": "./",
       "description": "Deterministic discipline gates for agent output and edits.",
-      "license": "MIT",
-      "category": "productivity",
-      "homepage": "https://github.com/michaelheichler/agent-discipline-watcher"
+      "source": "./",
+      "category": "productivity"
     }
   ]
 }
