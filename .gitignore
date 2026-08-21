@@ -18,3 +18,8 @@ agent-discipline-watcher-*.json
 *.temp
 tmp/
 temp/
+
+.kilo/
+.lbwc-planning/
+.serena/
+.vscode/
