@@ -9,7 +9,10 @@
     {
       "name": "agent-discipline-watcher",
       "description": "Deterministic discipline gates for agent output and edits.",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "michaelheichler/agent-discipline-watcher"
+      },
       "category": "productivity"
     }
   ]
