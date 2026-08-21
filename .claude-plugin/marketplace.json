@@ -1,10 +1,9 @@
 {
+  "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
   "name": "agent-discipline-watcher",
+  "description": "Single-plugin marketplace for the Agent Discipline Watcher hook package.",
   "owner": {
     "name": "Michael Heichler"
-  },
-  "metadata": {
-    "description": "Single-plugin marketplace for the Agent Discipline Watcher hook package."
   },
   "plugins": [
     {
