@@ -30,3 +30,6 @@ archive/
 .vbw-planning/
 .requirements/
 CLAUDE.md
+/bin/
+/hooks/test_adw_cli.py
+/hooks/lib/test_config_cli.py

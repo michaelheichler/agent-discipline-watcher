@@ -84,9 +84,11 @@ if [ "$install_codex" -eq 1 ]; then
   echo "Codex hooks installed globally. Run /hooks in Codex to review and trust new or changed hooks."
 fi
 
-mkdir -p "$HOME/.local/bin"
-ln -snf "$skill_dir/bin/agent-discipline" "$HOME/.local/bin/agent-discipline"
-ln -snf "$skill_dir/bin/adw-cli" "$HOME/.local/bin/adw-cli"
+if [ -f "$skill_dir/bin/agent-discipline" ]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -snf "$skill_dir/bin/agent-discipline" "$HOME/.local/bin/agent-discipline"
+  ln -snf "$skill_dir/bin/adw-cli" "$HOME/.local/bin/adw-cli"
+fi
 
 rc_block='\n# >>> agent-discipline-watcher >>>\nexport PATH="$HOME/.local/bin:$PATH"\n[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ] && . "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash"\n# <<< agent-discipline-watcher <<<\n'
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
