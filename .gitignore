@@ -23,3 +23,9 @@ temp/
 .lbwc-planning/
 .serena/
 .vscode/
+
+archive/
+.claude/
+.agents/
+.vbw-planning/
+.requirements/
