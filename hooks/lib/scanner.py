@@ -180,7 +180,7 @@ def _unconditional_findings(
         return findings
     findings.extend(_file_length_findings(path, len(lines)))
     findings.extend(_multiline_comment_findings(path, comment_source))
-    comment_source = _normalize_block_comments(comment_source)
+    comment_source = _normalize_block_comments(comment_source, path)
     comment_rows = _comment_body_lines(comment_source)
     findings.extend(_what_comment_findings(path, comment_rows))
     findings.extend(_what_docstring_findings(path, tree))

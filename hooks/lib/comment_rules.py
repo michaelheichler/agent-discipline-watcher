@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+from pathlib import PurePath
 
 WHY_RULE_IS_HEURISTIC = (
     "The WHY and WHAT split is a lexical heuristic, not semantic analysis. "
@@ -68,6 +69,8 @@ BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
 BLOCK_COMMENT_TAIL_RE = re.compile(
     r"(?P<block>/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z))(?P<tail>[^\n]*)", re.DOTALL,
 )
+# Excluded because a shell case/test glob has a slash-star with no closer, so the unclosed-block fallback used to eat the rest of the file.
+SHELL_GLOB_COLLISION_EXTS = frozenset({".sh", ".bash", ".zsh", ".ksh"})
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]")
@@ -156,7 +159,9 @@ def _comment_body_lines(text: str) -> list[tuple[int, str, str]]:
     return result
 
 
-def _normalize_block_comments(text: str) -> str:
+def _normalize_block_comments(text: str, path: str = "") -> str:
+    if path and PurePath(path.lower()).suffix in SHELL_GLOB_COLLISION_EXTS:
+        return text
     def replace(match: re.Match) -> str:
         output = []
         for line in match.group("block").splitlines(keepends=True):
@@ -175,6 +180,8 @@ def _normalize_block_comments(text: str) -> str:
 
 
 def _multiline_comment_findings(path: str, text: str) -> list[dict]:
+    if PurePath(path.lower()).suffix in SHELL_GLOB_COLLISION_EXTS:
+        return []
     return [
         _finding("clean_code", "prose_comment_block", text.count("\n", 0, match.start()) + 1,
                  "Comment block narrates in " + path, match.group(0).splitlines()[0],

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.3 (2026-08-23)
+
+### Fixed
+
+- A shell script with a `case`/`test` glob pattern like `"$root"/*)` or `== */*` no longer gets its whole tail treated as one unterminated comment. The block-comment scanner opens on any literal slash-star and, finding no matching star-slash closer in the script, used to fall back to end-of-file, turning every remaining line into one giant narrating comment block and flagging ordinary code as prose. Block-comment scanning is now skipped for `.sh`, `.bash`, `.zsh`, and `.ksh` files. `#`-style comment blocks in those files are still caught exactly as before.
+
 ## 0.17.2 (2026-08-23)
 
 ### Fixed

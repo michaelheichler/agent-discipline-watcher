@@ -923,3 +923,27 @@ def test_why_line_does_not_protect_a_comment_block():
     text = "# first line\n# second line because docs live in the wiki\nprint(1)\n"
     rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
     assert "prose_comment_block" in rules
+
+
+def test_shell_glob_slash_star_does_not_swallow_the_rest_of_the_script():
+    text = (
+        'if [[ "$value" == */* ]]; then\n'
+        '  echo yes\n'
+        'fi\n'
+        'case "$path" in\n'
+        '  "$root"/*) echo match ;;\n'
+        'esac\n'
+    )
+    assert scan_all("patch-chain.sh", text, {"punctuation": False, "english": False}) == []
+
+
+def test_shell_narrating_hash_comment_block_still_flags():
+    text = "# first line\n# second line because docs live in the wiki\necho 1\n"
+    rules = {row["rule"] for row in scan_all("patch-chain.sh", text, {"punctuation": False, "english": False})}
+    assert "prose_comment_block" in rules
+
+
+def test_c_style_block_comment_still_flags_outside_shell_files():
+    text = "/* first line\n   second line */\nprint(1)\n"
+    rules = {row["rule"] for row in scan_all("sample.py", text, {"punctuation": False, "english": False})}
+    assert "prose_comment_block" in rules
