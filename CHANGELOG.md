@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.2 (2026-08-23)
+
+### Fixed
+
+- `python3 -c`, `node -e`, and similar inline payloads no longer block on a read-only `open()`. The 0.17.1 rule flagged every `open(` call regardless of mode, so `open("x.txt").read()` and `open("x.txt", "r")` were treated the same as a write. The check now reads the mode argument: a missing mode (Python defaults to `'r'`), a literal made only of `r`, `b`, `t`, or `U`, clears the call. A write-capable literal (`w`, `a`, `x`, `+`), a mode built at runtime, or an unterminated call still blocks exactly as before.
+
 ## 0.17.1 (2026-08-20)
 
 Agents were sneaking file writes past the watcher by going through Bash instead of the Write and Edit tools. This release closes those routes.

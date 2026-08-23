@@ -94,6 +94,29 @@ def test_a_literal_shell_payload_reenters_the_full_gate():
     assert "state_deletion" in reason
 
 
+@pytest.mark.parametrize("command", [
+    """python3 -c 'open("x.txt").read()'""",
+    """python3 -c 'open("x.txt", "r").read()'""",
+    """python3 -c 'with open("x.txt", "rb") as f: f.read()'""",
+    """python3 -c 'import json; json.load(open("x.json"))'""",
+])
+def test_a_read_only_open_call_is_allowed(command):
+    assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+@pytest.mark.parametrize("command", [
+    """python3 -c 'open("x.txt", "a").write("y")'""",
+    """python3 -c 'open("x.txt", "x")'""",
+    """python3 -c 'open("x.txt", "r+")'""",
+    """python3 -c 'open("x.txt", mode="w")'""",
+    """python3 -c 'open("x.txt", mode)'""",
+    """python3 -c 'open(x.txt'""",
+])
+def test_a_write_capable_open_mode_still_blocks(command):
+    reason = blocked(command)
+    assert "inline_interpreter_write" in reason
+
+
 def test_a_clean_literal_shell_payload_stays_allowed():
     assert allowed("sh -c 'ls -la'") == {}
 

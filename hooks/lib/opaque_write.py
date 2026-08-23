@@ -14,12 +14,76 @@ FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
 
 WRITE_CAPABLE_TOKEN_RE = re.compile(
-    r"open\(|\.write\(|\bwrite\(|\.write_text\(|\.write_bytes\(|\bexec\(|\beval\(|__|\bsubprocess\b|"
+    r"\.write\(|\bwrite\(|\.write_text\(|\.write_bytes\(|\bexec\(|\beval\(|__|\bsubprocess\b|"
     r"\bimport\s+(?:os|shutil|pathlib)\b|\bfrom\s+(?:os|shutil|pathlib|io)\s+import\b|"
     r"\bos\.\w|\bshutil\.\w|\bpathlib\.\w|"
     r"\bfs\.\w|\bFile\.\w|\bIO\.\w|decode\(|`|"
     r"\brequire\(|\bfile_put_contents\(|\bfopen\(|\bfwrite\("
 )
+OPEN_CALL_RE = re.compile(r"\bopen\(")
+# Kept out of WRITE_CAPABLE_TOKEN_RE and judged by mode below, because open(path) defaults to read-only.
+READ_ONLY_MODE_CHARS = frozenset("rbtU")
+# A quoted string, a paren, a comma, or a run of anything else, because a comma or paren inside a quote must not end an argument.
+ARG_TOKEN_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|[()]|,|[^()',\"]+")
+
+
+def _quoted_literal(text: str) -> str | None:
+    """None here because a mode built at runtime cannot be judged from text alone, only a literal ever clears an open() call."""
+    for quote in ('"""', "'''", '"', "'"):
+        if text.startswith(quote) and text.endswith(quote) and len(text) >= 2 * len(quote):
+            return text[len(quote):-len(quote)]
+    return None
+
+
+def _split_top_level_args(payload: str, args_start: int) -> list[str] | None:
+    """None on an unterminated call, because a close paren that never arrives leaves no real argument list to split."""
+    depth = 1
+    position = args_start
+    args: list[str] = []
+    current: list[str] = []
+    for match in ARG_TOKEN_RE.finditer(payload, args_start):
+        if match.start() != position:
+            return None
+        token = match.group()
+        position = match.end()
+        if token == ")":
+            depth -= 1
+            if depth == 0:
+                args.append("".join(current))
+                return args
+        elif token == "(":
+            depth += 1
+        elif token == "," and depth == 1:
+            args.append("".join(current))
+            current = []
+            continue
+        current.append(token)
+    return None
+
+
+def _open_call_mode_is_write_capable(payload: str, args_start: int) -> bool:
+    """True on an unterminated call, because a paren or quote left open past the payload end cannot be judged safe."""
+    args = _split_top_level_args(payload, args_start)
+    if args is None:
+        return True
+    if len(args) < 2:
+        return False
+    mode_arg = args[1].strip()
+    if mode_arg.startswith("mode="):
+        mode_arg = mode_arg[len("mode="):].strip()
+    literal = _quoted_literal(mode_arg)
+    if literal is None:
+        return True
+    return not set(literal) <= READ_ONLY_MODE_CHARS
+
+
+def _inline_open_calls_write_capable(payload: str) -> bool:
+    return any(
+        _open_call_mode_is_write_capable(payload, match.end())
+        for match in OPEN_CALL_RE.finditer(payload)
+    )
+
+
 DECODE_FLAGS: dict[str, frozenset[str]] = {
     "base64": frozenset({"-d", "--decode"}),
     "xxd": frozenset({"-r"}),
@@ -73,7 +137,11 @@ def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> l
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter in SHELL_C_INTERPRETERS:
             continue
-        if invocation.payload is None or WRITE_CAPABLE_TOKEN_RE.search(invocation.payload):
+        if (
+            invocation.payload is None
+            or WRITE_CAPABLE_TOKEN_RE.search(invocation.payload)
+            or _inline_open_calls_write_capable(invocation.payload)
+        ):
             findings.append(make_finding("inline_interpreter_write"))
     return findings
 
