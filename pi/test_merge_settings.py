@@ -159,6 +159,56 @@ class InstallOmpScriptTests(unittest.TestCase):
             merged = json.loads((omp_agent / "settings.json").read_text())
             self.assertNotIn("extensions", merged)
 
+    def test_omp_remove_leaves_foreign_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            foreign = Path(tmp) / "foreign-extension"
+            foreign.mkdir()
+            omp_agent = home / ".omp" / "agent"
+            extensions = omp_agent / "extensions"
+            extensions.mkdir(parents=True)
+            link = extensions / "agent-discipline-watcher"
+            link.symlink_to(foreign)
+            env = {
+                **dict(__import__("os").environ),
+                "HOME": str(home),
+            }
+            result = subprocess.run(
+                [str(INSTALL), "--remove", "-y"],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertIn("warning:", result.stderr)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.resolve(), foreign.resolve())
+
+    def test_omp_remove_leaves_real_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            omp_agent = home / ".omp" / "agent"
+            target = omp_agent / "extensions" / "agent-discipline-watcher"
+            target.mkdir(parents=True)
+            marker = target / "keep-me.txt"
+            marker.write_text("user data\n", encoding="utf-8")
+            env = {
+                **dict(__import__("os").environ),
+                "HOME": str(home),
+            }
+            result = subprocess.run(
+                [str(INSTALL), "--remove", "-y"],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertIn("warning:", result.stderr)
+            self.assertTrue(target.is_dir())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "user data\n")
+
 
 if __name__ == "__main__":
     unittest.main()

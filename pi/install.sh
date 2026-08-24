@@ -74,8 +74,14 @@ backup_file() {
 }
 
 if [ "$remove" -eq 1 ]; then
-  if [ -L "$extension_link" ] || [ -e "$extension_link" ]; then
-    rm -rf "$extension_link"
+  if [ -L "$extension_link" ]; then
+    if [ "$(readlink "$extension_link")" = "$extension_src" ]; then
+      rm -f "$extension_link"
+    else
+      echo "warning: $extension_link is a symlink to something else; leaving it in place" >&2
+    fi
+  elif [ -e "$extension_link" ]; then
+    echo "warning: $extension_link is not a symlink installed by this script; leaving it in place" >&2
   fi
   if [ -f "$omp_agent_dir/settings.json" ]; then
     backup_file "$omp_agent_dir/settings.json"
