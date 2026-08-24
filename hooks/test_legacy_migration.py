@@ -167,6 +167,48 @@ class InstallScriptTests(unittest.TestCase):
             self.assertIn("/plugin marketplace add", result.stdout)
             self.assertFalse((Path(home) / ".codex" / "config.toml").exists())
 
+    def test_claude_only_flag_does_not_also_run_the_omp_branch(self):
+        with tempfile.TemporaryDirectory() as home:
+            subprocess.run(
+                ["bash", str(INSTALL), "--claude", "-y"],
+                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
+            )
+            self.assertFalse((Path(home) / ".omp" / "agent" / "settings.json").exists())
+
+    def test_omp_only_flag_does_not_also_run_the_claude_or_codex_branch(self):
+        with tempfile.TemporaryDirectory() as home:
+            result = subprocess.run(
+                ["bash", str(INSTALL), "--omp", "-y"],
+                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path()},
+            )
+            self.assertNotIn("/plugin marketplace add", result.stdout)
+            self.assertFalse((Path(home) / ".claude" / "settings.json").exists())
+            self.assertFalse((Path(home) / ".codex" / "config.toml").exists())
+            self.assertTrue((Path(home) / ".omp" / "agent" / "settings.json").exists())
+
+    def test_omp_flag_registers_the_extension_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as home:
+            args = ["bash", str(INSTALL), "--no-claude", "--no-codex", "--omp", "-y"]
+            env = {"HOME": home, "PATH": _path()}
+            settings = Path(home) / ".omp" / "agent" / "settings.json"
+            subprocess.run(args, capture_output=True, text=True, check=True, env=env)
+            once = json.loads(settings.read_text(encoding="utf-8"))
+            extension_path = str(ROOT / "pi" / "extensions" / "agent-discipline-watcher" / "index.ts")
+            self.assertEqual(once["extensions"], [extension_path])
+            subprocess.run(args, capture_output=True, text=True, check=True, env=env)
+            twice = json.loads(settings.read_text(encoding="utf-8"))
+            self.assertEqual(once, twice, "a second install must not duplicate the extension entry")
+
+    def test_omp_agent_dir_honors_pi_coding_agent_dir_override(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as agent_dir:
+            subprocess.run(
+                ["bash", str(INSTALL), "--no-claude", "--no-codex", "--omp", "-y"],
+                capture_output=True, text=True, check=True,
+                env={"HOME": home, "PATH": _path(), "PI_CODING_AGENT_DIR": agent_dir},
+            )
+            self.assertTrue((Path(agent_dir) / "settings.json").exists())
+            self.assertFalse((Path(home) / ".omp").exists())
+
     def test_default_install_does_not_create_archived_client_config(self):
         with tempfile.TemporaryDirectory() as home:
             subprocess.run(

@@ -4,14 +4,42 @@ set -eu
 skill_dir="$(cd "$(dirname "$0")" && pwd)"
 install_claude=1
 install_codex=1
+install_omp=1
 assume_yes=0
 claude_legacy=0
 picked_target=0
+
+usage() {
+  cat <<'EOF'
+Usage: install.sh [options]
+
+Install agent-discipline-watcher for Claude Code, Codex, and/or OMP.
+
+Options:
+  --claude            Install for Claude Code only
+  --codex             Install for Codex only
+  --omp               Install for OMP (oh-my-pi) only
+  --no-claude         Skip Claude install
+  --no-codex          Skip Codex install
+  --no-omp            Skip OMP install
+  --claude-legacy     Use legacy Claude path-based wiring (not recommended)
+  -y                  Skip confirmation prompt
+  -h, --help          Show this help
+
+OMP-specific install/uninstall:
+  ./pi/install.sh              Install OMP extension only
+  ./pi/install.sh --remove     Remove OMP extension only
+
+Environment:
+  PI_CODING_AGENT_DIR   Override the OMP agent config directory
+EOF
+}
 
 pick_target() {
   if [ "$picked_target" -eq 0 ]; then
     install_claude=0
     install_codex=0
+    install_omp=0
     picked_target=1
   fi
 }
@@ -20,11 +48,17 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --claude) pick_target; install_claude=1 ;;
     --codex) pick_target; install_codex=1 ;;
+    --omp) pick_target; install_omp=1 ;;
     --no-claude) install_claude=0 ;;
     --no-codex) install_codex=0 ;;
+    --no-omp) install_omp=0 ;;
     --claude-legacy) pick_target; install_claude=1; claude_legacy=1 ;;
     -y) assume_yes=1 ;;
-    *) echo "unknown option: $1" >&2; exit 2 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
@@ -82,6 +116,14 @@ if [ "$install_codex" -eq 1 ]; then
     --config "$HOME/.codex/config.toml" \
     --skill-dir "$skill_dir"
   echo "Codex hooks installed globally. Run /hooks in Codex to review and trust new or changed hooks."
+fi
+
+if [ "$install_omp" -eq 1 ]; then
+  omp_args=(-y)
+  if [ -n "${PI_CODING_AGENT_DIR:-}" ]; then
+    omp_args+=(--agent-dir "$PI_CODING_AGENT_DIR")
+  fi
+  "$skill_dir/pi/install.sh" "${omp_args[@]}"
 fi
 
 if [ -f "$skill_dir/bin/agent-discipline" ]; then

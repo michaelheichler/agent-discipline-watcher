@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.17.4 (2026-08-24)
+
+### Added
+
+- OMP (`oh-my-pi`) support: `pi/extensions/agent-discipline-watcher/` is an `ExtensionAPI` extension that calls the same `hooks/run.sh` engine as Claude Code and Codex. It gates `write`/`bash` on `tool_call`, rescans touched files on `tool_result` (including hashline `[path#TAG]` and `MV` destinations), injects the SessionStart contract on the next turn, and blocks unresolved findings on `session_stop`.
+- Dedicated OMP installer at `pi/install.sh`: symlinks the extension into `~/.omp/agent/extensions/agent-discipline-watcher`, registers it in `settings.json` via `pi/merge-settings.py`, supports `--remove`, and honors `PI_CODING_AGENT_DIR`.
+- Main `install.sh` gains `--omp` / `--no-omp` flags and delegates OMP wiring to `pi/install.sh`. Selective installs (`--claude`, `--codex`, `--omp`) no longer touch the other harnesses.
+- Installer tests for OMP target isolation, idempotent registration, and profile-aware agent directories.
+
+### Fixed
+
+- `hooks/lib/protected.py` now treats `~/.omp` as a protected client home alongside `.codex` and `.pi`, so agents cannot disable the watcher by editing OMP's live config.
+- OMP `session_stop` accepts both `stop_hook_active` and `stopHookActive` for retry-pass state.
+- OMP `PostToolUse` payloads send only `{ file_path }` for resolved paths (bash keeps `{ command }` for write-path detection); raw write content and hashline patch text are no longer forwarded.
+
 ## 0.17.3 (2026-08-23)
 
 ### Fixed

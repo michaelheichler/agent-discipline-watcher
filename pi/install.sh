@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -eu
+
+skill_dir="$(cd "$(dirname "$0")/.." && pwd)"
+omp_agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}"
+extension_name="agent-discipline-watcher"
+extension_src="$skill_dir/pi/extensions/$extension_name"
+extension_link="$omp_agent_dir/extensions/$extension_name"
+remove=0
+assume_yes=0
+
+usage() {
+  cat <<'EOF'
+Usage: pi/install.sh [options]
+
+Install or remove agent-discipline-watcher for OMP (oh-my-pi).
+
+Options:
+  --remove            Uninstall the extension from this OMP agent directory
+  --agent-dir DIR     OMP agent directory (default: $PI_CODING_AGENT_DIR or ~/.omp/agent)
+  -y                  Skip confirmation prompt
+  -h, --help          Show this help
+
+Environment:
+  PI_CODING_AGENT_DIR   Override the OMP agent config directory
+
+After install, restart OMP or pass --extension to load the extension immediately.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --remove) remove=1 ;;
+    --agent-dir)
+      shift
+      [ "$#" -gt 0 ] || { echo "--agent-dir requires a path" >&2; exit 2; }
+      omp_agent_dir="$1"
+      ;;
+    -y) assume_yes=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [ ! -f "$extension_src/index.ts" ]; then
+  echo "extension source missing: $extension_src/index.ts" >&2
+  exit 1
+fi
+
+if [ "$assume_yes" -ne 1 ]; then
+  if [ "$remove" -eq 1 ]; then
+    printf "Remove agent-discipline-watcher from OMP (%s)? [y/N] " "$omp_agent_dir"
+  else
+    printf "Install agent-discipline-watcher into OMP (%s)? [y/N] " "$omp_agent_dir"
+  fi
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES) ;;
+    *) echo "aborted"; exit 1 ;;
+  esac
+fi
+
+backup_file() {
+  [ -f "$1" ] || return 0
+  cp "$1" "$1.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"
+}
+
+if [ "$remove" -eq 1 ]; then
+  if [ -L "$extension_link" ] || [ -e "$extension_link" ]; then
+    rm -rf "$extension_link"
+  fi
+  if [ -f "$omp_agent_dir/settings.json" ]; then
+    backup_file "$omp_agent_dir/settings.json"
+    python3 "$skill_dir/pi/merge-settings.py" \
+      --settings "$omp_agent_dir/settings.json" \
+      --skill-dir "$skill_dir" \
+      --remove
+  fi
+  echo "Removed agent-discipline-watcher from $omp_agent_dir"
+  exit 0
+fi
+
+mkdir -p "$omp_agent_dir/extensions"
+ln -snf "$extension_src" "$extension_link"
+backup_file "$omp_agent_dir/settings.json"
+python3 "$skill_dir/pi/merge-settings.py" \
+  --settings "$omp_agent_dir/settings.json" \
+  --skill-dir "$skill_dir"
+echo "OMP extension linked at $extension_link"
+echo "OMP extension registered in $omp_agent_dir/settings.json"
+echo "Restart omp or pass --extension to load it immediately."

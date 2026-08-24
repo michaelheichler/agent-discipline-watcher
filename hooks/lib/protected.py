@@ -23,7 +23,7 @@ CLAUDE_EXEMPT_DIRS = frozenset({
     "statsig", "logs", "ide", "tool-results", "downloads",
 })
 CLAUDE_WIRING_DIRS = frozenset({"skills", "agents", "hooks", "commands"})
-CLIENT_HOME_DIRS = frozenset({".codex", ".pi"})
+CLIENT_HOME_DIRS = frozenset({".codex", ".pi", ".omp"})
 
 LIVE_ACTION = (
     "Change the repo source and reinstall instead of editing the live install. If this edit "

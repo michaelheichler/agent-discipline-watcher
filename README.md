@@ -1,6 +1,8 @@
 # Agent Discipline Watcher
 
-Agent Discipline Watcher is a Claude Code plugin that keeps agent output disciplined. Findings block at their configured gate. Strict code-comment findings always block.
+Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.17.4**.
+
+Findings block at their configured gate. Strict code-comment findings always block.
 
 ## How It Works
 
@@ -36,6 +38,20 @@ Code comments and docstrings may contain one strict WHY line. WHAT narration, we
 ./install.sh --no-claude --codex -y
 ```
 
+### OMP (`oh-my-pi`)
+
+`pi/install.sh` is the dedicated OMP installer. It symlinks the extension into `~/.omp/agent/extensions/agent-discipline-watcher` and registers `pi/extensions/agent-discipline-watcher/index.ts` in `~/.omp/agent/settings.json`. The main installer delegates to it when OMP is selected.
+
+```bash
+./install.sh                      # Claude + Codex + OMP
+./install.sh --omp -y             # OMP only
+./pi/install.sh -y                # OMP only (direct)
+./pi/install.sh --remove -y       # uninstall OMP extension
+./install.sh --no-claude --no-codex --omp -y
+```
+
+Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Restart OMP after install, or pass `--extension` to load immediately.
+
 ## Requirements
 
 Python 3, a Unix shell, and recent Claude Code. No minimum version is pinned in this repository. If a hook fails to register, update Claude Code and retry.
@@ -54,12 +70,16 @@ Seven more rules in this family close the Bash write path: `inline_interpreter_w
 
 Claude Code is the primary plugin surface. Codex support is deterministic and uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, and `PostToolUse`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings.
 
-Pi and OpenCode adapters are archived under `archive/integrations/`. They are retained as historical implementation references only. The installer, CI, release verification, and active documentation do not test or claim support for them.
+OMP (`oh-my-pi`) loads `pi/extensions/agent-discipline-watcher/index.ts` via `pi/install.sh`. The extension calls the same `hooks/run.sh` engine as Claude and Codex. `session_start` injects the SessionStart contract on the next turn. Pre-tool checks run on `tool_call` for `write` and `bash` and return `{ block: true, reason }`. Post-tool feedback is appended to `tool_result` content (path-only payloads; the engine rescans from disk). Unresolved findings block on `session_stop`. Self-protection covers `~/.omp/agent/` settings, extensions, and config.
+
+OpenCode adapters are archived under `archive/integrations/`. They are retained as historical implementation references only. The installer, CI, release verification, and active documentation do not test or claim support for them.
 
 ## Verification
 
 ```bash
 cd hooks && python3 -m pytest . lib -q
-bash -n install.sh hooks/run.sh
+python3 -m pytest pi/test_merge_settings.py -q
+bash -n install.sh hooks/run.sh pi/install.sh
+bun test pi/extensions/agent-discipline-watcher/index.test.ts
 claude plugin validate . --strict
 ```

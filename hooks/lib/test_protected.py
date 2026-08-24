@@ -32,6 +32,8 @@ def rules(path, home, config=None, content=None):
     ".codex/config.toml",
     ".codex/hooks.json",
     ".pi/agent/settings.json",
+    ".omp/agent/settings.json",
+    ".omp/agent/config.yml",
     ".agents/skills/agent-discipline-watcher/SKILL.md",
     ".config/opencode/plugins/agent-discipline-watcher.ts",
     ".local/bin/agent-discipline",
