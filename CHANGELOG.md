@@ -20,7 +20,6 @@
 - `hooks/lib/protected.py` now treats `~/.omp` as a protected client home alongside `.codex` and `.pi`, so agents cannot disable the watcher by editing OMP's live config.
 - OMP `session_stop` accepts both `stop_hook_active` and `stopHookActive` for retry-pass state.
 - OMP `PostToolUse` payloads send only `{ file_path }` for resolved paths (bash keeps `{ command }` for write-path detection); raw write content and hashline patch text are no longer forwarded.
-- `pi/install.sh --remove` no longer deletes a non-symlink or foreign-symlink at the extension path; it only removes the symlink this installer created, and warns instead of touching anything else.
 
 ## 0.17.3 (2026-08-23)
 
