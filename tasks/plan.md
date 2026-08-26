@@ -38,7 +38,13 @@ Close the Bash workaround gap in ADW. Agents dodge the Write/Edit hooks by writi
 
 ## Task 1: shell_parse primitives
 
-**Description:** Add pure parsing primitives to `hooks/lib/shell_parse.py`: `LiteralWrite(path, text, append)` NamedTuple with `literal_writes(command)` (old `write_targets` API kept as a projection), `_payload_command_index` (steps past assignments and wrappers `env sudo nohup time command exec`, never past interpreters), `interpreter_invocation(segment)` returning interpreter name, code flag, and payload token or None when dynamic (command-position keyed so quoted mentions cannot match), `heredoc_events(command)` exposing per-pipeline-group rows `(consumer_segment, body, dynamic, group_has_write_target)` without discarding the dynamic flag, and `has_process_substitution(segment)`.
+**Description:** Add pure parsing primitives to `hooks/lib/shell_parse.py`.
+
+- `LiteralWrite(path, text, append)` NamedTuple with `literal_writes(command)`. The old `write_targets` API stays as a projection over it.
+- `_payload_command_index` steps past assignments and the wrappers `env sudo nohup time command exec`, never past an interpreter.
+- `interpreter_invocation(segment)` returns the interpreter name, the code flag, and the payload token, or None when dynamic. It is keyed on command position so a quoted mention cannot match.
+- `heredoc_events(command)` exposes per-pipeline-group rows `(consumer_segment, body, dynamic, group_has_write_target)` without discarding the dynamic flag.
+- `has_process_substitution(segment)`.
 
 **Acceptance criteria:**
 - [ ] `literal_writes` distinguishes `>` from `>>` and `tee` from `tee -a`, old `write_targets` callers unchanged
@@ -80,7 +86,11 @@ Close the Bash workaround gap in ADW. Agents dodge the Write/Edit hooks by writi
 
 ## Task 3: Opaque detection plus gate wiring
 
-**Description:** Extend `RULES` in `hooks/pre_bash.py` with the seven entries, action strings ending "Use the Write or Edit tool for file content." Add pure function `opaque_write_findings(command, config)` guarded by `authorized(config)`, hosting the write-capable token regex and one-level `sh -c` recursion (literal payload re-enters the full pre_bash pipeline, non-literal payload blocks as `shell_payload_block`). Wire into `_gate` alongside `command_findings` and `target_findings`, denying through the existing `compact_block` plus `deny` path with `force: True`. Create `hooks/test_bash_opaque_write.py`.
+**Description:** Extend `RULES` in `hooks/pre_bash.py` with the seven entries. Action strings end with "Use the Write or Edit tool for file content."
+
+Add the pure function `opaque_write_findings(command, config)`, guarded by `authorized(config)`. It hosts the write-capable token regex and one level of `sh -c` recursion. A literal payload re-enters the full pre_bash pipeline. A non-literal payload blocks as `shell_payload_block`.
+
+Wire it into `_gate` alongside `command_findings` and `target_findings`, denying through the existing `compact_block` plus `deny` path with `force: True`. Create `hooks/test_bash_opaque_write.py`.
 
 **Acceptance criteria:**
 - [ ] Each of the seven rules blocks its trigger through `pre_bash.run` with rule name and "Write or Edit" in the reason

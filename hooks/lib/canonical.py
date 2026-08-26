@@ -17,6 +17,18 @@ def _is_exact_type(value: object, expected: type[ExactType]) -> TypeGuard[ExactT
 _INVALID = object()
 
 
+@dataclass(frozen=True, slots=True)
+class _CanonicalContent:
+    kind: str
+    scalar: object
+    keys: tuple[str, ...]
+    children: tuple["_CanonicalNode", ...]
+
+    def __post_init__(self) -> None:
+        if not self.kind:
+            raise ValueError("canonical node kind must not be empty")
+
+
 class _CanonicalNode:
 
     __slots__ = ("children", "keys", "kind", "scalar", "structural_hash")
@@ -26,20 +38,30 @@ class _CanonicalNode:
     scalar: object
     structural_hash: int
 
-    def __init__(
-        self,
-        kind: str,
-        *,
-        scalar: object = None,
-        keys: tuple[str, ...] = (),
-        children: tuple["_CanonicalNode", ...] = (),
-    ) -> None:
-        self.kind = kind
-        self.scalar = scalar
-        self.keys = keys
-        self.children = children
+    def __init__(self, content: _CanonicalContent | str, **legacy: object) -> None:
+        if isinstance(content, str):
+            unexpected = set(legacy) - {"scalar", "keys", "children"}
+            if unexpected:
+                raise TypeError(f"canonical node got unsupported fields: {sorted(unexpected)!r}")
+            content = _CanonicalContent(
+                content,
+                legacy.get("scalar"),
+                cast(tuple[str, ...], legacy.get("keys", ())),
+                cast(tuple[_CanonicalNode, ...], legacy.get("children", ())),
+            )
+        elif legacy:
+            raise TypeError("canonical content cannot be combined with legacy fields")
+        self.kind = content.kind
+        self.scalar = content.scalar
+        self.keys = content.keys
+        self.children = content.children
         self.structural_hash = hash(
-            (kind, scalar, keys, tuple(child.structural_hash for child in children))
+            (
+                content.kind,
+                content.scalar,
+                content.keys,
+                tuple(child.structural_hash for child in content.children),
+            )
         )
 
     def __hash__(self) -> int:
@@ -92,17 +114,19 @@ class _CanonicalTraversal:
 
 def _canonical_atom(value: object) -> Canonical | object:
     if value is None:
-        return Canonical("none")
+        return Canonical(_CanonicalContent("none", None, (), ()))
     if _is_exact_type(value, bool):
-        return Canonical("bool", scalar=value)
+        return Canonical(_CanonicalContent("bool", value, (), ()))
     if _is_exact_type(value, int):
-        return Canonical("int", scalar=value)
+        return Canonical(_CanonicalContent("int", value, (), ()))
     if _is_exact_type(value, float):
         return (
-            Canonical("float", scalar=value.hex()) if math.isfinite(value) else _INVALID
+            Canonical(_CanonicalContent("float", value.hex(), (), ()))
+            if math.isfinite(value)
+            else _INVALID
         )
     if _is_exact_type(value, str):
-        return Canonical("str", scalar=value)
+        return Canonical(_CanonicalContent("str", value, (), ()))
     return _INVALID
 
 
@@ -124,7 +148,7 @@ def _finish_container(state: _CanonicalTraversal, frame: _CanonicalFrame) -> Non
     children = tuple(state.values[child_start:])
     del state.values[child_start:]
     state.active.remove(frame.identity)
-    node = Canonical(frame.kind, keys=frame.keys, children=children)
+    node = Canonical(_CanonicalContent(frame.kind, None, frame.keys, children))
     state.completed[frame.identity] = node
     state.values.append(node)
 
@@ -161,23 +185,25 @@ def _schedule_dict(mapping: dict[object, object], state: _CanonicalTraversal) ->
     return True
 
 
+def _process_canonical_task(state: _CanonicalTraversal, task: CanonicalTask) -> bool:
+    action, item, metadata = task
+    if action == "finish":
+        _finish_container(state, cast(_CanonicalFrame, metadata))
+        return True
+    if _is_exact_type(item, list):
+        return _schedule_list(cast(list[object], item), state)
+    if _is_exact_type(item, dict):
+        return _schedule_dict(cast(dict[object, object], item), state)
+    atom = _canonical_atom(item)
+    if atom is _INVALID:
+        return False
+    state.values.append(cast(Canonical, atom))
+    return True
+
+
 def _canonical_value(value: object) -> Canonical | object:
     state = _CanonicalTraversal([("visit", value, None)], [], set(), {})
     while state.tasks:
-        action, item, metadata = state.tasks.pop()
-        if action == "finish":
-            _finish_container(state, cast(_CanonicalFrame, metadata))
-            continue
-
-        if _is_exact_type(item, list):
-            if not _schedule_list(cast(list[object], item), state):
-                return _INVALID
-        elif _is_exact_type(item, dict):
-            if not _schedule_dict(cast(dict[object, object], item), state):
-                return _INVALID
-        else:
-            atom = _canonical_atom(item)
-            if atom is _INVALID:
-                return _INVALID
-            state.values.append(cast(Canonical, atom))
+        if not _process_canonical_task(state, state.tasks.pop()):
+            return _INVALID
     return state.values[0]

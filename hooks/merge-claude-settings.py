@@ -22,18 +22,18 @@ DROP = object()
 _WATCHER_HOOK_COMMAND_RE = re.compile(r'/hooks/run\.sh"?\s+[A-Za-z]+\Z')
 
 
-def has_legacy(value):
+def has_legacy(value) -> bool:
     return any(name in json.dumps(value, sort_keys=True) for name in LEGACY)
 
 
-def is_watcher_hook_command(value):
+def is_watcher_hook_command(value) -> bool:
     if not isinstance(value, dict):
         return False
     command = value.get("command")
     return isinstance(command, str) and bool(_WATCHER_HOOK_COMMAND_RE.search(command))
 
 
-def is_legacy_command(value):
+def is_legacy_command(value) -> bool:
     if not isinstance(value, dict):
         return False
     command = value.get("command")
@@ -41,43 +41,51 @@ def is_legacy_command(value):
     return is_named_legacy or is_watcher_hook_command(value)
 
 
-def prune(value):
+def _prune_list(value: list) -> list:
+    cleaned = []
+    for item in value:
+        pruned = prune(item)
+        if pruned is not DROP:
+            cleaned.append(pruned)
+    return cleaned
+
+
+def _prune_dict(value: dict) -> object:
+    cleaned = {}
+    for key, item in value.items():
+        pruned = prune(item)
+        if pruned is not DROP:
+            cleaned[key] = pruned
+    if "hooks" in cleaned and isinstance(cleaned["hooks"], list) and not cleaned["hooks"]:
+        return DROP
+    if not cleaned and has_legacy(value):
+        return DROP
+    return cleaned
+
+
+def prune(value) -> object:
     if is_legacy_command(value):
         return DROP
     if isinstance(value, list):
-        cleaned = []
-        for item in value:
-            pruned = prune(item)
-            if pruned is not DROP:
-                cleaned.append(pruned)
-        return cleaned
+        return _prune_list(value)
     if isinstance(value, dict):
-        cleaned = {}
-        for key, item in value.items():
-            pruned = prune(item)
-            if pruned is not DROP:
-                cleaned[key] = pruned
-        if "hooks" in cleaned and isinstance(cleaned["hooks"], list) and not cleaned["hooks"]:
-            return DROP
-        if not cleaned and has_legacy(value):
-            return DROP
-        return cleaned
+        return _prune_dict(value)
     return value
 
 
-def load_json(path):
+def load_json(path) -> object:
     if not path.exists() or not path.read_text(encoding="utf-8").strip():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def watcher_hooks(skill_dir):
+def watcher_hooks(skill_dir) -> dict[str, list[dict[str, object]]]:
     manifest = Path(__file__).with_name("hooks.json")
     raw = manifest.read_text(encoding="utf-8").replace("${CLAUDE_PLUGIN_ROOT}", str(skill_dir))
     return json.loads(raw)["hooks"]
 
 
-def merge(settings_path, skill_dir):
+def merge(settings_path, skill_dir) -> None:
     settings = prune(load_json(settings_path))
     if settings is DROP:
         settings = {}
@@ -87,7 +95,7 @@ def merge(settings_path, skill_dir):
     _write(settings_path, settings)
 
 
-def remove_legacy(settings_path):
+def remove_legacy(settings_path) -> bool:
     original = load_json(settings_path)
     cleaned = prune(original)
     if cleaned is DROP:
@@ -99,7 +107,7 @@ def remove_legacy(settings_path):
     return True
 
 
-def _drop_emptied_lifecycles(original, cleaned):
+def _drop_emptied_lifecycles(original, cleaned) -> None:
     """Remove only the lifecycles this prune emptied, because a lifecycle the user left empty is not ours to delete."""
     before = original.get("hooks") if isinstance(original, dict) else None
     after = cleaned.get("hooks") if isinstance(cleaned, dict) else None
@@ -110,7 +118,7 @@ def _drop_emptied_lifecycles(original, cleaned):
             del after[lifecycle]
 
 
-def _write(settings_path, settings):
+def _write(settings_path, settings) -> None:
     # Resolved, because os.replace on a symlink path destroys the link instead of its target.
     target_path = settings_path.resolve() if settings_path.is_symlink() else settings_path
     text = json.dumps(settings, indent=2, sort_keys=True) + "\n"
@@ -138,7 +146,7 @@ def _write(settings_path, settings):
             temporary_path.unlink(missing_ok=True)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--settings", required=True)
     parser.add_argument("--skill-dir")

@@ -4,7 +4,9 @@ import operator
 import re
 import sys
 import time
+from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import NamedTuple, cast
 
 from lib import payloads, reporting
@@ -41,6 +43,14 @@ class ModeSelection(NamedTuple):
 class SessionContext(NamedTuple):
     session_id: str
     turn_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PromptEvaluation:
+    text: str
+    config: dict[str, object]
+    selection: ModeSelection
+    session: SessionContext
 
 
 PROMPT_RULES = (
@@ -268,31 +278,64 @@ def _config_root(cfg: dict[str, object], key: str) -> str | None:
     return _exact_text(cfg.get(key), _MAX_CONFIG_TEXT) or None
 
 
-def _evaluate(
-    text: str,
-    cfg: dict[str, object],
-    selection: ModeSelection,
-    session: SessionContext,
+def _firewall_block_response(findings: dict[tuple[str, str], str]) -> dict:
+    names = ", ".join(f"{family}/{rule}" for family, rule in findings)
+    return {
+        "decision": "block",
+        "reason": ("Agent discipline firewall blocked rules: " + names)[:MAX_RESPONSE_CHARS],
+    }
+
+
+def _evaluation_inputs(
+    payload: object, config: object,
+) -> tuple[str, str, dict[str, object], ModeSelection]:
+    text = _prompt(payload)
+    session_id = _session_id(payload)
+    caller_fields = payloads.exact_string_dict(config)
+    selection = ModeSelection(
+        FIREWALL_MODE_KEY in caller_fields,
+        caller_fields.get(FIREWALL_MODE_KEY),
+    )
+    boundary_supplied = "data_boundary" in caller_fields
+    safe_config = _safe_config(config)
+    cfg = _resolved_config(safe_config, _cwd(payload))
+    if boundary_supplied and "data_boundary" not in safe_config:
+        cfg["data_boundary"] = False
+    return text, session_id, cfg, selection
+
+
+def _run_with_prompt_ledger(
+    session_id: str, cfg: dict[str, object], gate: Callable[[str], dict],
 ) -> dict:
-    if not text:
+    try:
+        return reporting.run_with_ledger(
+            hook="prompt_submit",
+            payload={"session_id": session_id},
+            gate=gate,
+            ledger_root=_config_root(cfg, "ledger_root"),
+            state_root=_config_root(cfg, "state_root"),
+        )
+    except Exception:  # noqa: BLE001
+        sys.stderr.write("agent-discipline-watcher: prompt reporting failed\n")
+        return gate("")
+
+
+def _evaluate(evaluation: _PromptEvaluation) -> dict:
+    if not evaluation.text:
         return {}
     started = time.monotonic()
-    findings = _findings(text, cfg)
+    findings = _findings(evaluation.text, evaluation.config)
     duration_ms = int((time.monotonic() - started) * 1000)
     if not findings:
         return {}
     boundary_block = DATA_BOUNDARY_FINDING in findings
-    mode = _mode(cfg, selection)
-    if session.session_id:
-        _record(findings, mode, session, duration_ms, cfg)
+    mode = _mode(evaluation.config, evaluation.selection)
+    if evaluation.session.session_id:
+        _record(findings, mode, evaluation.session, duration_ms, evaluation.config)
     if boundary_block:
         return {"decision": "block", "reason": DATA_BOUNDARY_REASON}
     if mode == "block":
-        names = ", ".join(f"{family}/{rule}" for family, rule in findings)
-        return {
-            "decision": "block",
-            "reason": ("Agent discipline firewall blocked rules: " + names)[:MAX_RESPONSE_CHARS],
-        }
+        return _firewall_block_response(findings)
     return {
         "hookSpecificOutput": {
             "hookEventName": PROMPT_EVENT,
@@ -304,19 +347,7 @@ def _evaluate(
 def run(payload: object, config: object = None) -> dict:
     response: dict[str, object] = {}
     try:
-        text = _prompt(payload)
-        session_id = _session_id(payload)
-        caller_fields = payloads.exact_string_dict(config)
-        selection = ModeSelection(
-            FIREWALL_MODE_KEY in caller_fields,
-            caller_fields.get(FIREWALL_MODE_KEY),
-        )
-        boundary_supplied = "data_boundary" in caller_fields
-        safe_config = _safe_config(config)
-        cfg = _resolved_config(safe_config, _cwd(payload))
-        if boundary_supplied and "data_boundary" not in safe_config:
-            cfg["data_boundary"] = False
-
+        text, session_id, cfg, selection = _evaluation_inputs(payload, config)
         evaluated = False
 
         def gate(turn_id: str) -> dict:
@@ -325,26 +356,13 @@ def run(payload: object, config: object = None) -> dict:
                 return response
             evaluated = True
             response = _evaluate(
-                text,
-                cfg,
-                selection,
-                SessionContext(session_id, turn_id),
+                _PromptEvaluation(text, cfg, selection, SessionContext(session_id, turn_id))
             )
             return response
 
         if not session_id:
             return gate("")
-        try:
-            return reporting.run_with_ledger(
-                hook="prompt_submit",
-                payload={"session_id": session_id},
-                gate=gate,
-                ledger_root=_config_root(cfg, "ledger_root"),
-                state_root=_config_root(cfg, "state_root"),
-            )
-        except Exception:  # noqa: BLE001
-            sys.stderr.write("agent-discipline-watcher: prompt reporting failed\n")
-            return gate("")
+        return _run_with_prompt_ledger(session_id, cfg, gate)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError, re.error):
         sys.stderr.write("agent-discipline-watcher: prompt hook failed\n")
         return response

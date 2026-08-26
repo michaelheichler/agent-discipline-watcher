@@ -1,5 +1,3 @@
-"""Record tool failures and open session-scoped MCP backoff windows."""
-
 from __future__ import annotations
 
 import math
@@ -8,10 +6,11 @@ import posixpath
 import re
 import sys
 import time
+from dataclasses import dataclass
 from typing import TypedDict, TypeGuard, cast
 
 from lib import session_state
-from lib.config import effective_config
+from lib.config import StorageRoots, effective_config
 from lib.hookio import read_payload, system_message, write_payload
 from lib.payloads import FailurePayload, exact_string_dict, failure_payload
 from lib.reporting import record_decision, run_with_ledger
@@ -72,6 +71,20 @@ class StreakData(TypedDict):
     error: str
     is_interrupt: bool
     duration_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class _FailureSignature:
+    error: str
+    interrupt: bool
+    duration_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class FailureRunContext:
+    payload: TrustedPayload
+    roots: StorageRoots
+    current_time: float | None
 
 
 def _has_exact_type(value: object, expected: type) -> bool:
@@ -143,7 +156,7 @@ def _target(raw_target: str, cwd: str) -> str:
 
 
 def normalize_payload(payload: object) -> TrustedPayload:
-    """Return the trusted failure-hook payload projection."""
+    """Bound payload-derived keys and paths because hook input crosses a trust boundary."""
     projected: FailurePayload = failure_payload(payload)
     session_id = _bounded_text(projected["session_id"], _MAX_SESSION_LENGTH)
     if session_id in (".", "..") or not _SESSION_PATTERN.fullmatch(session_id):
@@ -171,14 +184,14 @@ def _safe_config(config: object) -> dict[str, object]:
     return result
 
 
-def _config_roots(config: dict[str, object]) -> tuple[str | None, str | None]:
+def _config_roots(config: dict[str, object]) -> StorageRoots:
     state_root = _bounded_text(config.get("state_root"), _MAX_CWD_LENGTH) or None
     ledger_root = _bounded_text(config.get("ledger_root"), _MAX_CWD_LENGTH) or None
-    return state_root, ledger_root
+    return StorageRoots(state_root, ledger_root)
 
 
 def parse_mcp_tool(tool_name: str) -> tuple[str, str] | None:
-    """Return server and tool for one exact, bounded mcp__server__tool name."""
+    """Reject malformed and oversized MCP names because they become persistent health-map keys."""
     if not _has_exact_type(tool_name, str) or not tool_name.startswith("mcp__"):
         return None
     server, separator, tool = tool_name[5:].partition("__")
@@ -197,25 +210,23 @@ def _is_valid_mcp_part(value: str, maximum: int) -> bool:
     return all(character in _MCP_PART_CHARACTERS for character in value)
 
 
-def _next_streak(
-    previous: object, error: str, *, interrupt: bool, duration_ms: int
-) -> StreakData:
+def _next_streak(previous: object, signature: _FailureSignature) -> StreakData:
     count = 1
     prior = exact_string_dict(previous)
     if prior:
         prior_count = prior.get("count")
         same_signature = (
             _has_exact_type(prior.get("error"), str)
-            and prior.get("error") == error
-            and prior.get("is_interrupt") is interrupt
+            and prior.get("error") == signature.error
+            and prior.get("is_interrupt") is signature.interrupt
         )
         if same_signature and _is_exact_int(prior_count) and prior_count > 0:
             count = prior_count + 1
     return {
         "count": count,
-        "error": error,
-        "is_interrupt": interrupt,
-        "duration_ms": duration_ms,
+        "error": signature.error,
+        "is_interrupt": signature.interrupt,
+        "duration_ms": signature.duration_ms,
     }
 
 
@@ -242,12 +253,10 @@ def _valid_timestamp(value: object, default: float) -> float:
 def _update_streak(
     streaks: dict[str, object], key: str, event: FailureEventData
 ) -> int:
-    next_streak = _next_streak(
-        streaks.get(key),
-        event["error"],
-        interrupt=event["interrupt"],
-        duration_ms=event["duration_ms"],
+    signature = _FailureSignature(
+        event["error"], event["interrupt"], event["duration_ms"]
     )
+    next_streak = _next_streak(streaks.get(key), signature)
     streaks[key] = next_streak
     return next_streak["count"]
 
@@ -342,7 +351,7 @@ def _record_success(state: dict, payload: TrustedPayload) -> dict:
 
 
 def record_success(payload: dict, config: dict | None = None) -> None:
-    """Clear matching session failure state after one successful tool use."""
+    """Discard matching failure state because a successful use proves the recorded streak and backoff are stale."""
     try:
         trusted_payload = normalize_payload(payload)
         session_id = trusted_payload["session_id"]
@@ -351,11 +360,11 @@ def record_success(payload: dict, config: dict | None = None) -> None:
         trusted_config = _safe_config(config)
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
-        state_root, _ = _config_roots(trusted_config)
+        roots = _config_roots(trusted_config)
         session_state.update_state_strict(
             session_id,
             lambda state: _record_success(state, trusted_payload),
-            state_root,
+            roots.state,
         )
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(
@@ -410,67 +419,54 @@ def _capture_failure(
 
 
 def _record_guidance(
-    session_id: str,
-    payload: TrustedPayload,
-    event: FailureEventData,
-    ledger_root: str | None,
-    turn_id: str,
+    context: FailureRunContext, event: FailureEventData, turn_id: str
 ) -> None:
     record_decision(
-        session_id=session_id,
+        session_id=context.payload["session_id"],
         hook="failure",
         event=FAILURE_EVENT,
         family="tool_failure",
         rule="repeated_failure",
         path=event["target"],
-        tool_use_id=payload["tool_use_id"],
+        tool_use_id=context.payload["tool_use_id"],
         outcome="inject",
         duration_ms=event["duration_ms"],
         turn_id=turn_id,
-        root=ledger_root,
+        root=context.roots.ledger,
     )
 
 
-def _failure_gate(
-    payload: TrustedPayload,
-    state_root: str | None,
-    ledger_root: str | None,
-    current_time: float | None,
-    turn_id: str,
-) -> dict:
-    session_id = payload["session_id"]
-    if not session_id or current_time is None or not payload["error"]:
+def _failure_gate(context: FailureRunContext, turn_id: str) -> dict:
+    session_id = context.payload["session_id"]
+    if (
+        not session_id
+        or context.current_time is None
+        or not context.payload["error"]
+    ):
         return {}
-    event = _failure_event(payload, current_time)
-    captured = _capture_failure(session_id, event, state_root)
+    event = _failure_event(context.payload, context.current_time)
+    captured = _capture_failure(session_id, event, context.roots.state)
     if captured is None:
         return {}
     message = _guidance(event, captured)
     if not message:
         return {}
-    _record_guidance(session_id, payload, event, ledger_root, turn_id)
+    _record_guidance(context, event, turn_id)
     return system_message(message)
 
 
-def _run_failure(
-    payload: TrustedPayload,
-    state_root: str | None,
-    ledger_root: str | None,
-    current_time: float | None,
-) -> dict:
+def _run_failure(context: FailureRunContext) -> dict:
     return run_with_ledger(
         hook="failure",
-        payload=dict(payload),
-        gate=lambda turn_id: _failure_gate(
-            payload, state_root, ledger_root, current_time, turn_id
-        ),
-        ledger_root=ledger_root,
-        state_root=state_root,
+        payload=dict(context.payload),
+        gate=lambda turn_id: _failure_gate(context, turn_id),
+        ledger_root=context.roots.ledger,
+        state_root=context.roots.state,
     )
 
 
 def run(payload: dict, config: dict | None = None, now: float | None = None) -> dict:
-    """Persist one failure and inject guidance at the exact repeat threshold."""
+    """Delay guidance until the repeat threshold because transient failures need no intervention and earlier messages would add noise."""
     try:
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:
@@ -478,14 +474,10 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         trusted_config = _safe_config(config)
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
-        state_root, ledger_root = _config_roots(trusted_config)
+        roots = _config_roots(trusted_config)
         clock = time.time() if now is None else now
-        return _run_failure(
-            trusted_payload,
-            state_root,
-            ledger_root,
-            _valid_now(clock),
-        )
+        context = FailureRunContext(trusted_payload, roots, _valid_now(clock))
+        return _run_failure(context)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: failure hook failed: {exc}\n")
         return {}

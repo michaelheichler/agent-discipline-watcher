@@ -1,4 +1,4 @@
-"""Centralize pre-tool control so one hook owns the permission result."""
+"""Keep pre-tool dispatch in one hook because separate permission results can conflict and weaken enforcement."""
 from __future__ import annotations
 
 import operator

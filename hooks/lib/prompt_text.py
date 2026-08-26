@@ -43,6 +43,26 @@ def _is_fence_closer(line: str, width: int) -> bool:
     return backticks >= width and not body[backticks:].strip(" \t\r\n")
 
 
+def _mask_span(masked: list[str], start: int, end: int) -> None:
+    for position in range(start, end):
+        if masked[position] != "\n":
+            masked[position] = " "
+
+
+def _fenced_region_extent(
+    lines: list[str], opener_index: int, width: int,
+) -> tuple[int, int]:
+    length = len(lines[opener_index])
+    index = opener_index + 1
+    while index < len(lines):
+        length += len(lines[index])
+        closer = _is_fence_closer(lines[index], width)
+        index += 1
+        if closer:
+            break
+    return length, index
+
+
 def _mask_fenced(text: str) -> str:
     if "```" not in text:
         return text
@@ -58,17 +78,8 @@ def _mask_fenced(text: str) -> str:
             index += 1
             continue
         start = offsets[index]
-        end = start + len(lines[index])
-        index += 1
-        while index < len(lines):
-            end = offsets[index] + len(lines[index])
-            closer = _is_fence_closer(lines[index], width)
-            index += 1
-            if closer:
-                break
-        for position in range(start, end):
-            if masked[position] != "\n":
-                masked[position] = " "
+        length, index = _fenced_region_extent(lines, index, width)
+        _mask_span(masked, start, start + length)
     return "".join(masked)
 
 
@@ -96,9 +107,7 @@ def _mask_code_width(text: str, width: int) -> str:
         close = _find_backtick_run(text, start + width, width)
         if close == -1:
             break
-        for position in range(start, close + width):
-            if masked[position] != "\n":
-                masked[position] = " "
+        _mask_span(masked, start, close + width)
         start = _find_backtick_run(text, close + width, width)
     return "".join(masked)
 
@@ -125,10 +134,11 @@ def _file_token_end(text: str, at: int) -> int:
             has_alnum = has_alnum or char.isalnum()
             segment_open = True
             end = index + 1
-        elif char == "/" and (segment_open or index == at + 1):
+            continue
+        if char == "/" and (segment_open or index == at + 1):
             segment_open = False
-        else:
-            break
+            continue
+        break
     if end == at + 1 or not has_alnum:
         return -1
     return end if end == len(text) or _is_token_terminator(text[end]) else -1

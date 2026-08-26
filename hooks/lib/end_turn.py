@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import blocker_state, payloads, scan_input
@@ -7,6 +8,14 @@ from .baseline import strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
 from .scanner import read_scannable, scan_all
+
+
+@dataclass(frozen=True, slots=True)
+class BatchScanRequest:
+    session_id: str
+    cwd: str
+    paths: tuple[str, ...]
+    config: dict
 
 
 def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[str]]:
@@ -28,13 +37,19 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
     return findings, existing
 
 
-def _batch_findings(session_id: str, cwd: str, paths: list[str], cfg: dict) -> list[dict]:
+def _batch_findings(request: BatchScanRequest) -> list[dict]:
     """Call batch directly here because a fabricated multi-call payload never correlated with a real journal row, so its ledger dedup was always inert."""
-    if len(paths) < 2:
+    if len(request.paths) < 2:
         return []
     import batch
-    rows = batch.findings_for_paths(session_id, cwd, paths, cfg, "<end-turn>")
-    return [row for row in rows if resolve_outcome(row, cfg) == "block"]
+    rows = batch.findings_for_paths(
+        request.session_id,
+        request.cwd,
+        list(request.paths),
+        request.config,
+        "<end-turn>",
+    )
+    return [row for row in rows if resolve_outcome(row, request.config) == "block"]
 
 
 def _remaining_reason(session_id: str, agent_id: str, root) -> str:
@@ -53,7 +68,7 @@ def _scope_reason(payload: dict, cfg: dict, agent_id: str) -> str:
     pending, paths, revision = blocker_state.details(session_id, agent_id, root)
     cwd = payloads.cwd(payload)
     findings, existing = _blocking_rows(paths, Path(cwd or "."), cfg)
-    findings.extend(_batch_findings(session_id, cwd, existing, cfg))
+    findings.extend(_batch_findings(BatchScanRequest(session_id, cwd, tuple(existing), cfg)))
     if findings:
         reason = compact_block(findings, cfg)[0]
         return "\n".join(dict.fromkeys([reason, *_residual_reasons(pending, paths)]))

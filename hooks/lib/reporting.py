@@ -1,4 +1,3 @@
-"""Ledger, shared hook wrapper, and observe-report CLI."""
 from __future__ import annotations
 
 import json
@@ -8,14 +7,17 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 try:
     # Relative first because hook entry scripts import this as lib.reporting, where a bare name cannot resolve.
     from . import session_state
+    from .findings import Finding, Outcome
 except ImportError:
     import session_state
+    from findings import Finding, Outcome
 
 LEDGER_FILENAME = "ledger.jsonl"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
@@ -25,9 +27,46 @@ MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
-OUTCOMES = ("block", "inject", "would_block", "no_edits", "release")
+OUTCOMES = Outcome
 
 _UNSAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionRecord:
+    session_id: str
+    hook: str
+    event: str
+    family: str
+    rule: str
+    path: str
+    tool_use_id: str
+    outcome: Outcome | str
+    duration_ms: int
+    turn_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class HeartbeatRecord:
+    session_id: str
+    hook: str
+    turn_id: str
+    duration_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class LedgerInvocation:
+    hook: str
+    payload: dict
+    ledger_root: str | os.PathLike[str] | None
+    state_root: str | os.PathLike[str] | None
+
+
+@dataclass(frozen=True, slots=True)
+class Adjudication:
+    family: str
+    ref_ts: str
+    label: bool
 
 
 def _reports_dir() -> Path:
@@ -118,10 +157,10 @@ def verdict_message(
     decisions: list[tuple[dict, str]], config: dict | None = None
 ) -> tuple[str, str]:
     """Read gate state once for every hook, because a hook that judges findings on its own makes observe mean two things."""
-    blocking = [finding for finding, outcome in decisions if outcome == "block"]
+    blocking = [finding for finding, outcome in decisions if outcome == Outcome.BLOCK]
     if blocking:
         return "block", compact_block(blocking, config)[0]
-    observed = [finding for finding, outcome in decisions if outcome == "would_block"]
+    observed = [finding for finding, outcome in decisions if outcome == Outcome.WOULD_BLOCK]
     if not observed:
         return "release", ""
     return "observe", compact_block(observed, config, lead=OBSERVE_LEAD)[0]
@@ -163,7 +202,6 @@ def ledger_path(root: str | os.PathLike[str] | None = None) -> Path:
 
 
 def now_iso() -> str:
-    """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(tz=timezone.utc).isoformat()
 
 
@@ -172,7 +210,7 @@ def _ledger_row(**fields) -> dict:
 
 
 def append_row(row: dict, root: str | os.PathLike[str] | None = None) -> None:
-    """Append one ledger row as JSONL, swallowing write errors so an unwritable ledger can never fail a hook."""
+    """Swallow ledger write errors because an unwritable evidence sink must never fail a hook."""
     try:
         directory = _ledger_dir(root)
         directory.mkdir(parents=True, exist_ok=True)
@@ -195,47 +233,70 @@ def _read_turn_id(
     return value if isinstance(value, str) else ""
 
 
-def record_decision(
-    *,
-    session_id: str,
-    hook: str,
-    event: str,
-    family: str,
-    rule: str,
-    path: str,
-    tool_use_id: str,
-    outcome: str,
-    duration_ms: int,
-    turn_id: str = "",
-    root: str | os.PathLike[str] | None = None,
-) -> None:
-    """Append one gate-decision row, validating outcome against OUTCOMES."""
-    if outcome not in OUTCOMES:
-        raise ValueError(f"unknown outcome: {outcome!r}")
+def _decision_from_fields(fields: dict[str, object]) -> tuple[DecisionRecord, object]:
+    values = dict(fields)
+    root = values.pop("root", None)
+    turn_id = values.pop("turn_id", "")
+    required = {
+        "session_id", "hook", "event", "family", "rule", "path",
+        "tool_use_id", "outcome", "duration_ms",
+    }
+    if set(values) != required:
+        raise TypeError(f"record_decision fields must be {sorted(required)!r}")
+    return DecisionRecord(turn_id=turn_id, **values), root
+
+
+def record_decision(*values: object, **fields: object) -> None:
+    """Reject unknown outcomes because ledger consumers assume every decision belongs to Outcome."""
+    if len(values) == 1 and isinstance(values[0], DecisionRecord):
+        decision = values[0]
+        root = fields.pop("root", None)
+        if fields:
+            raise TypeError("DecisionRecord only accepts a root keyword")
+    elif not values:
+        decision, root = _decision_from_fields(fields)
+    else:
+        raise TypeError("record_decision requires a DecisionRecord or named legacy fields")
+    if decision.outcome not in Outcome:
+        raise ValueError(f"unknown outcome: {decision.outcome!r}")
     append_row(
         _ledger_row(
-            session_id=session_id, hook=hook, event=event, family=family,
-            rule=rule, path=path, tool_use_id=tool_use_id, turn_id=turn_id,
-            outcome=outcome, duration_ms=duration_ms,
+            session_id=decision.session_id, hook=decision.hook,
+            event=decision.event, family=decision.family, rule=decision.rule,
+            path=decision.path, tool_use_id=decision.tool_use_id,
+            turn_id=decision.turn_id, outcome=decision.outcome,
+            duration_ms=decision.duration_ms,
         ),
         root,
     )
 
 
-def record_heartbeat(
-    *,
-    session_id: str,
-    hook: str,
-    turn_id: str,
-    duration_ms: int = 0,
-    root: str | os.PathLike[str] | None = None,
-) -> None:
-    """Append one observed heartbeat row so every invocation contributes its turn_id to the denominator."""
+def _heartbeat_from_fields(fields: dict[str, object]) -> tuple[HeartbeatRecord, object]:
+    values = dict(fields)
+    root = values.pop("root", None)
+    duration_ms = values.pop("duration_ms", 0)
+    required = {"session_id", "hook", "turn_id"}
+    if set(values) != required:
+        raise TypeError(f"record_heartbeat fields must be {sorted(required)!r}")
+    return HeartbeatRecord(duration_ms=duration_ms, **values), root
+
+
+def record_heartbeat(*values: object, **fields: object) -> None:
+    """Record every invocation because distinct turn ids form the false-signal denominator even when no finding produced a decision."""
+    if len(values) == 1 and isinstance(values[0], HeartbeatRecord):
+        heartbeat = values[0]
+        root = fields.pop("root", None)
+        if fields:
+            raise TypeError("HeartbeatRecord only accepts a root keyword")
+    elif not values:
+        heartbeat, root = _heartbeat_from_fields(fields)
+    else:
+        raise TypeError("record_heartbeat requires a HeartbeatRecord or named legacy fields")
     append_row(
         _ledger_row(
-            session_id=session_id, hook=hook, event="observed", family="",
-            rule="", path="", tool_use_id="", turn_id=turn_id, outcome="",
-            duration_ms=duration_ms,
+            session_id=heartbeat.session_id, hook=heartbeat.hook,
+            event="observed", family="", rule="", path="", tool_use_id="",
+            turn_id=heartbeat.turn_id, outcome="", duration_ms=heartbeat.duration_ms,
         ),
         root,
     )
@@ -262,42 +323,65 @@ def record_findings(
     root: str | os.PathLike[str] | None = None,
     config: dict | None = None,
 ) -> list[tuple[dict, str]]:
-    """Write one decision row per finding and return the verdicts, so a gate leaves countable evidence."""
-    decisions = [(finding, _resolve_outcome(finding, config)) for finding in findings]
-    if not session_id:
-        return decisions
-    for finding, outcome in decisions:
-        record_decision(
-            session_id=session_id, hook=hook, event=event,
-            family=str(finding.get("family", "")), rule=str(finding.get("rule", "")),
-            path=str(finding.get("path", "")), tool_use_id=tool_use_id,
-            outcome=outcome, duration_ms=duration_ms,
-            turn_id=turn_id, root=root,
-        )
-    return decisions
+    """Persist each verdict because gate behavior needs countable evidence for observe reports and false-signal review."""
+    evaluated = [
+        (Finding.from_dict(finding), finding, _resolve_outcome(finding, config))
+        for finding in findings
+    ]
+    if session_id:
+        for value, _finding, outcome in evaluated:
+            record_decision(
+                session_id=session_id, hook=hook, event=event,
+                family=value.family, rule=value.rule,
+                path=value.path or "", tool_use_id=tool_use_id,
+                outcome=outcome, duration_ms=duration_ms,
+                turn_id=turn_id, root=root,
+            )
+    return [(finding, outcome) for _value, finding, outcome in evaluated]
 
 
-def run_with_ledger(
-    *,
-    hook: str,
-    payload: dict,
-    gate: Callable[[str], dict],
-    ledger_root: str | os.PathLike[str] | None = None,
-    state_root: str | os.PathLike[str] | None = None,
-) -> dict:
-    """Run a gate, then emit one heartbeat row stamped with the session turn_id."""
-    session_id = str(payload.get("session_id") or "")
+def _ledger_call(
+    values: tuple[object, ...],
+    fields: dict[str, object],
+) -> tuple[LedgerInvocation, Callable[[str], dict]]:
+    if len(values) == 2 and isinstance(values[0], LedgerInvocation) and callable(values[1]):
+        if fields:
+            raise TypeError("LedgerInvocation cannot be combined with named fields")
+        return values[0], values[1]
+    if values:
+        raise TypeError("run_with_ledger requires named legacy fields or an invocation and gate")
+    legacy = dict(fields)
+    gate = legacy.pop("gate", None)
+    invocation = LedgerInvocation(
+        hook=legacy.pop("hook"),
+        payload=legacy.pop("payload"),
+        ledger_root=legacy.pop("ledger_root", None),
+        state_root=legacy.pop("state_root", None),
+    )
+    if legacy or not callable(gate):
+        raise TypeError("run_with_ledger legacy fields are invalid")
+    return invocation, gate
+
+
+def run_with_ledger(*values: object, **fields: object) -> dict:
+    """Emit the heartbeat in finally because failed and finding-free invocations still count as observed turns."""
+    invocation, gate = _ledger_call(values, fields)
+    session_id = str(invocation.payload.get("session_id") or "")
     # A sessionless invocation skips the ledger because it has no turn_id to stamp.
-    turn_id = _read_turn_id(session_id, state_root) if session_id else ""
+    turn_id = _read_turn_id(session_id, invocation.state_root) if session_id else ""
     started = time.monotonic()
     try:
         return gate(turn_id)
     finally:
         if session_id:
             record_heartbeat(
-                session_id=session_id, hook=hook, turn_id=turn_id,
-                root=ledger_root,
-                duration_ms=int((time.monotonic() - started) * 1000),
+                HeartbeatRecord(
+                    session_id,
+                    invocation.hook,
+                    turn_id,
+                    int((time.monotonic() - started) * 1000),
+                ),
+                root=invocation.ledger_root,
             )
 
 
@@ -326,7 +410,6 @@ _read_jsonl = read_jsonl
 def observe_report(
     family: str, root: str | os.PathLike[str] | None = None
 ) -> list[dict]:
-    """Return a family's would_block rows, oldest first."""
     return [
         row
         for row in read_jsonl(LEDGER_FILENAME, root)
@@ -334,15 +417,22 @@ def observe_report(
     ]
 
 
-def adjudicate(
-    family: str,
-    ref_ts: str,
-    label: bool,
-    root: str | os.PathLike[str] | None = None,
-) -> dict:
-    """Persist one adjudication label, where True means justified and False means false signal."""
-    row = {"family": family, "ref_ts": ref_ts, "label": bool(label),
-           "adjudicated_at": now_iso()}
+def adjudicate(adjudication: Adjudication | str, *values: object) -> dict:
+    if isinstance(adjudication, str):
+        if len(values) not in {2, 3} or not isinstance(values[0], str):
+            raise TypeError("adjudicate requires family, reference timestamp, label, and optional root")
+        adjudication = Adjudication(adjudication, values[0], bool(values[1]))
+        root = values[2] if len(values) == 3 else None
+    else:
+        if len(values) > 1:
+            raise TypeError("Adjudication accepts at most one root")
+        root = values[0] if values else None
+    row = {
+        "family": adjudication.family,
+        "ref_ts": adjudication.ref_ts,
+        "label": adjudication.label,
+        "adjudicated_at": now_iso(),
+    }
     try:
         directory = _ledger_dir(root)
         directory.mkdir(parents=True, exist_ok=True)
@@ -356,7 +446,7 @@ def adjudicate(
 def false_signal_rate(
     family: str, root: str | os.PathLike[str] | None = None
 ) -> float | None:
-    """Return false signals per 20 distinct observed turn ids, or None below the 20-turn floor."""
+    """Withhold rates below 20 distinct observed turns because the per-20 measure requires one full exposure window."""
     # Denominator is distinct turn ids, not row count, because a turn that fired many rows is one exposure.
     turn_ids = {
         row["turn_id"]
@@ -373,53 +463,3 @@ def false_signal_rate(
     return false_count * 20 / len(turn_ids)
 
 
-def _observe_report_command(argv: list[str]) -> int:
-    if len(argv) != 3:
-        sys.stderr.write("usage: python3 -m lib.reporting observe-report <family>\n")
-        return 2
-    family = argv[2]
-    rate = false_signal_rate(family)
-    rows = observe_report(family)
-    if rate is None:
-        sys.stdout.write(f"{family}: need 20 distinct observed turn ids for a rate\n")
-    else:
-        sys.stdout.write(f"{family}: false-signal rate per 20 turns = {rate:.2f}\n")
-    for row in rows:
-        sys.stdout.write(
-            f"{row.get('ts')}\tturn={row.get('turn_id')}\t{row.get('rule')}\t{row.get('path')}\n"
-        )
-    return 0
-
-
-def _adjudicate_command(argv: list[str]) -> int:
-    if len(argv) != 5 or argv[4] not in ("true", "false"):
-        sys.stderr.write(
-            "usage: python3 -m lib.reporting adjudicate <family> <ts> <true|false>\n"
-        )
-        return 2
-    family, ref_ts, label = argv[2], argv[3], argv[4] == "true"
-    adjudicate(family, ref_ts, label)
-    sys.stdout.write(
-        f"adjudicated {family} {ref_ts} as "
-        f"{'justified' if label else 'false-signal'}\n"
-    )
-    return 0
-
-
-def _main(argv: list[str]) -> int:
-    if len(argv) < 2:
-        sys.stderr.write(
-            "usage: python3 -m lib.reporting observe-report <family> | "
-            "adjudicate <family> <ts> <true|false>\n"
-        )
-        return 2
-    if argv[1] == "observe-report":
-        return _observe_report_command(argv)
-    if argv[1] == "adjudicate":
-        return _adjudicate_command(argv)
-    sys.stderr.write(f"unknown command: {argv[1]}\n")
-    return 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(_main(sys.argv))

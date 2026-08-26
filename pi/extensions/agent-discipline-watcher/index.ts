@@ -138,11 +138,7 @@ function createExtension(pi: ExtensionAPI, run: WatcherRun = runWatcher) {
     const messages: string[] = [];
     const targets = paths.length > 0 ? paths : [""];
     for (const filePath of targets) {
-      // Send only the resolved path, not the tool's raw write payload: the
-      // engine rescans the file from disk (hooks/lib/scanner.py) and does
-      // not need write content, hashline patch text, or bash commands here.
-      // bash keeps its original {command} input via the "" fallback below,
-      // since the engine's own command-based write detection needs it.
+      // Avoid exposing raw write content because landed files are rescanned from disk, while the Bash fallback still needs its command for write detection.
       const toolInput = filePath ? { file_path: filePath } : event.input;
       const result = run(
         "PostToolUse",

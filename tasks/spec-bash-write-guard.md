@@ -12,18 +12,35 @@ Every Bash-mediated write route the gate can attribute to a write is guarded, me
 
 ## User Stories
 
+Unreadable code reaching an interpreter:
+
 1. As a repo owner, I want inline interpreter code that can write files blocked, so that agents cannot smuggle content past the scanner through python -c or node -e.
 2. As a repo owner, I want heredocs feeding an interpreter's stdin judged like inline code, so that piping a script into python3 is not a loophole.
-3. As a repo owner, I want dynamic heredocs aimed at files blocked instead of silently dropped, so that variable expansion cannot hide unscannable content.
-4. As a repo owner, I want decode pipes that end in a file write blocked, so that base64-staged content cannot bypass scanning.
-5. As a repo owner, I want in-place editors blocked, so that sed -i and perl -pi cannot mutate files outside the Edit tool.
+3. As a repo owner, I want shell -c payloads judged recursively when literal and blocked when not, so that nesting a shell does not strip the guard.
+
+Unreadable content reaching a file:
+
+4. As a repo owner, I want dynamic heredocs aimed at files blocked instead of silently dropped, so that variable expansion cannot hide unscannable content.
+5. As a repo owner, I want decode pipes that end in a file write blocked, so that base64-staged content cannot bypass scanning.
 6. As a repo owner, I want opaque copy sources blocked, so that dd and process substitution cannot launder content onto disk.
-7. As a repo owner, I want shell -c payloads judged recursively when literal and blocked when not, so that nesting a shell does not strip the guard.
+
+Edits outside the Edit tool, and the escape hatch:
+
+7. As a repo owner, I want in-place editors blocked, so that sed -i and perl -pi cannot mutate files outside the Edit tool.
+
+Who can turn the rules off:
+
 8. As a repo owner, I want the new rules unremovable through project config, so that an observed agent cannot grant itself an escape.
 9. As a repo owner, I want the existing environment escape to keep working, so that a human can still authorize exceptional maintenance.
+
+What must keep working for the agent:
+
 10. As an agent, I want literal echo, printf, and quoted heredoc writes scanned rather than banned, so that legitimate small file writes keep working when clean.
 11. As an agent, I want append writes judged like edits, so that adding clean lines to a large file is not blocked for pre-existing debt.
 12. As an agent, I want overwrites of committed files to report inherited debt without blocking, so that I am only stopped by lines I own.
+
+What must keep working when nothing lands on disk:
+
 13. As an agent, I want read-only interpreter one-liners to keep working, so that version probes and quick arithmetic do not require an escape.
 14. As an agent, I want decode and stream tools allowed when nothing is written, so that base64 to stdout and sed transforms to stdout keep working.
 15. As an agent, I want display heredocs and heredocs into non-writing consumers allowed, so that cat banners and psql sessions are not blocked.
@@ -39,7 +56,10 @@ Every Bash-mediated write route the gate can attribute to a write is guarded, me
 - Rules join the self-protection tier, which makes them immune to rule gates, kill switches, and path exemptions, and makes any config that downgrades them an escape attempt in its own right.
 - The only release is the existing human-held environment escape. Config keys stay inert by design.
 - A literal interpreter payload is judged by a single write-capable token regex covering filesystem APIs, process spawning, dynamic dispatch, dunder access, and shell-out backticks. Payloads free of these tokens stay allowed. Non-literal or absent payloads block outright.
-- Shell -c recursion goes one level: a literal payload re-enters the full Bash gate, a non-literal payload blocks.
+
+How the shapes are judged:
+
+- Shell -c recursion goes one level. A literal payload re-enters the full Bash gate, a non-literal payload blocks.
 - Bash overwrite redirects take the write shape: full scan, then a committed-baseline split so inherited debt reports without blocking. Appends take the edit shape: only the appended body is scanned and every finding is owned, plus a file-length check on the resulting size.
 - No scratch-path carve-out for the opaque rules. An unscannable body to any path is treated as a laundering step.
 - Deny messages end by naming the Write or Edit tool as the correct path.

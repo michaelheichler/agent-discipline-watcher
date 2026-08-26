@@ -3,13 +3,14 @@ name: agent-discipline-watcher
 description: >-
   Use when an agent writes or edits files, commit text, or final prose and must
   enforce the combined discipline contract. punctuation-discipline bans em dash
-  and en dash characters, double-hyphen clause breaks, spaced-hyphen dash
-  substitutes, semicolon splices, bad possessive-pronoun apostrophes, and
-  possessive decades. english-for-agents keeps reader-facing English plain by
-  removing filler, dead metaphor, AI tells, inflated diction, wordiness, buried
-  subjects, and empty intensifiers. clean-coder-discipline keeps code reviewable
-  by rejecting narration comments, dead/commented-out code, deferred-work
-  markers, hollow tests, and long functions/files.
+  and en dash characters. It also bans double-hyphen clause breaks and
+  spaced-hyphen dash substitutes. Other violations include semicolon splices,
+  bad possessive-pronoun apostrophes, and possessive decades. The
+  english-for-agents rules remove filler, dead metaphor, AI tells, and inflated
+  diction. They also remove wordiness, buried subjects, and empty intensifiers
+  from reader-facing English. The clean-coder-discipline rules reject
+  narration comments, dead/commented-out code, and deferred-work markers. They also reject
+  hollow tests and long functions/files.
 ---
 
 # Agent Discipline Watcher

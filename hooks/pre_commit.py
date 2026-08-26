@@ -4,11 +4,12 @@ import os
 import shlex
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
 from lib.baseline import strip_against
-from lib.config import effective_config
+from lib.config import StorageRoots, effective_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
@@ -27,60 +28,63 @@ class _UnresolvableRepoLocation(Exception):
     """Raised because a probe run without GIT_DIR or GIT_WORK_TREE cannot see the repository the real commit would use."""
 
 
+@dataclass(frozen=True, slots=True)
+class _CommitRunContext:
+    payload: dict
+    config: dict | None
+    roots: StorageRoots
+
+
 def run(
     payload: dict,
     config: dict | None = None,
     ledger_root: str | os.PathLike[str] | None = None,
     state_root: str | os.PathLike[str] | None = None,
 ) -> dict:
-    """Scan the staged tree behind a pending commit, blocking rather than letting it through when the gate cannot decide."""
-    return fail_closed("commit", lambda: _checked_run(payload, config, ledger_root, state_root))
+    """Fail closed because an unreadable staged tree cannot be proven free of blocking findings."""
+    context = _CommitRunContext(
+        payload=payload,
+        config=config,
+        roots=StorageRoots(state=state_root, ledger=ledger_root),
+    )
+    return fail_closed("commit", lambda: _checked_run(context))
 
 
-def _checked_run(
-    payload: dict,
-    config: dict | None,
-    ledger_root: str | os.PathLike[str] | None,
-    state_root: str | os.PathLike[str] | None,
-) -> dict:
-    if payload is PARSE_FAILURE:
+def _checked_run(context: _CommitRunContext) -> dict:
+    if context.payload is PARSE_FAILURE:
         raise ValueError("unreadable hook payload")
-    return _run(payload, config, ledger_root, state_root)
+    return _run(context)
 
 
-def _run(
-    payload: dict,
-    config: dict | None,
-    ledger_root: str | os.PathLike[str] | None,
-    state_root: str | os.PathLike[str] | None,
-) -> dict:
+def _run(context: _CommitRunContext) -> dict:
     return run_with_ledger(
         hook="pre_commit",
-        payload=payload,
-        gate=lambda turn_id: _gate(payload, config, turn_id, ledger_root),
-        ledger_root=ledger_root,
-        state_root=state_root,
+        payload=context.payload,
+        gate=lambda turn_id: _gate(context, turn_id),
+        ledger_root=context.roots.ledger,
+        state_root=context.roots.state,
     )
 
 
-def _gate(payload: dict, config: dict | None, turn_id: str, ledger_root) -> dict:
+def _gate(context: _CommitRunContext, turn_id: str) -> dict:
     started = time.monotonic()
-    command = _bash_command(payload)
-    cwd = Path(payload.get("cwd") or os.getcwd())
+    command = _bash_command(context.payload)
+    cwd = Path(context.payload.get("cwd") or os.getcwd())
     commit_cwds = _commit_cwds(command, cwd)
     if not commit_cwds:
         return allow()
-    repo_rows = _repo_findings_by_repo(commit_cwds, config)
-    outer_cfg = effective_config(config, cwd)
+    repo_rows = _repo_findings_by_repo(commit_cwds, context.config)
+    outer_cfg = effective_config(context.config, cwd)
     message_findings = _message_findings(command, outer_cfg)
     stamp = _RecordStamp(
-        session_id=str(payload.get("session_id") or ""),
-        tool_use_id=str(payload.get("tool_use_id") or ""),
+        session_id=str(context.payload.get("session_id") or ""),
+        tool_use_id=str(context.payload.get("tool_use_id") or ""),
         turn_id=turn_id,
         duration_ms=int((time.monotonic() - started) * 1000),
-        ledger_root=ledger_root,
+        ledger_root=context.roots.ledger,
     )
-    decisions = _record_all(repo_rows, message_findings, outer_cfg, stamp)
+    scan = _CommitScan(repo_rows, message_findings, outer_cfg)
+    decisions = _record_all(scan, stamp)
     if not decisions:
         return allow()
     kind, message = verdict_message(decisions, outer_cfg)
@@ -98,14 +102,18 @@ class _RecordStamp(NamedTuple):
     ledger_root: str | os.PathLike[str] | None
 
 
+@dataclass(frozen=True, slots=True)
+class _CommitScan:
+    repository_rows: list[tuple[Path, dict, list[dict]]]
+    message_rows: list[dict]
+    outer_config: dict
+
+
 def _record_all(
-    repo_rows: list[tuple[Path, dict, list[dict]]],
-    message_findings: list[dict],
-    outer_cfg: dict,
-    stamp: _RecordStamp,
+    scan: _CommitScan, stamp: _RecordStamp
 ) -> list[tuple[dict, str]]:
     decisions: list[tuple[dict, str]] = []
-    for _repo, cfg, findings in repo_rows:
+    for _repo, cfg, findings in scan.repository_rows:
         decisions.extend(record_findings(
             session_id=stamp.session_id, hook="pre_commit", event="PreCommit",
             findings=findings, turn_id=stamp.turn_id, tool_use_id=stamp.tool_use_id,
@@ -113,8 +121,9 @@ def _record_all(
         ))
     decisions.extend(record_findings(
         session_id=stamp.session_id, hook="pre_commit", event="PreCommit",
-        findings=message_findings, turn_id=stamp.turn_id, tool_use_id=stamp.tool_use_id,
-        duration_ms=stamp.duration_ms, root=stamp.ledger_root, config=outer_cfg,
+        findings=scan.message_rows, turn_id=stamp.turn_id,
+        tool_use_id=stamp.tool_use_id, duration_ms=stamp.duration_ms,
+        root=stamp.ledger_root, config=scan.outer_config,
     ))
     return decisions
 
@@ -187,22 +196,28 @@ def _messages_after_commit(tokens: list[str]) -> list[str]:
     return _message_values(tokens[tokens.index("commit") + 1:])
 
 
+def _message_value_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
+    token = tokens[cursor]
+    if token in {"-m", "--message"} or _is_message_bundle(token):
+        next_cursor = cursor + 2
+        if cursor + 1 >= len(tokens):
+            return None, next_cursor
+        return _decode_ansi_c_value(tokens[cursor + 1]), next_cursor
+    name, separator, inline = token.partition("=")
+    if separator and name == "--message":
+        return _decode_ansi_c_value(inline), cursor + 1
+    if token.startswith("-m") and len(token) > 2:
+        return _decode_ansi_c_value(token[2:]), cursor + 1
+    return None, cursor + 1
+
+
 def _message_values(tokens: list[str]) -> list[str]:
     values: list[str] = []
     cursor = 0
     while cursor < len(tokens):
-        token = tokens[cursor]
-        if token in {"-m", "--message"} or _is_message_bundle(token):
-            if cursor + 1 < len(tokens):
-                values.append(_decode_ansi_c_value(tokens[cursor + 1]))
-            cursor += 2
-            continue
-        name, separator, inline = token.partition("=")
-        if separator and name == "--message":
-            values.append(_decode_ansi_c_value(inline))
-        elif token.startswith("-m") and len(token) > 2:
-            values.append(_decode_ansi_c_value(token[2:]))
-        cursor += 1
+        value, cursor = _message_value_at(tokens, cursor)
+        if value is not None:
+            values.append(value)
     return values
 
 
@@ -349,6 +364,18 @@ def _names_git_location_override(assignments: list[str]) -> bool:
     return any(token.partition("=")[0] in GIT_LOCATION_ENV_VARS for token in assignments)
 
 
+def _commit_cwd_for_verb(
+    token: str, assignments: list[str], current: Path
+) -> Path | None:
+    if token != "commit":
+        return None
+    if _names_git_location_override(assignments):
+        raise _UnresolvableRepoLocation(
+            "GIT_DIR or GIT_WORK_TREE overrides the commit's repository location"
+        )
+    return current
+
+
 def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
     start = _unwrap_start(segment)
     unwrapped = segment[start:]
@@ -359,22 +386,15 @@ def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
     cursor = 1
     while cursor < len(unwrapped):
         token = unwrapped[cursor]
-        if token.startswith("-"):
-            step = _skip_git_flag(unwrapped, cursor, current)
-            if step is None:
-                return None
-            cursor, candidate, pins = step
-            if pins or not pinned:
-                current = candidate
-            pinned = pinned or pins
-            continue
-        if token != "commit":
+        if not token.startswith("-"):
+            return _commit_cwd_for_verb(token, segment[:start], current)
+        step = _skip_git_flag(unwrapped, cursor, current)
+        if step is None:
             return None
-        if _names_git_location_override(segment[:start]):
-            raise _UnresolvableRepoLocation(
-                "GIT_DIR or GIT_WORK_TREE overrides the commit's repository location"
-            )
-        return current
+        cursor, candidate, pins = step
+        if pins or not pinned:
+            current = candidate
+        pinned = pinned or pins
     return None
 
 

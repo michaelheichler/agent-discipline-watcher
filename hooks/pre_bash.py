@@ -9,6 +9,7 @@ from pathlib import Path
 
 from lib import reporting
 from lib.config import effective_hook_config
+from lib.findings import Finding, Rule
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
@@ -47,51 +48,64 @@ STATE_TARGET_RE = re.compile(r"\.agent-discipline\b|agent-discipline/(?:state|le
 WRITE_OR_EDIT_ACTION = "Use the Write or Edit tool for file content."
 MAX_SHELL_PAYLOAD_DEPTH = 1
 
-RULES: dict[str, tuple[str, str]] = {
-    "install_without_sandbox_home": (
-        "Installer or merge script aimed at the real HOME",
-        "Re-run it with a sandbox HOME such as HOME=\"$(mktemp -d)\"."),
-    "commit_gate_bypass": (
-        "Commit skips the pre-commit gate",
-        "Drop the no-verify flag and repair the reported finding."),
-    "cap_override": (
-        "Discipline cap or escape overridden on the command line",
-        "Fix the code shape instead of raising the cap."),
-    "state_deletion": (
-        "Watcher state or gate config deleted",
-        "Leave the state in place and repair the reported finding."),
-    "state_mutation": (
-        "Watcher state or gate config mutated",
-        "Leave watcher state under host control and repair the reported finding."),
-    "watcher_install_surface": (
-        "Shell command mutates the live watcher install",
-        "Change the repo source and reinstall instead of editing the live install."),
-    "inline_interpreter_write": (
-        "Inline interpreter payload can write or is unreadable",
-        WRITE_OR_EDIT_ACTION),
-    "shell_payload_block": (
-        "Shell -c payload is unreadable or nested past one level",
-        WRITE_OR_EDIT_ACTION),
-    "interpreter_heredoc_write": (
-        "Heredoc or pipe feeding an interpreter's stdin can write or is unreadable",
-        WRITE_OR_EDIT_ACTION),
-    "dynamic_heredoc_write": (
-        "Dynamic or unterminated heredoc aimed at a file",
-        WRITE_OR_EDIT_ACTION),
-    "decode_pipe_write": (
-        "Decode pipe ends in a file write",
-        WRITE_OR_EDIT_ACTION),
-    "inplace_edit_write": (
-        "In-place editor mutates a file outside the Edit tool",
-        WRITE_OR_EDIT_ACTION),
-    "opaque_source_write": (
-        "Opaque copy source feeds a file write",
-        WRITE_OR_EDIT_ACTION),
+RULES: dict[str, Rule] = {
+    "install_without_sandbox_home": Rule(
+        detail="Installer or merge script aimed at the real HOME",
+        action="Re-run it with a sandbox HOME such as HOME=\"$(mktemp -d)\".",
+    ),
+    "commit_gate_bypass": Rule(
+        detail="Commit skips the pre-commit gate",
+        action="Drop the no-verify flag and repair the reported finding.",
+    ),
+    "cap_override": Rule(
+        detail="Discipline cap or escape overridden on the command line",
+        action="Fix the code shape instead of raising the cap.",
+    ),
+    "state_deletion": Rule(
+        detail="Watcher state or gate config deleted",
+        action="Leave the state in place and repair the reported finding.",
+    ),
+    "state_mutation": Rule(
+        detail="Watcher state or gate config mutated",
+        action="Leave watcher state under host control and repair the reported finding.",
+    ),
+    "watcher_install_surface": Rule(
+        detail="Shell command mutates the live watcher install",
+        action="Change the repo source and reinstall instead of editing the live install.",
+    ),
+    "inline_interpreter_write": Rule(
+        detail="Inline interpreter payload can write or is unreadable",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "shell_payload_block": Rule(
+        detail="Shell -c payload is unreadable or nested past one level",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "interpreter_heredoc_write": Rule(
+        detail="Heredoc or pipe feeding an interpreter's stdin can write or is unreadable",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "dynamic_heredoc_write": Rule(
+        detail="Dynamic or unterminated heredoc aimed at a file",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "decode_pipe_write": Rule(
+        detail="Decode pipe ends in a file write",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "inplace_edit_write": Rule(
+        detail="In-place editor mutates a file outside the Edit tool",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
+    "opaque_source_write": Rule(
+        detail="Opaque copy source feeds a file write",
+        action=WRITE_OR_EDIT_ACTION,
+    ),
 }
 
 
 def run(payload: dict, config: dict | None = None) -> dict:
-    """Judge a pending Bash command, blocking rather than passing it through when the gate itself cannot decide."""
+    """Fail closed because an undecidable command cannot be proven safe to execute."""
     return fail_closed("command", lambda: _checked_run(payload, config))
 
 
@@ -168,7 +182,7 @@ def _verdict(decisions: list[tuple[dict, str]], cfg: dict, inherited: list[dict]
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
-    """Return every blocking finding for one Bash command string, judged per shell segment."""
+    """Judge shell segments independently because an allowed segment must not hide a prohibited sibling."""
     if not command or authorized(config):
         return []
     segments = _segments(command)
@@ -200,7 +214,7 @@ def target_findings(command: str, config: dict | None = None, home: str | os.Pat
 
 
 def _shell_targets(command: str) -> dict[str, str | None]:
-    """Pair every write target with its text, holding the targets whose text is unknowable at None rather than dropping them."""
+    """Retain targets with unknown content because protected-path checks still apply when content inspection cannot."""
     targets: dict[str, str | None] = {path: None for path in _mutation_paths(command)}
     targets.update({path: None for path in write_paths(command)})
     targets.update(dict(write_targets(command)))
@@ -304,7 +318,6 @@ def _largest_oversize(commands: list[str]) -> int | None:
 
 
 def oversize_write(command: str) -> int | None:
-    """Return the largest knowable Bash write size when it exceeds the hard cap."""
     sizes = [len(text) for _, text in write_targets(command)]
     for line, _, raw_bodies in _logical_lines(command):
         if not any(_write_paths(segment) for segment in _segments(line)):
@@ -383,16 +396,19 @@ def _mutates_install_surface(segment: list[str], home: str | os.PathLike[str] | 
 
 
 def _finding(rule: str, command: str) -> dict:
-    detail, action = RULES[rule]
-    return {
-        "family": "self_protection",
-        "rule": rule,
-        "line": 1,
-        "detail": detail,
-        "force": True,
-        "snippet": command.strip()[:180],
-        "action": action,
-    }
+    rule_spec = RULES[rule]
+    return Finding(
+        family="self_protection",
+        rule=rule,
+        line=1,
+        detail=rule_spec.detail,
+        force=True,
+        snippet=command.strip()[:180],
+        action=rule_spec.action,
+        path=None,
+        severity=None,
+        tool_use_id=None,
+    ).to_dict()
 
 
 

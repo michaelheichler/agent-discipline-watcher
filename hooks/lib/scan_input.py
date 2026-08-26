@@ -1,14 +1,15 @@
-"""Source loading and numeric limits for scanner entry points."""
-
 from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import BinaryIO
 
 try:
     from .config import effective_config
+    from .findings import Finding
 except ImportError:
     from config import effective_config
+    from findings import Finding
 
 LEGACY_ENV_NAMES = {
     "ADW_FILE_BLOCK_LINES": "CLEANCODER_FILE_BLOCK_LINES",
@@ -29,17 +30,21 @@ def file_length_policy(count: int) -> tuple[str, str] | None:
     return None
 
 
+def _count_open_file_lines(handle: BinaryIO) -> tuple[int, bool] | None:
+    count = 0
+    for line in handle:
+        if b"\0" in line:
+            return None
+        count += 1
+        if count >= FILE_LENGTH_BLOCK:
+            return count, True
+    return count, False
+
+
 def file_line_count(path: Path) -> tuple[int, bool] | None:
     try:
         with path.open("rb") as handle:
-            count = 0
-            for line in handle:
-                if b"\0" in line:
-                    return None
-                count += 1
-                if count >= FILE_LENGTH_BLOCK:
-                    return count, True
-            return count, False
+            return _count_open_file_lines(handle)
     except OSError:
         return None
 
@@ -56,15 +61,18 @@ def fallback_findings(path: Path) -> list[dict]:
         rule = "unscannable_file"
         action = "Make the file readable UTF-8 text within the scan byte limit."
         detail = f"File could not be fully scanned: {path}"
-    return [{
-        "family": "clean_code",
-        "rule": rule,
-        "line": 1,
-        "detail": detail,
-        "force": True,
-        "snippet": str(path)[:180],
-        "action": action,
-    }]
+    return [Finding(
+        family="clean_code",
+        rule=rule,
+        line=1,
+        detail=detail,
+        force=True,
+        snippet=str(path)[:180],
+        action=action,
+        path=None,
+        severity=None,
+        tool_use_id=None,
+    ).to_dict()]
 
 
 def read_scannable(path: Path, config: dict) -> str | None:

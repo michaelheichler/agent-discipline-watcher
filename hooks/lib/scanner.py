@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import fnmatch
 import re
+from collections.abc import Iterator
 from pathlib import PurePath
 from typing import NamedTuple
 
@@ -26,6 +27,7 @@ try:
     from .config import GATE_FAMILIES, effective_config
     from .markup import (
         MIXED_LANGUAGE_EXTS,
+        CommentSource,
         RegionKind,
         _blank_keep_newlines,
         _mask_markup,
@@ -57,6 +59,7 @@ except ImportError:
     from config import GATE_FAMILIES, effective_config
     from markup import (
         MIXED_LANGUAGE_EXTS,
+        CommentSource,
         RegionKind,
         _blank_keep_newlines,
         _mask_markup,
@@ -156,7 +159,7 @@ def _active_families(path: str, cfg: dict) -> frozenset[str]:
     )
 
 
-def _python_tree(path: str, text: str):
+def _python_tree(path: str, text: str) -> ast.Module | None:
     if not path.lower().endswith(".py"):
         return None
     try:
@@ -165,33 +168,33 @@ def _python_tree(path: str, text: str):
         return None
 
 def _unconditional_findings(
-    path: str, text: str, config: dict, tree, code_file: bool,
-    comment_text: str | None = None,
+    context: _ScanContext,
+    comment_text: str,
 ) -> list[dict]:
-    lines = text.splitlines() or [""]
     findings = [
         _finding("clean_code", "suppression_escape_hatch", number,
-                 "Craftsman suppression marker in " + path, line,
+                 "Craftsman suppression marker in " + context.path, line,
                  "Remove the marker and fix the reported issue.")
-        for number, line in enumerate(lines, 1) if SUPPRESSION_MARKER_RE.search(line)
+        for number, line in enumerate(context.lines, 1) if SUPPRESSION_MARKER_RE.search(line)
     ]
-    comment_source = comment_text if comment_text is not None else text
-    if not code_file:
+    if not context.code_file:
         return findings
-    findings.extend(_file_length_findings(path, len(lines)))
-    findings.extend(_multiline_comment_findings(path, comment_source))
-    comment_source = _normalize_block_comments(comment_source, path)
+    findings.extend(_file_length_findings(context.path, len(context.lines)))
+    findings.extend(_multiline_comment_findings(context.path, comment_text))
+    comment_source = _normalize_block_comments(comment_text, context.path)
     comment_rows = _comment_body_lines(comment_source)
-    findings.extend(_what_comment_findings(path, comment_rows))
-    findings.extend(_what_docstring_findings(path, tree))
-    findings.extend(_scan_clean_code_blocks(path, comment_source))
-    findings.extend(_scan_docstrings(path, tree))
-    if tree is None and path.lower().endswith(".py"):
-        findings.extend(_lexical_docstring_findings(path, text))
-    findings.extend(_weak_why_findings(path, comment_rows))
+    findings.extend(_what_comment_findings(context.path, comment_rows))
+    findings.extend(_what_docstring_findings(context.path, context.tree))
+    findings.extend(_scan_clean_code_blocks(context.path, comment_source))
+    findings.extend(_scan_docstrings(context.path, context.tree))
+    if context.tree is None and context.path.lower().endswith(".py"):
+        findings.extend(_lexical_docstring_findings(context.path, context.text))
+    findings.extend(_weak_why_findings(context.path, comment_rows))
     return findings
 
 class _ScanContext(NamedTuple):
+    path: str
+    text: str
     config: dict
     tree: object
     lines: list[str]
@@ -207,7 +210,16 @@ def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
     suffix = PurePath(path.lower()).suffix
     prose = _is_prose(path, text) or suffix in {".vue", ".svelte"}
     code_file = _code_file(path, text)
-    return _ScanContext(cfg, tree, lines, prose, code_file, _active_families(path, cfg))
+    return _ScanContext(
+        path=path,
+        text=text,
+        config=cfg,
+        tree=tree,
+        lines=lines,
+        prose=prose,
+        code_file=code_file,
+        active_families=_active_families(path, cfg),
+    )
 
 
 class _LineSources(NamedTuple):
@@ -216,26 +228,40 @@ class _LineSources(NamedTuple):
     comment: list[str]
 
 
-def _line_sources(path: str, masked: str, comment_source: str, prose: bool) -> _LineSources:
+class _SourceLine(NamedTuple):
+    path: str
+    number: int
+    text: str
+
+
+def _line_sources(
+    context: _ScanContext,
+    masked: str,
+    comment_source: str,
+) -> _LineSources:
     return _LineSources(
-        _strip_punctuation_blocks(path, masked, prose).splitlines() or [""],
+        _strip_punctuation_blocks(context.path, masked, context.prose).splitlines() or [""],
         _strip_english_hidden(masked).splitlines() or [""],
         comment_source.splitlines() or [""],
     )
 
 
-def _scan_line_families(path: str, number: int, line: str, sources: _LineSources, context: _ScanContext) -> list[dict]:
+def _scan_line_families(
+    source_line: _SourceLine,
+    sources: _LineSources,
+    context: _ScanContext,
+) -> list[dict]:
     findings: list[dict] = []
     if "punctuation" in context.active_families:
-        scan_line = _line_or_blank(sources.punctuation, number)
-        findings.extend(_scan_punctuation(path, number, line, scan_line, context.prose))
+        scan_line = _line_or_blank(sources.punctuation, source_line.number)
+        findings.extend(_scan_punctuation(source_line, scan_line, context.prose))
     if "english" in context.active_families and context.prose:
-        scan_line = _line_or_blank(sources.english, number)
-        findings.extend(_scan_english(path, number, line, scan_line))
+        scan_line = _line_or_blank(sources.english, source_line.number)
+        findings.extend(_scan_english(source_line, scan_line))
     if "clean_code" in context.active_families and context.code_file:
-        scan_line = _line_or_blank(sources.comment, number)
-        findings.extend(_clean_code_comment_findings(path, number, scan_line))
-        findings.extend(_hollow_test_line_findings(path, number, scan_line))
+        scan_line = _line_or_blank(sources.comment, source_line.number)
+        findings.extend(_clean_code_comment_findings(source_line.path, source_line.number, scan_line))
+        findings.extend(_hollow_test_line_findings(source_line.path, source_line.number, scan_line))
     return findings
 
 
@@ -243,18 +269,17 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     context = _scan_context(path, text, config)
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
-    comment_source = comment_scan_source(path, text, regions, mixed)
-    findings = _unconditional_findings(
-        path, text, context.config, context.tree, context.code_file, comment_source,
-    )
+    comment_source = comment_scan_source(CommentSource(path, text, regions, mixed))
+    findings = _unconditional_findings(context, comment_source)
     if _is_exempt(path, context.config):
         return findings
     masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
-    sources = _line_sources(path, masked, comment_source, context.prose)
+    sources = _line_sources(context, masked, comment_source)
     if "clean_code" in context.active_families and context.code_file:
-        findings.extend(_scan_clean_code_file(path, comment_source, context.config, context.tree))
+        findings.extend(_scan_clean_code_file(context, comment_source))
     for number, line in enumerate(context.lines, 1):
-        findings.extend(_scan_line_families(path, number, line, sources, context))
+        source_line = _SourceLine(path=path, number=number, text=line)
+        findings.extend(_scan_line_families(source_line, sources, context))
     if "english" in context.active_families and context.prose:
         findings.extend(_scan_prose_structure(path, masked, context.config))
     return findings
@@ -301,22 +326,29 @@ PUNCTUATION_RULES = (
 )
 
 
-def _scan_punctuation(path: str, line_number: int, line: str, scan_line: str, prose: bool) -> list[dict]:
+def _scan_punctuation(
+    source_line: _SourceLine,
+    scan_line: str,
+    prose: bool,
+) -> list[dict]:
     clean = _strip_inline_code(scan_line)
-    prose_part = _punctuation_prose_part(path, clean, prose)
-    semicolon = "" if _is_config(path) else URL_RE.sub("", prose_part)
+    prose_part = _punctuation_prose_part(source_line.path, clean, prose)
+    semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
     texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon}
     rows = [
-        _finding("punctuation", rule, line_number, detail + path, line, action)
+        _finding(
+            "punctuation", rule, source_line.number,
+            detail + source_line.path, source_line.text, action,
+        )
         for target, regexes, rule, detail, action in PUNCTUATION_RULES
         if texts[target] and any(regex.search(texts[target]) for regex in regexes)
     ]
     return rows
 
 
-def _scan_english(path: str, line_number: int, line: str, scan_line: str) -> list[dict]:
+def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
     rows = []
-    if line.lstrip().startswith(">"):
+    if source_line.text.lstrip().startswith(">"):
         return rows
     scan_line = _strip_quoted(_strip_inline_code(scan_line))
     for pattern, rule, action in ENGLISH_RULES:
@@ -324,9 +356,9 @@ def _scan_english(path: str, line_number: int, line: str, scan_line: str) -> lis
             rows.append(_finding(
                 "english",
                 rule,
-                line_number,
-                "Plain English rule in " + path,
-                line,
+                source_line.number,
+                "Plain English rule in " + source_line.path,
+                source_line.text,
                 action,
             ))
     return rows
@@ -342,12 +374,14 @@ def _file_length_findings(path: str, count: int) -> list[dict]:
 
 def file_length_findings(path: str, text: str) -> list[dict]:
     return _file_length_findings(path, len(text.splitlines()) or 1) if _code_file(path, text) else []
-def _long_functions(tree, func_limit: int):
+def _long_functions(tree, func_limit: int) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            span = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno + 1
-            if span > func_limit:
-                yield node
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        span = (getattr(node, "end_lineno", None) or node.lineno) - node.lineno + 1
+        if span <= func_limit:
+            continue
+        yield node
 
 def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
     if tree is None:
@@ -363,10 +397,10 @@ def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
     ]
 
 
-def _scan_clean_code_file(path: str, text: str, config: dict, tree) -> list[dict]:
+def _scan_clean_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
-    findings = _function_length_findings(path, config, tree)
-    findings.extend(_scan_hollow_test_blocks(path, lines))
+    findings = _function_length_findings(context.path, context.config, context.tree)
+    findings.extend(_scan_hollow_test_blocks(context.path, lines))
     return findings
 
 
@@ -410,19 +444,23 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
     return findings
 
 
+def _indented_test_body(lines: list[str], start: int, indent: int) -> tuple[list[str], int]:
+    body: list[str] = []
+    index = start + 1
+    while index < len(lines):
+        current = lines[index]
+        if current.strip() and len(current) - len(current.lstrip()) <= indent:
+            break
+        body.append(current)
+        index += 1
+    return body, index
+
+
 def _test_block(lines: list[str], start: int) -> tuple[list[str], int]:
     line = lines[start]
     if line.rstrip().endswith(":"):
         indent = len(line) - len(line.lstrip())
-        body: list[str] = []
-        index = start + 1
-        while index < len(lines):
-            current = lines[index]
-            if current.strip() and len(current) - len(current.lstrip()) <= indent:
-                break
-            body.append(current)
-            index += 1
-        return body, index
+        return _indented_test_body(lines, start, indent)
     body = [line]
     depth = line.count("{") - line.count("}")
     if depth <= 0:

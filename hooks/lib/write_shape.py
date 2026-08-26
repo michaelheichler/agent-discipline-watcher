@@ -1,9 +1,11 @@
 """Shapes a literal Bash write's findings against the committed baseline, because an overwrite inherits the file's existing debt while an append only ever adds lines the command itself wrote."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from lib.baseline import split_committed
+from lib.findings import Finding
 from lib.scan_input import file_length_policy, file_line_count, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
@@ -20,42 +22,63 @@ def shaped_write_findings(
         body = scannable_text(write.text, config or {})
         if body is None:
             continue
+        shape = ShapedWrite(write, body, resolved_cwd, config)
         if write.append:
-            owned.extend(_append_shape_findings(write, body, resolved_cwd, config))
+            owned.extend(_append_shape_findings(shape))
         else:
-            shape_owned, shape_inherited = _overwrite_shape_findings(write, body, resolved_cwd, config)
+            shape_owned, shape_inherited = _overwrite_shape_findings(shape)
             owned.extend(shape_owned)
             inherited.extend(shape_inherited)
     return owned, inherited
 
 
-def _overwrite_shape_findings(
-    write: LiteralWrite, body: str, cwd: Path, config: dict | None,
-) -> tuple[list[dict], list[dict]]:
-    findings = _stamped_findings(write.path, body, config)
-    return split_committed(_resolved_path(write.path, cwd), findings, config or {})
+@dataclass(frozen=True, slots=True)
+class ShapedWrite:
+    write: LiteralWrite
+    body: str
+    cwd: Path
+    config: dict | None
 
 
-def _append_shape_findings(write: LiteralWrite, body: str, cwd: Path, config: dict | None) -> list[dict]:
-    findings = _label_appended_text(_stamped_findings(write.path, body, config))
-    length_finding = _append_length_finding(write.path, body, _resolved_path(write.path, cwd))
+def _overwrite_shape_findings(shape: ShapedWrite) -> tuple[list[dict], list[dict]]:
+    findings = _stamped_findings(shape.write.path, shape.body, shape.config)
+    return split_committed(
+        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}
+    )
+
+
+def _append_shape_findings(shape: ShapedWrite) -> list[dict]:
+    findings = _label_appended_text(_stamped_findings(shape.write.path, shape.body, shape.config))
+    length_finding = _append_length_finding(
+        shape.write.path, shape.body, _resolved_path(shape.write.path, shape.cwd)
+    )
     return findings + ([length_finding] if length_finding is not None else [])
 
 
 def _stamped_findings(path: str, body: str, config: dict | None) -> list[dict]:
-    findings = []
-    for finding in scan_all(path, body, config):
-        item = dict(finding)
-        item["path"] = path
-        findings.append(item)
-    return findings
+    return [Finding.from_dict(finding).with_path(path).to_dict() for finding in scan_all(path, body, config)]
 
 
 def _label_appended_text(findings: list[dict]) -> list[dict]:
     return [
-        {**finding, "detail": finding["detail"] + " (line " + str(finding["line"]) + " of appended text)"}
+        Finding.from_dict(finding).with_detail(
+            finding["detail"] + " (line " + str(finding["line"]) + " of appended text)"
+        ).to_dict()
         for finding in findings
     ]
+
+
+def _append_length_row(finding: Finding) -> dict:
+    return {
+        "family": finding.family,
+        "rule": finding.rule,
+        "line": finding.line,
+        "detail": finding.detail,
+        "force": finding.force,
+        "path": finding.path,
+        "snippet": finding.snippet,
+        "action": finding.action,
+    }
 
 
 def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | None:
@@ -71,16 +94,19 @@ def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | 
     if policy is None or policy == file_length_policy(before):
         return None
     rule, action = policy
-    return {
-        "family": "clean_code",
-        "rule": rule,
-        "line": 1,
-        "detail": f"File has {total} lines in {path}",
-        "force": True,
-        "path": path,
-        "snippet": path.strip()[:180],
-        "action": action,
-    }
+    finding = Finding(
+        family="clean_code",
+        rule=rule,
+        line=1,
+        detail=f"File has {total} lines in {path}",
+        force=True,
+        snippet=path.strip()[:180],
+        action=action,
+        path=path,
+        severity=None,
+        tool_use_id=None,
+    )
+    return _append_length_row(finding)
 
 
 def _ends_with_newline(resolved_path: Path) -> bool:

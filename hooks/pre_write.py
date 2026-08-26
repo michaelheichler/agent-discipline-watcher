@@ -68,6 +68,10 @@ def pending_writes(decoded: PendingWrite) -> list[tuple[str, str]]:
     return []
 
 
+def _completed_patch_rows(path: str, lines: list[str]) -> list[tuple[str, str]]:
+    return [(path, "\n".join(lines))] if path else []
+
+
 def split_patch(patch: str) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     current = ""
@@ -75,15 +79,13 @@ def split_patch(patch: str) -> list[tuple[str, str]]:
     for line in patch.splitlines():
         match = PATCH_FILE.match(line)
         if match:
-            if current:
-                rows.append((current, "\n".join(lines)))
+            rows.extend(_completed_patch_rows(current, lines))
             current = match.group(1).strip().strip('"')
             lines = []
             continue
         if current and line.startswith("+") and not line.startswith("+++"):
             lines.append(line[1:])
-    if current:
-        rows.append((current, "\n".join(lines)))
+    rows.extend(_completed_patch_rows(current, lines))
     return rows
 
 
@@ -120,7 +122,7 @@ def _unique_findings(findings: list[dict]) -> list[dict]:
     return result
 
 
-def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float):
+def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], started: float) -> list[tuple[dict[str, object], str]]:
     return record_findings(
         session_id=str(payload.get("session_id") or ""), hook="pre_write",
         event="PreToolUse", findings=findings, turn_id=turn_id,

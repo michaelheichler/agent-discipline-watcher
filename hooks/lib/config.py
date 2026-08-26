@@ -5,12 +5,16 @@ import copy
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
+    from .findings import Outcome
     from .payloads import exact_string_dict
 except ImportError:
+    from findings import Outcome
     from payloads import exact_string_dict
 
 
@@ -76,6 +80,12 @@ DEFAULTS = {
     "data_boundary": {"enabled": False},
 }
 CONFIG_NAME = ".agent-discipline.json"
+
+
+@dataclass(frozen=True, slots=True)
+class StorageRoots:
+    state: str | os.PathLike[str] | None
+    ledger: str | os.PathLike[str] | None
 
 
 def flatten_settings(data: object) -> dict:
@@ -165,19 +175,19 @@ def rule_state(rule: str, config: dict | None = None) -> str | None:
     return _rule_state_from(effective_config(config), rule)
 
 
-def _outcome_for(state: str) -> str:
+def _outcome_for(state: str) -> Outcome:
     if state == "enforce":
-        return "block"
-    return "would_block" if state == "observe" else "release"
+        return Outcome.BLOCK
+    return Outcome.WOULD_BLOCK if state == "observe" else Outcome.RELEASE
 
 
-def resolve_outcome(finding: dict, config: dict | None = None) -> str:
+def resolve_outcome(finding: dict, config: dict | None = None) -> Outcome:
     """Centralized here because every gate, family, per-rule, and always-blocking, must resolve through the same order or hooks would disagree on precedence."""
     rule = finding.get("rule", "") if isinstance(finding, dict) else ""
     if rule in ALWAYS_BLOCKING_RULES:
-        return "block"
+        return Outcome.BLOCK
     if rule in FIXED_OBSERVE_RULES:
-        return "would_block"
+        return Outcome.WOULD_BLOCK
     # Merged once here because gate_state and rule_state each re-merging DEFAULTS doubled the cost of every finding.
     cfg = effective_config(config)
     own = _rule_state_from(cfg, rule)
@@ -187,24 +197,44 @@ def resolve_outcome(finding: dict, config: dict | None = None) -> str:
     return _outcome_for(_gate_state_from(cfg, family))
 
 
+def _storage_roots(values: tuple[object, ...], named: dict[str, object]) -> StorageRoots:
+    if len(values) == 1 and isinstance(values[0], StorageRoots) and not named:
+        return values[0]
+    if len(values) > 2:
+        raise TypeError("record_state_transitions accepts at most two root values")
+    roots = dict(zip(("state_root", "ledger_root"), values, strict=False))
+    for name, value in named.items():
+        if name not in {"state_root", "ledger_root"} or name in roots:
+            raise TypeError(f"record_state_transitions got an invalid keyword: {name}")
+        roots[name] = value
+    state = roots.get("state_root")
+    ledger = roots.get("ledger_root")
+    if state is not None and not isinstance(state, (str, os.PathLike)):
+        raise TypeError("state_root must be a path or None")
+    if ledger is not None and not isinstance(ledger, (str, os.PathLike)):
+        raise TypeError("ledger_root must be a path or None")
+    return StorageRoots(state, ledger)
+
+
 def record_state_transitions(
     session_id: str,
     config: dict | None = None,
-    state_root: str | os.PathLike[str] | None = None,
-    ledger_root: str | os.PathLike[str] | None = None,
+    *roots: object,
+    **named_roots: object,
 ) -> list[dict]:
     """Append one ledger row per family whose state changed since the last snapshot, swallowing state and ledger errors so a hook never fails."""
     if not session_id:
         return []
+    storage = _storage_roots(roots, named_roots)
     try:
-        return _record_transitions(session_id, config, state_root, ledger_root)
+        return _record_transitions(session_id, config, storage)
     except (OSError, json.JSONDecodeError) as exc:
         # Narrowed to storage failures, because a defeat-to-off transition is exactly the kind of change an observed agent wants unlogged.
         sys.stderr.write(f"agent-discipline-watcher: state-transition log failed: {exc}\n")
         return []
 
 
-def _ledger_modules():
+def _ledger_modules() -> tuple[ModuleType, ModuleType]:
     """Return the reporting and session_state modules, imported late to keep config load free of fcntl and the ledger."""
     try:
         # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
@@ -218,8 +248,7 @@ def _ledger_modules():
 def _record_transitions(
     session_id: str,
     config: dict | None,
-    state_root: str | os.PathLike[str] | None,
-    ledger_root: str | os.PathLike[str] | None,
+    roots: StorageRoots,
 ) -> list[dict]:
     reporting, session_state = _ledger_modules()
     cfg = effective_config(config)
@@ -232,9 +261,9 @@ def _record_transitions(
         captured.extend(_transition_rows(session_id, previous, current))
         return {**state, "gate_states": current}
 
-    session_state.update_state_strict(session_id, diff_and_snapshot, state_root)
+    session_state.update_state_strict(session_id, diff_and_snapshot, roots.state)
     for row in captured:
-        reporting.append_row(row, ledger_root)
+        reporting.append_row(row, roots.ledger)
     return captured
 
 

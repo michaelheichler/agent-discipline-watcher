@@ -1,6 +1,6 @@
 # 01: Shell-parse primitives for bash write shapes
 
-**What to build:** The shell-parse layer can tell the Bash gate everything it needs to judge a command: which literal writes exist and whether each is an overwrite or an append, whether the command position invokes an interpreter with an inline-code flag and whether that payload is literal or dynamic, which heredocs exist per pipeline group with their consumer and dynamic status preserved, and whether a segment uses process substitution. Existing callers of the old write-target listing keep working unchanged.
+**What to build:** The shell-parse layer gives the Bash gate every fact it needs to judge a command. It identifies literal writes and whether each overwrites or appends. It detects command-position interpreter invocations with inline-code flags and distinguishes literal from dynamic payloads. It identifies heredocs by pipeline group while preserving each consumer and dynamic status. It also detects process substitution. Existing callers of the old write-target listing keep working unchanged.
 
 **Blocked by:** None, can start immediately.
 

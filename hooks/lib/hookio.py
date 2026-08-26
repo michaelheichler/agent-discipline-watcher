@@ -133,7 +133,7 @@ def system_message(message: str) -> dict:
 
 
 def advise(message: str, event: str) -> dict:
-    """Report without stopping the call, so an observed finding must be considered rather than scrolling past."""
+    """Put observed findings in model context because a user-only system message cannot make the agent consider them."""
     return {
         "systemMessage": message,
         "hookSpecificOutput": {"hookEventName": event, "additionalContext": message},

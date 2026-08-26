@@ -1,5 +1,3 @@
-"""Typed projections over untrusted hook event payloads."""
-
 from __future__ import annotations
 
 import operator
@@ -17,8 +15,6 @@ _PATCH_MOVE_RE = re.compile(r"^\*\*\*\s+Move\s+to:\s+(.+)$", re.MULTILINE)
 
 
 class FailurePayload(TypedDict):
-    """Exact-type scalar projection used by failure and MCP hooks."""
-
     session_id: str
     cwd: str
     tool_name: str
@@ -30,8 +26,6 @@ class FailurePayload(TypedDict):
 
 
 class RecordPayload(TypedDict):
-    """Exact-type projection used by the edit journal and scanner hook."""
-
     session_id: str
     cwd: str
     tool_name: str
@@ -41,7 +35,7 @@ class RecordPayload(TypedDict):
 
 
 def exact_string_dict(value: object) -> dict[str, object]:
-    """Copy exact-string members without invoking untrusted mapping methods."""
+    """Use built-in dict access because hook payloads cross a trust boundary, and overridden mapping methods can execute arbitrary code."""
     if not operator.is_(type(value), dict):
         return {}
     result: dict[str, object] = {}
@@ -82,20 +76,26 @@ def _file_path_from(tool_input: dict[str, object]) -> str:
     return ""
 
 
+def _exact_edit_text_value(value: object) -> str | None:
+    if operator.is_(type(value), str):
+        return cast(str, value)
+    if not operator.is_(type(value), list):
+        return None
+    parts = cast(list[object], value)
+    if not all(operator.is_(type(part), str) for part in parts):
+        return None
+    return "\n".join(cast(list[str], parts))
+
+
 def _edit_text_from(tool_input: dict[str, object]) -> str:
     for key in _EDIT_TEXT_KEYS:
-        value = tool_input.get(key)
-        if operator.is_(type(value), str):
-            return cast(str, value)
-        if operator.is_(type(value), list):
-            parts = cast(list[object], value)
-            if all(operator.is_(type(part), str) for part in parts):
-                return "\n".join(cast(list[str], parts))
+        text = _exact_edit_text_value(tool_input.get(key))
+        if text is not None:
+            return text
     return ""
 
 
 def failure_payload(payload: object) -> FailurePayload:
-    """Return exact built-in failure/MCP event fields, or neutral defaults."""
     fields = exact_string_dict(payload)
     tool_input = _tool_input_from(fields)
     return {
@@ -111,7 +111,6 @@ def failure_payload(payload: object) -> FailurePayload:
 
 
 def record_payload(payload: object) -> RecordPayload:
-    """Return exact built-in PostToolUse fields, or neutral defaults."""
     fields = exact_string_dict(payload)
     tool_input = _tool_input_from(fields)
     return {
@@ -129,22 +128,18 @@ def _tool_input(payload: object) -> dict[str, object]:
 
 
 def session_id(payload: object) -> str:
-    """Return the session id, or '' when absent."""
     return _exact_string(exact_string_dict(payload), "session_id")
 
 
 def cwd(payload: object) -> str:
-    """Return the working directory the hook ran in, or '' when absent."""
     return _exact_string(exact_string_dict(payload), "cwd")
 
 
 def tool_name(payload: object) -> str:
-    """Return the tool name for a Pre/PostToolUse or failure event, or ''."""
     return _exact_string(exact_string_dict(payload), "tool_name")
 
 
 def tool_use_id(payload: object) -> str:
-    """Return the tool invocation id for events that document it, or ''."""
     return _exact_string(exact_string_dict(payload), "tool_use_id")
 
 
@@ -153,7 +148,6 @@ def agent_id(payload: object) -> str:
 
 
 def agent_transcript_path(payload: object) -> str:
-    """Return the subagent transcript path, or ''."""
     fields = exact_string_dict(payload)
     value = _exact_string(fields, "agent_transcript_path")
     if not value:
@@ -162,7 +156,6 @@ def agent_transcript_path(payload: object) -> str:
 
 
 def prompt(payload: object) -> str:
-    """Return the UserPromptSubmit prompt text, or ''."""
     fields = exact_string_dict(payload)
     for key in _PROMPT_KEYS:
         value = fields.get(key)
@@ -172,22 +165,18 @@ def prompt(payload: object) -> str:
 
 
 def source(payload: object) -> str:
-    """Return the SessionStart source, or '' when absent."""
     return _exact_string(exact_string_dict(payload), "source")
 
 
 def file_path(payload: object) -> str:
-    """Return the path the tool targets resolved through the tool-input aliases."""
     return _file_path_from(_tool_input(payload))
 
 
 def error(payload: object) -> str:
-    """Return the PostToolUseFailure error message, or ''."""
     return _exact_string(exact_string_dict(payload), "error")
 
 
 def is_interrupt(payload: object) -> bool:
-    """Return the failure-event interrupt flag, or False when absent."""
     return _exact_bool(exact_string_dict(payload), "is_interrupt")
 
 
@@ -196,12 +185,10 @@ def stop_hook_active(payload: object) -> bool:
 
 
 def duration_ms(payload: object) -> int:
-    """Return the failure-event duration in milliseconds, or 0 when absent."""
     return _exact_int(exact_string_dict(payload), "duration_ms")
 
 
 def tool_calls(payload: object) -> list[dict]:
-    """Return the PostToolBatch tool_calls array, or [] when absent."""
     value = exact_string_dict(payload).get("tool_calls")
     if operator.is_(type(value), list):
         return [
@@ -213,12 +200,10 @@ def tool_calls(payload: object) -> list[dict]:
 
 
 def task_id(payload: object) -> str:
-    """Return the task id for TaskCreated or TaskCompleted, or ''."""
     return _exact_string(exact_string_dict(payload), "task_id")
 
 
 def task_subject(payload: object) -> str:
-    """Return the TaskCompleted subject, or ''."""
     fields = exact_string_dict(payload)
     for key in _TASK_SUBJECT_KEYS:
         value = fields.get(key)

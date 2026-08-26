@@ -6,6 +6,7 @@ import math
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from failure import (
@@ -21,7 +22,7 @@ from failure import (
     parse_mcp_tool,
 )
 from lib import session_state
-from lib.config import effective_config
+from lib.config import StorageRoots, effective_config
 from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.mcp_paths import mcp_target_paths, mcp_write_contents
 from lib.payloads import exact_string_dict
@@ -33,6 +34,15 @@ UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this MCP call and blocked it rather than letting it through. "
     "Repair the gate config and retry. Cause: "
 )
+
+
+@dataclass(frozen=True, slots=True)
+class McpRunContext:
+    raw_payload: object
+    payload: TrustedPayload
+    config: dict
+    roots: StorageRoots
+    current_time: float | None
 
 
 def _active_backoff(state: dict, server: str, now: float) -> tuple[int, float] | None:
@@ -64,20 +74,20 @@ def _read_mcp_state(session_id: str, state_root: str | None) -> dict | None:
 
 
 def _record_backoff(
-    payload: TrustedPayload, server: str, ledger_root: str | None, turn_id: str,
+    context: McpRunContext, server: str, turn_id: str
 ) -> None:
     record_decision(
-        session_id=payload["session_id"],
+        session_id=context.payload["session_id"],
         hook="pre_mcp",
         event=PRE_TOOL_EVENT,
         family="mcp_health",
         rule="server_backoff",
         path=server,
-        tool_use_id=payload["tool_use_id"],
+        tool_use_id=context.payload["tool_use_id"],
         outcome="block",
         duration_ms=0,
         turn_id=turn_id,
-        root=ledger_root,
+        root=context.roots.ledger,
     )
 
 
@@ -101,20 +111,27 @@ def _resolved_path(path: str, cwd: str) -> str:
     return str(base / candidate)
 
 
-def _protected_findings(raw_payload: object, cwd: str) -> list[dict]:
-    """Scanned once per candidate body because grants_escape must judge each field alone, and rows dedupe because the path-based findings repeat per candidate."""
-    tool_input = _mcp_tool_input(raw_payload)
+def _candidate_path_findings(tool_input: dict[str, object], cwd: str) -> list[dict]:
     candidates = mcp_write_contents(tool_input) or [None]
     findings: list[dict] = []
-    seen: set[tuple[str, str]] = set()
     for path in mcp_target_paths(tool_input):
         resolved = _resolved_path(path, cwd)
         for content in candidates:
-            for row in path_findings(resolved, content=content):
-                key = (row["rule"], row["detail"])
-                if key not in seen:
-                    seen.add(key)
-                    findings.append(row)
+            findings.extend(path_findings(resolved, content=content))
+    return findings
+
+
+def _protected_findings(raw_payload: object, cwd: str) -> list[dict]:
+    """Scanned once per candidate body because grants_escape must judge each field alone, and rows dedupe because the path-based findings repeat per candidate."""
+    rows = _candidate_path_findings(_mcp_tool_input(raw_payload), cwd)
+    findings: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (row["rule"], row["detail"])
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(row)
     return findings
 
 
@@ -137,39 +154,31 @@ def _fail_safe(raw_payload: object) -> dict:
         return deny(UNDECIDABLE + str(exc))
 
 
-def _protected_response(
-    raw_payload: object,
-    payload: TrustedPayload,
-    config: dict,
-    ledger_root: str | None,
-    turn_id: str,
-) -> dict:
+def _protected_response(context: McpRunContext, turn_id: str) -> dict:
     started = time.monotonic()
-    findings = _protected_findings(raw_payload, payload["cwd"])
+    findings = _protected_findings(context.raw_payload, context.payload["cwd"])
     if not findings:
         return {}
     decisions = record_findings(
-        session_id=payload["session_id"], hook="pre_mcp", event=PRE_TOOL_EVENT,
-        findings=findings, turn_id=turn_id, tool_use_id=payload["tool_use_id"],
-        duration_ms=int((time.monotonic() - started) * 1000), root=ledger_root, config=config,
+        session_id=context.payload["session_id"], hook="pre_mcp",
+        event=PRE_TOOL_EVENT, findings=findings, turn_id=turn_id,
+        tool_use_id=context.payload["tool_use_id"],
+        duration_ms=int((time.monotonic() - started) * 1000),
+        root=context.roots.ledger, config=context.config,
     )
-    kind, message = verdict_message(decisions, config)
+    kind, message = verdict_message(decisions, context.config)
     return deny(message) if kind == "block" else {}
 
 
-def _backoff_response(
-    payload: TrustedPayload,
-    state_root: str | None,
-    ledger_root: str | None,
-    current_time: float | None,
-    turn_id: str,
-) -> dict:
+def _backoff_response(context: McpRunContext, turn_id: str) -> dict:
+    payload = context.payload
+    current_time = context.current_time
     session_id = payload["session_id"]
     parsed = parse_mcp_tool(payload["tool_name"])
     if not session_id or parsed is None or current_time is None:
         return allow()
     server, _ = parsed
-    state = _read_mcp_state(session_id, state_root)
+    state = _read_mcp_state(session_id, context.roots.state)
     if state is None:
         return allow()
     active = _active_backoff(state, server, current_time)
@@ -181,41 +190,24 @@ def _backoff_response(
         f"MCP server {server} is unavailable after {count} {noun} until {deadline:.3f}. "
         "Fix the provider root cause or retry after expiry."
     )
-    _record_backoff(payload, server, ledger_root, turn_id)
+    _record_backoff(context, server, turn_id)
     return deny(reason)
 
 
-def _pre_mcp_gate(
-    raw_payload: object,
-    payload: TrustedPayload,
-    config: dict,
-    state_root: str | None,
-    ledger_root: str | None,
-    current_time: float | None,
-    turn_id: str,
-) -> dict:
-    protected = _protected_response(raw_payload, payload, config, ledger_root, turn_id)
+def _pre_mcp_gate(context: McpRunContext, turn_id: str) -> dict:
+    protected = _protected_response(context, turn_id)
     if protected:
         return protected
-    return _backoff_response(payload, state_root, ledger_root, current_time, turn_id)
+    return _backoff_response(context, turn_id)
 
 
-def _run_pre_mcp(
-    raw_payload: object,
-    payload: TrustedPayload,
-    config: dict,
-    state_root: str | None,
-    ledger_root: str | None,
-    current_time: float | None,
-) -> dict:
+def _run_pre_mcp(context: McpRunContext) -> dict:
     return run_with_ledger(
         hook="pre_mcp",
-        payload=dict(payload),
-        gate=lambda turn_id: _pre_mcp_gate(
-            raw_payload, payload, config, state_root, ledger_root, current_time, turn_id,
-        ),
-        ledger_root=ledger_root,
-        state_root=state_root,
+        payload=dict(context.payload),
+        gate=lambda turn_id: _pre_mcp_gate(context, turn_id),
+        ledger_root=context.roots.ledger,
+        state_root=context.roots.state,
     )
 
 
@@ -230,11 +222,16 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         trusted_config = _safe_config(config)
         cwd = str(trusted_payload["cwd"]) or None
         effective_config(trusted_config, cwd)
-        state_root, ledger_root = _config_roots(trusted_config)
+        roots = _config_roots(trusted_config)
         clock = time.time() if now is None else now
-        return _run_pre_mcp(
-            payload, trusted_payload, trusted_config, state_root, ledger_root, _valid_now(clock),
+        context = McpRunContext(
+            raw_payload=payload,
+            payload=trusted_payload,
+            config=trusted_config,
+            roots=roots,
+            current_time=_valid_now(clock),
         )
+        return _run_pre_mcp(context)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: pre-MCP hook failed: {exc}\n")
         return _fail_safe(payload)

@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.17.6**.
+Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.17.7**.
 
 Findings block at their configured gate. Strict code-comment findings always block.
 
@@ -72,7 +72,7 @@ Seven more rules in this family close the Bash write path: `inline_interpreter_w
 
 Claude Code is the primary plugin surface. Codex support is deterministic and uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, and `PostToolUse`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings.
 
-OMP (`oh-my-pi`) loads `pi/extensions/agent-discipline-watcher/index.ts` via `pi/install.sh`. The extension calls the same `hooks/run.sh` engine as Claude and Codex. `session_start` injects the SessionStart contract on the next turn. Pre-tool checks run on `tool_call` for `write` and `bash` and return `{ block: true, reason }`. Post-tool feedback is appended to `tool_result` content (path-only payloads; the engine rescans from disk). Unresolved findings block on `session_stop`. Self-protection covers `~/.omp/agent/` settings, extensions, and config.
+OMP (`oh-my-pi`) loads `pi/extensions/agent-discipline-watcher/index.ts` via `pi/install.sh`. The extension calls the same `hooks/run.sh` engine as Claude and Codex. `session_start` injects the SessionStart contract on the next turn. Pre-tool checks run on `tool_call` for `write` and `bash` and return `{ block: true, reason }`. Post-tool feedback is appended to `tool_result` content. Payloads carry the path only, and the engine rescans from disk. Unresolved findings block on `session_stop`. Self-protection covers `~/.omp/agent/` settings, extensions, and config.
 
 OpenCode adapters are archived under `archive/integrations/`. They are retained as historical implementation references only. The installer, CI, release verification, and active documentation do not test or claim support for them.
 

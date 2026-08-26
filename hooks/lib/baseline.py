@@ -1,4 +1,4 @@
-"""Hold an edit responsible for what it changed, not for debt the committed file already carried."""
+"""Committed debt stays nonblocking because an edit should answer only for findings it introduced."""
 from __future__ import annotations
 
 import difflib
@@ -20,7 +20,7 @@ GIT_TIMEOUT_SECONDS = 10
 
 
 def baseline_mode(cfg: dict) -> str:
-    """Resolve the mode, defaulting to report so inherited debt is named instead of vanishing without a trace."""
+    """Report inherited debt by default because silently hiding it prevents incremental cleanup."""
     mode = cfg.get("baseline")
     return mode if mode in BASELINE_MODES else DEFAULT_BASELINE_MODE
 
@@ -51,7 +51,6 @@ def _repo_relative(path: Path) -> tuple[Path, str] | None:
 
 
 def committed_text(path: Path) -> str | None:
-    """Return the file as HEAD holds it, or None when no committed version exists to compare against."""
     located = _repo_relative(path)
     if located is None:
         return None
@@ -60,7 +59,6 @@ def committed_text(path: Path) -> str | None:
 
 
 def changed_lines(before: str, after: str) -> set[int]:
-    """Return post-edit line numbers covered by non-equal diff hunks."""
     old_lines = before.splitlines(keepends=True)
     new_lines = after.splitlines(keepends=True)
     changed: set[int] = set()
@@ -81,7 +79,6 @@ def finding_key(finding: dict) -> tuple[str, str, str]:
 
 
 def rule_key(finding: dict) -> tuple[str, str]:
-    """Identify a finding by family and rule alone, ignoring the text it points at."""
     return finding_key(finding)[:2]
 
 
@@ -113,7 +110,7 @@ def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
 
 
 def partition(findings: list[dict], baseline: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Split into what the edit owns and what it inherited, so a caller can surface the second without blocking on it."""
+    """Keep inherited findings separate because callers must surface them without turning them into blockers."""
     owned = subtract(findings, baseline)
     kept = {id(row) for row in owned}
     return owned, [row for row in findings if id(row) not in kept]
@@ -126,7 +123,7 @@ def _halves(findings: list[dict], baseline: list[dict], cfg: dict) -> tuple[list
 
 
 def split_committed(path: Path, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Return the owned and inherited halves against HEAD, so an edit answers for its own debt and hears about the rest."""
+    """Compare against HEAD because blocking on findings that predate an edit would prevent incremental cleanup."""
     if not findings or baseline_mode(cfg) == "none":
         return findings, []
     text = committed_text(path)
@@ -136,17 +133,14 @@ def split_committed(path: Path, findings: list[dict], cfg: dict) -> tuple[list[d
 
 
 def split_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Split against an already-resolved baseline text, for callers that read the old version themselves."""
     if not findings or text is None or baseline_mode(cfg) == "none":
         return findings, []
     return _halves(findings, scan_all(path, text, cfg), cfg)
 
 
 def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:
-    """Return the owned half alone, kept for callers that have no use for the inherited one."""
     return split_committed(path, findings, cfg)[0]
 
 
 def strip_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> list[dict]:
-    """Return the owned half alone, kept for callers that have no use for the inherited one."""
     return split_against(text, path, findings, cfg)[0]

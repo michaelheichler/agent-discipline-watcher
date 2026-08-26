@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.17.7 (2026-08-26)
+
+### Added
+
+- `hooks/lib/findings.py` holds the finding value objects. `Finding` and `Rule` are frozen slotted dataclasses that validate their own invariants and raise on an empty family, a line below one, an empty action, or an unsupported key. `Outcome` and `VerdictKind` are string enums, so ledger rows still serialize and compare as bare strings for consumers outside the process. Serialized output is unchanged, key order included.
+- `hooks/lib/shell_syntax.py` carries tokenizing, segmentation, pipeline grouping, and interpreter resolution, split out of `hooks/lib/shell_parse.py` along the dependency direction. Write and heredoc detection stay behind, because heredoc bodies and write targets are mutually dependent and separating them would create an import cycle. `shell_parse.py` re-exports every moved name, so existing imports keep resolving.
+- `session_state.read_state_strict` and `session_state.update_state_strict`. `advance_turn` now uses the strict path, so a corrupt state file raises instead of silently returning an empty dict and erasing unresolved blockers.
+- Parameter objects for the wide hook signatures: `StorageRoots`, `BlockerScope`, `McpRunContext`, `DecisionRecord`, `HeartbeatRecord`, `LedgerInvocation`, `Adjudication`, `ShapedWrite`, and the per-hook run contexts.
+
+### Changed
+
+- Every comment and docstring in non-test source now states why the code is the way it is, or is gone. That closed 70 `what_docstring`, 2 `what_comment`, and 2 `prose_comment_block` findings in the watcher's own source.
+- Deep nesting is gone from non-test source. 18 functions were flattened with guard clauses and named helpers, including the parsers behind the write and opaque-write gates, with behaviour held identical.
+- Return types are declared on every non-test library function.
+- Prose findings fixed in `README.md`, `CHANGELOG.md`, `tasks/plan.md`, and `tasks/spec-bash-write-guard.md`.
+
+### Removed
+
+- A duplicate command line interface in `hooks/lib/reporting.py`. `_main`, `_observe_report_command`, and `_adjudicate_command` were unreachable, nothing invoked `python3 -m lib.reporting`, and `bin/agent-discipline` already exposes all three commands.
+
+### Known remaining
+
+- 11 functions still take four or more parameters. Two cannot change shape because behavioural tests call them positionally, `pre_commit.run` and `scan_input.int_setting`. The rest are judged not to improve from a parameter object.
+- Two `long_sentence` findings in `LICENSE`. The MIT text is verbatim and rewording it would change its legal meaning, so it needs an `exempt_families` entry rather than an edit.
+- `hooks/batch.py` and `hooks/lib/scanner.py` carry a file length warning.
+
 ## 0.17.6 (2026-08-26)
 
 ### Changed
@@ -30,7 +56,7 @@
 
 - `hooks/lib/protected.py` now treats `~/.omp` as a protected client home alongside `.codex` and `.pi`, so agents cannot disable the watcher by editing OMP's live config.
 - OMP `session_stop` accepts both `stop_hook_active` and `stopHookActive` for retry-pass state.
-- OMP `PostToolUse` payloads send only `{ file_path }` for resolved paths (bash keeps `{ command }` for write-path detection); raw write content and hashline patch text are no longer forwarded.
+- OMP `PostToolUse` payloads send only `{ file_path }` for resolved paths, while bash keeps `{ command }` for write-path detection. Raw write content and hashline patch text are no longer forwarded.
 
 ## 0.17.3 (2026-08-23)
 
@@ -50,14 +76,20 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
 ### Added
 
-- Seven new blocking rules that no project config can turn off. In plain terms, the watcher now blocks:
+- Seven new blocking rules that no project config can turn off.
+
+  Code the watcher cannot read before it runs:
   - Inline interpreter code that can write files, like `python -c`, `node -e`, or `php -r` with a write call inside. Harmless one-liners like `python3 -c 'print(1)'` still work.
   - Scripts fed into an interpreter through a heredoc or a pipe, like `python3 <<EOF` or `echo "..." | sh`. Content piped into a shell is checked as if you had run it directly.
+  - Nested shells, meaning `sh -c` and quoted commands passed through `env -S`, which are unwrapped and checked all the way down.
+
+  Content that reaches a file without passing a readable stage:
   - Heredocs aimed at a file whose content the watcher cannot read, for example when the body contains variables that only expand at run time.
   - Decode pipes that land bytes in a file, like `base64 -d`, `openssl enc -d -out`, or `uudecode`. Decoding to the screen stays allowed.
-  - In-place editors: `sed -i` in all its spellings, `perl -pi`, and `awk`/`gawk` with the inplace extension. Plain `sed` and `awk` transforms to the screen stay allowed.
   - Opaque copy sources like `dd of=` and process substitution.
-  - Nested shells (`sh -c`, and quoted commands passed through `env -S`), which are unwrapped and checked all the way down.
+
+  Edits that bypass the Edit tool:
+  - In-place editors, meaning `sed -i` in all its spellings, `perl -pi`, and `awk` or `gawk` with the inplace extension. Plain `sed` and `awk` transforms to the screen stay allowed.
 - Regular Bash writes now get the same treatment as the Write and Edit tools. Overwriting a committed file reports old debt without blocking you for it. Appending only checks the lines you add, and appends that push a file past the length limit are blocked.
 - Every block message names the rule and tells the agent to use the Write or Edit tool instead.
 

@@ -5,8 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-# Only packages merged into this one belong here, because pruning a name we never
-# absorbed deletes somebody else's extension.
+# Keep only packages merged into this one because pruning any other name deletes another package's extension.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",

@@ -17,13 +17,48 @@ class RegionKind(Enum):
     IGNORED = "ignored"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Region:
     kind: RegionKind
     start: int
     end: int
     start_line: int
     end_line: int
+
+
+@dataclass(frozen=True, slots=True)
+class TextSpan:
+    text: str
+    start: int
+    end: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.start <= self.end <= len(self.text):
+            raise ValueError("text span must fall within its text")
+
+
+@dataclass(frozen=True, slots=True)
+class TokenSpan:
+    start_row: int
+    start_col: int
+    end_row: int
+    end_col: int
+
+    def __post_init__(self) -> None:
+        if self.start_row < 1 or self.end_row < self.start_row:
+            raise ValueError("token span rows are invalid")
+        if self.start_col < 0 or self.end_col < 0:
+            raise ValueError("token span columns must be non-negative")
+        if self.start_row == self.end_row and self.end_col < self.start_col:
+            raise ValueError("single-line token span ends before it starts")
+
+
+@dataclass(frozen=True, slots=True)
+class CommentSource:
+    path: str
+    text: str
+    regions: tuple[Region, ...]
+    mixed: bool
 
 
 MIXED_LANGUAGE_EXTS = frozenset({".html", ".htm", ".xml", ".svg", ".vue", ".svelte"})
@@ -46,31 +81,37 @@ def _line_at(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
-def _region(kind: RegionKind, text: str, start: int, end: int) -> Region:
-    end_offset = start if end <= start else end - 1
-    return Region(kind, start, end, _line_at(text, start), _line_at(text, end_offset))
+def _region(kind: RegionKind, span: TextSpan) -> Region:
+    end_offset = span.start if span.end <= span.start else span.end - 1
+    return Region(
+        kind,
+        span.start,
+        span.end,
+        _line_at(span.text, span.start),
+        _line_at(span.text, end_offset),
+    )
 
 
-def _append_markup_segment(regions: list[Region], text: str, start: int, end: int) -> None:
-    cursor = start
-    for match in TAG_RE.finditer(text, start, end):
+def _append_markup_segment(regions: list[Region], span: TextSpan) -> None:
+    cursor = span.start
+    for match in TAG_RE.finditer(span.text, span.start, span.end):
         if cursor < match.start():
-            _append_template_parts(regions, text, cursor, match.start())
-        regions.append(_region(RegionKind.CODE, text, match.start(), match.end()))
+            _append_template_parts(regions, TextSpan(span.text, cursor, match.start()))
+        regions.append(_region(RegionKind.CODE, TextSpan(span.text, match.start(), match.end())))
         cursor = match.end()
-    if cursor < end:
-        _append_template_parts(regions, text, cursor, end)
+    if cursor < span.end:
+        _append_template_parts(regions, TextSpan(span.text, cursor, span.end))
 
 
-def _append_template_parts(regions: list[Region], text: str, start: int, end: int) -> None:
-    cursor = start
-    for match in TEMPLATE_EXPRESSION_RE.finditer(text, start, end):
+def _append_template_parts(regions: list[Region], span: TextSpan) -> None:
+    cursor = span.start
+    for match in TEMPLATE_EXPRESSION_RE.finditer(span.text, span.start, span.end):
         if cursor < match.start():
-            regions.append(_region(RegionKind.VISIBLE_PROSE, text, cursor, match.start()))
-        regions.append(_region(RegionKind.CODE, text, match.start(), match.end()))
+            regions.append(_region(RegionKind.VISIBLE_PROSE, TextSpan(span.text, cursor, match.start())))
+        regions.append(_region(RegionKind.CODE, TextSpan(span.text, match.start(), match.end())))
         cursor = match.end()
-    if cursor < end:
-        regions.append(_region(RegionKind.VISIBLE_PROSE, text, cursor, end))
+    if cursor < span.end:
+        regions.append(_region(RegionKind.VISIBLE_PROSE, TextSpan(span.text, cursor, span.end)))
 
 
 def _block_kind(match: re.Match) -> RegionKind:
@@ -87,18 +128,18 @@ def _block_kind(match: re.Match) -> RegionKind:
 def extract_regions(path: str, text: str) -> tuple[Region, ...]:
     suffix = PurePath(path.lower()).suffix
     if suffix not in MIXED_LANGUAGE_EXTS:
-        return (_region(RegionKind.CODE, text, 0, len(text)),)
+        return (_region(RegionKind.CODE, TextSpan(text, 0, len(text))),)
     if suffix in {".vue", ".svelte"} and "<" not in text:
-        return (_region(RegionKind.SCRIPT, text, 0, len(text)),)
+        return (_region(RegionKind.SCRIPT, TextSpan(text, 0, len(text))),)
     regions: list[Region] = []
     cursor = 0
     for match in BLOCK_TAG_RE.finditer(text):
         if cursor < match.start():
-            _append_markup_segment(regions, text, cursor, match.start())
-        regions.append(_region(_block_kind(match), text, match.start(), match.end()))
+            _append_markup_segment(regions, TextSpan(text, cursor, match.start()))
+        regions.append(_region(_block_kind(match), TextSpan(text, match.start(), match.end())))
         cursor = match.end()
     if cursor < len(text):
-        _append_markup_segment(regions, text, cursor, len(text))
+        _append_markup_segment(regions, TextSpan(text, cursor, len(text)))
     return tuple(regions)
 
 
@@ -128,16 +169,21 @@ def mask_source_strings(text: str) -> str:
     return SCRIPT_STRING_RE.sub(_blank_keep_newlines, text)
 
 
-def comment_scan_source(path: str, text: str, regions: tuple[Region, ...], mixed: bool) -> str:
+def comment_scan_source(source: CommentSource) -> str:
     """Kept in one place because every caller must mask strings the same way per language, not re-derive its own order."""
-    if mixed:
-        return mask_script_strings(render_regions(text, regions, {RegionKind.COMMENT, RegionKind.SCRIPT}), regions)
-    suffix = PurePath(path.lower()).suffix
+    if source.mixed:
+        visible = render_regions(
+            source.text,
+            source.regions,
+            {RegionKind.COMMENT, RegionKind.SCRIPT},
+        )
+        return mask_script_strings(visible, source.regions)
+    suffix = PurePath(source.path.lower()).suffix
     if suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
-        return mask_source_strings(text)
+        return mask_source_strings(source.text)
     if suffix == ".py":
-        return mask_python_strings(text)
-    return text
+        return mask_python_strings(source.text)
+    return source.text
 
 
 STRING_TOKEN_TYPES = frozenset(
@@ -151,23 +197,32 @@ STRING_TOKEN_TYPES = frozenset(
 )
 
 
+def _token_span(token: tokenize.TokenInfo) -> tuple[TokenSpan, ...]:
+    if token.type not in STRING_TOKEN_TYPES:
+        return ()
+    return (TokenSpan(token.start[0], token.start[1], token.end[0], token.end[1]),)
+
+
+def _python_string_spans(text: str) -> tuple[list[TokenSpan], tuple[int, int] | None]:
+    spans: list[TokenSpan] = []
+    last_end = (1, 0)
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            spans.extend(_token_span(token))
+            last_end = token.end
+    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError) as exc:
+        return spans, _token_error_offset(exc) or last_end
+    return spans, None
+
+
 def mask_python_strings(text: str) -> str:
     """Blanked with the tokenizer, not a regex, because Python string bodies can span lines and nest quotes in ways a regex cannot track reliably."""
-    spans = []
-    last_end = (1, 0)
-    failure_start = None
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-            if tok.type in STRING_TOKEN_TYPES:
-                spans.append((tok.start[0], tok.start[1], tok.end[0], tok.end[1]))
-            last_end = tok.end
-    except (tokenize.TokenError, SyntaxError, IndentationError, ValueError) as exc:
-        failure_start = _token_error_offset(exc) or last_end
+    spans, failure_start = _python_string_spans(text)
     if not spans and failure_start is None:
         return text
     lines = text.splitlines(keepends=True)
-    for start_row, start_col, end_row, end_col in spans:
-        _blank_token_span(lines, start_row, start_col, end_row, end_col)
+    for span in spans:
+        _blank_token_span(lines, span)
     if failure_start is not None:
         _blank_from(lines, failure_start)
     return "".join(lines)
@@ -198,20 +253,28 @@ def _blank_from(lines: list[str], start: tuple[int, int]) -> None:
         lines[later] = " " * (len(lines[later]) - len(ending)) + ending
 
 
-def _blank_token_span(lines: list[str], start_row: int, start_col: int, end_row: int, end_col: int) -> None:
-    if start_row == end_row:
-        line = lines[start_row - 1]
-        lines[start_row - 1] = line[:start_col] + " " * (end_col - start_col) + line[end_col:]
+def _blank_token_span(lines: list[str], span: TokenSpan) -> None:
+    if span.start_row == span.end_row:
+        line = lines[span.start_row - 1]
+        lines[span.start_row - 1] = (
+            line[:span.start_col]
+            + " " * (span.end_col - span.start_col)
+            + line[span.end_col:]
+        )
         return
-    first = lines[start_row - 1]
+    first = lines[span.start_row - 1]
     ending = "\n" if first.endswith("\n") else ""
-    lines[start_row - 1] = first[:start_col] + " " * (len(first) - start_col - len(ending)) + ending
-    for row in range(start_row, end_row - 1):
+    lines[span.start_row - 1] = (
+        first[:span.start_col]
+        + " " * (len(first) - span.start_col - len(ending))
+        + ending
+    )
+    for row in range(span.start_row, span.end_row - 1):
         middle = lines[row]
         ending = "\n" if middle.endswith("\n") else ""
         lines[row] = " " * (len(middle) - len(ending)) + ending
-    last = lines[end_row - 1]
-    lines[end_row - 1] = " " * end_col + last[end_col:]
+    last = lines[span.end_row - 1]
+    lines[span.end_row - 1] = " " * span.end_col + last[span.end_col:]
 
 
 def _mask_markup(path: str, text: str) -> str:

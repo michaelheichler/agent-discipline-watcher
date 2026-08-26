@@ -1,4 +1,3 @@
-"""On-disk per-session JSON state store shared by the discipline hooks."""
 from __future__ import annotations
 
 import fcntl
@@ -15,7 +14,7 @@ LOCK_FILENAME = ".lock"
 
 
 def plugin_data_home() -> Path:
-    """Return the plugin's persistent data directory, preferring CLAUDE_PLUGIN_DATA over the legacy ~/.agent-discipline fallback."""
+    """Honor CLAUDE_PLUGIN_DATA because plugin hosts need to control persistent storage, while the home fallback preserves standalone compatibility."""
     override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
     if override:
         return Path(override)
@@ -50,7 +49,6 @@ def _session_directory(
 def read_state(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> dict:
-    """Return the session state dict, or {} when the file is missing, corrupt, or not a dict."""
     path = _session_directory(session_id, root) / STATE_FILENAME
     try:
         text = path.read_text(encoding="utf-8")
@@ -82,7 +80,7 @@ def write_state(
     data: dict,
     root: str | os.PathLike[str] | None = None,
 ) -> None:
-    """Atomically replace the session state file using a temp file plus os.replace."""
+    """Replace the file atomically because separate hook processes must never observe partial JSON."""
     directory = _session_directory(session_id, root)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / STATE_FILENAME
@@ -102,27 +100,36 @@ def write_state(
         raise
 
 
+def _update_state_with_lock(
+    lock_fd: int,
+    session_id: str,
+    mutate: Callable[[dict], dict],
+    root: str | os.PathLike[str] | None,
+) -> dict:
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    try:
+        current = read_state(session_id, root)
+        updated = mutate(current)
+        if not isinstance(updated, dict):
+            raise TypeError("update mutate must return a dict")
+        write_state(session_id, updated, root)
+        return updated
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
+
 def update_state(
     session_id: str,
     mutate: Callable[[dict], dict],
     root: str | os.PathLike[str] | None = None,
 ) -> dict:
-    """Read-modify-write the session state under one exclusive flock and return the new dict."""
+    """Hold one lock across reading and writing because concurrent hook processes would otherwise lose updates."""
     directory = _session_directory(session_id, root)
     directory.mkdir(parents=True, exist_ok=True)
     # Lock a separate .lock file because os.replace swaps state.json to a new inode, orphaning any flock on the old one.
     lock_fd = os.open(directory / LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        try:
-            current = read_state(session_id, root)
-            updated = mutate(current)
-            if not isinstance(updated, dict):
-                raise TypeError("update mutate must return a dict")
-            write_state(session_id, updated, root)
-            return updated
-        finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        return _update_state_with_lock(lock_fd, session_id, mutate, root)
     finally:
         os.close(lock_fd)
 
@@ -166,7 +173,6 @@ def advance_turn(
 def cleanup_session(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> None:
-    """Remove the session directory and every file inside it, ignoring a missing directory."""
     shutil.rmtree(_session_directory(session_id, root), ignore_errors=True)
 
 
@@ -190,7 +196,7 @@ def sweep_stale(
     root: str | os.PathLike[str] | None = None,
     now: float | None = None,
 ) -> int:
-    """Remove session directories whose mtime predates the cutoff and return the count removed, where mtime is only a proxy so a live session that has not written within max_age is removed too."""
+    """Sweeping on mtime accepts deleting a live session that has gone quiet, because no cheaper liveness signal exists on disk."""
     base = Path(root) if root is not None else _default_root()
     if not base.is_dir():
         return 0

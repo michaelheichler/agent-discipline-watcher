@@ -26,14 +26,18 @@ def mcp_target_paths(tool_input: object) -> list[str]:
     return found
 
 
+def _nonempty_content_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
 def mcp_write_contents(tool_input: object) -> list[str]:
     """Kept as separate candidates because the escape scan parses each body as JSON, and joining fields would let a decoy field break the parse and hide the payload."""
     fields = exact_string_dict(tool_input)
     parts: list[str] = []
     for key in _CONTENT_KEYS:
-        value = fields.get(key)
-        if isinstance(value, str) and value:
-            parts.append(value)
-        elif isinstance(value, list):
-            parts.extend(item for item in value if isinstance(item, str) and item)
+        parts.extend(_nonempty_content_strings(fields.get(key)))
     return parts

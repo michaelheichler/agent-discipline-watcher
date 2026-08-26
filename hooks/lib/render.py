@@ -1,5 +1,3 @@
-"""Render review records for humans and machines without changing their meaning."""
-
 import json
 from collections import Counter
 
@@ -33,7 +31,7 @@ def _markdown(value: object) -> str:
 
 
 def render_text(findings: list[dict], scope: str, revision: str = "working tree") -> str:
-    """Group concise terminal findings under stable file headings."""
+    """Sort headings and rows because deterministic output keeps repeated reviews diffable."""
     counts = _counts(findings)
     summary = ", ".join(f"{key}={counts[key]}" for key in SEVERITIES)
     lines = [
@@ -64,7 +62,6 @@ def _markdown_rows(rows: list[dict]) -> list[str]:
 
 
 def render_md(findings: list[dict], scope: str, revision: str = "working tree") -> str:
-    """Shape findings for reports with scope, revision, and severity sections."""
     counts = _counts(findings)
     lines = [
         "# Agent Discipline Review",
@@ -87,7 +84,7 @@ def render_md(findings: list[dict], scope: str, revision: str = "working tree") 
 
 
 def render_json(findings: list[dict]) -> str:
-    """Encode the fixed version-one positional schema without extra fields."""
+    """Version the positional schema because consumers need to reject incompatible row layouts."""
     rows = [
         [
             item["rule"],

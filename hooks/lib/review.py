@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import bm25, config, render, scanner
@@ -10,6 +11,25 @@ from . import bm25, config, render, scanner
 SEVERITY_ORDER = {"block": 0, "would_block": 1, "release": 2}
 # Excluded from the --commits hunk filter because file_too_long and its siblings report at line 1 no matter which line changed.
 RANGE_EXEMPT_RULES = config.SCANNER_ALWAYS_BLOCKING_RULES | config.FIXED_OBSERVE_RULES
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewSource:
+    root: Path
+    path: Path
+    relative: str
+    config: dict
+    base: str | None
+
+
+def _review_source(path: Path, root: Path, base: str | None) -> _ReviewSource:
+    return _ReviewSource(
+        root=root,
+        path=path,
+        relative=_relative(path, root),
+        config=config.effective_config(cwd=path),
+        base=base,
+    )
 
 
 def _run(args: list[str], cwd: Path, timeout: float = 10) -> str:
@@ -159,9 +179,11 @@ def _head_text(root: Path, relative: str, cfg: dict) -> str | None:
     return scanner.scannable_text(text, cfg)
 
 
-def _source_text(root: Path, path: Path, relative: str, cfg: dict, base: str | None) -> str | None:
+def _source_text(source: _ReviewSource) -> str | None:
     """Read from HEAD when a commit range is active, because the working tree may have moved past the range being reviewed."""
-    return _head_text(root, relative, cfg) if base is not None else scanner.read_scannable(path, cfg)
+    if source.base is not None:
+        return _head_text(source.root, source.relative, source.config)
+    return scanner.read_scannable(source.path, source.config)
 
 
 def _ranged_rows(rows: list[dict], relative: str, ranges: dict[str, list[tuple[int, int]]] | None) -> list[dict]:
@@ -187,14 +209,15 @@ def _finding_row(row: dict, relative: str, cfg: dict) -> dict:
     }
 
 
-def _scan_path(path: Path, root: Path, ranges: dict[str, list[tuple[int, int]]] | None, base: str | None) -> list[dict]:
-    relative = _relative(path, root)
-    cfg = config.effective_config(cwd=path)
-    text = _source_text(root, path, relative, cfg, base)
+def _scan_path(
+    source: _ReviewSource,
+    ranges: dict[str, list[tuple[int, int]]] | None,
+) -> list[dict]:
+    text = _source_text(source)
     if text is None:
         return []
-    rows = _ranged_rows(scanner.scan_all(relative, text, cfg), relative, ranges)
-    return [_finding_row(row, relative, cfg) for row in rows]
+    rows = _ranged_rows(scanner.scan_all(source.relative, text, source.config), source.relative, ranges)
+    return [_finding_row(row, source.relative, source.config) for row in rows]
 
 
 def _gitnexus(root: Path) -> str:
@@ -227,7 +250,11 @@ def run_review(args) -> tuple[list[dict], str, str, str | None]:
     cwd = Path(getattr(args, "cwd", ".")).resolve()
     root, paths, scope, base = _scope(args, cwd)
     ranges = _changed_ranges(root, base) if base is not None else None
-    findings = [row for path in paths for row in _scan_path(path, root, ranges, base)]
+    findings = [
+        row
+        for path in paths
+        for row in _scan_path(_review_source(path, root, base), ranges)
+    ]
     findings.sort(
         key=lambda row: (
             SEVERITY_ORDER[row["severity"]],
@@ -247,11 +274,10 @@ def code_documents(args) -> list[dict]:
     root, paths, _, base = _scope(args, cwd)
     documents = []
     for path in paths:
-        relative = _relative(path, root)
-        cfg = config.effective_config(cwd=path)
-        text = _source_text(root, path, relative, cfg, base)
+        source = _review_source(path, root, base)
+        text = _source_text(source)
         if text is not None:
-            documents.extend(bm25.chunks(relative, text, bm25.CHUNK_LINES))
+            documents.extend(bm25.chunks(source.relative, text, bm25.CHUNK_LINES))
     return documents
 
 

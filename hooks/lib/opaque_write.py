@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from lib.shell_parse import (
     HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
@@ -12,6 +13,13 @@ from lib.shell_parse import (
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
+
+
+@dataclass(frozen=True, slots=True)
+class InterpreterStage:
+    producers: tuple[tuple[str, ...], ...]
+    consumer: tuple[str, ...]
+
 
 WRITE_CAPABLE_TOKEN_RE = re.compile(
     r"\.write\(|\bwrite\(|\.write_text\(|\.write_bytes\(|\bexec\(|\beval\(|__|\bsubprocess\b|"
@@ -37,26 +45,28 @@ def _quoted_literal(text: str) -> str | None:
 
 def _split_top_level_args(payload: str, args_start: int) -> list[str] | None:
     """None on an unterminated call, because a close paren that never arrives leaves no real argument list to split."""
-    depth = 1
-    position = args_start
-    args: list[str] = []
-    current: list[str] = []
+    depth, position = 1, args_start
+    args, current = [], []
     for match in ARG_TOKEN_RE.finditer(payload, args_start):
         if match.start() != position:
             return None
         token = match.group()
         position = match.end()
-        if token == ")":
-            depth -= 1
-            if depth == 0:
-                args.append("".join(current))
-                return args
-        elif token == "(":
+        if token == "(":
             depth += 1
-        elif token == "," and depth == 1:
+            current.append(token)
+            continue
+        if token == "," and depth == 1:
             args.append("".join(current))
             current = []
             continue
+        if token != ")":
+            current.append(token)
+            continue
+        depth -= 1
+        if depth == 0:
+            args.append("".join(current))
+            return args
         current.append(token)
     return None
 
@@ -176,19 +186,26 @@ def _pipe_interpreter_findings(group: list[list[str]], make_finding: FindingFact
     findings = []
     for index in range(1, len(group)):
         if _is_bare_interpreter_segment(group[index]):
-            findings.extend(_stage_interpreter_findings(group[:index], group[index], make_finding, recurse))
+            stage = InterpreterStage(
+                tuple(tuple(segment) for segment in group[:index]),
+                tuple(group[index]),
+            )
+            findings.extend(_stage_interpreter_findings(stage, make_finding, recurse))
     return findings
 
 
 def _stage_interpreter_findings(
-    producers: list[list[str]], consumer: list[str], make_finding: FindingFactory, recurse: RecurseFn,
+    stage: InterpreterStage,
+    make_finding: FindingFactory,
+    recurse: RecurseFn,
 ) -> list[dict]:
     """Judge one interpreter stage's stdin against its own producer text, because a shell consumer reads its stdin as a nested command while any other interpreter reads it as inline code."""
+    producers = [list(segment) for segment in stage.producers]
     producer_texts = _literal_contents(producers)
     if len(producer_texts) != len(producers) or None in producer_texts:
         return [make_finding("interpreter_heredoc_write")]
     joined = "\n".join(producer_texts)
-    if _bare_interpreter_name(consumer) in SHELL_C_INTERPRETERS:
+    if _bare_interpreter_name(list(stage.consumer)) in SHELL_C_INTERPRETERS:
         return recurse(joined)
     if WRITE_CAPABLE_TOKEN_RE.search(joined):
         return [make_finding("interpreter_heredoc_write")]
@@ -257,17 +274,24 @@ def _has_file_output_flag(tokens: list[str]) -> bool:
     return False
 
 
+def _decode_pipe_findings_for_line(line: str, make_finding: FindingFactory) -> list[dict]:
+    findings: list[dict] = []
+    for group in _pipeline_groups(line):
+        decode_segments = [segment for segment in group if _is_decode_segment(segment)]
+        writes_decoded_bytes = bool(decode_segments) and (
+            any(_write_path_writes(segment) for segment in group)
+            or any(_decode_writes_file(segment) for segment in decode_segments)
+        )
+        if writes_decoded_bytes:
+            findings.append(make_finding("decode_pipe_write"))
+    return findings
+
+
 def decode_pipe_findings(command: str, make_finding: FindingFactory) -> list[dict]:
     """Blocks the pipe, because the decoded bytes never pass through a stage the scanner can read before they reach the file."""
-    findings = []
+    findings: list[dict] = []
     for line, _, _ in _logical_lines(command):
-        for group in _pipeline_groups(line):
-            decode_segments = [segment for segment in group if _is_decode_segment(segment)]
-            if decode_segments and (
-                any(_write_path_writes(segment) for segment in group)
-                or any(_decode_writes_file(segment) for segment in decode_segments)
-            ):
-                findings.append(make_finding("decode_pipe_write"))
+        findings.extend(_decode_pipe_findings_for_line(line, make_finding))
     return findings
 
 
@@ -287,16 +311,17 @@ def _awk_has_inplace(tokens: list[str]) -> bool:
     expecting_value = False
     for token in tokens:
         bare = _bare(token)
+        if expecting_value and bare.startswith("inplace"):
+            return True
         if expecting_value:
-            if bare.startswith("inplace"):
-                return True
             expecting_value = False
             continue
         if bare == "--inplace" or bare.startswith("--inplace="):
             return True
         if bare in ("-i", "--include"):
             expecting_value = True
-        elif bare.startswith("-i") and not bare.startswith("--") and bare[2:].startswith("inplace"):
+            continue
+        if bare.startswith("-i") and not bare.startswith("--") and bare[2:].startswith("inplace"):
             return True
     return False
 

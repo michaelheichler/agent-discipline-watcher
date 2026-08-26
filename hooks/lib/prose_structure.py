@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 
 try:
     from .comment_rules import _finding
@@ -31,7 +32,7 @@ def _next_fence(line: str, fence: str | None) -> tuple[str | None, bool]:
     return (None if marker_kind == fence else fence), True
 
 
-def _markdown_prose_lines(text: str):
+def _markdown_prose_lines(text: str) -> Iterator[tuple[int, str]]:
     fence = None
     for number, line in enumerate(text.splitlines(), 1):
         fence, is_marker = _next_fence(line, fence)
@@ -45,7 +46,7 @@ def _markdown_prose_lines(text: str):
         yield number, line
 
 
-def _paragraphs(lines):
+def _paragraphs(lines) -> Iterator[list[tuple[int, str]]]:
     paragraph = []
     for number, line in lines:
         if line.strip() and not LIST_ITEM_RE.match(line):
@@ -58,7 +59,7 @@ def _paragraphs(lines):
         yield paragraph
 
 
-def _sentences(paragraph):
+def _sentences(paragraph) -> Iterator[tuple[int, str]]:
     offsets = []
     chunks = []
     size = 0
@@ -118,13 +119,13 @@ def _oversized_list_rows(path: str, lines, cap: int) -> list[dict]:
     item_indent = 0
     for number, line in lines:
         is_item = bool(LIST_ITEM_RE.match(line))
-        if is_item:
-            item_indent = len(line) - len(line.lstrip())
-        elif not _is_list_continuation(line, count, item_indent):
+        continues_list = not is_item and _is_list_continuation(line, count, item_indent)
+        if continues_list:
+            continue
+        if not is_item:
             count = 0
             continue
-        else:
-            continue
+        item_indent = len(line) - len(line.lstrip())
         if count == 0:
             start = number
             first_line = line
