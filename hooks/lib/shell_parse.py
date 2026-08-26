@@ -22,6 +22,27 @@ from .shell_syntax import (
     has_process_substitution, interpreter_invocation,
 )
 
+# Names moved to shell_syntax stay importable from here, because callers across the gates already reach for them by this path.
+__all__ = [
+    "CLOBBER_HEAD_RE", "DYNAMIC_RE", "ENV_SPLIT_STRING_FLAGS",
+    "INTERPRETER_CODE_FLAGS", "INTERPRETERS", "LEADING_REDIRECT_RE",
+    "PIPE_OPERATORS", "PROCESS_SUBSTITUTION_RE", "QUOTED_SPAN_RE",
+    "SEPARATORS", "SHELL_C_INTERPRETERS", "VERSIONED_PYTHON_RE",
+    "WRAPPER_COMMANDS", "WRAPPER_VALUE_FLAGS", "InterpreterInvocation",
+    "_bare", "_basename", "_command_word_index", "_copy_env_flag",
+    "_env_split_string_at", "_expand_command_position_token",
+    "_expand_env_flags", "_expand_env_split_strings", "_flag_payload_token",
+    "_fused_split_string_payload", "_interpreter_code_flags",
+    "_is_literal_token", "_is_quoted", "_is_unquoted_assignment",
+    "_leading_assignments", "_merge_adjacent_fragments", "_merge_clobber_operator",
+    "_payload_command_index", "_pipeline_groups", "_segment_text", "_segments",
+    "_skip_leading_redirect", "_skip_prefixes", "_skip_wrapper_options",
+    "_tokens", "_words", "_wrapper_consumes_value",
+    "has_process_substitution", "interpreter_invocation",
+    "HeredocEvent", "LiteralWrite", "heredoc_events", "literal_writes",
+    "write_paths", "write_targets",
+]
+
 # Matches only the exact descriptor 2, because a bare stderr redirect writes no target file.
 STDERR_DESCRIPTOR = "2"
 REDIRECT_HEAD_RE = re.compile(r"^(\d*)(>>?)")

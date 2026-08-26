@@ -218,7 +218,7 @@ def _storage_roots(values: tuple[object, ...], named: dict[str, object]) -> Stor
 
 def record_state_transitions(
     session_id: str,
-    config: dict | None = None,
+    config: dict | None,
     *roots: object,
     **named_roots: object,
 ) -> list[dict]:

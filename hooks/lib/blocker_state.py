@@ -134,18 +134,23 @@ def details(session_id: str, agent_id: str, root=None) -> tuple[dict[str, str], 
     return _normalized_bucket(bucket)
 
 
+def _is_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(entry, str) for entry in value)
+
+
+def _is_reconcile_shape(values: tuple[object, ...]) -> bool:
+    if len(values) != 3:
+        return False
+    revision = values[0]
+    if not isinstance(revision, int) or isinstance(revision, bool):
+        return False
+    return _is_string_list(values[1]) and _is_string_list(values[2])
+
+
 def reconcile(scope: BlockerScope | str, *values: object) -> None:
     if isinstance(scope, str):
         scope, values = _scope_from_legacy(scope, values, 3)
-    if (
-        len(values) != 3
-        or not isinstance(values[0], int)
-        or isinstance(values[0], bool)
-        or not isinstance(values[1], list)
-        or not all(isinstance(key, str) for key in values[1])
-        or not isinstance(values[2], list)
-        or not all(isinstance(path, str) for path in values[2])
-    ):
+    if not _is_reconcile_shape(values):
         raise TypeError("reconcile requires a revision and string key and path lists")
     revision, pending_keys, paths = values
 

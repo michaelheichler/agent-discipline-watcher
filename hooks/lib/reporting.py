@@ -461,5 +461,3 @@ def false_signal_rate(
         if row.get("family") == family and row.get("label") is False
     )
     return false_count * 20 / len(turn_ids)
-
-
