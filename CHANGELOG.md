@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.8 (2026-08-26)
+
+### Changed
+
+- `config_seal` no longer blocks every edit to an existing `.agent-discipline.json`. It reads the pending content and blocks only a write that would weaken the gates, so adding a path exemption or turning one family off is the human's to make again. A write whose body the gate cannot read still fails closed, and so does a delete or a truncate.
+
+### Fixed
+
+- `grants_escape` missed two ways to silence the watcher through its own config. A `kill_switches` entry for every family reaches the gates through a key the gate map never reads, and a tree-wide `exempt_paths` or `exempt_families` glob suppresses every scanned file. Both were caught only by the blanket seal, so both are now detected on their own terms.
+
 ## 0.17.7 (2026-08-26)
 
 ### Added

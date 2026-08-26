@@ -183,6 +183,38 @@ def test_existing_gate_config_is_sealed(tmp_path):
     assert rules(str(target), tmp_path) == ["config_seal"]
 
 
+@pytest.mark.parametrize("settings", [
+    {"kill_switches": {"punctuation": True, "english": True, "clean_code": True}},
+    {"exempt_paths": ["**"]},
+    {"exempt_families": {"**": ["punctuation", "english", "clean_code"]}},
+])
+def test_a_config_that_silences_every_family_is_an_escape(tmp_path, settings):
+    target = _config(tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
+    assert rules(str(target), tmp_path, None, json.dumps(settings)) == ["config_seal"]
+
+
+@pytest.mark.parametrize("settings", [
+    {"exempt_families": {"LICENSE": ["english"]}},
+    {"exempt_paths": ["vendor/**"]},
+    {"gates": {"english": "off"}},
+    {"kill_switches": {"english": True}},
+])
+def test_a_narrow_gate_config_edit_is_the_humans_to_make(tmp_path, settings):
+    target = _config(tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
+    assert rules(str(target), tmp_path, None, json.dumps(settings)) == []
+
+
+def test_an_unreadable_write_to_an_existing_gate_config_blocks(tmp_path):
+    target = _config(tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
+    assert rules(str(target), tmp_path) == ["config_seal"]
+
+
 def test_first_creation_of_the_gate_config_is_allowed(tmp_path):
     target = tmp_path / "project" / ".agent-discipline.json"
     assert rules(str(target), tmp_path) == []

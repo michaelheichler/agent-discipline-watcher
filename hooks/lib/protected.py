@@ -98,11 +98,46 @@ def grants_escape(text: str | None) -> bool:
         return True
     if "state_root" in settings or "ledger_root" in settings:
         return True
+    return _silences_every_family(settings)
+
+
+UNIVERSAL_GLOBS = frozenset({"*", "**", "*/*", "**/*", "*/**", "**/**", "/**", "./**"})
+
+
+def _silences_every_family(settings: dict) -> bool:
+    return (
+        _gated_off_everywhere(settings)
+        or _killed_everywhere(settings)
+        or _exempted_everywhere(settings)
+    )
+
+
+def _gated_off_everywhere(settings: dict) -> bool:
     family_gates = exact_string_dict(settings.get("gates"))
     return all(
         family_gates.get(family) == "off" if family in family_gates else settings.get(family) is False
         for family in GATE_FAMILIES
     )
+
+
+def _killed_everywhere(settings: dict) -> bool:
+    switches = exact_string_dict(settings.get("kill_switches"))
+    return all(bool(switches.get(family)) for family in GATE_FAMILIES)
+
+
+def _exempted_everywhere(settings: dict) -> bool:
+    paths = settings.get("exempt_paths")
+    if isinstance(paths, list) and any(
+        isinstance(entry, str) and entry.strip() in UNIVERSAL_GLOBS for entry in paths
+    ):
+        return True
+    families = exact_string_dict(settings.get("exempt_families"))
+    for glob, listed in families.items():
+        if glob.strip() not in UNIVERSAL_GLOBS or not isinstance(listed, list):
+            continue
+        if all(family in listed for family in GATE_FAMILIES):
+            return True
+    return False
 
 
 def _protected_write(path: str, values: tuple[object, ...], fields: dict[str, object]) -> ProtectedWrite:
@@ -157,7 +192,7 @@ def _write_target_findings(write: ResolvedProtectedWrite) -> list[dict]:
         return [_finding(Finding(family="self_protection", rule="watcher_wiring_removal", line=1, detail="Write drops the watcher hooks from " + path, force=True, snippet=path.strip()[:180], action=WIRING_ACTION, path=None, severity=None, tool_use_id=None))]
     return (
         [_finding(Finding(family="self_protection", rule="config_seal", line=1, detail="Gate config edit in " + path, force=True, snippet=path.strip()[:180], action=SEAL_ACTION, path=None, severity=None, tool_use_id=None))]
-        if _is_config_seal(resolved)
+        if _is_unreadable_config_write(resolved, content)
         else []
     )
 
@@ -274,9 +309,9 @@ def _is_state_path(path: Path, home: str | os.PathLike[str] | None) -> bool:
     return True
 
 
-def _is_config_seal(path: Path) -> bool:
-    """Seal an existing gate config, allowing first creation, and treat a stat error as present so that the gate fails closed."""
-    if not _is_gate_config(path):
+def _is_unreadable_config_write(path: Path, content: str | None) -> bool:
+    """Fails closed on an unreadable body against an existing config because it could carry any escape, while a readable benign edit stays the human's to make."""
+    if not _is_gate_config(path) or (content is not None and content.strip()):
         return False
     try:
         return path.exists()
