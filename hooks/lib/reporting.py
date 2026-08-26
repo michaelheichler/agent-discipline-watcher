@@ -257,7 +257,7 @@ def record_decision(*values: object, **fields: object) -> None:
         decision, root = _decision_from_fields(fields)
     else:
         raise TypeError("record_decision requires a DecisionRecord or named legacy fields")
-    if decision.outcome not in Outcome:
+    if decision.outcome not in tuple(Outcome):
         raise ValueError(f"unknown outcome: {decision.outcome!r}")
     append_row(
         _ledger_row(
