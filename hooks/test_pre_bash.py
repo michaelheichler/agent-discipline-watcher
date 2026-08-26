@@ -10,6 +10,8 @@ import pytest
 
 import pre_bash
 
+SURFACE = ".claude/skills/agent-discipline-watcher/SKILL.md"
+
 
 def rules(command, home=None, config=None):
     return sorted(f["rule"] for f in pre_bash.command_findings(command, config, home))
@@ -116,18 +118,27 @@ def test_state_overwrite_blocks():
 
 
 @pytest.mark.parametrize("command", [
-    "rm -rf ~/.claude",
-    "rm -rf ~/.codex",
-    "unlink ~/.pi",
-    "shred ~/.claude",
+    "rm -rf ~/.claude/skills/agent-discipline-watcher",
+    "rm -rf ~/.agents/skills/agent-discipline-watcher",
+    "unlink ~/.local/bin/agent-discipline",
+    "shred ~/.claude/plugins/cache/agent-discipline-watcher/hooks/run.sh",
 ])
-def test_client_home_root_deletion_blocks(command, tmp_path):
-    assert "live_client_surface" in rules(command, tmp_path)
+def test_watcher_install_deletion_blocks(command, tmp_path):
+    assert "watcher_install_surface" in rules(command, tmp_path)
 
 
-def test_shell_write_to_live_surface_blocks(tmp_path):
-    command = "echo '{}' > " + str(tmp_path / ".claude/settings.json")
-    assert rules(command, tmp_path) == ["live_client_surface"]
+@pytest.mark.parametrize("command", [
+    "rm -rf ~/.claude/skills/humanizer-de",
+    "rm -rf ~/.claude/agents",
+    "unlink ~/.pi",
+])
+def test_other_client_deletion_is_left_to_host_permissions(command, tmp_path):
+    assert rules(command, tmp_path) == []
+
+
+def test_shell_write_to_the_install_blocks(tmp_path):
+    command = "echo '{}' > " + str(tmp_path / SURFACE)
+    assert rules(command, tmp_path) == ["watcher_install_surface"]
 
 
 @pytest.mark.parametrize("template", [
@@ -144,8 +155,8 @@ def test_shell_write_to_live_surface_blocks(tmp_path):
     "chmod 600 {}",
 ])
 def test_every_mutating_form_blocks(tmp_path, template):
-    target = str(tmp_path / ".codex/config.toml")
-    assert "live_client_surface" in rules(template.format(target), tmp_path)
+    target = str(tmp_path / SURFACE)
+    assert "watcher_install_surface" in rules(template.format(target), tmp_path)
 
 
 @pytest.mark.parametrize("template", [
@@ -156,8 +167,8 @@ def test_every_mutating_form_blocks(tmp_path, template):
     "mv -t {} a.txt b.txt",
 ])
 def test_target_directory_flag_blocks_even_when_source_is_last(tmp_path, template):
-    target_dir = str(tmp_path / ".codex")
-    assert "live_client_surface" in rules(template.format(target_dir), tmp_path)
+    target_dir = str(tmp_path / ".claude/skills/" / "agent-discipline-watcher")
+    assert "watcher_install_surface" in rules(template.format(target_dir), tmp_path)
 
 
 @pytest.mark.parametrize("template", [
@@ -168,20 +179,20 @@ def test_target_directory_flag_blocks_even_when_source_is_last(tmp_path, templat
     "wc -l {}",
 ])
 def test_reads_with_stderr_redirection_pass(tmp_path, template):
-    target = str(tmp_path / ".claude/settings.json")
+    target = str(tmp_path / SURFACE)
     assert rules(template.format(target), tmp_path) == []
 
 
 def test_real_write_alongside_stderr_redirection_still_blocks(tmp_path):
-    target = str(tmp_path / ".claude/settings.json")
+    target = str(tmp_path / SURFACE)
     command = f"echo '{{}}' > {target} 2>/dev/null"
-    assert rules(command, tmp_path) == ["live_client_surface"]
+    assert rules(command, tmp_path) == ["watcher_install_surface"]
 
 
 def test_quoted_and_variable_targets_are_resolved(tmp_path):
-    assert rules('echo x > "$HOME/.codex/config.toml"', tmp_path) == ["live_client_surface"]
-    assert rules("echo x > ${HOME}/.codex/config.toml", tmp_path) == ["live_client_surface"]
-    assert rules("echo x > ~/.codex/config.toml", tmp_path) == ["live_client_surface"]
+    assert rules('echo x > "$HOME/' + SURFACE + '"', tmp_path) == ["watcher_install_surface"]
+    assert rules("echo x > ${HOME}/" + SURFACE, tmp_path) == ["watcher_install_surface"]
+    assert rules("echo x > ~/" + SURFACE, tmp_path) == ["watcher_install_surface"]
 
 
 def test_repo_writes_are_untouched(tmp_path):
@@ -240,15 +251,15 @@ def test_cap_variable_in_assignment_position_still_blocks():
     assert "cap_override" in rules("cd repo && ADW_ALLOW_PROTECTED_EDIT=1 ./tool")
 
 
-def test_mutation_and_live_path_in_different_segments_do_not_combine(tmp_path):
-    settings = str(tmp_path / ".claude/settings.json")
-    assert rules(f"rm /tmp/junk && cat {settings}", tmp_path) == []
-    assert rules(f"cat {settings} && rm /tmp/junk", tmp_path) == []
+def test_mutation_and_install_path_in_different_segments_do_not_combine(tmp_path):
+    skill = str(tmp_path / SURFACE)
+    assert rules(f"rm /tmp/junk && cat {skill}", tmp_path) == []
+    assert rules(f"cat {skill} && rm /tmp/junk", tmp_path) == []
 
 
-def test_mutation_and_live_path_in_the_same_segment_still_block(tmp_path):
-    settings = str(tmp_path / ".claude/settings.json")
-    assert "live_client_surface" in rules(f"ls /tmp && rm {settings}", tmp_path)
+def test_mutation_and_install_path_in_the_same_segment_still_block(tmp_path):
+    skill = str(tmp_path / SURFACE)
+    assert "watcher_install_surface" in rules(f"ls /tmp && rm {skill}", tmp_path)
 
 
 def test_sandbox_home_in_the_installer_segment_releases_the_installer_rule():
@@ -260,8 +271,8 @@ def test_sandbox_home_in_an_unrelated_segment_does_not_release_the_installer_rul
 
 
 def test_redirect_text_inside_quotes_is_not_a_mutation(tmp_path):
-    settings = str(tmp_path / ".claude/settings.json")
-    assert rules(f"grep 'a > b' {settings}", tmp_path) == []
+    skill = str(tmp_path / SURFACE)
+    assert rules(f"grep 'a > b' {skill}", tmp_path) == []
 
 
 def test_empty_command_is_allowed():

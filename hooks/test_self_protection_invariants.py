@@ -162,11 +162,16 @@ class SelfGrantChainTests(unittest.TestCase):
         command = protected.AUTH_ENV + "=1 python3 build.py"
         self.assertIn("self_protection/cap_override", self._blocked(self._bash(command)))
 
-    def test_a_shell_write_to_a_live_client_surface_is_blocked_by_path(self):
-        target = self.root / "home" / ".claude" / "settings.json"
+    def test_a_shell_write_to_the_watcher_install_is_blocked_by_path(self):
+        target = self.root / "home" / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"
         command = "echo '{}' > " + str(target)
         findings = pre_bash.target_findings(command, None, self.root / "home")
-        self.assertEqual([row["rule"] for row in findings], ["live_client_surface"])
+        self.assertEqual([row["rule"] for row in findings], ["watcher_install_surface"])
+
+    def test_a_shell_write_to_another_skill_is_left_to_host_permissions(self):
+        target = self.root / "home" / ".claude" / "skills" / "humanizer-de" / "SKILL.md"
+        command = "echo '{}' > " + str(target)
+        self.assertEqual(pre_bash.target_findings(command, None, self.root / "home"), [])
 
     def test_an_ordinary_shell_write_stays_allowed(self):
         self.assertEqual(self._bash("echo 'x = 1' > " + str(self.root / "ok.py")), {})
@@ -208,10 +213,10 @@ class SelfGrantChainTests(unittest.TestCase):
             response = self._mcp({"path": str(target)})
         self.assertIn("self_protection/state_mutation", self._blocked(response))
 
-    def test_an_mcp_write_to_a_live_client_surface_is_blocked_by_path(self):
-        target = Path.home() / ".claude" / "settings.json"
+    def test_an_mcp_write_to_the_watcher_install_is_blocked_by_path(self):
+        target = Path.home() / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"
         self.assertIn(
-            "self_protection/live_client_surface", self._blocked(self._mcp({"path": str(target)}))
+            "self_protection/watcher_install_surface", self._blocked(self._mcp({"path": str(target)}))
         )
 
     def test_an_ordinary_mcp_write_stays_allowed(self):

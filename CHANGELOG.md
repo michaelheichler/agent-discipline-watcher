@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.6 (2026-08-26)
+
+### Changed
+
+- Self-protection no longer polices file access across a client home. The `live_client_surface` rule, which blocked every path under `~/.claude`, `~/.codex`, `~/.pi`, `~/.omp`, `~/.agents/skills`, and `~/.config/opencode`, is replaced by two narrower rules. `watcher_install_surface` blocks writes to the watcher's own install directories and to `~/.local/bin/agent-discipline*`. `watcher_wiring_removal` blocks a write to a client settings file only when it drops the watcher's hook entries, so unrelated edits to those files now pass. Which files an agent may touch is a host permission setting, not a watcher rule. `~/.claude/CLAUDE.md` and shell rc files are no longer protected.
+- The install block message states that `ADW_ALLOW_PROTECTED_EDIT` releases every self-protection rule rather than presenting it as a routine escape.
+
+### Fixed
+
+- A read argument in a shell segment is no longer treated as a write target. `python3 ~/.claude/plugins/x/audit.py doc.md > report.json` blocked because the redirect made every path in the segment count as a write, which stopped agents from running audit scripts that live under a client home. Shell write targets now resolve through the same verb-aware rules the live-path check already used, so a copy source, a grep root, and a script argument stay reads.
+
 ## 0.17.5 (2026-08-24)
 
 ### Fixed

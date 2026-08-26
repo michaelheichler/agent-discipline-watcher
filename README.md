@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.17.5**.
+Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.17.6**.
 
 Findings block at their configured gate. Strict code-comment findings always block.
 
@@ -62,7 +62,9 @@ Project configuration lives in `.agent-discipline.json` at the project root. The
 
 ## Self Protection
 
-The `self_protection` family blocks routes around the gates. It covers live client config, installer commands without a sandboxed `HOME`, no-verify commits, cap overrides, state deletion, and protected configuration edits. These rules cannot be disabled by project configuration.
+The `self_protection` family blocks routes around the gates. It covers the watcher's own install directories, writes that strip the watcher's hook entries from a client settings file, installer commands without a sandboxed `HOME`, no-verify commits, cap overrides, state deletion, and protected configuration edits. These rules cannot be disabled by project configuration.
+
+It does not police file access in general. Everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp` is left to the host's own permission settings. The watcher judges how an agent writes, not where.
 
 Seven more rules in this family close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through, such as `python3 -c` writing a file, a heredoc piped into an interpreter, a dynamic heredoc aimed at a file, a decode pipe ending in a write, `sed -i`, or `dd`. A literal write body the watcher can read, such as a clean `echo` or heredoc, is scanned like a Write or Edit tool call instead of blocked. Every deny message names the rule and points to the Write or Edit tool for the file content.
 

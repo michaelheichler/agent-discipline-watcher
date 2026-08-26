@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 try:
@@ -18,18 +19,30 @@ AUTH_ENV = "ADW_ALLOW_PROTECTED_EDIT"
 AUTH_KEY = "protected_paths_authorized"
 TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-CLAUDE_EXEMPT_DIRS = frozenset({
-    "jobs", "projects", "todos", "shell-snapshots",
-    "statsig", "logs", "ide", "tool-results", "downloads",
+WATCHER_NAME_PREFIX = "agent-discipline"
+# Scoped to client install roots, because a working checkout carries the same name and must stay editable.
+CLIENT_HOME_DIRS = frozenset({".claude", ".codex", ".pi", ".omp", ".agents", ".config", ".local"})
+# Mirrors the files install.sh and pi/install.sh write hook entries into, because those are the only host files that can unwire the watcher.
+WIRING_FILES = frozenset({
+    (".claude", "settings.json"),
+    (".claude", "settings.local.json"),
+    (".codex", "config.toml"),
+    (".codex", "hooks.json"),
+    (".pi", "agent", "settings.json"),
+    (".omp", "agent", "settings.json"),
 })
-CLAUDE_WIRING_DIRS = frozenset({"skills", "agents", "hooks", "commands"})
-CLIENT_HOME_DIRS = frozenset({".codex", ".pi", ".omp"})
+# Text-level so that one pattern covers the JSON and TOML wirings alike, since both name the package or its hook runner.
+WATCHER_WIRING_RE = re.compile(r"agent-discipline|/hooks/run\.sh")
 
-LIVE_ACTION = (
+INSTALL_ACTION = (
     "Change the repo source and reinstall instead of editing the live install. If this edit "
     "is intentional, ask the human to export "
     + AUTH_ENV
-    + " in the hook environment, which is the only supported escape."
+    + " in the hook environment, which releases every self-protection rule, not just this one."
+)
+WIRING_ACTION = (
+    "Keep the agent-discipline-watcher hook entries in place. Edit this file around them, "
+    "or reinstall to change how the watcher is wired."
 )
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
 STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
@@ -90,7 +103,7 @@ def path_findings(
     except UnresolvableTildePath:
         if _env_authorized():
             return []
-        return [_finding("live_client_surface", path, "Unresolvable ~user path in " + path, LIVE_ACTION)]
+        return [_finding("watcher_install_surface", path, "Unresolvable ~user path in " + path, INSTALL_ACTION)]
     if resolved is None or _env_authorized():
         return []
     return _write_target_findings(resolved, path, home, content)
@@ -106,9 +119,10 @@ def _write_target_findings(
         return [_finding("config_seal", path, "Self-granted gate escape in " + path, GRANT_ACTION)]
     if _is_state_path(resolved, home):
         return [_finding("state_mutation", path, "Watcher state path in " + path, STATE_ACTION)]
-    rule = _live_client_rule(resolved, _normalize(_home_root(home)))
-    if rule is not None:
-        return [_finding(rule, path, "Live client install path in " + path, LIVE_ACTION)]
+    if _reaches_install_surface(_literal(path, home), resolved, home):
+        return [_finding("watcher_install_surface", path, "Live watcher install path in " + path, INSTALL_ACTION)]
+    if _unwires_watcher(resolved, _normalize(_home_root(home)), content):
+        return [_finding("watcher_wiring_removal", path, "Write drops the watcher hooks from " + path, WIRING_ACTION)]
     return (
         [_finding("config_seal", path, "Gate config edit in " + path, SEAL_ACTION)]
         if _is_config_seal(resolved)
@@ -116,15 +130,19 @@ def _write_target_findings(
     )
 
 
-def is_live_client_path(path: str, home: str | os.PathLike[str] | None = None) -> bool:
-    """Needed because the Bash gate only has a raw command string, not a parsed tool_input path, so it must resolve live-client paths from text instead."""
+def is_install_surface_path(
+    path: str,
+    home: str | os.PathLike[str] | None = None,
+) -> bool:
+    """Needed because the Bash gate only has a raw command string, not a parsed tool_input path, so it must resolve install paths from text instead."""
     try:
+        literal = _literal(path, home)
         resolved = _resolve(path, home)
     except UnresolvableTildePath:
         return True
     if resolved is None:
         return False
-    return _live_client_rule(resolved, _normalize(_home_root(home))) is not None
+    return _reaches_install_surface(literal, resolved, home)
 
 
 def _finding(rule: str, path: str, detail: str, action: str) -> dict:
@@ -143,7 +161,8 @@ def _home_root(home: str | os.PathLike[str] | None) -> Path:
     return Path(home).expanduser() if home is not None else Path.home()
 
 
-def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
+def _literal(path: str, home: str | os.PathLike[str] | None) -> Path | None:
+    """Expanded but not resolved, because the install rule reads the route the human typed rather than the checkout a symlink points at."""
     try:
         candidate = Path(path)
     except (TypeError, ValueError):
@@ -155,7 +174,12 @@ def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
         candidate = _expand_other_user(text)
     if not candidate.is_absolute():
         candidate = Path(os.getcwd()) / candidate
-    return _normalize(candidate)
+    return candidate
+
+
+def _resolve(path: str, home: str | os.PathLike[str] | None) -> Path | None:
+    candidate = _literal(path, home)
+    return None if candidate is None else _normalize(candidate)
 
 
 def _expand_other_user(text: str) -> Path:
@@ -178,42 +202,38 @@ def _relative_parts(path: Path, home: Path) -> list[str] | None:
     return [part.lower() for part in relative.parts]
 
 
-NESTED_CLIENT_DIRS = ([".agents", "skills"], [".config", "opencode"])
-
-
-def _reaches_into_a_client_home(parts: list[str]) -> bool:
-    if parts[0] in CLIENT_HOME_DIRS:
+def _reaches_install_surface(literal: Path | None, resolved: Path, home: str | os.PathLike[str] | None) -> bool:
+    """Judged on the typed route as well as the resolved one, because every install is a symlink whose target is the checkout the human still has to edit, while a symlink aimed into an install must not slip past."""
+    if literal is not None and _is_install_surface(literal, _home_root(home)):
         return True
-    if len(parts) < 3:
-        return False
-    head = parts[:2]
-    if head == [".local", "bin"]:
-        return parts[2].startswith("agent-discipline")
-    return head in NESTED_CLIENT_DIRS
+    return _is_install_surface(resolved, _normalize(_home_root(home)))
 
 
-def _live_client_rule(path: Path, home: Path) -> str | None:
+def _is_install_surface(path: Path, home: Path) -> bool:
     parts = _relative_parts(path, home)
-    if not parts:
-        return None
-    if parts[0] == ".claude":
-        return _claude_rule(parts)
-    return "live_client_surface" if _reaches_into_a_client_home(parts) else None
+    if not parts or parts[0] not in CLIENT_HOME_DIRS:
+        return False
+    return any(part.startswith(WATCHER_NAME_PREFIX) for part in parts[1:])
 
 
-def _claude_rule(parts: list[str]) -> str | None:
-    if len(parts) == 1:
-        return "live_client_surface"
-    entry = parts[1]
-    if entry in CLAUDE_EXEMPT_DIRS:
-        return None
-    nested_wiring = (
-        entry == "plugins" or entry in CLAUDE_WIRING_DIRS
-    ) and len(parts) > 2
-    protected_file = (
-        entry.startswith("settings") and entry.endswith(".json")
-    ) or entry == "claude.md"
-    return "live_client_surface" if nested_wiring or protected_file else None
+def _unwires_watcher(resolved: Path, home: Path, content: str | None) -> bool:
+    """Judged by content rather than by path, because these files also carry host settings the agent is entitled to change."""
+    parts = _relative_parts(resolved, home)
+    if parts is None or tuple(parts) not in WIRING_FILES:
+        return False
+    if not _has_watcher_wiring(resolved):
+        return False
+    return content is None or not WATCHER_WIRING_RE.search(content)
+
+
+def _has_watcher_wiring(path: Path) -> bool:
+    """Treats an unreadable file as wired, because a write that cannot be compared against the current wiring cannot be cleared."""
+    try:
+        return bool(WATCHER_WIRING_RE.search(path.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeDecodeError):
+        return True
 
 
 def _is_gate_config(path: Path) -> bool:

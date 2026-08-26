@@ -8,6 +8,7 @@ import pytest
 
 from lib import protected
 
+SURFACE = ".claude/skills/agent-discipline-watcher/SKILL.md"
 GRANT = json.dumps({protected.AUTH_KEY: True})
 ATTACK = {
     "punctuation": False,
@@ -24,22 +25,30 @@ def rules(path, home, config=None, content=None):
 
 
 @pytest.mark.parametrize("relative", [
-    ".claude/settings.json",
-    ".claude/settings.local.json",
     ".claude/skills/agent-discipline-watcher/SKILL.md",
-    ".claude/agents/reviewer.md",
-    ".claude/CLAUDE.md",
-    ".codex/config.toml",
-    ".codex/hooks.json",
-    ".pi/agent/settings.json",
-    ".omp/agent/settings.json",
-    ".omp/agent/config.yml",
+    ".claude/plugins/cache/agent-discipline-watcher/hooks/pre_write.py",
     ".agents/skills/agent-discipline-watcher/SKILL.md",
     ".config/opencode/plugins/agent-discipline-watcher.ts",
+    ".omp/agent/extensions/agent-discipline-watcher/index.ts",
     ".local/bin/agent-discipline",
+    ".local/bin/adw-cli/agent-discipline-shim",
 ])
-def test_live_client_surfaces_block(tmp_path, relative):
-    assert rules(str(tmp_path / relative), tmp_path) == ["live_client_surface"]
+def test_watcher_install_surfaces_block(tmp_path, relative):
+    assert rules(str(tmp_path / relative), tmp_path) == ["watcher_install_surface"]
+
+
+@pytest.mark.parametrize("relative", [
+    ".claude/agents/reviewer.md",
+    ".claude/commands/ship.md",
+    ".claude/CLAUDE.md",
+    ".claude/skills/humanizer-de/SKILL.md",
+    ".claude/plugins/cache/other/hooks/hooks.json",
+    ".codex/skills/humanizer/SKILL.md",
+    ".omp/agent/config.yml",
+    ".zshrc",
+])
+def test_other_client_paths_are_left_to_host_permissions(tmp_path, relative):
+    assert rules(str(tmp_path / relative), tmp_path) == []
 
 
 def test_watcher_state_mutation_blocks(tmp_path):
@@ -60,44 +69,44 @@ def test_non_wiring_paths_pass(tmp_path, relative):
     assert rules(str(tmp_path / relative), tmp_path) == []
 
 
-def test_watcher_plugin_cache_path_blocks(tmp_path):
-    target = tmp_path / ".claude/plugins/cache/agent-discipline-watcher/hooks/pre_write.py"
-    assert rules(str(target), tmp_path) == ["live_client_surface"]
-
-
-def test_other_plugin_cache_path_blocks(tmp_path):
-    target = tmp_path / ".claude/plugins/cache/other/hooks/hooks.json"
-    assert rules(str(target), tmp_path) == ["live_client_surface"]
-
-
-def test_symlink_to_live_client_path_blocks(tmp_path):
+def test_symlink_into_the_install_blocks(tmp_path):
     home = tmp_path / "home"
     target = home / ".claude/skills/agent-discipline-watcher/SKILL.md"
     target.parent.mkdir(parents=True)
     target.touch()
     link = tmp_path / "outside-home"
     os.symlink(target, link)
-    assert rules(str(link), home) == ["live_client_surface"]
+    assert rules(str(link), home) == ["watcher_install_surface"]
 
 
-def test_nonexistent_live_client_target_blocks(tmp_path):
+def test_install_symlink_target_outside_a_client_home_stays_editable(tmp_path):
+    home = tmp_path / "home"
+    checkout = tmp_path / "dev" / "agent-discipline-watcher"
+    (checkout / "hooks").mkdir(parents=True)
+    (checkout / "hooks" / "pre_bash.py").touch()
+    (home / ".agents" / "skills").mkdir(parents=True)
+    os.symlink(checkout, home / ".agents" / "skills" / "agent-discipline-watcher")
+    assert rules(str(checkout / "hooks" / "pre_bash.py"), home) == []
+
+
+def test_nonexistent_install_target_blocks(tmp_path):
     target = tmp_path / ".claude/skills/agent-discipline-watcher/new.md"
-    assert rules(str(target), tmp_path) == ["live_client_surface"]
+    assert rules(str(target), tmp_path) == ["watcher_install_surface"]
 
 
-def test_symlink_plus_dotdot_still_reaches_the_live_client_path(tmp_path):
+def test_symlink_plus_dotdot_still_reaches_the_install_path(tmp_path):
     home = tmp_path / "home"
     (home / ".claude").mkdir(parents=True)
     (home / "tmp").mkdir()
     link = home / "tmp" / "link"
     os.symlink("../.claude", link)
-    sneaky = str(link) + "/../.claude/settings.json"
-    assert rules(sneaky, home) == ["live_client_surface"]
+    sneaky = str(link) + "/../.claude/skills/agent-discipline-watcher/SKILL.md"
+    assert rules(sneaky, home) == ["watcher_install_surface"]
 
 
 def test_unresolvable_tilde_user_is_treated_as_protected(tmp_path):
     sneaky = "~definitely-nonexistent-adw-test-user/.claude/settings.json"
-    assert rules(sneaky, tmp_path) == ["live_client_surface"]
+    assert rules(sneaky, tmp_path) == ["watcher_install_surface"]
 
 
 def test_unresolvable_tilde_user_releases_under_env_authorization(tmp_path, monkeypatch):
@@ -106,17 +115,17 @@ def test_unresolvable_tilde_user_releases_under_env_authorization(tmp_path, monk
     assert rules(sneaky, tmp_path) == []
 
 
-def test_symlinked_home_still_matches_live_client_path(tmp_path):
+def test_symlinked_home_still_matches_the_install_path(tmp_path):
     real_home = tmp_path / "real-home"
     real_home.mkdir()
     linked_home = tmp_path / "linked-home"
     os.symlink(real_home, linked_home, target_is_directory=True)
     target = linked_home / ".claude/skills/agent-discipline-watcher/SKILL.md"
-    assert rules(str(target), linked_home) == ["live_client_surface"]
+    assert rules(str(target), linked_home) == ["watcher_install_surface"]
 
 
 def test_tilde_token_resolves_against_the_given_home(tmp_path):
-    assert rules("~/.claude/settings.json", tmp_path) == ["live_client_surface"]
+    assert rules("~/.claude/skills/agent-discipline-watcher/SKILL.md", tmp_path) == ["watcher_install_surface"]
 
 
 def test_pending_placeholder_is_ignored(tmp_path):
@@ -128,8 +137,43 @@ def test_home_root_itself_is_not_a_surface(tmp_path):
     assert rules(str(tmp_path), tmp_path) == []
 
 
-def test_client_home_root_is_a_surface(tmp_path):
-    assert rules(str(tmp_path / ".claude"), tmp_path) == ["live_client_surface"]
+def test_client_home_root_is_left_to_host_permissions(tmp_path):
+    assert rules(str(tmp_path / ".claude"), tmp_path) == []
+
+
+def _wired(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("relative", [
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".codex/config.toml",
+    ".codex/hooks.json",
+    ".pi/agent/settings.json",
+    ".omp/agent/settings.json",
+])
+def test_a_write_that_drops_the_watcher_hooks_blocks(tmp_path, relative):
+    target = _wired(tmp_path / relative, '{"command": "~/x/agent-discipline-watcher/hooks/run.sh PreToolUse"}')
+    assert rules(str(target), tmp_path, None, '{"permissions": []}') == ["watcher_wiring_removal"]
+
+
+def test_a_write_that_keeps_the_watcher_hooks_passes(tmp_path):
+    target = _wired(tmp_path / ".claude/settings.json", '{"command": "x/agent-discipline-watcher/hooks/run.sh Stop"}')
+    kept = '{"permissions": ["Bash"], "command": "x/agent-discipline-watcher/hooks/run.sh Stop"}'
+    assert rules(str(target), tmp_path, None, kept) == []
+
+
+def test_an_unwired_settings_file_is_not_protected(tmp_path):
+    target = _wired(tmp_path / ".claude/settings.json", '{"permissions": []}')
+    assert rules(str(target), tmp_path, None, '{"permissions": ["Bash"]}') == []
+
+
+def test_an_unreadable_write_to_a_wired_file_blocks(tmp_path):
+    target = _wired(tmp_path / ".claude/settings.json", '{"command": "x/agent-discipline-watcher/hooks/run.sh Stop"}')
+    assert rules(str(target), tmp_path) == ["watcher_wiring_removal"]
 
 
 def test_existing_gate_config_is_sealed(tmp_path):
@@ -162,13 +206,13 @@ def test_stat_failure_fails_closed(tmp_path, monkeypatch):
 
 def test_env_authorization_releases_every_rule(tmp_path, monkeypatch):
     monkeypatch.setenv(protected.AUTH_ENV, "1")
-    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path) == []
+    assert rules(str(tmp_path / SURFACE), tmp_path) == []
 
 
 def test_a_config_key_does_not_release_the_path_rules(tmp_path):
     config = {protected.AUTH_KEY: True}
     assert protected.authorized(config) is False
-    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path, config) == ["live_client_surface"]
+    assert rules(str(tmp_path / SURFACE), tmp_path, config) == ["watcher_install_surface"]
     sealed = tmp_path / "project" / protected.CONFIG_SEAL_BASENAME
     sealed.parent.mkdir(parents=True)
     sealed.write_text("{}", encoding="utf-8")
@@ -177,11 +221,11 @@ def test_a_config_key_does_not_release_the_path_rules(tmp_path):
 
 def test_unset_authorization_env_does_not_release(tmp_path, monkeypatch):
     monkeypatch.setenv(protected.AUTH_ENV, "0")
-    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path) == ["live_client_surface"]
+    assert rules(str(tmp_path / SURFACE), tmp_path) == ["watcher_install_surface"]
 
 
 def test_findings_carry_the_scanner_shape(tmp_path):
-    finding = protected.path_findings(str(tmp_path / ".claude/settings.json"), None, tmp_path)[0]
+    finding = protected.path_findings(str(tmp_path / SURFACE), None, tmp_path)[0]
     assert set(finding) == {"family", "rule", "line", "detail", "force", "snippet", "action"}
     assert finding["force"] is True
     assert finding["family"] == "self_protection"
@@ -270,9 +314,11 @@ def test_the_grant_block_names_the_environment_escape(tmp_path):
     assert protected.AUTH_ENV in finding["action"]
 
 
-def test_the_live_client_block_names_the_environment_escape(tmp_path):
-    finding = protected.path_findings(str(tmp_path / ".claude/settings.json"), None, tmp_path)[0]
+def test_the_install_block_names_the_environment_escape(tmp_path):
+    target = tmp_path / ".claude/skills/agent-discipline-watcher/SKILL.md"
+    finding = protected.path_findings(str(target), None, tmp_path)[0]
     assert protected.AUTH_ENV in finding["action"]
+    assert "every self-protection rule" in finding["action"]
 
 
 def test_the_human_env_escape_still_releases_the_grant_block(tmp_path, monkeypatch):
@@ -282,9 +328,10 @@ def test_the_human_env_escape_still_releases_the_grant_block(tmp_path, monkeypat
 
 def test_a_non_dict_config_argument_does_not_raise(tmp_path):
     assert protected.authorized(["authorized"]) is False
-    assert rules(str(tmp_path / ".claude/settings.json"), tmp_path, ["x"]) == ["live_client_surface"]
+    target = tmp_path / ".claude/skills/agent-discipline-watcher/SKILL.md"
+    assert rules(str(target), tmp_path, ["x"]) == ["watcher_install_surface"]
 
 
-def test_is_live_client_path_matches_the_finding_rule(tmp_path):
-    assert protected.is_live_client_path(str(tmp_path / ".codex/config.toml"), tmp_path)
-    assert not protected.is_live_client_path(str(tmp_path / ".claude/jobs/x"), tmp_path)
+def test_is_install_surface_path_matches_the_finding_rule(tmp_path):
+    assert protected.is_install_surface_path(str(tmp_path / ".local/bin/agent-discipline"), tmp_path)
+    assert not protected.is_install_surface_path(str(tmp_path / ".claude/skills/humanizer/SKILL.md"), tmp_path)

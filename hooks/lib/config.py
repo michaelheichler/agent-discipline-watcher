@@ -30,7 +30,7 @@ STRICT_HARD_BLOCK_RULES = frozenset({
 })
 # Kept apart from the scanner set because protected.py and pre_bash.py emit these from a path and a command, not from file content.
 SELF_PROTECTION_RULES = frozenset({
-    "live_client_surface", "config_seal", "install_without_sandbox_home",
+    "watcher_install_surface", "watcher_wiring_removal", "config_seal", "install_without_sandbox_home",
     "commit_gate_bypass", "cap_override", "state_deletion", "state_mutation",
     # Joined here so that an observed agent cannot gate these open through project config to smuggle a write around the scanner.
     "inline_interpreter_write", "shell_payload_block", "interpreter_heredoc_write",

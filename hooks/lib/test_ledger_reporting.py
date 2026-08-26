@@ -475,11 +475,12 @@ class PreGateEvidenceTests(unittest.TestCase):
 
     def test_pre_write_records_a_protected_path_block(self):
         import pre_write
+        target = Path.home() / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"
         payload = {"session_id": "probe", "tool_use_id": "w1",
-                   "tool_input": {"file_path": str(Path.home() / ".claude" / "settings.json"), "content": "{}"}}
+                   "tool_input": {"file_path": str(target), "content": "{}"}}
         pre_write.run(payload, dict(self.cfg))
         rows = self._decisions("pre_write")
-        self.assertEqual([row["rule"] for row in rows], ["live_client_surface"])
+        self.assertEqual([row["rule"] for row in rows], ["watcher_install_surface"])
         self.assertEqual(rows[0]["outcome"], "block")
         self.assertEqual(rows[0]["turn_id"], "turn-9")
 

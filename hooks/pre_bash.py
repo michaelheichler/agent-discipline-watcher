@@ -16,13 +16,14 @@ from lib.opaque_write import (
     MUTATING_VERB_RE, SHELL_C_INTERPRETERS, _bare_interpreter_name, decode_pipe_findings, dynamic_heredoc_findings,
     inline_interpreter_findings, inplace_edit_findings, interpreter_stdin_findings, opaque_source_findings,
 )
-from lib.protected import authorized, is_live_client_path, path_findings
+from lib.protected import authorized, is_install_surface_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.shell_parse import (
-    _basename, _bare, _command_word_index, _expand_home, _is_file_target, _is_quoted,
-    _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths, _segment_paths,
+    _basename, _command_word_index, _is_quoted,
+    _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths,
     _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_paths, write_targets,
 )
+from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
 
 BASH_WRITE_CAP = 100
@@ -62,8 +63,8 @@ RULES: dict[str, tuple[str, str]] = {
     "state_mutation": (
         "Watcher state or gate config mutated",
         "Leave watcher state under host control and repair the reported finding."),
-    "live_client_surface": (
-        "Shell command mutates a live client install",
+    "watcher_install_surface": (
+        "Shell command mutates the live watcher install",
         "Change the repo source and reinstall instead of editing the live install."),
     "inline_interpreter_write": (
         "Inline interpreter payload can write or is unreadable",
@@ -182,8 +183,8 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
         hits.append("state_deletion")
     if "state_deletion" not in hits and any(_mutates_state(segment) for segment in segments):
         hits.append("state_mutation")
-    if any(_mutates_live_client(segment, home) for segment in segments):
-        hits.append("live_client_surface")
+    if any(_mutates_install_surface(segment, home) for segment in segments):
+        hits.append("watcher_install_surface")
     return [_finding(rule, command) for rule in hits]
 
 
@@ -314,7 +315,8 @@ def oversize_write(command: str) -> int | None:
 
 
 def _mutation_paths(command: str) -> list[str]:
-    return [path for segment in _segments(command) if _is_mutating(segment) for path in _segment_paths(segment)]
+    """Resolved per segment through the verb-aware destination rules, because a redirect elsewhere in the segment must not turn a read argument into a write target."""
+    return [path for segment in _segments(command) if _is_mutating(segment) for path in mutation_targets(segment)]
 
 
 def write_findings(
@@ -352,16 +354,18 @@ def _skips_commit_gate(segment: list[str]) -> bool:
 
 
 def _deletes_state(segment: list[str]) -> bool:
-    words = _words(segment)
-    if not any(_basename(word) in STATE_DELETE_VERBS for word in words):
+    if not any(_basename(word) in STATE_DELETE_VERBS for word in _words(segment)):
         return False
-    return any(STATE_TARGET_RE.search(word) for word in words)
+    return _targets_state(segment)
 
 
 def _mutates_state(segment: list[str]) -> bool:
-    return _is_mutating(segment) and any(
-        STATE_TARGET_RE.search(word) for word in _words(segment)
-    )
+    return _is_mutating(segment) and _targets_state(segment)
+
+
+def _targets_state(segment: list[str]) -> bool:
+    """Judged against the resolved destinations rather than every word, because naming the state root as a read argument is not a mutation of it."""
+    return any(STATE_TARGET_RE.search(target) for target in mutation_targets(segment))
 
 
 
@@ -371,67 +375,11 @@ def _is_mutating(segment: list[str]) -> bool:
 
 
 
-def _mutates_live_client(segment: list[str], home: str | os.PathLike[str] | None) -> bool:
-    """Require the mutating form and the live client target inside the same segment, so that a read stays allowed."""
+def _mutates_install_surface(segment: list[str], home: str | os.PathLike[str] | None) -> bool:
+    """Require the mutating form and the install target inside the same segment, so that a read stays allowed."""
     if not _is_mutating(segment):
         return False
-    return any(is_live_client_path(path, home) for path in _mutation_targets(segment))
-
-
-DESTINATION_LAST_ARG_VERBS = frozenset({"cp", "mv", "ln", "sed"})
-DESTINATION_ALL_ARGS_VERBS = frozenset({"rm", "unlink", "shred", "truncate", "chmod", "chown"})
-TARGET_DIR_VERBS = frozenset({"cp", "mv", "ln"})
-TARGET_DIR_FLAGS = frozenset({"-t", "--target-directory"})
-
-
-def _mutation_targets(segment: list[str]) -> list[str]:
-    """Because a copy's source argument is not its destination, a protected path used as input must not block a read."""
-    targets = [_expand_home(path) for path in _write_paths(segment)]
-    index = _command_word_index(segment)
-    if index >= len(segment):
-        return [path for path in targets if _is_file_target(path)]
-    verb = _basename(segment[index])
-    args = segment[index + 1:]
-    target_dir = _target_directory(args) if verb in TARGET_DIR_VERBS else None
-    if target_dir is not None:
-        targets.append(_expand_home(target_dir))
-    raw_args = [token for token in _drop_target_dir(args) if not _bare(token).startswith("-")]
-    if verb == "dd":
-        targets.extend(_expand_home(_bare(token)) for token in raw_args if _bare(token).startswith("of="))
-    elif verb in DESTINATION_LAST_ARG_VERBS and raw_args and target_dir is None:
-        targets.append(_expand_home(_bare(raw_args[-1])))
-    elif verb in DESTINATION_ALL_ARGS_VERBS:
-        targets.extend(_expand_home(_bare(token)) for token in raw_args)
-    return [path for path in targets if _is_file_target(path)]
-
-
-def _target_directory(args: list[str]) -> str | None:
-    """Because -t/--target-directory names the real destination for GNU cp, mv, and ln, the last positional argument must defer to it."""
-    for position, token in enumerate(args):
-        bare = _bare(token)
-        if bare.startswith("--target-directory="):
-            return bare.partition("=")[2]
-        if bare in TARGET_DIR_FLAGS and position + 1 < len(args):
-            return _bare(args[position + 1])
-    return None
-
-
-def _drop_target_dir(args: list[str]) -> list[str]:
-    kept = []
-    skip_next = False
-    for token in args:
-        if skip_next:
-            skip_next = False
-            continue
-        bare = _bare(token)
-        if bare.startswith("--target-directory="):
-            continue
-        if bare in TARGET_DIR_FLAGS:
-            skip_next = True
-            continue
-        kept.append(token)
-    return kept
-
+    return any(is_install_surface_path(path, home) for path in mutation_targets(segment))
 
 
 def _finding(rule: str, command: str) -> dict:
