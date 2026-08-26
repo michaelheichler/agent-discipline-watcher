@@ -32,5 +32,8 @@ disable =
     superfluous-parens,
     too-many-arguments,
     too-many-positional-arguments,
+# Disabled because a finding and a ledger row are value objects that must carry every serialized field,
+# so their attribute count is fixed by the wire shape rather than by design choice.
+    too-many-instance-attributes,
     too-many-public-methods,
     invalid-name
