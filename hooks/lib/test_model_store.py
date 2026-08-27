@@ -32,7 +32,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload[start:])
 
-    def log_message(self, template: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # pylint: disable=redefined-builtin
         return
 
 

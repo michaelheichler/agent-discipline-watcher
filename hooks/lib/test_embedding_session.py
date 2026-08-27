@@ -14,6 +14,12 @@ def _closed_port() -> int:
     return port
 
 
+@pytest.fixture(name="no_provisioning", autouse=True)
+def _no_provisioning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stubbed for every test in this file because the real call downloads a model into the user's home."""
+    monkeypatch.setattr(embedding_session, "start_detached", lambda _root: None)
+
+
 @pytest.fixture(name="absent_server")
 def _absent_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URLS", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
@@ -48,6 +54,14 @@ def test_the_lease_root_follows_the_configured_state_root(tmp_path) -> None:
 
     assert root == str(tmp_path / embedding_session.LEASE_DIRECTORY_NAME)
     assert embedding_session.lease_root_for({}) is None
+
+
+def test_an_absent_server_provisions_in_the_background(absent_server, tmp_path, monkeypatch) -> None:
+    asked = []
+    monkeypatch.setattr(embedding_session, "start_detached", asked.append)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert asked == [embedding_session.default_root()]
 
 
 def test_close_turn_releases_the_lease_the_turn_took(tmp_path) -> None:

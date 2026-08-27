@@ -13,9 +13,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-if __package__:
+try:
     from .model_artifacts import Artifact, ArchiveRuntime, ModelPlatform, PythonRuntime
-else:
+except ImportError:
     from model_artifacts import Artifact, ArchiveRuntime, ModelPlatform, PythonRuntime
 
 PARTIAL_SUFFIX = ".partial"
@@ -42,7 +42,7 @@ def verified(path: Path, artifact: Artifact) -> bool:
 
 
 @contextmanager
-def _exclusive(lock_path: Path) -> Iterator[None]:
+def exclusive(lock_path: Path) -> Iterator[None]:
     """Blocks rather than racing, because two sessions starting the same gigabyte download would both finish and both lose."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w", encoding="utf-8") as handle:
@@ -115,7 +115,7 @@ def ensure_artifact(artifact: Artifact, directory: Path) -> Path:
     destination = directory / artifact.name
     if verified(destination, artifact):
         return destination
-    with _exclusive(directory / (artifact.name + LOCK_SUFFIX)):
+    with exclusive(directory / (artifact.name + LOCK_SUFFIX)):
         if not verified(destination, artifact):
             download(artifact, destination)
     return destination
@@ -147,7 +147,7 @@ def _ensure_archive_runtime(runtime: ArchiveRuntime, directory: Path) -> Path:
     server = directory / runtime.server
     if server.is_file():
         return server
-    with _exclusive(directory.parent / (runtime.archive.name + LOCK_SUFFIX)):
+    with exclusive(directory.parent / (runtime.archive.name + LOCK_SUFFIX)):
         if not server.is_file():
             _extract(ensure_artifact(runtime.archive, directory), directory)
     if not server.is_file():
@@ -169,7 +169,7 @@ def _ensure_python_runtime(runtime: PythonRuntime, directory: Path) -> Path:
     interpreter = directory / VENV_DIRNAME / "bin" / "python"
     if interpreter.is_file():
         return interpreter
-    with _exclusive(directory.parent / (VENV_DIRNAME + LOCK_SUFFIX)):
+    with exclusive(directory.parent / (VENV_DIRNAME + LOCK_SUFFIX)):
         if not interpreter.is_file():
             subprocess.run(
                 (sys.executable, "-m", "venv", str(directory / VENV_DIRNAME)),

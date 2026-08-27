@@ -39,8 +39,8 @@ LLAMA_BUILD = "b10645"
 LLAMA_ARCHIVE = f"llama-{LLAMA_BUILD}-bin-ubuntu-x64.tar.gz"
 HUGGINGFACE_HOST = "https://huggingface.co"
 LLAMA_RELEASE_HOST = "https://github.com/ggml-org/llama.cpp/releases/download"
-# WHY: mlx-metal ships no server binary, so the Mac runtime is a wheel set pip resolves for the local interpreter.
-MLX_REQUIREMENTS = ("mlx==0.32.2", "mlx-embeddings==0.1.0", "transformers==5.16.1")
+# WHY: mlx ships no server binary, and transformers supplies only the tokenizer, so no torch is pulled.
+MLX_REQUIREMENTS = ("mlx==0.32.2", "transformers==5.16.1")
 SYSTEM_ALIASES = {"darwin": "darwin", "linux": "linux"}
 MACHINE_ALIASES = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x86_64", "amd64": "x86_64"}
 

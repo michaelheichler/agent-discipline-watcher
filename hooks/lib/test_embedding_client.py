@@ -126,19 +126,24 @@ def test_a_response_without_a_data_list_raises(server) -> None:
         embedding_client.embed(("alpha",))
 
 
-def test_the_last_session_unloads_and_the_others_do_not(server, tmp_path, monkeypatch) -> None:
-    port = server.server_address[1]
-    monkeypatch.setenv("ADW_EMBEDDING_UNLOAD_URL", f"http://127.0.0.1:{port}/unload")
+def test_the_last_session_stops_the_server_and_the_others_do_not(server, tmp_path, monkeypatch) -> None:
+    stopped = []
+
+    def _record_stop(root) -> bool:
+        stopped.append(root)
+        return True
+
+    monkeypatch.setattr(embedding_client, "stop", _record_stop)
 
     assert embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid()) is not None
     assert embedding_client.ensure_loaded("beta", 1000.0, tmp_path, os.getpid()) is not None
     assert embedding_client.release("alpha", 1001.0, tmp_path) is False
     assert embedding_client.release("beta", 1002.0, tmp_path) is True
-    assert server.received[-1][0] == "/unload"
+    assert stopped == [embedding_client.default_root()]
 
 
-def test_an_absent_unload_route_leaves_the_lease_released(server, tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("ADW_EMBEDDING_UNLOAD_URL", raising=False)
+def test_a_session_that_never_loaded_stops_nothing(server, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_client, "stop", lambda _root: False)
     embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid())
 
     assert embedding_client.release("solo", 1001.0, tmp_path) is False

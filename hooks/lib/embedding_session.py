@@ -7,8 +7,10 @@ from pathlib import Path
 
 try:
     from .embedding_client import ensure_loaded, release
+    from .embedding_server import default_root, start_detached
 except ImportError:
     from embedding_client import ensure_loaded, release
+    from embedding_server import default_root, start_detached
 
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
 
@@ -34,11 +36,14 @@ def owner_pid() -> int:
 
 
 def open_turn(session_id: str, root: str | None) -> str | None:
-    """Swallows every failure because an absent model server must cost the turn nothing at all."""
+    """Provisions in the background and answers None for this turn, because a first install downloads most of a gigabyte."""
     if not session_id or not enabled():
         return None
     try:
-        return ensure_loaded(session_id, time.time(), root, owner_pid())
+        answered = ensure_loaded(session_id, time.time(), root, owner_pid())
+        if answered is None:
+            start_detached(default_root())
+        return answered
     except Exception:
         return None
 

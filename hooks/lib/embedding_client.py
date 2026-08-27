@@ -10,13 +10,12 @@ import urllib.request
 try:
     from .embedding_lease import acquire, may_unload
     from .embedding_lease import release as release_lease
+    from .embedding_server import default_root, running_url, stop
 except ImportError:
     from embedding_lease import acquire, may_unload
     from embedding_lease import release as release_lease
+    from embedding_server import default_root, running_url, stop
 
-DEFAULT_URL = "http://127.0.0.1:8000/v1/embeddings"
-# WHY: The x86 box serves the GGUF build of the same model behind a router that binds loopback, so it is reachable only through a forwarded port.
-FALLBACK_URLS = ("http://127.0.0.1:8100/embed/v1/embeddings",)
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
 REQUEST_TIMEOUT_SECONDS = 30.0
 RETRY_DELAYS_SECONDS = (0.5, 2.0)
@@ -31,23 +30,19 @@ def _text_setting(env_name: str, default: str) -> str:
 
 
 def embeddings_urls() -> tuple[str, ...]:
-    """Ordered because the first reachable host wins, and a machine that serves neither must cost one refused connection, not a hang."""
+    """Falls back to the supervised server rather than a fixed address, because a pinned host is one developer's machine and not a release."""
     listed = os.environ.get("ADW_EMBEDDING_URLS", "").strip()
     if listed:
         return tuple(part.strip() for part in listed.split(",") if part.strip())
     single = os.environ.get("ADW_EMBEDDING_URL", "").strip()
     if single:
         return (single,)
-    return (DEFAULT_URL, *FALLBACK_URLS)
+    supervised = running_url(default_root())
+    return (supervised,) if supervised else ()
 
 
 def model_name() -> str:
     return _text_setting("ADW_EMBEDDING_MODEL", DEFAULT_MODEL)
-
-
-def unload_url() -> str:
-    """Empty by default because assuming an unload route a server may not serve would turn a working setup into a 404 every turn."""
-    return os.environ.get("ADW_EMBEDDING_UNLOAD_URL", "").strip()
 
 
 def _post(url: str, payload: dict, timeout: float) -> dict:
@@ -142,10 +137,7 @@ def ensure_loaded(
 
 
 def release(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Only the last live holder posts the unload, because another session mid turn would lose the model underneath it."""
+    """Only the last live holder stops the server, because another session mid turn would lose the model underneath it."""
     if not may_unload(session_id, now, root):
         return False
-    url = unload_url()
-    if not url:
-        return False
-    return _request(url, {"model": model_name()}, REQUEST_TIMEOUT_SECONDS) is not None
+    return stop(default_root())
