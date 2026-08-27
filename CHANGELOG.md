@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0 (2026-08-27)
+
+### Added
+
+- The 98 stop-slop patterns are detected. `hooks/lib/slop_phrase.py` carries the weighted marker and formulaic phrase rules, `hooks/lib/slop_structure.py` carries the ten structural categories, and `prose_structure.py` gained the rhythm statistics. Coverage was 6 of 98 before this release.
+- A judgement layer for the comments the deterministic rules cannot decide. `hooks/lib/narration_candidates.py` selects lines that open on a behaviour verb and still carry a why marker, which is exactly the set `_has_strong_why_marker` lets through today. `hooks/lib/judge.py` sends them to Haiku through the Claude Code session login, with `ANTHROPIC_API_KEY` stripped from the subprocess so no key is spent, and `ADW_JUDGE_ACTIVE` set so a nested hook cannot recurse. 22 such lines exist in this repository and the judge calls 21 of them narration.
+- `hooks/judge_review.py` on the `JudgeReview` route, registered as a second `PostToolUse` group over `Write|Edit|MultiEdit` with `async` and `asyncRewake`. It returns no permission decision, so it delays no write and weakens no gate. It wakes the session on exit 2 with one line per finding. Every deny-capable route still fails the merge-config async guard.
+- `hooks/lib/embedding_client.py` and `hooks/lib/embedding_lease.py`. The client speaks the OpenAI embeddings contract over an ordered host list, so the MLX server on a Mac and the GGUF server on an x86 box answer the same call and the first reachable host wins. An absent server returns None rather than raising, a 5xx is retried, and a 4xx raises because a wrong model or route is a configuration defect. The lease is refcounted per session, so the model loads once per machine rather than once per subagent, and a crashed session frees it through a dead-pid probe and a 900 second sweep.
+- `hooks/lib/slop_exemplars.jsonl`, 86 phrase exemplars rebuilt deterministically from the stop-slop reference files by `evals/build_slop_exemplars.py`. Single-word entries stay in the regex layer, where an exact literal belongs.
+
+### Changed
+
+- `passive_voice` catches the irregular participles. `be` plus an `ed` or `en` suffix is blind to `was built`, `is set`, `is read` and `was rebuilt`, which carried 10 of 13 real passives in a tracked sample. Detection is now 13 of 13 with no hit on six active-voice controls.
+- The sentence length cap is derived per document from Tukey's upper fence rather than fixed, and `SENTENCE_VARIATION_LIMIT` moved from 0.32 to 0.16, the measured p05 of 709 real paragraphs. The old value sat near the median and flagged 33.85 percent of ordinary writing.
+- Headings, setext underlines, and list-item labels are masked before the phrase rules run, so a title is no longer scanned as prose.
+
+### Measured and not shipped
+
+- `hooks/lib/slop_semantic.py` stays unwired, and a test fails if it reaches the scanner. Nearest-exemplar cosine caught at most 1 of 273 regex-confirmed pattern sentences at any cutoff whose hit rate on the other 2393 stayed under 1 percent. A general embedding measures topic and these patterns are topic-free structures, so no threshold separates them. `evals/measure_slop_semantic.py` reproduces the numbers.
+
 ## 0.17.8 (2026-08-26)
 
 ### Changed
