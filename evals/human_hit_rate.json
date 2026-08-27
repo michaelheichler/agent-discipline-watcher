@@ -1,0 +1,710 @@
+{
+  "corpus": "corpus_human_sentences.jsonl",
+  "corpus_sha256": "5c1ffd87398f4f0d7772aa9d4bea7644de23473c73e3a74803e937045ad2e13e",
+  "rules": {
+    "ai_tell": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "banned_adverb": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 198,
+          "rate": 0.0099
+        },
+        "literature": {
+          "hits": 447,
+          "rate": 0.02235
+        },
+        "news": {
+          "hits": 743,
+          "rate": 0.03715
+        }
+      },
+      "gate": "enforce",
+      "hits": 1388,
+      "rate": 0.023133
+    },
+    "banned_dash": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 630,
+          "rate": 0.0315
+        },
+        "literature": {
+          "hits": 225,
+          "rate": 0.01125
+        },
+        "news": {
+          "hits": 136,
+          "rate": 0.0068
+        }
+      },
+      "gate": "enforce",
+      "hits": 991,
+      "rate": 0.016517
+    },
+    "binary_contrast": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "literature": {
+          "hits": 2,
+          "rate": 0.0001
+        },
+        "news": {
+          "hits": 5,
+          "rate": 0.00025
+        }
+      },
+      "gate": "enforce",
+      "hits": 8,
+      "rate": 0.000133
+    },
+    "business_jargon": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 3,
+          "rate": 0.00015
+        },
+        "literature": {
+          "hits": 5,
+          "rate": 0.00025
+        },
+        "news": {
+          "hits": 6,
+          "rate": 0.0003
+        }
+      },
+      "gate": "enforce",
+      "hits": 14,
+      "rate": 0.000233
+    },
+    "corporate_idiom": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "news": {
+          "hits": 0,
+          "rate": 0.0
+        }
+      },
+      "gate": "observe",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "dash_break": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 6,
+          "rate": 0.0003
+        },
+        "literature": {
+          "hits": 532,
+          "rate": 0.0266
+        },
+        "news": {
+          "hits": 364,
+          "rate": 0.0182
+        }
+      },
+      "gate": "enforce",
+      "hits": 902,
+      "rate": 0.015033
+    },
+    "dead_metaphor": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "literature": {
+          "hits": 4,
+          "rate": 0.0002
+        },
+        "news": {
+          "hits": 0,
+          "rate": 0.0
+        }
+      },
+      "gate": "enforce",
+      "hits": 5,
+      "rate": 8.3e-05
+    },
+    "decade_apostrophe": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 2,
+          "rate": 0.0001
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 3,
+          "rate": 0.00015
+        }
+      },
+      "gate": "enforce",
+      "hits": 5,
+      "rate": 8.3e-05
+    },
+    "emphasis_crutch": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 2,
+      "rate": 3.3e-05
+    },
+    "empty_intensifier": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 130,
+          "rate": 0.0065
+        },
+        "literature": {
+          "hits": 877,
+          "rate": 0.04385
+        },
+        "news": {
+          "hits": 252,
+          "rate": 0.0126
+        }
+      },
+      "gate": "enforce",
+      "hits": 1259,
+      "rate": 0.020983
+    },
+    "expletive_there": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 19,
+          "rate": 0.00095
+        },
+        "literature": {
+          "hits": 38,
+          "rate": 0.0019
+        },
+        "news": {
+          "hits": 29,
+          "rate": 0.00145
+        }
+      },
+      "gate": "enforce",
+      "hits": 86,
+      "rate": 0.001433
+    },
+    "false_agency": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "filler": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 4,
+          "rate": 0.0002
+        },
+        "news": {
+          "hits": 5,
+          "rate": 0.00025
+        }
+      },
+      "gate": "enforce",
+      "hits": 9,
+      "rate": 0.00015
+    },
+    "filler_phrase": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 3,
+          "rate": 0.00015
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 23,
+          "rate": 0.00115
+        }
+      },
+      "gate": "enforce",
+      "hits": 26,
+      "rate": 0.000433
+    },
+    "formulaic_construction": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "formulaic_filler": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 2,
+          "rate": 0.0001
+        },
+        "literature": {
+          "hits": 27,
+          "rate": 0.00135
+        },
+        "news": {
+          "hits": 9,
+          "rate": 0.00045
+        }
+      },
+      "gate": "observe",
+      "hits": 38,
+      "rate": 0.000633
+    },
+    "formulaic_opener": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 28,
+          "rate": 0.0014
+        },
+        "literature": {
+          "hits": 45,
+          "rate": 0.00225
+        },
+        "news": {
+          "hits": 154,
+          "rate": 0.0077
+        }
+      },
+      "gate": "observe",
+      "hits": 227,
+      "rate": 0.003783
+    },
+    "hedge_stack": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "literature": {
+          "hits": 18,
+          "rate": 0.0009
+        },
+        "news": {
+          "hits": 5,
+          "rate": 0.00025
+        }
+      },
+      "gate": "observe",
+      "hits": 24,
+      "rate": 0.0004
+    },
+    "inflated_diction": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 3,
+          "rate": 0.00015
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 5,
+          "rate": 0.00025
+        }
+      },
+      "gate": "enforce",
+      "hits": 8,
+      "rate": 0.000133
+    },
+    "lazy_extreme": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 5,
+          "rate": 0.00025
+        },
+        "literature": {
+          "hits": 13,
+          "rate": 0.00065
+        },
+        "news": {
+          "hits": 15,
+          "rate": 0.00075
+        }
+      },
+      "gate": "enforce",
+      "hits": 33,
+      "rate": 0.00055
+    },
+    "long_sentence": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 645,
+          "rate": 0.03225
+        },
+        "literature": {
+          "hits": 2159,
+          "rate": 0.10795
+        },
+        "news": {
+          "hits": 675,
+          "rate": 0.03375
+        }
+      },
+      "gate": "observe",
+      "hits": 3479,
+      "rate": 0.057983
+    },
+    "meta_commentary": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 2,
+          "rate": 0.0001
+        }
+      },
+      "gate": "enforce",
+      "hits": 2,
+      "rate": 3.3e-05
+    },
+    "narrator_distance": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 2,
+          "rate": 0.0001
+        },
+        "literature": {
+          "hits": 4,
+          "rate": 0.0002
+        },
+        "news": {
+          "hits": 2,
+          "rate": 0.0001
+        }
+      },
+      "gate": "enforce",
+      "hits": 8,
+      "rate": 0.000133
+    },
+    "passive_voice": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 5138,
+          "rate": 0.2569
+        },
+        "literature": {
+          "hits": 4555,
+          "rate": 0.22775
+        },
+        "news": {
+          "hits": 4966,
+          "rate": 0.2483
+        }
+      },
+      "gate": "enforce",
+      "hits": 14659,
+      "rate": 0.244317
+    },
+    "performative_emphasis": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 1,
+          "rate": 5e-05
+        },
+        "news": {
+          "hits": 0,
+          "rate": 0.0
+        }
+      },
+      "gate": "enforce",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "prose_semicolon": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 465,
+          "rate": 0.02325
+        },
+        "literature": {
+          "hits": 2878,
+          "rate": 0.1439
+        },
+        "news": {
+          "hits": 104,
+          "rate": 0.0052
+        }
+      },
+      "gate": "enforce",
+      "hits": 3447,
+      "rate": 0.05745
+    },
+    "rhetorical_setup": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 2,
+          "rate": 0.0001
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 3,
+      "rate": 5e-05
+    },
+    "spaced_hyphen": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 129,
+          "rate": 0.00645
+        },
+        "literature": {
+          "hits": 4,
+          "rate": 0.0002
+        },
+        "news": {
+          "hits": 662,
+          "rate": 0.0331
+        }
+      },
+      "gate": "enforce",
+      "hits": 795,
+      "rate": 0.01325
+    },
+    "three_item_list": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 246,
+          "rate": 0.0123
+        },
+        "literature": {
+          "hits": 209,
+          "rate": 0.01045
+        },
+        "news": {
+          "hits": 28,
+          "rate": 0.0014
+        }
+      },
+      "gate": "off",
+      "hits": 483,
+      "rate": 0.00805
+    },
+    "throat_clearing_opener": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 4,
+          "rate": 0.0002
+        },
+        "news": {
+          "hits": 4,
+          "rate": 0.0002
+        }
+      },
+      "gate": "enforce",
+      "hits": 8,
+      "rate": 0.000133
+    },
+    "utilize": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 15,
+          "rate": 0.00075
+        },
+        "literature": {
+          "hits": 6,
+          "rate": 0.0003
+        },
+        "news": {
+          "hits": 0,
+          "rate": 0.0
+        }
+      },
+      "gate": "enforce",
+      "hits": 21,
+      "rate": 0.00035
+    },
+    "vague_declarative": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "literature": {
+          "hits": 0,
+          "rate": 0.0
+        },
+        "news": {
+          "hits": 1,
+          "rate": 5e-05
+        }
+      },
+      "gate": "enforce",
+      "hits": 1,
+      "rate": 1.7e-05
+    },
+    "vague_quantity": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 29,
+          "rate": 0.00145
+        },
+        "literature": {
+          "hits": 23,
+          "rate": 0.00115
+        },
+        "news": {
+          "hits": 16,
+          "rate": 0.0008
+        }
+      },
+      "gate": "enforce",
+      "hits": 68,
+      "rate": 0.001133
+    },
+    "weak_sentence_starter": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 9,
+          "rate": 0.00045
+        },
+        "literature": {
+          "hits": 216,
+          "rate": 0.0108
+        },
+        "news": {
+          "hits": 98,
+          "rate": 0.0049
+        }
+      },
+      "gate": "enforce",
+      "hits": 323,
+      "rate": 0.005383
+    },
+    "wordiness": {
+      "by_genre": {
+        "encyclopedia": {
+          "hits": 62,
+          "rate": 0.0031
+        },
+        "literature": {
+          "hits": 71,
+          "rate": 0.00355
+        },
+        "news": {
+          "hits": 26,
+          "rate": 0.0013
+        }
+      },
+      "gate": "enforce",
+      "hits": 159,
+      "rate": 0.00265
+    }
+  },
+  "sentences": {
+    "encyclopedia": 20000,
+    "literature": 20000,
+    "news": 20000
+  },
+  "silent_rules": [
+    "ai_closer",
+    "dramatic_fragmentation",
+    "filler_opener",
+    "greeting_opener",
+    "negative_listing",
+    "pronoun_apostrophe",
+    "throat_clearing"
+  ],
+  "unmeasurable_reason": "Document-scope rules need a whole document, so one sentence cannot fire them and their silence here proves nothing.",
+  "unmeasurable_rules": [
+    "low_sentence_variance",
+    "oversized_list",
+    "weighted_slop_marker"
+  ]
+}

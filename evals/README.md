@@ -1,5 +1,13 @@
 # Evaluations
 
+## Human baseline
+
+`build_human_corpus.py` draws 20000 sentences each from news, encyclopedia, and pre-1930 literature into `corpus_human_sentences.jsonl`, which is gitignored and rebuilt byte for byte. `measure_human_hit_rate.py` scores every shipped rule against it and writes `human_hit_rate.json`.
+
+A hit there is prose no model wrote, so it is the false-positive denominator the rules never had. Read it per genre. The corpus carries no technical or software prose, which is most of what the watcher scans, and a document-scope rule cannot fire on one sentence, so its silence proves nothing.
+
+## Response quality
+
 The harness compares response quality, not just length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.
 
 The rubric preserves the upstream scoring and meaning. Its two semicolon splices are split into separate sentences because this repository enforces that punctuation rule.
