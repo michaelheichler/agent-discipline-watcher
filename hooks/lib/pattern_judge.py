@@ -1,0 +1,100 @@
+"""Decides one named pattern per sentence, because the candidate stage answers what is near and only a reader answers what is true."""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from typing import NamedTuple
+
+try:
+    from .judge import JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, _environment, available
+except ImportError:
+    from judge import JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, _environment, available
+
+VIOLATING = "violating"
+CLEAN = "clean"
+BATCH_SIZE = 20
+JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
+# WHY: A stable system prompt keeps the prefix in the one hour cache, which is the difference between a cent and a fraction of one.
+SYSTEM_PROMPT = (
+    "You decide whether one sentence instantiates one named writing pattern.\n"
+    "You are given the pattern name, the fix the pattern asks for, and real examples of both sides.\n"
+    "Judge only the named pattern. A sentence may be poor for other reasons and still not instantiate this one.\n"
+    "Reply with a JSON array and nothing else. One object per numbered item, in order: "
+    '{"index": <number>, "verdict": "violating" or "clean"}.'
+)
+
+
+class PatternCandidate(NamedTuple):
+    path: str
+    line: int
+    text: str
+
+
+class PatternRule(NamedTuple):
+    name: str
+    action: str
+    violating_examples: tuple[str, ...]
+    clean_examples: tuple[str, ...]
+
+
+def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> str:
+    violating = "\n".join(f"  violating: {text}" for text in rule.violating_examples)
+    clean = "\n".join(f"  clean: {text}" for text in rule.clean_examples)
+    items = "\n".join(f"{index}. {candidate.text.strip()}" for index, candidate in enumerate(candidates))
+    return (
+        f"Pattern: {rule.name}\nFix it asks for: {rule.action}\n"
+        f"Real examples:\n{violating}\n{clean}\n\nJudge each sentence.\n{items}"
+    )
+
+
+def _command() -> list[str]:
+    return [
+        "claude", "-p",
+        "--model", JUDGE_MODEL,
+        "--output-format", "json",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--system-prompt", SYSTEM_PROMPT,
+    ]
+
+
+def _run(prompt: str) -> str | None:
+    try:
+        finished = subprocess.run(
+            [*_command(), prompt], capture_output=True, text=True, check=False,
+            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return finished.stdout if finished.returncode == 0 else None
+
+
+def parse_verdicts(raw: str, size: int) -> tuple[bool, ...]:
+    """An unanswered index reads as clean, because a finding the judge never confirmed must not reach the writer."""
+    body = json.loads(raw)
+    if not isinstance(body, dict) or body.get("is_error") or not isinstance(body.get("result"), str):
+        raise ValueError(f"the judge returned no usable result: {raw[:200]!r}")
+    found = JSON_ARRAY_RE.search(body["result"])
+    if found is None:
+        raise ValueError(f"the judge answered without a JSON array: {body['result'][:160]!r}")
+    parsed = {int(row["index"]): str(row["verdict"]) for row in json.loads(found.group(0))}
+    return tuple(parsed.get(index, CLEAN) == VIOLATING for index in range(size))
+
+
+def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...]) -> tuple[bool, ...]:
+    raw = _run(build_prompt(rule, batch))
+    return parse_verdicts(raw, len(batch)) if raw is not None else (False,) * len(batch)
+
+
+def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> tuple[PatternCandidate, ...]:
+    """An absent judge confirms nothing, because a candidate stage alone was measured at 0.62 precision on one rule."""
+    if not candidates or not available():
+        return ()
+    kept: list[PatternCandidate] = []
+    for start in range(0, len(candidates), BATCH_SIZE):
+        batch = candidates[start : start + BATCH_SIZE]
+        kept.extend(candidate for candidate, real in zip(batch, _batch_verdicts(rule, batch)) if real)
+    return tuple(kept)

@@ -137,15 +137,15 @@ def _stage_record(stage: Stage) -> dict[str, object]:
     }
 
 
+def _votes_violating(vector: tuple, development: list[tuple[str, tuple]], neighbours: int) -> bool:
+    ranked = sorted(development, key=lambda entry: -_similarity(vector, entry[1]))
+    return Counter(name for name, _ in ranked[:neighbours]).most_common(1)[0][0] == VIOLATING
+
+
 def flagged(rule_rows: list[dict], vectors: dict, neighbours: int) -> tuple[list[dict], int]:
     development = [(row["label"], vectors[row["text"]]) for row in rule_rows if row["split"] == "development"]
     held_out = [row for row in rule_rows if row["split"] == "held_out"]
-    kept = [
-        row for row in held_out
-        if Counter(
-            name for name, _ in sorted(development, key=lambda entry: -_similarity(vectors[row["text"]], entry[1]))
-        [:neighbours]).most_common(1)[0][0] == VIOLATING
-    ]
+    kept = [row for row in held_out if _votes_violating(vectors[row["text"]], development, neighbours)]
     missed = sum(row["label"] == VIOLATING for row in held_out) - sum(row["label"] == VIOLATING for row in kept)
     return kept, missed
 

@@ -14,7 +14,9 @@ A hit there is prose no model wrote, so it is the false-positive denominator the
 
 `qualify_embeddings.py` scores a k-NN vote over the embedding server, sweeping the neighbour count so a failure condemns the method and not one setting. It writes `qualification.json`.
 
-The verdict is no-go against a 0.90 floor. The gate reads the lower bound of the interval, not the ratio, because `binary_contrast` shows 1.0000 on 6 flagged rows and its interval starts at 0.61. The strongest rules are `filler_phrase` at 0.8889, `hedge_stack` at 0.8462 and `ai_closer` at 0.7921 with 0.97 recall.
+`measure_judge_stage.py` puts Haiku behind the candidate stage and judges every flagged row, since truncating the list would drop true positives out of the recall denominator. Precision after the judge: `ai_closer` and `utilize` at 1.0000, `vague_quantity` at 0.9519, `inflated_diction` at 0.9381, `business_jargon` at 0.9344. A rule at or above 0.85 there is a hard block, and a rule below it stays advisory.
+
+An earlier gate read the candidate stage alone against a 0.90 precision floor, which measured the wrong stage. The gate reads the lower bound of the interval, not the ratio, because `binary_contrast` shows 1.0000 on 6 flagged rows and its interval starts at 0.61. The strongest rules are `filler_phrase` at 0.8889, `hedge_stack` at 0.8462 and `ai_closer` at 0.7921 with 0.97 recall.
 
 ## Response quality
 
