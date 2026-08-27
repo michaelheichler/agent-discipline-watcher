@@ -300,13 +300,15 @@ def _is_gate_config(path: Path) -> bool:
 
 
 def _is_state_path(path: Path, home: str | os.PathLike[str] | None) -> bool:
-    override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
-    root = Path(override).expanduser() if override else _home_root(home) / ".agent-discipline"
-    try:
-        path.relative_to(_normalize(root))
-    except ValueError:
-        return False
-    return True
+    """The legacy root stays guarded because an unmigrated machine still keeps its state there."""
+    base = _home_root(home)
+    for root in (base / ".adw", base / ".agent-discipline"):
+        try:
+            path.relative_to(_normalize(root))
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def _is_unreadable_config_write(path: Path, content: str | None) -> bool:

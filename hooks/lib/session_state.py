@@ -11,14 +11,21 @@ from pathlib import Path
 
 STATE_FILENAME = "state.json"
 LOCK_FILENAME = ".lock"
+DATA_DIRNAME = ".adw"
+LEGACY_DATA_DIRNAME = ".agent-discipline"
 
 
 def plugin_data_home() -> Path:
-    """Honor CLAUDE_PLUGIN_DATA because plugin hosts need to control persistent storage, while the home fallback preserves standalone compatibility."""
-    override = os.environ.get("CLAUDE_PLUGIN_DATA", "").strip()
-    if override:
-        return Path(override)
-    return Path.home() / ".agent-discipline"
+    """One root for every install, because a host-supplied data directory used to split reports away from state and leases."""
+    home = Path.home() / DATA_DIRNAME
+    legacy = Path.home() / LEGACY_DATA_DIRNAME
+    if not home.exists() and legacy.is_dir():
+        legacy.rename(home)
+    return home
+
+
+def models_root() -> Path:
+    return plugin_data_home() / "models"
 
 
 def _default_root() -> Path:

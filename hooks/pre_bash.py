@@ -43,7 +43,7 @@ CAP_VARS = frozenset({
 })
 NO_VERIFY_FLAGS = frozenset({"--no-verify", "-n"})
 STATE_DELETE_VERBS = frozenset({"rm", "unlink", "shred"})
-STATE_TARGET_RE = re.compile(r"\.agent-discipline\b|agent-discipline/(?:state|ledger)")
+STATE_TARGET_RE = re.compile(r"\.adw\b|\.agent-discipline\b|agent-discipline/(?:state|ledger)")
 
 WRITE_OR_EDIT_ACTION = "Use the Write or Edit tool for file content."
 MAX_SHELL_PAYLOAD_DEPTH = 1

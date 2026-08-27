@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -207,11 +206,13 @@ class SelfGrantChainTests(unittest.TestCase):
         self.assertIn("self_protection/config_seal", self._blocked(response))
 
     def test_an_mcp_write_to_watcher_state_is_blocked(self):
-        plugin_data = self.root / "plugin-data"
-        target = plugin_data / "state" / "s1" / "state.json"
-        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": str(plugin_data)}):
-            response = self._mcp({"path": str(target)})
-        self.assertIn("self_protection/state_mutation", self._blocked(response))
+        target = Path.home() / ".adw" / "state" / "s1" / "state.json"
+        self.assertIn("self_protection/state_mutation", self._blocked(self._mcp({"path": str(target)})))
+
+    def test_an_mcp_write_to_the_legacy_state_home_is_blocked(self):
+        """The legacy root stays guarded because an unmigrated machine still keeps its state there."""
+        target = Path.home() / ".agent-discipline" / "state" / "s1" / "state.json"
+        self.assertIn("self_protection/state_mutation", self._blocked(self._mcp({"path": str(target)})))
 
     def test_an_mcp_write_to_the_watcher_install_is_blocked_by_path(self):
         target = Path.home() / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"

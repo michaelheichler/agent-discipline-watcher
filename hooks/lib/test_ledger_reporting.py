@@ -20,16 +20,17 @@ class LedgerRootTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_default_root_under_home(self):
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("CLAUDE_PLUGIN_DATA", None)
+        self.assertEqual(
+            reporting._default_ledger_root(),
+            Path.home() / session_state.DATA_DIRNAME / "ledger",
+        )
+
+    def test_a_host_data_directory_no_longer_moves_the_ledger(self):
+        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": str(self.root)}):
             self.assertEqual(
                 reporting._default_ledger_root(),
-                Path.home() / ".agent-discipline" / "ledger",
+                Path.home() / session_state.DATA_DIRNAME / "ledger",
             )
-
-    def test_default_root_prefers_plugin_data_env(self):
-        with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": str(self.root)}):
-            self.assertEqual(reporting._default_ledger_root(), self.root / "ledger")
 
     def test_ledger_dir_uses_override(self):
         self.assertEqual(reporting._ledger_dir(self.root), self.root)
@@ -569,7 +570,10 @@ def test_compact_block_deduplicates_path_line_and_rule() -> None:
 class WriteFullReportTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self._patch = mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": self._tmp.name})
+        self.reports = Path(self._tmp.name) / session_state.DATA_DIRNAME / "reports"
+        self._patch = mock.patch.object(
+            Path, "home", staticmethod(lambda root=self._tmp.name: Path(root))
+        )
         self._patch.start()
 
     def tearDown(self):
@@ -582,8 +586,7 @@ class WriteFullReportTests(unittest.TestCase):
 
     def test_report_lands_under_the_plugin_reports_directory(self):
         report = reporting.write_full_report([self._finding()])
-        expected_dir = Path(self._tmp.name) / "reports"
-        self.assertEqual(Path(report).parent, expected_dir)
+        self.assertEqual(Path(report).parent, self.reports)
         self.assertEqual(oct(os.stat(report).st_mode & 0o777), "0o600")
 
     def test_report_name_carries_session_and_turn(self):
@@ -594,21 +597,19 @@ class WriteFullReportTests(unittest.TestCase):
         self.assertIn("turn-3", Path(report).name)
 
     def test_pruning_keeps_only_the_newest_reports(self):
-        directory = Path(self._tmp.name) / "reports"
         with mock.patch.object(reporting, "MAX_REPORT_FILES", 3):
             for index in range(5):
                 reporting.write_full_report(
                     [self._finding()], {"session_id": f"s{index}", "turn_id": "t"}
                 )
-        self.assertEqual(len(list(directory.glob("*.json"))), 3)
+        self.assertEqual(len(list(self.reports.glob("*.json"))), 3)
 
     def test_hostile_session_and_turn_components_stay_confined_to_the_directory(self):
         report = reporting.write_full_report(
             [self._finding()],
             {"session_id": "../../escape", "turn_id": "../../../escape"},
         )
-        expected_dir = Path(self._tmp.name) / "reports"
-        self.assertEqual(Path(report).parent, expected_dir)
+        self.assertEqual(Path(report).parent, self.reports)
 
 
 if __name__ == "__main__":

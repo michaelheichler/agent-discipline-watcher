@@ -12,14 +12,25 @@ from lib import session_state
 
 
 class PluginDataHomeTests(unittest.TestCase):
-    def test_falls_back_to_legacy_home_when_unset(self):
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("CLAUDE_PLUGIN_DATA", None)
-            self.assertEqual(session_state.plugin_data_home(), Path.home() / ".agent-discipline")
+    def test_resolves_under_the_adw_home(self):
+        self.assertEqual(session_state.plugin_data_home(), Path.home() / ".adw")
+        self.assertEqual(session_state.models_root(), Path.home() / ".adw" / "models")
 
-    def test_prefers_claude_plugin_data_env(self):
+    def test_a_host_data_directory_no_longer_splits_the_root(self):
         with mock.patch.dict(os.environ, {"CLAUDE_PLUGIN_DATA": "/tmp/adw-data"}):
-            self.assertEqual(session_state.plugin_data_home(), Path("/tmp/adw-data"))
+            self.assertEqual(session_state.plugin_data_home(), Path.home() / ".adw")
+
+    def test_an_existing_legacy_home_is_migrated_once(self):
+        with tempfile.TemporaryDirectory() as home:
+            legacy = Path(home) / session_state.LEGACY_DATA_DIRNAME
+            (legacy / "state").mkdir(parents=True)
+            with mock.patch.object(Path, "home", staticmethod(lambda: Path(home))):
+                first = session_state.plugin_data_home()
+                second = session_state.plugin_data_home()
+
+            self.assertEqual(first, second)
+            self.assertTrue((first / "state").is_dir())
+            self.assertFalse(legacy.exists())
 
 
 class SessionStateTests(unittest.TestCase):
