@@ -14,12 +14,6 @@ def _closed_port() -> int:
     return port
 
 
-@pytest.fixture(name="no_provisioning", autouse=True)
-def _no_provisioning(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stubbed for every test in this file because the real call downloads a model into the user's home."""
-    monkeypatch.setattr(embedding_session, "start_detached", lambda _root: None)
-
-
 @pytest.fixture(name="absent_server")
 def _absent_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URLS", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")

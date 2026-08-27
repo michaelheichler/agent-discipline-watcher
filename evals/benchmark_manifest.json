@@ -1,0 +1,245 @@
+{
+  "benchmark": "benchmark_patterns.jsonl",
+  "max_rows_per_class": 300,
+  "measurable_rules": {
+    "banned_adverb": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 148,
+        "held_out_clean": 143,
+        "held_out_violating": 152
+      },
+      "violating_origins": {
+        "generated/sentence": 1,
+        "human/encyclopedia": 37,
+        "human/literature": 95,
+        "human/news": 167
+      }
+    },
+    "banned_dash": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 136,
+        "held_out_clean": 143,
+        "held_out_violating": 164
+      },
+      "violating_origins": {
+        "human/encyclopedia": 182,
+        "human/literature": 68,
+        "human/news": 50
+      }
+    },
+    "dash_break": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 144,
+        "held_out_clean": 143,
+        "held_out_violating": 156
+      },
+      "violating_origins": {
+        "human/encyclopedia": 3,
+        "human/literature": 169,
+        "human/news": 128
+      }
+    },
+    "empty_intensifier": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 161,
+        "held_out_clean": 143,
+        "held_out_violating": 139
+      },
+      "violating_origins": {
+        "human/encyclopedia": 21,
+        "human/literature": 213,
+        "human/news": 66
+      }
+    },
+    "expletive_there": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 34,
+        "held_out_clean": 143,
+        "held_out_violating": 53
+      },
+      "violating_origins": {
+        "generated/document": 1,
+        "human/encyclopedia": 19,
+        "human/literature": 38,
+        "human/news": 29
+      }
+    },
+    "formulaic_filler": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 17,
+        "held_out_clean": 143,
+        "held_out_violating": 23
+      },
+      "violating_origins": {
+        "generated/document": 2,
+        "human/encyclopedia": 2,
+        "human/literature": 27,
+        "human/news": 9
+      }
+    },
+    "formulaic_opener": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 103,
+        "held_out_clean": 143,
+        "held_out_violating": 130
+      },
+      "violating_origins": {
+        "generated/document": 6,
+        "human/encyclopedia": 28,
+        "human/literature": 45,
+        "human/news": 154
+      }
+    },
+    "long_sentence": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 153,
+        "held_out_clean": 143,
+        "held_out_violating": 147
+      },
+      "violating_origins": {
+        "human/encyclopedia": 50,
+        "human/literature": 197,
+        "human/news": 53
+      }
+    },
+    "passive_voice": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 153,
+        "held_out_clean": 143,
+        "held_out_violating": 147
+      },
+      "violating_origins": {
+        "generated/document": 1,
+        "generated/sentence": 1,
+        "human/encyclopedia": 104,
+        "human/literature": 102,
+        "human/news": 92
+      }
+    },
+    "prose_semicolon": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 152,
+        "held_out_clean": 143,
+        "held_out_violating": 148
+      },
+      "violating_origins": {
+        "human/encyclopedia": 40,
+        "human/literature": 255,
+        "human/news": 5
+      }
+    },
+    "spaced_hyphen": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 151,
+        "held_out_clean": 143,
+        "held_out_violating": 149
+      },
+      "violating_origins": {
+        "human/encyclopedia": 55,
+        "human/literature": 2,
+        "human/news": 243
+      }
+    },
+    "three_item_list": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 153,
+        "held_out_clean": 143,
+        "held_out_violating": 147
+      },
+      "violating_origins": {
+        "generated/document": 19,
+        "human/encyclopedia": 136,
+        "human/literature": 126,
+        "human/news": 19
+      }
+    },
+    "vague_quantity": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 39,
+        "held_out_clean": 143,
+        "held_out_violating": 31
+      },
+      "violating_origins": {
+        "generated/document": 2,
+        "human/encyclopedia": 29,
+        "human/literature": 23,
+        "human/news": 16
+      }
+    },
+    "weak_sentence_starter": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 150,
+        "held_out_clean": 143,
+        "held_out_violating": 150
+      },
+      "violating_origins": {
+        "human/encyclopedia": 8,
+        "human/literature": 202,
+        "human/news": 90
+      }
+    },
+    "wordiness": {
+      "counts": {
+        "development_clean": 157,
+        "development_violating": 73,
+        "held_out_clean": 143,
+        "held_out_violating": 87
+      },
+      "violating_origins": {
+        "generated/document": 1,
+        "human/encyclopedia": 62,
+        "human/literature": 71,
+        "human/news": 26
+      }
+    }
+  },
+  "minimum_rows": 30,
+  "sha256": "efb967047ccb86aa2d298d7db7cb93e779d03c80c4baa712fa560530187e7e74",
+  "unmeasurable_rules": {
+    "ai_closer": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "ai_tell": "3 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "binary_contrast": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "business_jargon": "17 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "corporate_idiom": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "dead_metaphor": "7 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "decade_apostrophe": "5 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "dramatic_fragmentation": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "emphasis_crutch": "2 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "false_agency": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "filler": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "filler_opener": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "filler_phrase": "27 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "formulaic_construction": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "greeting_opener": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "hedge_stack": "24 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "inflated_diction": "15 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "lazy_extreme": "33 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "low_sentence_variance": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "meta_commentary": "2 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "narrator_distance": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "negative_listing": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "oversized_list": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "performative_emphasis": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "pronoun_apostrophe": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "rhetorical_setup": "4 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "throat_clearing": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "throat_clearing_opener": "8 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "utilize": "22 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "vague_declarative": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "weighted_slop_marker": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything."
+  }
+}
