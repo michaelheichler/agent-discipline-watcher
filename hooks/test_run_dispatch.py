@@ -1,5 +1,3 @@
-"""Subprocess tests for hooks/run.sh event dispatch."""
-
 import os
 import subprocess
 import tempfile
@@ -21,6 +19,7 @@ DISPATCH = {
     "SubagentStart": "subagent_start.py",
     "SubagentStop": "subagent_stop.py",
     "Stop": "stop.py",
+    "JudgeReview": "judge_review.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)

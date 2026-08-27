@@ -428,7 +428,8 @@ class MergeConfigTests(unittest.TestCase):
             twice = settings.read_text()
         assert once == twice, "a second merge from the same skill dir must not duplicate entries"
         merged = json.loads(twice)
-        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 1, "Stop": 1}
+        # PostToolUse carries two because the blocking record gate and the detached judge run on different matchers.
+        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 2, "Stop": 1}
         for lifecycle, expected in expected_counts.items():
             groups = merged["hooks"][lifecycle]
             watcher_groups = [group for group in groups if SKILL_DIR in json.dumps(group)]
@@ -649,22 +650,34 @@ def assert_claude_merge(merged: dict) -> None:
     assert "compact" in merged["hooks"]["SessionStart"][0]["matcher"]
 
 
-def assert_no_async_flags(merged: dict) -> None:
-    watcher_groups = [
-        group for lifecycle in merged["hooks"].values() for group in lifecycle
+# WHY: JudgeReview returns no permission decision, so detaching it weakens no gate, while any deny-capable route still fails this guard.
+ASYNC_ADVISORY_ROUTE = "run.sh JudgeReview"
+
+
+def _watcher_hook_entries(merged: dict) -> list[dict]:
+    return [
+        hook
+        for lifecycle in merged["hooks"].values()
+        for group in lifecycle
         if "agent-discipline-watcher" in json.dumps(group)
+        for hook in group["hooks"]
     ]
-    assert watcher_groups, "watcher groups must be present before the async guard runs"
-    for group in watcher_groups:
-        for hook in group["hooks"]:
-            assert "async" not in hook, (
-                "async detaches a deny-capable watcher entry so it cannot block: "
-                f"{hook['command']}"
-            )
-            assert "asyncRewake" not in hook, (
-                "asyncRewake implies async and would detach this deny-capable entry: "
-                f"{hook['command']}"
-            )
+
+
+def assert_no_async_flags(merged: dict) -> None:
+    entries = _watcher_hook_entries(merged)
+    assert entries, "watcher groups must be present before the async guard runs"
+    for hook in entries:
+        if ASYNC_ADVISORY_ROUTE in hook.get("command", ""):
+            continue
+        assert "async" not in hook, (
+            "async detaches a deny-capable watcher entry so it cannot block: "
+            f"{hook['command']}"
+        )
+        assert "asyncRewake" not in hook, (
+            "asyncRewake implies async and would detach this deny-capable entry: "
+            f"{hook['command']}"
+        )
 
 
 def assert_claude_pretool_shape(entries: list[dict]) -> None:
