@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.0**.
+Deterministic discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.5**.
 
 Findings block at their configured gate. Strict code-comment findings always block.
 

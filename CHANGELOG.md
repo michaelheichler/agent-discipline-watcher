@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.18.5 (2026-08-27)
+
+### Added
+
+- The watcher reads meaning, not only exact words. `hooks/lib/pattern_semantic.py` embeds each prose sentence, votes it against one pattern's own violating and clean neighbours, and sends the survivors to Haiku, which decides whether the sentence instantiates the named pattern. A rule speaks only where that pipeline has been measured, and blocks only where the measurement reached 0.85 precision. `ai_closer` and `utilize` measured 1.0000, `vague_quantity` 0.9519, `inflated_diction` 0.9381, `business_jargon` 0.9344.
+- `hooks/lib/pattern_judge.py`, a judge for any named pattern. It receives the rule, the fix the rule asks for, and real examples of both sides, and returns one verdict per sentence. An absent judge confirms nothing, a skipped index reads as clean, and no candidates costs no call. Rules run in parallel because one call each in series cost a file scan 228 seconds.
+- `hooks/lib/pattern_exemplars.jsonl`, 2099 real sentences over 27 rules with their source recorded, drawn only from the development split so a later measurement stays honest. Their vectors are cached under the exemplar digest, which took a warm scan from 40 seconds to 11.
+- A human baseline the rules never had. `evals/build_human_corpus.py` draws 60000 sentences from news, encyclopedia and pre-1930 books, and `evals/measure_human_hit_rate.py` scores every rule against prose no model wrote. The AI tell rules fire on 1 sentence in 20000 or fewer there, and `passive_voice` fires on 1 in 4.
+- An assistant corpus. `evals/build_ai_corpus.py` draws 88148 sentences from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k` across 69 models. Rules that name an AI tell fire zero times on human prose, so without this side they had no violating class and could not be measured at all.
+- `evals/build_pattern_benchmark.py` and `evals/qualify_embeddings.py`. The clean side is drawn half from human prose and half from assistant replies, because a human-only clean side lets provenance stand in for the pattern. 27 rules reach the row count where 15 did before.
+
+### Changed
+
+- The long sentence finding no longer asks for fragments. It said "Split it into shorter sentences", which is the instruction that produced the fragmentation the other rules then punished. It now says to cut a clause or break at one clause boundary.
+- Every watcher path lives under `~/.adw`. State, ledger, reports, leases, models and caches share one root, an existing `~/.agent-discipline` is migrated once, and a host-supplied data directory no longer splits reports away from the rest.
+- The embedding runtime is provisioned rather than assumed. `hooks/lib/model_artifacts.py` resolves the platform to its own build, `hooks/lib/model_store.py` downloads and verifies it by pinned sha256, and `hooks/lib/embedding_server.py` starts it on a free port and stops it by pid. The hard-coded host addresses are gone.
+- The turn bracket is opt-in behind `ADW_EMBEDDING_ENABLED`.
+
+### Fixed
+
+- `process_alive` treated a killed child as running, because a zombie answers a signal probe. Unload reported success while the process was still there.
+- The test suite could provision a model into the user's home and leave servers running. Every test now points at a temporary root and cannot start or stop a real one.
+
 ## 0.18.0 (2026-08-27)
 
 ### Added
