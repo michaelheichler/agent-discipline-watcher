@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.6 (2026-08-27)
+
+### Fixed
+
+- Every hook except `SessionStart` crashed on a machine whose only `python3` was the macOS system build. `hooks/run.sh` hardcoded `PYTHON=python3` and checked only that the name resolved, so a 3.9 interpreter was accepted and then died importing `enum.StrEnum`. Claude Code reported "failed with non-blocking status code" on `PreToolUse`, `PostToolUse` and `PostToolBatch` while the contract still loaded, so the watcher went on announcing rules it had stopped enforcing. `run.sh` now probes every candidate on PATH and runs the first that meets the floor.
+- An exported `CDPATH` corrupted the paths `run.sh` derives from its own location, because `cd` echoes the directory when it resolves one through `CDPATH`. `run.sh` unsets it before resolving anything.
+
+### Changed
+
+- The interpreter floor is Python 3.14, declared once in `.python-version`. `run.sh`, `.pylintrc` and the CI workflow all read that file, and `hooks/test_run_dispatch.py` fails when any of them drifts from it.
+- A missing or too-old interpreter now exits 2 and names the version it needs. Failing loudly beats a watcher that loads its contract and enforces nothing.
+
+### Added
+
+- `ADW_PYTHON` names the interpreter to run the hooks with, for a qualifying build that is not on the PATH the client starts with. It is probed against the same floor, and one below it fails rather than falling back.
+
 ## 0.18.5 (2026-08-27)
 
 ### Added

@@ -1,6 +1,6 @@
 [MAIN]
-# Set because plan decision D6 pins this codebase to stdlib-only Python 3.11 or newer.
-py-version = 3.11
+# Kept in step with .python-version, which is the one place the interpreter floor is declared.
+py-version = 3.14
 
 [MESSAGES CONTROL]
 disable =

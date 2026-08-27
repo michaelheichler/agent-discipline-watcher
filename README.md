@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.5**.
+Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.6**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -83,7 +83,9 @@ Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Restart O
 
 ## Requirements
 
-Python 3 and a Unix shell. The meaning layer additionally wants the `claude` CLI on PATH for the judge, and it provisions its own model.
+A Unix shell and the Python named in `.python-version`, which is the one place the floor is declared. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor, so a system `python3` too old to import this codebase is skipped rather than trusted. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that silently stops enforcing is worse than one that refuses to start.
+
+The meaning layer additionally wants the `claude` CLI on PATH for the judge, and it provisions its own model.
 
 ## Environment variables
 
@@ -125,6 +127,7 @@ Each also has a project config key in `.agent-discipline.json`. The config key w
 
 | variable | effect |
 | --- | --- |
+| `ADW_PYTHON` | Interpreter to run the hooks with, skipping the PATH search. It is still probed against `.python-version`, and a build below the floor fails rather than falling back. Set it when the qualifying Python is not on the PATH your client starts with. |
 | `ADW_ALLOW_PROTECTED_EDIT` | Permits an edit to the watcher's own install. Self protection blocks a Bash write that sets this inline. |
 | `ADW_JUDGE_ACTIVE` | Set by the watcher on the judge subprocess so a nested hook cannot recurse. Not for you to set. |
 | `ADW_JUDGE_LIVE` | Set to 1 to run the tests that spend a real model call. Those tests skip otherwise. |

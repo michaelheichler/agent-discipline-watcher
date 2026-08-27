@@ -212,6 +212,7 @@ class PluginCommandExecutionTests(unittest.TestCase):
     def test_a_plugin_root_with_spaces_still_resolves(self):
         staging = Path(self.tmp.name) / "with space"
         shutil.copytree(ROOT / "hooks", staging / "hooks")
+        shutil.copy2(ROOT / ".python-version", staging / ".python-version")
         env = dict(self.env, CLAUDE_PLUGIN_ROOT=str(staging))
         command = '"${CLAUDE_PLUGIN_ROOT}"/hooks/run.sh PreToolUse'
         result = subprocess.run(command, shell=True, env=env, capture_output=True, text=True, check=False)
