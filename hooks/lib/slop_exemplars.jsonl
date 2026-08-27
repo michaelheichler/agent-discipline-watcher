@@ -1,0 +1,86 @@
+{"rule": "binary_contrast", "source": "structures.md", "text": "Not because this. Because that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "Not because this, but because that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "this isn't the problem. this is."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "The answer isn't this. It's that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "It feels like this. It's actually that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "The question isn't this. It's that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "Not this. But that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "not this, it's that"}
+{"rule": "binary_contrast", "source": "structures.md", "text": "isn't this, it's that"}
+{"rule": "binary_contrast", "source": "structures.md", "text": "It's not this. It's that."}
+{"rule": "binary_contrast", "source": "structures.md", "text": "stops being this and starts being that"}
+{"rule": "binary_contrast", "source": "structures.md", "text": "doesn't mean this, but actually that"}
+{"rule": "binary_contrast", "source": "structures.md", "text": "is about this but not that"}
+{"rule": "binary_contrast", "source": "structures.md", "text": "not just this but also that"}
+{"rule": "negative_listing", "source": "structures.md", "text": "Not a this... Not a that... A it."}
+{"rule": "negative_listing", "source": "structures.md", "text": "It wasn't this. It wasn't that. It was it."}
+{"rule": "dramatic_fragmentation", "source": "structures.md", "text": "this. That's it. That's the this."}
+{"rule": "dramatic_fragmentation", "source": "structures.md", "text": "this. And that. And it."}
+{"rule": "dramatic_fragmentation", "source": "structures.md", "text": "This unlocks something. this."}
+{"rule": "rhetorical_setup", "source": "structures.md", "text": "What if this?"}
+{"rule": "rhetorical_setup", "source": "structures.md", "text": "Here's what I mean:"}
+{"rule": "rhetorical_setup", "source": "structures.md", "text": "Think about it:"}
+{"rule": "rhetorical_setup", "source": "structures.md", "text": "And that's okay."}
+{"rule": "formulaic_construction", "source": "structures.md", "text": "By the time this, I was that."}
+{"rule": "formulaic_construction", "source": "structures.md", "text": "this that isn't that"}
+{"rule": "false_agency", "source": "structures.md", "text": "a complaint becomes a fix"}
+{"rule": "false_agency", "source": "structures.md", "text": "a bet lives or dies in days"}
+{"rule": "false_agency", "source": "structures.md", "text": "the decision emerges"}
+{"rule": "false_agency", "source": "structures.md", "text": "the culture shifts"}
+{"rule": "false_agency", "source": "structures.md", "text": "the conversation moves toward"}
+{"rule": "false_agency", "source": "structures.md", "text": "the data tells us"}
+{"rule": "false_agency", "source": "structures.md", "text": "the market rewards"}
+{"rule": "narrator_distance", "source": "structures.md", "text": "Nobody designed this."}
+{"rule": "narrator_distance", "source": "structures.md", "text": "This happens because..."}
+{"rule": "narrator_distance", "source": "structures.md", "text": "This is why..."}
+{"rule": "narrator_distance", "source": "structures.md", "text": "People tend to..."}
+{"rule": "passive_voice", "source": "structures.md", "text": "this was created"}
+{"rule": "passive_voice", "source": "structures.md", "text": "It is believed that"}
+{"rule": "passive_voice", "source": "structures.md", "text": "Mistakes were made"}
+{"rule": "passive_voice", "source": "structures.md", "text": "The decision was reached"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's the thing:"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's what this"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's this this"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's that this"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's why this"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "The uncomfortable truth is"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "It turns out"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "The real this is"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Let me be clear"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "The truth is,"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "I'll say it again:"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "I'm going to be honest"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Can we talk about"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's what I find interesting"}
+{"rule": "throat_clearing_opener", "source": "phrases.md", "text": "Here's the problem though"}
+{"rule": "emphasis_crutch", "source": "phrases.md", "text": "Let that sink in."}
+{"rule": "emphasis_crutch", "source": "phrases.md", "text": "This matters because"}
+{"rule": "emphasis_crutch", "source": "phrases.md", "text": "Make no mistake"}
+{"rule": "emphasis_crutch", "source": "phrases.md", "text": "Here's why that matters"}
+{"rule": "business_jargon", "source": "phrases.md", "text": "Take a step back"}
+{"rule": "business_jargon", "source": "phrases.md", "text": "On the same page"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "At its core"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "In today's this"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "It's worth noting"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "At the end of the day"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "When it comes to"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "In a world where"}
+{"rule": "filler_phrase", "source": "phrases.md", "text": "The reality is"}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "You already know this, but"}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "But that's another post"}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "this is a feature, not a bug"}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "Dressed up as"}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "The rest of this essay explains..."}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "Let me walk you through..."}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "In this section, we'll..."}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "As we'll see..."}
+{"rule": "meta_commentary", "source": "phrases.md", "text": "I want to explore..."}
+{"rule": "performative_emphasis", "source": "phrases.md", "text": "They exist, I promise"}
+{"rule": "telling_not_showing", "source": "phrases.md", "text": "This is genuinely hard"}
+{"rule": "telling_not_showing", "source": "phrases.md", "text": "This is what leadership actually looks like"}
+{"rule": "telling_not_showing", "source": "phrases.md", "text": "This is what this actually looks like"}
+{"rule": "vague_declarative", "source": "phrases.md", "text": "The reasons are structural"}
+{"rule": "vague_declarative", "source": "phrases.md", "text": "The implications are significant"}
+{"rule": "vague_declarative", "source": "phrases.md", "text": "This is the deepest problem"}
+{"rule": "vague_declarative", "source": "phrases.md", "text": "The stakes are high"}
+{"rule": "vague_declarative", "source": "phrases.md", "text": "The consequences are real"}
