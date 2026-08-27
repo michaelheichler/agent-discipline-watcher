@@ -1,0 +1,31 @@
+{
+  "corpus": "corpus_human_sentences.jsonl",
+  "coverage_gap": "No technical or software prose in any genre, which is most of what the watcher actually scans.",
+  "genres": {
+    "encyclopedia": {
+      "documents": 2763,
+      "note": "Present-day expository prose, and the only genre here carrying citation and markup residue.",
+      "sentences": 20000,
+      "source": "Wikipedia.csv"
+    },
+    "literature": {
+      "documents": 1682,
+      "note": "Public domain books, mostly published before 1930 with a few modern exceptions, so the register is not contemporary.",
+      "sentences": 20000,
+      "source": "Gutenberg.csv"
+    },
+    "news": {
+      "documents": 1770,
+      "note": "Rows were scraped with ' . ' standing in for line breaks, so bylines and datelines split into fragments.",
+      "sentences": 20000,
+      "source": "CNN_DailyMail.csv"
+    }
+  },
+  "rejected_sources": {
+    "Human.csv": "A concatenation of Wikipedia.csv and Gutenberg.csv, so reading it would count the same sentences twice.",
+    "Shuffled_Human.csv": "A concatenation of Wikipedia.csv and Gutenberg.csv, so reading it would count the same sentences twice."
+  },
+  "sentences_per_document": 12,
+  "sentences_per_genre": 20000,
+  "sha256": "5c1ffd87398f4f0d7772aa9d4bea7644de23473c73e3a74803e937045ad2e13e"
+}
