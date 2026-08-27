@@ -1,0 +1,123 @@
+{
+  "exemplars": "pattern_exemplars.jsonl",
+  "judge_examples": 4,
+  "origins": {
+    "assistant/arena": 498,
+    "assistant/wildchat": 754,
+    "human/encyclopedia": 251,
+    "human/literature": 262,
+    "human/news": 334
+  },
+  "per_side": 40,
+  "rules": {
+    "ai_closer": {
+      "action": "End when the answer is done.",
+      "judge_precision": 1.0
+    },
+    "ai_tell": {
+      "action": "Use a plain verb.",
+      "judge_precision": null
+    },
+    "banned_adverb": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": null
+    },
+    "banned_dash": {
+      "action": "Use ASCII hyphen or rewrite the sentence.",
+      "judge_precision": null
+    },
+    "binary_contrast": {
+      "action": "State the positive claim directly.",
+      "judge_precision": null
+    },
+    "business_jargon": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": 0.9344
+    },
+    "dash_break": {
+      "action": "Use a comma, period, or parentheses.",
+      "judge_precision": null
+    },
+    "dead_metaphor": {
+      "action": "State the concrete effect.",
+      "judge_precision": null
+    },
+    "empty_intensifier": {
+      "action": "Drop the modifier or choose a stronger word.",
+      "judge_precision": null
+    },
+    "expletive_there": {
+      "action": "Lead with the subject and an active verb.",
+      "judge_precision": null
+    },
+    "filler_phrase": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": null
+    },
+    "formulaic_filler": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": null
+    },
+    "formulaic_opener": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": null
+    },
+    "hedge_stack": {
+      "action": "Keep one hedge or state the fact.",
+      "judge_precision": null
+    },
+    "inflated_diction": {
+      "action": "State what it shows.",
+      "judge_precision": 0.9381
+    },
+    "lazy_extreme": {
+      "action": "Name the actual scope or number.",
+      "judge_precision": null
+    },
+    "long_sentence": {
+      "action": "Cut a clause or break at one clause boundary. Do not chop it into fragments.",
+      "judge_precision": null
+    },
+    "passive_voice": {
+      "action": "Name the actor and use an active verb.",
+      "judge_precision": null
+    },
+    "prose_semicolon": {
+      "action": "Use a comma, period, or parentheses.",
+      "judge_precision": null
+    },
+    "spaced_hyphen": {
+      "action": "Use a comma, period, parentheses, or close up the hyphen.",
+      "judge_precision": null
+    },
+    "three_item_list": {
+      "action": "Use two items or vary the structure.",
+      "judge_precision": null
+    },
+    "throat_clearing": {
+      "action": "Start with the point.",
+      "judge_precision": null
+    },
+    "throat_clearing_opener": {
+      "action": "Replace the phrase with a concrete statement.",
+      "judge_precision": null
+    },
+    "utilize": {
+      "action": "Use 'use'.",
+      "judge_precision": 1.0
+    },
+    "vague_quantity": {
+      "action": "Give the number or name the items.",
+      "judge_precision": 0.9519
+    },
+    "weak_sentence_starter": {
+      "action": "Lead with the subject or the verb.",
+      "judge_precision": null
+    },
+    "wordiness": {
+      "action": "Use 'to'.",
+      "judge_precision": null
+    }
+  },
+  "sha256": "62d3983c59fbadb391a04c6d588a639ec25bd92be15020ff508746c5b2379dd1"
+}

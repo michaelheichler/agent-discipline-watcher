@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 try:
@@ -14,6 +15,7 @@ except ImportError:
 VIOLATING = "violating"
 CLEAN = "clean"
 BATCH_SIZE = 20
+JUDGE_WORKERS = 8
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
 # WHY: A stable system prompt keeps the prefix in the one hour cache, which is the difference between a cent and a fraction of one.
 SYSTEM_PROMPT = (
@@ -98,3 +100,15 @@ def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> tupl
         batch = candidates[start : start + BATCH_SIZE]
         kept.extend(candidate for candidate, real in zip(batch, _batch_verdicts(rule, batch)) if real)
     return tuple(kept)
+
+
+def confirm_all(
+    work: tuple[tuple[PatternRule, tuple[PatternCandidate, ...]], ...]
+) -> dict[str, tuple[PatternCandidate, ...]]:
+    """Judged in parallel because one call per rule ran 27 times in series and cost a file scan 228 seconds."""
+    pending = tuple((rule, candidates) for rule, candidates in work if candidates)
+    if not pending or not available():
+        return {}
+    with ThreadPoolExecutor(max_workers=min(JUDGE_WORKERS, len(pending))) as pool:
+        answered = pool.map(lambda entry: confirm(entry[0], entry[1]), pending)
+    return {rule.name: kept for (rule, _candidates), kept in zip(pending, answered) if kept}
