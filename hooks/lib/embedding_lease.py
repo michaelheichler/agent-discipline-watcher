@@ -52,11 +52,14 @@ def _is_live(row: dict, now: float) -> bool:
     return _process_alive(row.get("pid"))
 
 
-def acquire(session_id: str, now: float, root: str | os.PathLike[str] | None) -> None:
+def acquire(
+    session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
+) -> None:
+    """Takes the owner pid rather than reading its own, because a hook process exits at once and its lease would be swept as dead."""
     directory = lease_root(root)
     directory.mkdir(parents=True, exist_ok=True)
     path = _lease_path(directory, session_id)
-    payload = json.dumps({"session_id": session_id, "pid": os.getpid(), "renewed_at": now})
+    payload = json.dumps({"session_id": session_id, "pid": owner_pid, "renewed_at": now})
     temporary = path.with_suffix(".tmp")
     temporary.write_text(payload, encoding="utf-8")
     temporary.replace(path)

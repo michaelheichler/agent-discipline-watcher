@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -129,8 +130,8 @@ def test_the_last_session_unloads_and_the_others_do_not(server, tmp_path, monkey
     port = server.server_address[1]
     monkeypatch.setenv("ADW_EMBEDDING_UNLOAD_URL", f"http://127.0.0.1:{port}/unload")
 
-    assert embedding_client.ensure_loaded("alpha", 1000.0, tmp_path) is True
-    assert embedding_client.ensure_loaded("beta", 1000.0, tmp_path) is True
+    assert embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid()) is not None
+    assert embedding_client.ensure_loaded("beta", 1000.0, tmp_path, os.getpid()) is not None
     assert embedding_client.release("alpha", 1001.0, tmp_path) is False
     assert embedding_client.release("beta", 1002.0, tmp_path) is True
     assert server.received[-1][0] == "/unload"
@@ -138,7 +139,7 @@ def test_the_last_session_unloads_and_the_others_do_not(server, tmp_path, monkey
 
 def test_an_absent_unload_route_leaves_the_lease_released(server, tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("ADW_EMBEDDING_UNLOAD_URL", raising=False)
-    embedding_client.ensure_loaded("solo", 1000.0, tmp_path)
+    embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid())
 
     assert embedding_client.release("solo", 1001.0, tmp_path) is False
     assert not list(tmp_path.glob("*.lease.json"))
@@ -148,5 +149,5 @@ def test_an_absent_server_does_not_leave_a_lease_behind(tmp_path, monkeypatch) -
     monkeypatch.setenv("ADW_EMBEDDING_URL", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
     monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", ())
 
-    assert embedding_client.ensure_loaded("solo", 1000.0, tmp_path) is False
+    assert embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid()) is None
     assert not list(tmp_path.glob("*.lease.json"))

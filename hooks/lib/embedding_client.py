@@ -21,6 +21,8 @@ DEFAULT_MODEL = "LFM2.5-Embedding-350M"
 REQUEST_TIMEOUT_SECONDS = 30.0
 RETRY_DELAYS_SECONDS = (0.5, 2.0)
 PROBE_TEXT = "probe"
+# WHY: One short attempt per host, because the probe runs inside a prompt hook and a retry ladder there would stall the turn.
+PROBE_TIMEOUT_SECONDS = 3.0
 Vector = tuple[float, ...]
 
 
@@ -119,13 +121,24 @@ def embed(texts: tuple[str, ...]) -> tuple[Vector, ...] | None:
     return vectors
 
 
-def ensure_loaded(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
+def probe() -> str | None:
+    """Names the host that answered, because the caller records which of the two carried the session."""
+    payload = {"model": model_name(), "input": [PROBE_TEXT]}
+    for url in embeddings_urls():
+        if _request_once(url, payload, PROBE_TIMEOUT_SECONDS) is not None:
+            return url
+    return None
+
+
+def ensure_loaded(
+    session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
+) -> str | None:
     """Takes the lease before the probe, because a session that unloads between the probe and the first real call would strand the caller."""
-    acquire(session_id, now, root)
-    if embed((PROBE_TEXT,)) is not None:
-        return True
-    release_lease(session_id, root)
-    return False
+    acquire(session_id, now, root, owner_pid)
+    answered = probe()
+    if answered is None:
+        release_lease(session_id, root)
+    return answered
 
 
 def release(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:

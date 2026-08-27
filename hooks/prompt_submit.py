@@ -11,6 +11,7 @@ from typing import NamedTuple, cast
 
 from lib import payloads, reporting
 from lib.config import effective_hook_config, gate_state
+from lib.embedding_session import lease_root_for, open_turn
 from lib.hookio import read_payload, write_payload
 from lib.prompt_text import has_file_token, mask_examples
 from lib.scanner import scan_all, scannable_text
@@ -362,6 +363,7 @@ def run(payload: object, config: object = None) -> dict:
 
         if not session_id:
             return gate("")
+        open_turn(session_id, lease_root_for(cast(dict, cfg)))
         return _run_with_prompt_ledger(session_id, cfg, gate)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError, re.error):
         sys.stderr.write("agent-discipline-watcher: prompt hook failed\n")
