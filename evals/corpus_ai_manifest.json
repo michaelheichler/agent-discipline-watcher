@@ -1,0 +1,46 @@
+{
+  "corpus": "corpus_ai_sentences.jsonl",
+  "coverage_note": "Chat replies to public prompts, so the register is conversational and carries no repository or code review prose.",
+  "sentences_per_document": 12,
+  "sha256": "0f87067953deefa4442b6124ca73f46766668062eb8776eb249836142bd24030",
+  "sources": {
+    "arena": {
+      "dataset": "lmarena-ai/arena-human-preference-100k",
+      "distinct_models": 55,
+      "models": {
+        "claude-3-5-sonnet-20240620": 2524,
+        "claude-3-haiku-20240307": 779,
+        "claude-3-opus-20240229": 1131,
+        "gemini-1.5-pro-api-0514": 1203,
+        "gemini-1.5-pro-exp-0801": 825,
+        "gemma-2-27b-it": 935,
+        "gemma-2-9b-it": 985,
+        "gpt-4-turbo-2024-04-09": 865,
+        "gpt-4o-2024-05-13": 1211,
+        "llama-3-70b-instruct": 1166,
+        "llama-3-8b-instruct": 824,
+        "llama-3.1-405b-instruct": 964
+      },
+      "sentences": 30000
+    },
+    "wildchat": {
+      "dataset": "allenai/WildChat-4.8M",
+      "distinct_models": 14,
+      "models": {
+        "gpt-3.5-turbo-0125": 1709,
+        "gpt-3.5-turbo-0301": 4609,
+        "gpt-3.5-turbo-0613": 13638,
+        "gpt-4-0125-preview": 2785,
+        "gpt-4-0314": 2265,
+        "gpt-4-1106-preview": 4690,
+        "gpt-4.1-mini-2025-04-14": 1944,
+        "gpt-4o-2024-05-13": 2772,
+        "gpt-4o-2024-08-06": 13434,
+        "gpt-4o-mini-2024-07-18": 6173,
+        "o1-mini-2024-09-12": 1577,
+        "o1-preview-2024-09-12": 1487
+      },
+      "sentences": 58148
+    }
+  }
+}

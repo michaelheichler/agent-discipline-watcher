@@ -14,11 +14,8 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
 from lib.scanner import scan_all
 from lib.slop_harness import _rule_scopes
 
-from build_human_corpus import _sentences
-
 HUMAN_CORPUS = REPOSITORY_ROOT / "evals" / "corpus_human_sentences.jsonl"
-SLOP_SENTENCES = REPOSITORY_ROOT / "hooks" / "lib" / "corpus_slop_sentence.jsonl"
-SLOP_DOCUMENTS = REPOSITORY_ROOT / "hooks" / "lib" / "corpus_slop_document.jsonl"
+AI_CORPUS = REPOSITORY_ROOT / "evals" / "corpus_ai_sentences.jsonl"
 OUTPUT_PATH = REPOSITORY_ROOT / "evals" / "benchmark_patterns.jsonl"
 MANIFEST_PATH = REPOSITORY_ROOT / "evals" / "benchmark_manifest.json"
 SAMPLE_NAME = "sample.md"
@@ -62,13 +59,9 @@ def _human_texts() -> list[tuple[str, str]]:
     return [(row["text"], f"human/{row['genre']}") for row in _read_jsonl(HUMAN_CORPUS)]
 
 
-def _slop_texts() -> list[tuple[str, str]]:
-    """Keeps the generated side because a pattern the regexes name lives there and almost never in prose written before 2020."""
-    texts = [(row["text"], "generated/sentence") for row in _read_jsonl(SLOP_SENTENCES) if row["label"] == "ai"]
-    for row in _read_jsonl(SLOP_DOCUMENTS):
-        if row["label"] == "ai":
-            texts.extend((text, "generated/document") for text in _sentences(row["text"]))
-    return texts
+def _ai_texts() -> list[tuple[str, str]]:
+    """Kept because a rule that names an AI tell fired zero times on 60000 human sentences and had no violating class at all."""
+    return [(row["text"], f"assistant/{row['source']}") for row in _read_jsonl(AI_CORPUS)]
 
 
 def _sampled(texts: list[tuple[str, str]]) -> list[Sample]:
@@ -111,8 +104,16 @@ def _named_rules(samples: list[Sample]) -> list[str]:
     return sorted(observed | set(_rule_scopes()))
 
 
+def _balanced_clean(samples: list[Sample]) -> list[Sample]:
+    """Draws the clean side from both origins because a human-only clean class lets provenance stand in for the pattern."""
+    human = [sample for sample in samples if not sample.rules and sample.origin.startswith("human/")]
+    assistant = [sample for sample in samples if not sample.rules and sample.origin.startswith("assistant/")]
+    paired = [sample for pair in zip(human, assistant) for sample in pair]
+    return paired or human or assistant
+
+
 def build(samples: list[Sample]) -> tuple[list[Row], dict[str, str]]:
-    clean = [sample for sample in samples if not sample.rules]
+    clean = _balanced_clean(samples)
     rows: list[Row] = []
     rejected: dict[str, str] = {}
     for rule in _named_rules(samples):
@@ -134,8 +135,13 @@ def _rule_manifest(rows: list[Row]) -> dict[str, dict]:
     rules: dict[str, dict] = {}
     for rule in sorted({row.rule for row in rows}):
         mine = [row for row in rows if row.rule == rule]
-        origins = Counter(row.origin for row in mine if row.label == "violating")
-        rules[rule] = {"counts": _counts(mine), "violating_origins": dict(sorted(origins.items()))}
+        violating = Counter(row.origin for row in mine if row.label == "violating")
+        clean = Counter(row.origin for row in mine if row.label == "clean")
+        rules[rule] = {
+            "counts": _counts(mine),
+            "violating_origins": dict(sorted(violating.items())),
+            "clean_origins": dict(sorted(clean.items())),
+        }
     return rules
 
 
@@ -151,7 +157,7 @@ def build_manifest(rows: list[Row], rejected: dict[str, str], digest: str) -> di
 
 
 def main() -> None:
-    samples = _ordered(_sampled(_human_texts() + _slop_texts()))
+    samples = _ordered(_sampled(_human_texts() + _ai_texts()))
     rows, rejected = build(samples)
     serialized = serialize(rows)
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()

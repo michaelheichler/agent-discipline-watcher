@@ -20,6 +20,7 @@ hooks/lib/corpus_slop_*.jsonl
 # 60000 sentences of third-party prose, too large to review in a diff and rebuildable byte for byte.
 # Rebuild with: python3 evals/build_human_corpus.py
 evals/corpus_human_sentences.jsonl
+evals/corpus_ai_sentences.jsonl
 
 # Third-party sentences again, rebuilt byte for byte from the corpus above.
 # Rebuild with: python3 evals/build_pattern_benchmark.py

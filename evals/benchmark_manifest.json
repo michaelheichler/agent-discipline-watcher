@@ -2,205 +2,581 @@
   "benchmark": "benchmark_patterns.jsonl",
   "max_rows_per_class": 300,
   "measurable_rules": {
-    "banned_adverb": {
+    "ai_closer": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 148,
-        "held_out_clean": 143,
-        "held_out_violating": 152
+        "development_clean": 158,
+        "development_violating": 155,
+        "held_out_clean": 142,
+        "held_out_violating": 145
       },
       "violating_origins": {
-        "generated/sentence": 1,
-        "human/encyclopedia": 37,
-        "human/literature": 95,
-        "human/news": 167
+        "assistant/arena": 83,
+        "assistant/wildchat": 217
+      }
+    },
+    "ai_tell": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 34,
+        "held_out_clean": 142,
+        "held_out_violating": 38
+      },
+      "violating_origins": {
+        "assistant/arena": 17,
+        "assistant/wildchat": 54,
+        "human/news": 1
+      }
+    },
+    "banned_adverb": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 145,
+        "held_out_clean": 142,
+        "held_out_violating": 155
+      },
+      "violating_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 151,
+        "human/encyclopedia": 8,
+        "human/literature": 31,
+        "human/news": 53
       }
     },
     "banned_dash": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 136,
-        "held_out_clean": 143,
-        "held_out_violating": 164
+        "development_clean": 158,
+        "development_violating": 133,
+        "held_out_clean": 142,
+        "held_out_violating": 167
       },
       "violating_origins": {
-        "human/encyclopedia": 182,
-        "human/literature": 68,
-        "human/news": 50
+        "assistant/arena": 18,
+        "assistant/wildchat": 102,
+        "human/encyclopedia": 105,
+        "human/literature": 43,
+        "human/news": 32
+      }
+    },
+    "binary_contrast": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 23,
+        "held_out_clean": 142,
+        "held_out_violating": 34
+      },
+      "violating_origins": {
+        "assistant/arena": 15,
+        "assistant/wildchat": 34,
+        "human/encyclopedia": 1,
+        "human/literature": 2,
+        "human/news": 5
+      }
+    },
+    "business_jargon": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 97,
+        "held_out_clean": 142,
+        "held_out_violating": 98
+      },
+      "violating_origins": {
+        "assistant/arena": 45,
+        "assistant/wildchat": 136,
+        "human/encyclopedia": 3,
+        "human/literature": 5,
+        "human/news": 6
       }
     },
     "dash_break": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 144,
-        "held_out_clean": 143,
-        "held_out_violating": 156
+        "development_clean": 158,
+        "development_violating": 145,
+        "held_out_clean": 142,
+        "held_out_violating": 155
       },
       "violating_origins": {
+        "assistant/wildchat": 2,
         "human/encyclopedia": 3,
-        "human/literature": 169,
-        "human/news": 128
+        "human/literature": 168,
+        "human/news": 127
+      }
+    },
+    "dead_metaphor": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 48,
+        "held_out_clean": 142,
+        "held_out_violating": 41
+      },
+      "violating_origins": {
+        "assistant/arena": 18,
+        "assistant/wildchat": 66,
+        "human/encyclopedia": 1,
+        "human/literature": 4
       }
     },
     "empty_intensifier": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 161,
-        "held_out_clean": 143,
-        "held_out_violating": 139
+        "development_clean": 158,
+        "development_violating": 153,
+        "held_out_clean": 142,
+        "held_out_violating": 147
       },
       "violating_origins": {
-        "human/encyclopedia": 21,
-        "human/literature": 213,
-        "human/news": 66
+        "assistant/arena": 43,
+        "assistant/wildchat": 71,
+        "human/encyclopedia": 10,
+        "human/literature": 132,
+        "human/news": 44
       }
     },
     "expletive_there": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 34,
-        "held_out_clean": 143,
-        "held_out_violating": 53
+        "development_clean": 158,
+        "development_violating": 125,
+        "held_out_clean": 142,
+        "held_out_violating": 151
       },
       "violating_origins": {
-        "generated/document": 1,
+        "assistant/arena": 68,
+        "assistant/wildchat": 122,
         "human/encyclopedia": 19,
         "human/literature": 38,
         "human/news": 29
       }
     },
-    "formulaic_filler": {
+    "filler_phrase": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 17,
-        "held_out_clean": 143,
-        "held_out_violating": 23
+        "development_clean": 158,
+        "development_violating": 50,
+        "held_out_clean": 142,
+        "held_out_violating": 65
       },
       "violating_origins": {
-        "generated/document": 2,
+        "assistant/arena": 32,
+        "assistant/wildchat": 57,
+        "human/encyclopedia": 3,
+        "human/news": 23
+      }
+    },
+    "formulaic_filler": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 158,
+        "held_out_clean": 142,
+        "held_out_violating": 142
+      },
+      "violating_origins": {
+        "assistant/arena": 110,
+        "assistant/wildchat": 155,
         "human/encyclopedia": 2,
-        "human/literature": 27,
-        "human/news": 9
+        "human/literature": 26,
+        "human/news": 7
       }
     },
     "formulaic_opener": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 103,
-        "held_out_clean": 143,
-        "held_out_violating": 130
+        "development_clean": 158,
+        "development_violating": 146,
+        "held_out_clean": 142,
+        "held_out_violating": 154
       },
       "violating_origins": {
-        "generated/document": 6,
-        "human/encyclopedia": 28,
-        "human/literature": 45,
-        "human/news": 154
+        "assistant/arena": 74,
+        "assistant/wildchat": 142,
+        "human/encyclopedia": 14,
+        "human/literature": 19,
+        "human/news": 51
+      }
+    },
+    "hedge_stack": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 64,
+        "held_out_clean": 142,
+        "held_out_violating": 61
+      },
+      "violating_origins": {
+        "assistant/arena": 55,
+        "assistant/wildchat": 46,
+        "human/encyclopedia": 1,
+        "human/literature": 18,
+        "human/news": 5
+      }
+    },
+    "inflated_diction": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 150,
+        "held_out_clean": 142,
+        "held_out_violating": 150
+      },
+      "violating_origins": {
+        "assistant/arena": 91,
+        "assistant/wildchat": 203,
+        "human/encyclopedia": 3,
+        "human/news": 3
+      }
+    },
+    "lazy_extreme": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 47,
+        "held_out_clean": 142,
+        "held_out_violating": 50
+      },
+      "violating_origins": {
+        "assistant/arena": 17,
+        "assistant/wildchat": 47,
+        "human/encyclopedia": 5,
+        "human/literature": 13,
+        "human/news": 15
       }
     },
     "long_sentence": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 153,
-        "held_out_clean": 143,
-        "held_out_violating": 147
+        "development_clean": 158,
+        "development_violating": 151,
+        "held_out_clean": 142,
+        "held_out_violating": 149
       },
       "violating_origins": {
-        "human/encyclopedia": 50,
-        "human/literature": 197,
-        "human/news": 53
+        "assistant/arena": 13,
+        "assistant/wildchat": 33,
+        "human/encyclopedia": 42,
+        "human/literature": 168,
+        "human/news": 44
       }
     },
     "passive_voice": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 153,
-        "held_out_clean": 143,
-        "held_out_violating": 147
+        "development_clean": 158,
+        "development_violating": 151,
+        "held_out_clean": 142,
+        "held_out_violating": 149
       },
       "violating_origins": {
-        "generated/document": 1,
-        "generated/sentence": 1,
-        "human/encyclopedia": 104,
-        "human/literature": 102,
-        "human/news": 92
+        "assistant/arena": 37,
+        "assistant/wildchat": 85,
+        "human/encyclopedia": 71,
+        "human/literature": 56,
+        "human/news": 51
       }
     },
     "prose_semicolon": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 152,
-        "held_out_clean": 143,
-        "held_out_violating": 148
+        "development_clean": 158,
+        "development_violating": 156,
+        "held_out_clean": 142,
+        "held_out_violating": 144
       },
       "violating_origins": {
-        "human/encyclopedia": 40,
-        "human/literature": 255,
+        "assistant/arena": 6,
+        "assistant/wildchat": 23,
+        "human/encyclopedia": 37,
+        "human/literature": 229,
         "human/news": 5
       }
     },
     "spaced_hyphen": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
+        "development_clean": 158,
         "development_violating": 151,
-        "held_out_clean": 143,
+        "held_out_clean": 142,
         "held_out_violating": 149
       },
       "violating_origins": {
-        "human/encyclopedia": 55,
+        "assistant/arena": 43,
+        "assistant/wildchat": 98,
+        "human/encyclopedia": 31,
         "human/literature": 2,
-        "human/news": 243
+        "human/news": 126
       }
     },
     "three_item_list": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 153,
-        "held_out_clean": 143,
-        "held_out_violating": 147
+        "development_clean": 158,
+        "development_violating": 134,
+        "held_out_clean": 142,
+        "held_out_violating": 166
       },
       "violating_origins": {
-        "generated/document": 19,
-        "human/encyclopedia": 136,
-        "human/literature": 126,
-        "human/news": 19
+        "assistant/arena": 84,
+        "assistant/wildchat": 172,
+        "human/encyclopedia": 24,
+        "human/literature": 16,
+        "human/news": 4
+      }
+    },
+    "throat_clearing": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 77,
+        "held_out_clean": 142,
+        "held_out_violating": 79
+      },
+      "violating_origins": {
+        "assistant/arena": 107,
+        "assistant/wildchat": 49
+      }
+    },
+    "throat_clearing_opener": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 72,
+        "held_out_clean": 142,
+        "held_out_violating": 75
+      },
+      "violating_origins": {
+        "assistant/arena": 113,
+        "assistant/wildchat": 26,
+        "human/literature": 4,
+        "human/news": 4
+      }
+    },
+    "utilize": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
+      "counts": {
+        "development_clean": 158,
+        "development_violating": 151,
+        "held_out_clean": 142,
+        "held_out_violating": 149
+      },
+      "violating_origins": {
+        "assistant/arena": 51,
+        "assistant/wildchat": 233,
+        "human/encyclopedia": 10,
+        "human/literature": 6
       }
     },
     "vague_quantity": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 39,
-        "held_out_clean": 143,
-        "held_out_violating": 31
+        "development_clean": 158,
+        "development_violating": 131,
+        "held_out_clean": 142,
+        "held_out_violating": 151
       },
       "violating_origins": {
-        "generated/document": 2,
+        "assistant/arena": 68,
+        "assistant/wildchat": 146,
         "human/encyclopedia": 29,
         "human/literature": 23,
         "human/news": 16
       }
     },
     "weak_sentence_starter": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 150,
-        "held_out_clean": 143,
-        "held_out_violating": 150
+        "development_clean": 158,
+        "development_violating": 151,
+        "held_out_clean": 142,
+        "held_out_violating": 149
       },
       "violating_origins": {
-        "human/encyclopedia": 8,
-        "human/literature": 202,
-        "human/news": 90
+        "assistant/arena": 43,
+        "assistant/wildchat": 174,
+        "human/encyclopedia": 2,
+        "human/literature": 57,
+        "human/news": 24
       }
     },
     "wordiness": {
+      "clean_origins": {
+        "assistant/arena": 57,
+        "assistant/wildchat": 93,
+        "human/encyclopedia": 57,
+        "human/literature": 30,
+        "human/news": 63
+      },
       "counts": {
-        "development_clean": 157,
-        "development_violating": 73,
-        "held_out_clean": 143,
-        "held_out_violating": 87
+        "development_clean": 158,
+        "development_violating": 106,
+        "held_out_clean": 142,
+        "held_out_violating": 123
       },
       "violating_origins": {
-        "generated/document": 1,
+        "assistant/arena": 15,
+        "assistant/wildchat": 55,
         "human/encyclopedia": 62,
         "human/literature": 71,
         "human/news": 26
@@ -208,38 +584,26 @@
     }
   },
   "minimum_rows": 30,
-  "sha256": "efb967047ccb86aa2d298d7db7cb93e779d03c80c4baa712fa560530187e7e74",
+  "sha256": "3e7569772794557753832c16895d0078b33445b6ce0ddf4bb63b6a90d91a614f",
   "unmeasurable_rules": {
-    "ai_closer": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "ai_tell": "3 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "binary_contrast": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "business_jargon": "17 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "corporate_idiom": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "dead_metaphor": "7 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "corporate_idiom": "11 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
     "decade_apostrophe": "5 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
     "dramatic_fragmentation": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "emphasis_crutch": "2 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "false_agency": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "filler": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "filler_opener": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "filler_phrase": "27 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "formulaic_construction": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "greeting_opener": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "hedge_stack": "24 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "inflated_diction": "15 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "lazy_extreme": "33 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "emphasis_crutch": "3 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "false_agency": "4 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "filler": "10 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "filler_opener": "5 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "formulaic_construction": "11 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "greeting_opener": "5 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
     "low_sentence_variance": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "meta_commentary": "2 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "narrator_distance": "9 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "meta_commentary": "8 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "narrator_distance": "34 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
     "negative_listing": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "oversized_list": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "performative_emphasis": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "oversized_list": "4 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "performative_emphasis": "17 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
     "pronoun_apostrophe": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "rhetorical_setup": "4 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "throat_clearing": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "throat_clearing_opener": "8 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "utilize": "22 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "vague_declarative": "1 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
-    "weighted_slop_marker": "0 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything."
+    "rhetorical_setup": "26 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "vague_declarative": "2 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything.",
+    "weighted_slop_marker": "11 violating rows found. Fewer than 30 rows on one side, so no precision measured here would mean anything."
   }
 }

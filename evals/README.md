@@ -8,11 +8,13 @@ A hit there is prose no model wrote, so it is the false-positive denominator the
 
 ## Qualification gate
 
-`build_pattern_benchmark.py` pairs each rule against its own clean class. The violating side is real sentences the rule fires on. The clean side is real sentences no rule fires on. Both sides come from the corpora above. The content hash decides which half a sentence lands in, so a rebuild puts it on the same side. 15 rules reach the row count. 31 do not, and the manifest names each one with the count it reached.
+`build_ai_corpus.py` draws assistant replies from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k` into `corpus_ai_sentences.jsonl`, 88148 sentences across 69 models. A rule that names an AI tell fires zero times on human prose, so without this side it has no violating class at all.
+
+`build_pattern_benchmark.py` pairs each rule against its own clean class. The violating side is real sentences the rule fires on. The clean side is real sentences no rule fires on, drawn half from human prose and half from assistant replies. A human-only clean side would let provenance stand in for the pattern. The content hash decides which half a sentence lands in, so a rebuild puts it on the same side. 27 rules reach the row count and 19 do not.
 
 `qualify_embeddings.py` scores a k-NN vote over the embedding server, sweeping the neighbour count so a failure condemns the method and not one setting. It writes `qualification.json`.
 
-The verdict is no-go. The best precision lower bound is 0.66 on `banned_dash`, against a 0.90 floor. Read the interval, not the ratio: `vague_quantity` shows 0.9167 on 12 flagged rows, and its interval runs from 0.65 to 0.99.
+The verdict is no-go against a 0.90 floor. The gate reads the lower bound of the interval, not the ratio, because `binary_contrast` shows 1.0000 on 6 flagged rows and its interval starts at 0.61. The strongest rules are `filler_phrase` at 0.8889, `hedge_stack` at 0.8462 and `ai_closer` at 0.7921 with 0.97 recall.
 
 ## Response quality
 
