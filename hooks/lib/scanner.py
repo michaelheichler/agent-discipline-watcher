@@ -5,7 +5,7 @@ import fnmatch
 import re
 from collections.abc import Iterator
 from pathlib import PurePath
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 try:
     from . import scan_input
@@ -24,7 +24,7 @@ try:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from .config import GATE_FAMILIES, effective_config
+    from .config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
     from .markup import (
         MIXED_LANGUAGE_EXTS,
         CommentSource,
@@ -39,6 +39,8 @@ try:
         render_regions,
     )
     from .prose_structure import _next_fence, _scan_prose_structure
+    from .slop_phrase import scan_slop_phrases
+    from .slop_structure import _scan_slop_structure
 except ImportError:
     import scan_input
     from comment_rules import (
@@ -56,7 +58,7 @@ except ImportError:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from config import GATE_FAMILIES, effective_config
+    from config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
     from markup import (
         MIXED_LANGUAGE_EXTS,
         CommentSource,
@@ -71,7 +73,8 @@ except ImportError:
         render_regions,
     )
     from prose_structure import _next_fence, _scan_prose_structure
-
+    from slop_phrase import scan_slop_phrases
+    from slop_structure import _scan_slop_structure
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
@@ -167,10 +170,7 @@ def _python_tree(path: str, text: str) -> ast.Module | None:
     except SyntaxError:
         return None
 
-def _unconditional_findings(
-    context: _ScanContext,
-    comment_text: str,
-) -> list[dict]:
+def _unconditional_findings(context: _ScanContext, comment_text: str) -> list[dict]:
     findings = [
         _finding("clean_code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + context.path, line,
@@ -211,14 +211,8 @@ def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
     prose = _is_prose(path, text) or suffix in {".vue", ".svelte"}
     code_file = _code_file(path, text)
     return _ScanContext(
-        path=path,
-        text=text,
-        config=cfg,
-        tree=tree,
-        lines=lines,
-        prose=prose,
-        code_file=code_file,
-        active_families=_active_families(path, cfg),
+        path=path, text=text, config=cfg, tree=tree, lines=lines,
+        prose=prose, code_file=code_file, active_families=_active_families(path, cfg),
     )
 
 
@@ -234,11 +228,7 @@ class _SourceLine(NamedTuple):
     text: str
 
 
-def _line_sources(
-    context: _ScanContext,
-    masked: str,
-    comment_source: str,
-) -> _LineSources:
+def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _LineSources:
     return _LineSources(
         _strip_punctuation_blocks(context.path, masked, context.prose).splitlines() or [""],
         _strip_english_hidden(masked).splitlines() or [""],
@@ -246,11 +236,7 @@ def _line_sources(
     )
 
 
-def _scan_line_families(
-    source_line: _SourceLine,
-    sources: _LineSources,
-    context: _ScanContext,
-) -> list[dict]:
+def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context: _ScanContext) -> list[dict]:
     findings: list[dict] = []
     if "punctuation" in context.active_families:
         scan_line = _line_or_blank(sources.punctuation, source_line.number)
@@ -282,7 +268,10 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
         findings.extend(_scan_line_families(source_line, sources, context))
     if "english" in context.active_families and context.prose:
         findings.extend(_scan_prose_structure(path, masked, context.config))
-    return findings
+        findings.extend(cast(list[dict], _scan_slop_structure(path, masked)))
+        if slop_phrase_candidate(masked):
+            findings.extend(cast(list[dict], scan_slop_phrases(path, masked, context.config)))
+    return calibrated_findings(findings)
 
 
 def _line_or_blank(lines: list[str], number: int) -> str:
@@ -326,11 +315,7 @@ PUNCTUATION_RULES = (
 )
 
 
-def _scan_punctuation(
-    source_line: _SourceLine,
-    scan_line: str,
-    prose: bool,
-) -> list[dict]:
+def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> list[dict]:
     clean = _strip_inline_code(scan_line)
     prose_part = _punctuation_prose_part(source_line.path, clean, prose)
     semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)

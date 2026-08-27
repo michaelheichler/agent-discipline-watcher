@@ -4,10 +4,13 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import sys
+from functools import cache
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+from typing import NamedTuple
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
@@ -71,6 +74,36 @@ DEFAULTS = {
         "corporate_idiom": "observe",
         "long_sentence": "observe",
         "oversized_list": "observe",
+        # Observe because 2 held-out true positives in AI Generated Essays Dataset.csv (n=40) yielded 1.0000 precision.
+        "weighted_slop_marker": "observe",
+        # Observe because 1 held-out true positive in AI Generated Essays Dataset.csv (n=40) yielded 1.0000 precision.
+        "formulaic_opener": "observe",
+        # Observe because 1 held-out true positive in AI Generated Essays Dataset.csv (n=40) yielded 1.0000 precision.
+        "formulaic_filler": "observe",
+        # Observe because 24 in-sample true positives in AI Generated Essays Dataset.csv (n=82) yielded 0.8000 precision.
+        "low_sentence_variance": "observe",
+        # Off because the line corpus ai_vs_human_text.csv measured 0 true positives at 0.0000 precision (n=1299).
+        "three_item_list": "off",
+        # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
+        "throat_clearing_opener": "enforce",
+        "emphasis_crutch": "enforce",
+        "meta_commentary": "enforce",
+        "telling_not_showing": "enforce",
+        "vague_declarative": "enforce",
+        "performative_emphasis": "enforce",
+        "business_jargon": "enforce",
+        "filler_phrase": "enforce",
+        "binary_contrast": "enforce",
+        "negative_listing": "enforce",
+        "dramatic_fragmentation": "enforce",
+        "formulaic_construction": "enforce",
+        "false_agency": "enforce",
+        "narrator_distance": "enforce",
+        "rhetorical_setup": "enforce",
+        "lazy_extreme": "enforce",
+        "passive_voice": "enforce",
+        "banned_adverb": "enforce",
+        "weak_sentence_starter": "enforce",
         "file_length_warning": "observe",
         "file_length_critical": "observe",
     },
@@ -79,6 +112,44 @@ DEFAULTS = {
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
 }
+
+
+class RuleCalibration(NamedTuple):
+    corpus: str
+    sample_size: int
+    true_positive: int
+    precision: float
+    sample_kind: str
+
+
+RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
+    "weighted_slop_marker": RuleCalibration("AI Generated Essays Dataset.csv", 40, 2, 1.0000, "held-out"),
+    "formulaic_opener": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
+    "formulaic_filler": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
+    "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
+    "three_item_list": RuleCalibration("ai_vs_human_text.csv", 1299, 0, 0.0000, "in-sample"),
+}
+
+
+@cache
+def _slop_phrase_candidate_re() -> re.Pattern[str]:
+    try:
+        from .slop_phrase import _FORMULAIC_PATTERNS, WEIGHTED_MARKERS
+    except ImportError:
+        from slop_phrase import _FORMULAIC_PATTERNS, WEIGHTED_MARKERS
+    weighted = "|".join(re.escape(marker.phrase) for marker in WEIGHTED_MARKERS)
+    formulaic = "|".join(
+        f"(?:{pattern.pattern})"
+        for patterns in _FORMULAIC_PATTERNS.values()
+        for pattern in patterns
+    )
+    return re.compile(r"\b(?:" + weighted + r")\b|(?:" + formulaic + r")", re.IGNORECASE)
+
+
+def slop_phrase_candidate(text: str) -> bool:
+    return _slop_phrase_candidate_re().search(text) is not None
+
+
 CONFIG_NAME = ".agent-discipline.json"
 
 
@@ -175,6 +246,25 @@ def rule_state(rule: str, config: dict | None = None) -> str | None:
     return _rule_state_from(effective_config(config), rule)
 
 
+def calibration_detail(rule: str) -> str | None:
+    calibration = RULE_CALIBRATIONS.get(rule)
+    if calibration is None:
+        return None
+    return (
+        "Calibration: "
+        f"{calibration.precision:.4f} precision, {calibration.true_positive} true positives, "
+        f"{calibration.corpus}, n={calibration.sample_size}, {calibration.sample_kind}."
+    )
+
+
+def calibrated_findings(findings: list[dict]) -> list[dict]:
+    calibrated: list[dict] = []
+    for finding in findings:
+        detail = calibration_detail(finding["rule"])
+        calibrated.append(finding if detail is None else {**finding, "detail": finding["detail"] + " " + detail})
+    return calibrated
+
+
 def _outcome_for(state: str) -> Outcome:
     if state == "enforce":
         return Outcome.BLOCK
@@ -202,7 +292,7 @@ def _storage_roots(values: tuple[object, ...], named: dict[str, object]) -> Stor
         return values[0]
     if len(values) > 2:
         raise TypeError("record_state_transitions accepts at most two root values")
-    roots = dict(zip(("state_root", "ledger_root"), values, strict=False))
+    roots: dict[str, object] = dict(zip(("state_root", "ledger_root"), values, strict=False))
     for name, value in named.items():
         if name not in {"state_root", "ledger_root"} or name in roots:
             raise TypeError(f"record_state_transitions got an invalid keyword: {name}")

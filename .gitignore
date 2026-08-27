@@ -11,6 +11,11 @@ ENV/
 Thumbs.db
 
 .agent-discipline.json
+
+# Third-party corpus rows carry em dashes and a decade apostrophe the punctuation gate blocks,
+# and editing them would break the byte-for-byte rebuild the calibration depends on.
+# Rebuild with: python3 evals/build_slop_corpora.py
+hooks/lib/corpus_slop_*.jsonl
 agent-discipline-watcher-*.json
 
 .love-projects/
