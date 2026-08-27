@@ -6,6 +6,14 @@
 
 A hit there is prose no model wrote, so it is the false-positive denominator the rules never had. Read it per genre. The corpus carries no technical or software prose, which is most of what the watcher scans, and a document-scope rule cannot fire on one sentence, so its silence proves nothing.
 
+## Qualification gate
+
+`build_pattern_benchmark.py` pairs each rule against its own clean class. The violating side is real sentences the rule fires on. The clean side is real sentences no rule fires on. Both sides come from the corpora above. The content hash decides which half a sentence lands in, so a rebuild puts it on the same side. 15 rules reach the row count. 31 do not, and the manifest names each one with the count it reached.
+
+`qualify_embeddings.py` scores a k-NN vote over the embedding server, sweeping the neighbour count so a failure condemns the method and not one setting. It writes `qualification.json`.
+
+The verdict is no-go. The best precision lower bound is 0.66 on `banned_dash`, against a 0.90 floor. Read the interval, not the ratio: `vague_quantity` shows 0.9167 on 12 flagged rows, and its interval runs from 0.65 to 0.99.
+
 ## Response quality
 
 The harness compares response quality, not just length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.

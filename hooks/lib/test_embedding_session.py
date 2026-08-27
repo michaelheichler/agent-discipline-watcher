@@ -14,6 +14,12 @@ def _closed_port() -> int:
     return port
 
 
+@pytest.fixture(name="opted_in", autouse=True)
+def _opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set for this file because the bracket is off until a reader for the vectors exists."""
+    monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
+
+
 @pytest.fixture(name="absent_server")
 def _absent_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URLS", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")

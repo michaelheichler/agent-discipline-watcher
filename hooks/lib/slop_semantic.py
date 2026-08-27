@@ -1,4 +1,4 @@
-"""Unwired because nearest-exemplar cosine caught at most 1 of 273 regex-confirmed pattern sentences at any cutoff whose hit rate on the other 2393 sentences stayed under 1 percent."""
+"""Unwired because a k-NN vote over LFM2.5 reached 0.74 precision at best across 15 paired rules, against a 0.90 floor, and nearest-exemplar cosine before it caught 1 of 273 pattern sentences."""
 from __future__ import annotations
 
 import json

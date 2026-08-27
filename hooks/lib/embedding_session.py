@@ -12,11 +12,15 @@ except ImportError:
     from embedding_client import ensure_loaded, release
     from embedding_server import default_root, start_detached
 
+ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
 
 
 def enabled() -> bool:
-    return not os.environ.get(DISABLE_ENV, "").strip()
+    """Opt in because the qualification gate cut the semantic layer, so provisioning a gigabyte would serve no reader today."""
+    if os.environ.get(DISABLE_ENV, "").strip():
+        return False
+    return bool(os.environ.get(ENABLE_ENV, "").strip())
 
 
 LEASE_DIRECTORY_NAME = "embedding-leases"

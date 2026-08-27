@@ -75,13 +75,16 @@ def _similarity(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     return sum(one * other for one, other in zip(left, right))
 
 
+def _neighbour_labels(
+    vector: tuple[float, ...], development: list[tuple[str, tuple[float, ...]]]
+) -> list[str]:
+    return [name for name, _ in sorted(development, key=lambda entry: -_similarity(vector, entry[1]))]
+
+
 def _ranked(rows: list[dict], vectors: dict[str, tuple[float, ...]]) -> list[tuple[str, list[str]]]:
     development = [(row["label"], vectors[row["text"]]) for row in rows if row["split"] == "development"]
     held_out = [(row["label"], vectors[row["text"]]) for row in rows if row["split"] == "held_out"]
-    return [
-        (label, [name for name, _ in sorted(development, key=lambda entry: -_similarity(vector, entry[1]))])
-        for label, vector in held_out
-    ]
+    return [(label, _neighbour_labels(vector, development)) for label, vector in held_out]
 
 
 def score_rule(rule: str, ranked: list[tuple[str, list[str]]], neighbours: int) -> Scored:
