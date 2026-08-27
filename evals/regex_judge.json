@@ -1,0 +1,15 @@
+{
+  "benchmark": "benchmark_patterns.jsonl",
+  "rules": {
+    "three_item_list": {
+      "confirmed": 90,
+      "false_positive": 0,
+      "held_out_violating": 166,
+      "model": "claude-sonnet-5",
+      "precision": 1.0,
+      "recall": 0.5422,
+      "regex_candidates": 121,
+      "true_positive": 90
+    }
+  }
+}

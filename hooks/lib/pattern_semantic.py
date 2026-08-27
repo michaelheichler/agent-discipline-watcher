@@ -4,17 +4,21 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import NamedTuple
 
 try:
     from .embedding_client import Vector, embed
-    from .pattern_judge import PatternCandidate, PatternRule, confirm_all
+    from .embedding_session import enabled
+    from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
+    from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
     from embedding_client import Vector, embed
-    from pattern_judge import PatternCandidate, PatternRule, confirm_all
+    from embedding_session import enabled
+    from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
+    from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
 
@@ -78,8 +82,16 @@ def blocking_rules(manifest: dict) -> frozenset[str]:
     )
 
 
+def prose_source(path: str, text: str) -> str:
+    """Every style attribute became a candidate because markup reached the embedder unmasked."""
+    regions = extract_regions(path, text)
+    if PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS:
+        return render_regions(text, regions, {RegionKind.VISIBLE_PROSE})
+    return _mask_markup(path, text)
+
+
 def prose_sentences(path: str, text: str) -> tuple[Sentence, ...]:
-    lines = list(_markdown_prose_lines(text))
+    lines = list(_markdown_prose_lines(prose_source(path, text)))
     found = [
         Sentence(number, sentence)
         for paragraph in _paragraphs(lines)
@@ -157,7 +169,7 @@ def exemplar_vectors(exemplars: tuple[Exemplar, ...]) -> dict[str, Vector]:
 def scan(path: str, text: str) -> tuple[Finding, ...]:
     """Answers nothing when the server is absent, because a missing vector must read as no finding rather than as clean prose."""
     sentences = prose_sentences(path, text)
-    if not sentences:
+    if not sentences or not enabled():
         return ()
     exemplars = load_exemplars()
     manifest = load_manifest()
@@ -171,6 +183,6 @@ def scan(path: str, text: str) -> tuple[Finding, ...]:
     blocking = blocking_rules(manifest)
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
-        for rule, kept in sorted(confirm_all(work).items())
+        for rule, kept in sorted(confirm_all(work, JUDGED_GATE_MODEL).items())
         for candidate in kept
     )

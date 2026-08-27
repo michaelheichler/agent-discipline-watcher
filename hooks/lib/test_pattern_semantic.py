@@ -99,7 +99,17 @@ def test_a_document_without_prose_costs_no_embedding(monkeypatch) -> None:
     assert pattern_semantic.scan("a.md", "") == ()
 
 
+def test_the_layer_is_silent_until_the_reader_opts_in(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: False)
+    monkeypatch.setattr(
+        pattern_semantic, "_vectors", lambda _texts: pytest.fail("embedded while the layer was switched off")
+    )
+
+    assert pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n") == ()
+
+
 def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
     monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
     monkeypatch.setattr(
         pattern_semantic, "load_manifest",
@@ -109,7 +119,7 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
     monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
     monkeypatch.setattr(
         pattern_semantic, "confirm_all",
-        lambda work: {rule.name: candidates[:1] for rule, candidates in work if candidates},
+        lambda work, _model: {rule.name: candidates[:1] for rule, candidates in work if candidates},
     )
 
     findings = pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n")
@@ -118,6 +128,7 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
 
 
 def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
     monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
     monkeypatch.setattr(
         pattern_semantic, "load_manifest",
@@ -125,6 +136,6 @@ def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     )
     monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda _exemplars: VECTORS)
     monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
-    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work: {})
+    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work, _model: {})
 
     assert pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n") == ()

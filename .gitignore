@@ -22,6 +22,10 @@ hooks/lib/corpus_slop_*.jsonl
 evals/corpus_human_sentences.jsonl
 evals/corpus_ai_sentences.jsonl
 
+# 9256 third-party documents that still carry their paragraph breaks, 27MB and rebuildable byte for byte.
+# Rebuild with: python3 evals/build_paragraph_corpus.py
+evals/corpus_paragraphs.jsonl
+
 # Third-party sentences again, rebuilt byte for byte from the corpus above.
 # Rebuild with: python3 evals/build_pattern_benchmark.py
 evals/benchmark_patterns.jsonl

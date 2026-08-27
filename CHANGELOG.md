@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.18.7 (2026-08-28)
+
+### Added
+
+- A document reader. When an agent finishes a prose file, `hooks/lib/document_review.py` sends the whole document to Sonnet and asks for coherence and style problems a line rule cannot see. An order that hides the argument, a missing bridge between paragraphs, a referent the document uses before introducing it, a paragraph shape repeated until it reads as a tic. Each note quotes its sentence and cites its line. The note lands as a pending blocker, so the Stop hook returns the agent to work instead of handing over an unread draft. The watcher skips a document unchanged since its last reading, and after two rounds it stands down and leaves the call to you.
+- `uniform_paragraph_endings`, the one rhythm pattern from the source rules that had no implementation. A paragraph ends punchily when its last sentence runs shorter than 0.7018 of the paragraph's own mean, which is the p25 of 30700 human endings. A document trips the rule above two thirds, the p95 of 4570 human documents. It ships at observe, because the shape runs commoner in human literature (4.92 percent) than in assistant replies (0.55 percent) and says nothing about who wrote a document.
+- A paragraph corpus. `evals/build_paragraph_corpus.py` draws 9256 documents that still carry their paragraph breaks, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english` and 4256 assistant from the two chat sets. Both sentence corpora flatten a document to one line, which is why no paragraph rule had anything to stand on before. `evals/measure_paragraph_endings.py` writes `paragraph_endings.json`.
+- The `judged` gate. A rule there never reaches the write path. Its regex finds candidates, a reader confirms them on the async route, and the watcher reports only survivors. `evals/measure_regex_judge.py` scores the pair as one stage into `regex_judge.json`.
+
+### Changed
+
+- `three_item_list` moved from off to the judged gate. It had sat off since a 0.0000 precision reading, which measured the regex alone. Behind the reader it clears 121 held-out candidates at 1.0000 precision with 0 false positives and 0.5422 recall.
+- The reader behind the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary technical sentences as `ai_closer` on two of four runs over one document, where Sonnet cleared the same document four times out of four. Re-measured after the reader: `ai_closer` and `utilize` 1.0000, `inflated_diction` 0.9595 with recall up from 0.7067 to 0.9467, `vague_quantity` 0.9406, `business_jargon` 0.8507. All five stay above the 0.85 floor and keep their block.
+- The interpreter floor dropped from 3.14 to 3.11, the oldest release carrying `tomllib` and `dataclass(slots=True)`. A hard 3.14 floor turned every hook into an exit 2 on any machine without that build.
+
+### Fixed
+
+- `three_item_list` matched the tail of a four-item list, so ordinary writing read as slop. Its human hit rate fell from 483 to 278 of 60000 sentences.
+- The async review route accepted `.md` and nothing else, so an HTML, text or reStructuredText document never reached the meaning layer at all. It now reads every prose extension the scanner knows.
+- The meaning layer split sentences out of raw file text. On an HTML document it embedded doctype lines and style attributes as if they were prose and glued each real sentence to the tag that followed it. It masks markup first now, the same way the regex scan does.
+- The self-protection check compared an edit's own fragment against the whole-file wiring signature, so every unrelated edit to a client settings file read as a removal of the watcher's hooks. The check sees the applied result now.
+- The meaning layer ran whenever an embedding server happened to answer and ignored `ADW_EMBEDDING_ENABLED`. Only the lease honoured that switch.
+- No paragraph rule could see an HTML document, because a rendered block leaves no blank line behind and the splitter looked for one. `low_sentence_variance` and `uniform_paragraph_endings` now treat one block element as one paragraph in markup. A block spanning several source lines still splits, which is the cost of keeping the host line numbers.
+
 ## 0.18.6 (2026-08-27)
 
 ### Fixed
@@ -9,7 +33,7 @@
 
 ### Changed
 
-- The interpreter floor is Python 3.14, declared once in `.python-version`. `run.sh`, `.pylintrc` and the CI workflow all read that file, and `hooks/test_run_dispatch.py` fails when any of them drifts from it.
+- The interpreter floor is Python 3.11, the oldest release that carries `tomllib` and `dataclass(slots=True)`, declared once in `.python-version`. `run.sh`, `.pylintrc` and the CI workflow all read that file, and `hooks/test_run_dispatch.py` fails when any of them drifts from it.
 - A missing or too-old interpreter now exits 2 and names the version it needs. Failing loudly beats a watcher that loads its contract and enforces nothing.
 
 ### Added

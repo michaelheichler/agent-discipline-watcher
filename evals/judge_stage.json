@@ -2,9 +2,9 @@
   "ai_closer": {
     "after_judge": {
       "held_out_violating": 145,
-      "kept": 131,
+      "kept": 109,
       "precision": 1.0,
-      "recall": 0.9034
+      "recall": 0.7517
     },
     "candidate_stage": {
       "flagged": 185,
@@ -15,8 +15,8 @@
   "business_jargon": {
     "after_judge": {
       "held_out_violating": 98,
-      "kept": 61,
-      "precision": 0.9344,
+      "kept": 67,
+      "precision": 0.8507,
       "recall": 0.5816
     },
     "candidate_stage": {
@@ -28,9 +28,9 @@
   "inflated_diction": {
     "after_judge": {
       "held_out_violating": 150,
-      "kept": 113,
-      "precision": 0.9381,
-      "recall": 0.7067
+      "kept": 148,
+      "precision": 0.9595,
+      "recall": 0.9467
     },
     "candidate_stage": {
       "flagged": 227,
@@ -41,9 +41,9 @@
   "utilize": {
     "after_judge": {
       "held_out_violating": 149,
-      "kept": 146,
+      "kept": 145,
       "precision": 1.0,
-      "recall": 0.9799
+      "recall": 0.9732
     },
     "candidate_stage": {
       "flagged": 207,
@@ -54,9 +54,9 @@
   "vague_quantity": {
     "after_judge": {
       "held_out_violating": 151,
-      "kept": 104,
-      "precision": 0.9519,
-      "recall": 0.6556
+      "kept": 101,
+      "precision": 0.9406,
+      "recall": 0.6291
     },
     "candidate_stage": {
       "flagged": 184,

@@ -32,10 +32,10 @@ def test_only_the_lines_the_judge_calls_violating_survive(monkeypatch) -> None:
     monkeypatch.setattr(pattern_judge, "available", lambda: True)
     monkeypatch.setattr(
         pattern_judge, "_run",
-        lambda _prompt: _answer([{"index": 0, "verdict": "violating"}, {"index": 1, "verdict": "clean"}]),
+        lambda _prompt, _model: _answer([{"index": 0, "verdict": "violating"}, {"index": 1, "verdict": "clean"}]),
     )
 
-    assert pattern_judge.confirm(RULE, CANDIDATES) == (CANDIDATES[0],)
+    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == (CANDIDATES[0],)
 
 
 def test_an_index_the_judge_skipped_reads_as_clean() -> None:
@@ -57,18 +57,18 @@ def test_an_error_body_raises_rather_than_confirming() -> None:
 def test_an_absent_judge_confirms_nothing(monkeypatch) -> None:
     monkeypatch.setattr(pattern_judge, "available", lambda: False)
 
-    assert pattern_judge.confirm(RULE, CANDIDATES) == ()
+    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == ()
 
 
 def test_a_judge_that_never_answers_confirms_nothing(monkeypatch) -> None:
     monkeypatch.setattr(pattern_judge, "available", lambda: True)
-    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt: None)
+    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt, _model: None)
 
-    assert pattern_judge.confirm(RULE, CANDIDATES) == ()
+    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == ()
 
 
 def test_no_candidates_costs_no_call(monkeypatch) -> None:
     monkeypatch.setattr(pattern_judge, "available", lambda: True)
-    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt: pytest.fail("the judge was called with nothing to judge"))
+    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt, _model: pytest.fail("the judge was called with nothing to judge"))
 
-    assert pattern_judge.confirm(RULE, ()) == ()
+    assert pattern_judge.confirm(RULE, (), pattern_judge.JUDGED_GATE_MODEL) == ()

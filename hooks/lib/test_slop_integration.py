@@ -1,4 +1,7 @@
-from lib.config import RULE_CALIBRATIONS, RuleCalibration, effective_config, resolve_outcome
+import json
+from pathlib import Path
+
+from lib.config import JUDGED_STATE, RULE_CALIBRATIONS, RuleCalibration, effective_config, resolve_outcome
 from lib.corpus_gate import requires_corpora
 from lib.scanner import scan_all
 from lib.slop_harness import (
@@ -14,6 +17,9 @@ from lib.slop_harness import (
 )
 
 
+REGEX_JUDGE_PATH = Path(__file__).resolve().parents[2] / "evals" / "regex_judge.json"
+
+
 def _precision_gate_state(precision: float) -> str:
     if precision >= 0.90:
         return "enforce"
@@ -23,6 +29,8 @@ def _precision_gate_state(precision: float) -> str:
 
 
 def _single_corpus_gate_state(calibration: RuleCalibration) -> str:
+    if calibration.sample_kind == JUDGED_STATE:
+        return JUDGED_STATE
     if calibration.sample_kind == "unmeasurable":
         return "observe"
     state = _precision_gate_state(calibration.precision)
@@ -49,9 +57,14 @@ def _calibration_measurement(
         result, = score_rule(rule, scope, (Surface.PROSE,))
         assert isinstance(result, Measurement)
         return result
-    if calibration.sample_kind == "unmeasurable":
+    if calibration.sample_kind in ("unmeasurable", JUDGED_STATE):
         return None
     raise AssertionError(f"Unsupported calibration sample kind: {calibration.sample_kind}")
+
+
+def _recorded_judged_stage(rule: str) -> dict:
+    record = json.loads(REGEX_JUDGE_PATH.read_text(encoding="utf-8"))
+    return record["rules"][rule]
 
 
 def _integration_text() -> str:
@@ -87,7 +100,7 @@ def test_scan_all_wires_phrase_structure_and_rhythm_rules() -> None:
     assert all("Calibration:" in details[rule] and "n=" in details[rule] for rule in expected)
     assert all("held-out" in details[rule] for rule in ("weighted_slop_marker", "formulaic_opener", "formulaic_filler"))
     assert "unmeasurable" in details["low_sentence_variance"]
-    assert "in-sample" in details["three_item_list"]
+    assert JUDGED_STATE in details["three_item_list"]
 
 
 def test_english_switch_disables_new_rules() -> None:
@@ -99,6 +112,12 @@ def test_english_switch_disables_new_rules() -> None:
 def test_recorded_calibrations_do_not_overstate_harness_measurements() -> None:
     for rule, calibration in RULE_CALIBRATIONS.items():
         measured = _calibration_measurement(rule, calibration)
+        if calibration.sample_kind == JUDGED_STATE:
+            stage = _recorded_judged_stage(rule)
+            assert stage["regex_candidates"] == calibration.sample_size
+            assert stage["true_positive"] == calibration.true_positive
+            assert stage["precision"] >= calibration.precision
+            continue
         if measured is None:
             assert calibration.sample_kind == "unmeasurable"
             assert calibration.true_positive == 0

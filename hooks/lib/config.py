@@ -48,6 +48,9 @@ ALWAYS_BLOCKING_RULES = (
 )
 
 GATE_STATES = ("off", "observe", "enforce")
+JUDGED_STATE = "judged"
+# WHY: A family carries no exemplars, so only a single rule can be sent to a reader instead of blocking on its own.
+RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
 
 # Scoped to families a live hook already emits, because defining a gate state before the family exists is speculative schema creep.
 GATE_FAMILIES = ("punctuation", "english", "clean_code")
@@ -82,8 +85,10 @@ DEFAULTS = {
         "formulaic_filler": "observe",
         # Observe because 24 in-sample true positives in AI Generated Essays Dataset.csv (n=82) yielded 0.8000 precision.
         "low_sentence_variance": "observe",
-        # Off because the line corpus ai_vs_human_text.csv measured 0 true positives at 0.0000 precision (n=1299).
-        "three_item_list": "off",
+        # Observe because the pattern is commoner in human literature (4.92 percent) than in assistant replies (0.55).
+        "uniform_paragraph_endings": "observe",
+        # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
+        "three_item_list": "judged",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
         "throat_clearing_opener": "enforce",
         "emphasis_crutch": "enforce",
@@ -127,7 +132,7 @@ RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
     "formulaic_opener": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "formulaic_filler": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
-    "three_item_list": RuleCalibration("ai_vs_human_text.csv", 1299, 0, 0.0000, "in-sample"),
+    "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, 1.0000, JUDGED_STATE),
 }
 
 
@@ -238,7 +243,7 @@ def _rule_state_from(cfg: dict, rule: str) -> str | None:
     if not rule:
         return None
     state = gate_map(cfg, "rule_gates").get(rule)
-    return state if state in GATE_STATES else None
+    return state if state in RULE_GATE_STATES else None
 
 
 def rule_state(rule: str, config: dict | None = None) -> str | None:

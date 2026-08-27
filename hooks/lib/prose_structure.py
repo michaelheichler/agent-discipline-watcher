@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from pathlib import PurePath
 from statistics import fmean, pstdev
+
+try:
+    from .markup import MIXED_LANGUAGE_EXTS
+except ImportError:
+    from markup import MIXED_LANGUAGE_EXTS
 
 try:
     from .comment_rules import _finding
@@ -46,10 +52,13 @@ RHYTHM_LIMITATIONS = {
         "The threshold is the p05 of 709 real paragraphs, and the essay corpus holds one "
         "truncated paragraph per row, so it yields no true positive to measure against."
     ),
-    "uniform_paragraph_endings": (
-        "The document corpus truncates endings, so no held-out measurement is possible."
-    ),
 }
+MIN_ENDING_SENTENCES = 2
+MIN_ENDING_PARAGRAPHS = 3
+# WHY: The p25 of 30700 human paragraph endings in corpus_paragraphs.jsonl, recorded in evals/paragraph_endings.json.
+PUNCHY_ENDING_RATIO = 0.7018
+# WHY: The p95 of the same corpus's 4570 human documents, which fires on 3.15 percent of them.
+PUNCHY_SHARE_LIMIT = 0.6667
 ProseLine = tuple[int, str]
 Paragraph = list[ProseLine]
 
@@ -207,6 +216,31 @@ def _low_variance_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
     return rows
 
 
+def _ending_ratio(paragraph: Paragraph) -> float | None:
+    """A paragraph is measured against its own mean because absolute sentence length differs by genre."""
+    counts = _sentence_word_counts(paragraph)
+    if len(counts) < MIN_ENDING_SENTENCES:
+        return None
+    average = fmean(counts)
+    return counts[-1] / average if average else None
+
+
+def _uniform_endings_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
+    found = [(paragraph, _ending_ratio(paragraph)) for paragraph in paragraphs]
+    measured = [(paragraph, ratio) for paragraph, ratio in found if ratio is not None]
+    if len(measured) < MIN_ENDING_PARAGRAPHS:
+        return []
+    punchy = [ratio <= PUNCHY_ENDING_RATIO for _paragraph, ratio in measured]
+    if sum(punchy) / len(punchy) <= PUNCHY_SHARE_LIMIT:
+        return []
+    number, first_line = measured[0][0][0]
+    return [_finding(
+        "english", "uniform_paragraph_endings", number,
+        "Paragraphs all end on a short sentence in " + path,
+        first_line, "Let some paragraphs end on their long sentence.",
+    )]
+
+
 def _three_item_finding(path: str, number: int, evidence: str) -> dict:
     return _finding(
         "english", "three_item_list", number,
@@ -215,11 +249,23 @@ def _three_item_finding(path: str, number: int, evidence: str) -> dict:
     )
 
 
+def _closes_a_longer_series(visible: str, start: int) -> bool:
+    """Real four-item writing was reported as slop because a four-item list ends in a three-item tail."""
+    return visible[:start].rstrip().endswith(",")
+
+
+def _is_three_item_series(visible: str) -> bool:
+    return any(
+        not _closes_a_longer_series(visible, match.start())
+        for match in THREE_ITEM_RE.finditer(visible)
+    )
+
+
 def _three_items_in_line(path: str, number: int, line: str) -> list[dict]:
     rows = []
     for _sentence_line, sentence in _sentences([(number, line)]):
         visible = _strip_inline_code(_strip_english_hidden(sentence))
-        if THREE_ITEM_RE.search(visible):
+        if _is_three_item_series(visible):
             rows.append(_three_item_finding(path, number, sentence))
     return rows
 
@@ -265,9 +311,17 @@ def _three_item_markdown_rows(path: str, lines: list[ProseLine]) -> list[dict]:
     return rows
 
 
+def _paragraph_groups(path: str, lines: list[ProseLine]) -> list[Paragraph]:
+    """Markup gets one block per paragraph, because a rendered document leaves no blank line between two adjacent blocks."""
+    if PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS:
+        return [[(number, line.strip())] for number, line in lines if line.strip()]
+    return list(_paragraphs(lines))
+
+
 def _rhythm_rows(path: str, lines: list[ProseLine]) -> list[dict]:
-    paragraphs = list(_paragraphs(lines))
+    paragraphs = _paragraph_groups(path, lines)
     rows = _low_variance_rows(path, paragraphs)
+    rows.extend(_uniform_endings_rows(path, paragraphs))
     rows.extend(_three_item_rows(path, paragraphs))
     rows.extend(_three_item_markdown_rows(path, lines))
     return rows

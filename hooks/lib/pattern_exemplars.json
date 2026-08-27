@@ -32,7 +32,7 @@
     },
     "business_jargon": {
       "action": "Replace the phrase with a concrete statement.",
-      "judge_precision": 0.9344
+      "judge_precision": 0.8507
     },
     "dash_break": {
       "action": "Use a comma, period, or parentheses.",
@@ -68,7 +68,7 @@
     },
     "inflated_diction": {
       "action": "State what it shows.",
-      "judge_precision": 0.9381
+      "judge_precision": 0.9595
     },
     "lazy_extreme": {
       "action": "Name the actual scope or number.",
@@ -108,7 +108,7 @@
     },
     "vague_quantity": {
       "action": "Give the number or name the items.",
-      "judge_precision": 0.9519
+      "judge_precision": 0.9406
     },
     "weak_sentence_starter": {
       "action": "Lead with the subject or the verb.",

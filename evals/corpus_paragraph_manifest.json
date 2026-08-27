@@ -1,0 +1,78 @@
+{
+  "corpus": "corpus_paragraphs.jsonl",
+  "coverage_gap": "No news genre. Every news set reachable here stores an article as one flat line, so its paragraph breaks are already gone at the source.",
+  "min_paragraph_words": 25,
+  "min_paragraphs_per_document": 4,
+  "paragraphs_per_document": 10,
+  "sha256": "a973decc177d401b69c1a5a91c63d61f08fff9874039451c594015177a8ef423",
+  "sources": {
+    "arena": {
+      "config": "default",
+      "dataset": "lmarena-ai/arena-human-preference-100k",
+      "documents": 2500,
+      "note": "Assistant replies from a preference arena, code fences removed.",
+      "origin": "assistant",
+      "paragraphs": 14239,
+      "paragraphs_per_document": {
+        "4": 972,
+        "5": 516,
+        "6": 356,
+        "7": 189,
+        "8": 136,
+        "9": 86,
+        "10": 245
+      }
+    },
+    "encyclopedia": {
+      "config": "20231101.en",
+      "dataset": "wikimedia/wikipedia",
+      "documents": 2500,
+      "note": "Present-day expository prose with its section paragraphs intact.",
+      "origin": "human",
+      "paragraphs": 18014,
+      "paragraphs_per_document": {
+        "4": 467,
+        "5": 381,
+        "6": 281,
+        "7": 235,
+        "8": 162,
+        "9": 126,
+        "10": 848
+      }
+    },
+    "literature": {
+      "config": "default",
+      "dataset": "sedthh/gutenberg_english",
+      "documents": 2500,
+      "note": "Public domain books stored with CRLF paragraph breaks, so the register is mostly pre-1930.",
+      "origin": "human",
+      "paragraphs": 21201,
+      "paragraphs_per_document": {
+        "4": 278,
+        "5": 196,
+        "6": 135,
+        "7": 110,
+        "8": 94,
+        "9": 93,
+        "10": 1594
+      }
+    },
+    "wildchat": {
+      "config": "default",
+      "dataset": "allenai/WildChat-4.8M",
+      "documents": 1756,
+      "note": "Assistant replies to public prompts, code fences removed.",
+      "origin": "assistant",
+      "paragraphs": 10574,
+      "paragraphs_per_document": {
+        "4": 541,
+        "5": 362,
+        "6": 254,
+        "7": 186,
+        "8": 134,
+        "9": 88,
+        "10": 191
+      }
+    }
+  }
+}

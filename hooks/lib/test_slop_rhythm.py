@@ -104,7 +104,5 @@ def test_variance_keeps_heldout_document_measurement_floors() -> None:
 
 
 def test_unmeasured_rhythm_categories_record_their_reason() -> None:
-    reason = RHYTHM_LIMITATIONS["uniform_paragraph_endings"]
-
-    assert "truncates endings" in reason
+    assert "uniform_paragraph_endings" not in RHYTHM_LIMITATIONS
     assert "no true positive" in RHYTHM_LIMITATIONS["low_sentence_variance"]

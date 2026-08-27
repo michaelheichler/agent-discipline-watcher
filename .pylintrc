@@ -1,6 +1,6 @@
 [MAIN]
 # Kept in step with .python-version, which is the one place the interpreter floor is declared.
-py-version = 3.14
+py-version = 3.11
 
 [MESSAGES CONTROL]
 disable =

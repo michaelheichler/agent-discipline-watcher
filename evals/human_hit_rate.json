@@ -556,21 +556,21 @@
     "three_item_list": {
       "by_genre": {
         "encyclopedia": {
-          "hits": 246,
-          "rate": 0.0123
+          "hits": 135,
+          "rate": 0.00675
         },
         "literature": {
-          "hits": 209,
-          "rate": 0.01045
+          "hits": 125,
+          "rate": 0.00625
         },
         "news": {
-          "hits": 28,
-          "rate": 0.0014
+          "hits": 18,
+          "rate": 0.0009
         }
       },
       "gate": "off",
-      "hits": 483,
-      "rate": 0.00805
+      "hits": 278,
+      "rate": 0.004633
     },
     "throat_clearing_opener": {
       "by_genre": {

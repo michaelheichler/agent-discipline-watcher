@@ -127,6 +127,7 @@ _PROSE_RULE_SCOPES = {
     "long_sentence": RuleScope.LINE,
     "oversized_list": RuleScope.DOCUMENT,
     "low_sentence_variance": RuleScope.DOCUMENT,
+    "uniform_paragraph_endings": RuleScope.DOCUMENT,
     "three_item_list": RuleScope.LINE,
 }
 

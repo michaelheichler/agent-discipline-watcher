@@ -208,10 +208,17 @@ def _edit_findings(decoded: PendingWrite, resolved_path: Path, cfg: dict) -> lis
     )
 
 
+def _protected_edit_text(decoded: PendingWrite, resolved_path: Path) -> str:
+    """The whole result is compared, because a fragment carries none of the wiring the file already holds and every edit read as a removal."""
+    applied = _apply_edits(decoded, str(resolved_path))
+    return applied[1] if applied is not None else _pending_edit_text(decoded)
+
+
 def _edit_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> list[dict]:
     resolved_path = _resolved_path(decoded.path, cwd)
     protected = _stamped(
-        path_findings(str(resolved_path), cfg, content=_pending_edit_text(decoded)), decoded.path
+        path_findings(str(resolved_path), cfg, content=_protected_edit_text(decoded, resolved_path)),
+        decoded.path,
     )
     return protected + _edit_findings(decoded, resolved_path, cfg)
 
