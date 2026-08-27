@@ -15,8 +15,8 @@ except ImportError:
     from embedding_lease import release as release_lease
 
 DEFAULT_URL = "http://127.0.0.1:8000/v1/embeddings"
-# WHY: The Mac serves MLX and the x86 box serves the GGUF build of the same model, so either host answers the same contract.
-FALLBACK_URLS = ("http://x86-host:8000/v1/embeddings",)
+# WHY: The x86 box serves the GGUF build of the same model behind a router that binds loopback, so it is reachable only through a forwarded port.
+FALLBACK_URLS = ("http://127.0.0.1:8100/embed/v1/embeddings",)
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
 REQUEST_TIMEOUT_SECONDS = 30.0
 RETRY_DELAYS_SECONDS = (0.5, 2.0)

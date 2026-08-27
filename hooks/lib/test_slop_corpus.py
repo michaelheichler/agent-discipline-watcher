@@ -1,14 +1,14 @@
 import csv
 import importlib.util
 import json
-
-from lib.corpus_gate import requires_corpora
-
-pytestmark = requires_corpora
 from collections import Counter
 from pathlib import Path
 from types import ModuleType
 from typing import TypedDict, cast
+
+from lib.corpus_gate import requires_corpora
+
+pytestmark = requires_corpora
 
 
 class CorpusRow(TypedDict):
