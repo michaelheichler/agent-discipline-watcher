@@ -167,7 +167,7 @@ def _long_sentences_in_paragraph(path: str, paragraph, cap: int) -> list[dict]:
             rows.append(_finding(
                 "english", "long_sentence", number,
                 "Sentence runs past " + str(cap) + " words, the length this document sustains, in " + path,
-                sentence, "Split it into shorter sentences.",
+                sentence, "Cut a clause or break at one clause boundary. Do not chop it into fragments.",
             ))
     return rows
 

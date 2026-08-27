@@ -19,7 +19,8 @@ OUTPUT_PATH = REPOSITORY_ROOT / "evals" / "qualification.json"
 BATCH_SIZE = 64
 # WHY: Swept rather than fixed, so a no-go condemns the method and not one hyperparameter.
 NEIGHBOUR_COUNTS = (1, 3, 5, 9, 15, 25)
-PRECISION_FLOOR = 0.90
+# WHY: A candidate stage is judged on what it misses, since the judge behind it removes what it over-flags.
+RECALL_FLOOR = 0.85
 WILSON_Z = 1.96
 VIOLATING = "violating"
 
@@ -102,23 +103,25 @@ def score_rule(rule: str, ranked: list[tuple[str, list[str]]], neighbours: int) 
 def _record(scored: Scored) -> dict[str, object]:
     flagged = scored.true_positive + scored.false_positive
     actual = scored.true_positive + scored.false_negative
-    interval = _wilson(scored.true_positive, flagged)
+    recall_interval = _wilson(scored.true_positive, actual)
     return {
         "neighbours": scored.neighbours,
         "precision": scored.precision,
-        "precision_interval": interval,
+        "precision_interval": _wilson(scored.true_positive, flagged),
         "recall": scored.recall,
+        "recall_interval": recall_interval,
         "flagged": flagged,
         "held_out_violating": actual,
         "held_out_clean": scored.false_positive + scored.true_negative,
-        "clears_floor": bool(interval and interval[0] >= PRECISION_FLOOR),
+        "judge_calls_per_true_finding": round(flagged / scored.true_positive, 2) if scored.true_positive else None,
+        "clears_floor": bool(recall_interval and recall_interval[0] >= RECALL_FLOOR),
     }
 
 
 def _best(rule: str, ranked: list[tuple[str, list[str]]]) -> dict[str, object]:
-    """Keeps the highest lower bound rather than the highest ratio, because 7 correct calls out of 7 is not 1.0000."""
+    """Ranks on recall because this stage only proposes candidates, and the judge behind it decides what is real."""
     records = [_record(score_rule(rule, ranked, count)) for count in NEIGHBOUR_COUNTS]
-    return max(records, key=lambda row: (row["precision_interval"] or (0.0, 0.0))[0])
+    return max(records, key=lambda row: ((row["recall"] or 0.0), -row["flagged"]))
 
 
 def build_report(rules: dict[str, dict], endpoint: str) -> dict[str, object]:
@@ -127,7 +130,7 @@ def build_report(rules: dict[str, dict], endpoint: str) -> dict[str, object]:
         "benchmark_sha256": json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["sha256"],
         "endpoint": endpoint,
         "neighbour_counts": list(NEIGHBOUR_COUNTS),
-        "precision_floor": PRECISION_FLOOR,
+        "recall_floor": RECALL_FLOOR,
         "rules": rules,
         "rules_clearing_the_floor": passing,
         "verdict": "go" if passing else "no-go",
@@ -135,12 +138,12 @@ def build_report(rules: dict[str, dict], endpoint: str) -> dict[str, object]:
 
 
 def _format(rule: str, row: dict) -> str:
-    interval = row["precision_interval"]
+    interval = row["recall_interval"]
     span = f"[{interval[0]:.2f}, {interval[1]:.2f}]" if interval else "[none]"
-    precision = f"{row['precision']:.4f}" if row["precision"] is not None else "  none"
     recall = f"{row['recall']:.4f}" if row["recall"] is not None else "  none"
+    precision = f"{row['precision']:.4f}" if row["precision"] is not None else "  none"
     return (
-        f"{rule:<24} k={row['neighbours']:<3} {precision} {span:<14} {recall} "
+        f"{rule:<24} k={row['neighbours']:<3} {recall} {span:<14} {precision} "
         f"  {row['flagged']:>4}/{row['held_out_violating']:>4}"
     )
 
@@ -158,10 +161,10 @@ def main() -> None:
     OUTPUT_PATH.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
-    print(f"{'rule':<24} {'best':<5} {'precision':<9} {'95 percent':<14} {'recall':<9} {'flagged/pos':>10}")
-    for rule in sorted(rules, key=lambda name: -(rules[name]["precision_interval"] or (0.0,))[0]):
+    print(f"{'rule':<24} {'best':<5} {'recall':<9} {'95 percent':<14} {'precision':<9} {'flagged/pos':>10}")
+    for rule in sorted(rules, key=lambda name: -(rules[name]["recall_interval"] or (0.0,))[0]):
         print(_format(rule, rules[rule]))
-    print(f"verdict {report['verdict']}, clearing {PRECISION_FLOOR}: {report['rules_clearing_the_floor']}")
+    print(f"{len(report['rules_clearing_the_floor'])} of {len(rules)} rules clear a {RECALL_FLOOR} recall floor")
 
 
 if __name__ == "__main__":

@@ -9,360 +9,501 @@
     15,
     25
   ],
-  "precision_floor": 0.9,
+  "recall_floor": 0.85,
   "rules": {
     "ai_closer": {
-      "clears_floor": false,
-      "flagged": 178,
+      "clears_floor": true,
+      "flagged": 185,
       "held_out_clean": 142,
       "held_out_violating": 145,
-      "neighbours": 3,
-      "precision": 0.7921348314606742,
+      "judge_calls_per_true_finding": 1.28,
+      "neighbours": 5,
+      "precision": 0.7837837837837838,
       "precision_interval": [
-        0.7266618080140637,
-        0.8452645278738742
+        0.7190125926064006,
+        0.8370089619663206
       ],
-      "recall": 0.9724137931034482
+      "recall": 1.0,
+      "recall_interval": [
+        0.9741900113946637,
+        0.9999999999999999
+      ]
     },
     "ai_tell": {
       "clears_floor": false,
-      "flagged": 26,
+      "flagged": 35,
       "held_out_clean": 142,
       "held_out_violating": 38,
-      "neighbours": 25,
-      "precision": 0.8076923076923077,
+      "judge_calls_per_true_finding": 1.3,
+      "neighbours": 9,
+      "precision": 0.7714285714285715,
       "precision_interval": [
-        0.6212336384535001,
-        0.9149306422821174
+        0.6098236221989801,
+        0.879342632538209
       ],
-      "recall": 0.5526315789473685
+      "recall": 0.7105263157894737,
+      "recall_interval": [
+        0.5524256173381024,
+        0.8299689373634387
+      ]
     },
     "banned_adverb": {
       "clears_floor": false,
-      "flagged": 172,
+      "flagged": 195,
       "held_out_clean": 142,
       "held_out_violating": 155,
-      "neighbours": 1,
-      "precision": 0.6511627906976745,
+      "judge_calls_per_true_finding": 1.64,
+      "neighbours": 25,
+      "precision": 0.6102564102564103,
       "precision_interval": [
-        0.5773377742219229,
-        0.7183829198572939
+        0.5403055417910309,
+        0.6759469928898408
       ],
-      "recall": 0.7225806451612903
+      "recall": 0.7677419354838709,
+      "recall_interval": [
+        0.695278097539641,
+        0.8272550423934747
+      ]
     },
     "banned_dash": {
       "clears_floor": false,
-      "flagged": 113,
+      "flagged": 137,
       "held_out_clean": 142,
       "held_out_violating": 167,
-      "neighbours": 5,
-      "precision": 0.6902654867256637,
+      "judge_calls_per_true_finding": 1.47,
+      "neighbours": 25,
+      "precision": 0.6788321167883211,
       "precision_interval": [
-        0.5999350263379167,
-        0.7680845831162503
+        0.5966853501218425,
+        0.751223222345383
       ],
-      "recall": 0.46706586826347307
+      "recall": 0.5568862275449101,
+      "recall_interval": [
+        0.4811057151490509,
+        0.6301084153671699
+      ]
     },
     "binary_contrast": {
       "clears_floor": false,
-      "flagged": 6,
+      "flagged": 43,
       "held_out_clean": 142,
       "held_out_violating": 34,
-      "neighbours": 9,
-      "precision": 1.0,
+      "judge_calls_per_true_finding": 2.69,
+      "neighbours": 1,
+      "precision": 0.37209302325581395,
       "precision_interval": [
-        0.6096569663469354,
-        0.9999999999999999
+        0.2437613889377433,
+        0.5214046173472684
       ],
-      "recall": 0.17647058823529413
+      "recall": 0.47058823529411764,
+      "recall_interval": [
+        0.31451251633111366,
+        0.6326355957994516
+      ]
     },
     "business_jargon": {
-      "clears_floor": false,
-      "flagged": 137,
+      "clears_floor": true,
+      "flagged": 149,
       "held_out_clean": 142,
       "held_out_violating": 98,
-      "neighbours": 9,
-      "precision": 0.6496350364963503,
+      "judge_calls_per_true_finding": 1.6,
+      "neighbours": 25,
+      "precision": 0.6241610738255033,
       "precision_interval": [
-        0.5666553080888594,
-        0.7244518647918803
+        0.5441905207142955,
+        0.697890169359611
       ],
-      "recall": 0.9081632653061225
+      "recall": 0.9489795918367347,
+      "recall_interval": [
+        0.8860739614476197,
+        0.97801301283401
+      ]
     },
     "dash_break": {
       "clears_floor": false,
       "flagged": 173,
       "held_out_clean": 142,
       "held_out_violating": 155,
+      "judge_calls_per_true_finding": 1.38,
       "neighbours": 15,
       "precision": 0.7225433526011561,
       "precision_interval": [
         0.6515397988232117,
         0.7838781118946285
       ],
-      "recall": 0.8064516129032258
+      "recall": 0.8064516129032258,
+      "recall_interval": [
+        0.7371536954164389,
+        0.8609264045070067
+      ]
     },
     "dead_metaphor": {
       "clears_floor": false,
       "flagged": 50,
       "held_out_clean": 142,
       "held_out_violating": 41,
+      "judge_calls_per_true_finding": 1.52,
       "neighbours": 5,
       "precision": 0.66,
       "precision_interval": [
         0.5215356854148285,
         0.7756323036493895
       ],
-      "recall": 0.8048780487804879
+      "recall": 0.8048780487804879,
+      "recall_interval": [
+        0.6598611764744329,
+        0.8976568425079408
+      ]
     },
     "empty_intensifier": {
       "clears_floor": false,
-      "flagged": 168,
+      "flagged": 222,
       "held_out_clean": 142,
       "held_out_violating": 147,
-      "neighbours": 3,
-      "precision": 0.6607142857142857,
+      "judge_calls_per_true_finding": 1.71,
+      "neighbours": 25,
+      "precision": 0.5855855855855856,
       "precision_interval": [
-        0.5862387565033531,
-        0.7280041276411149
+        0.5198642192727975,
+        0.6483953042162319
       ],
-      "recall": 0.7551020408163265
+      "recall": 0.8843537414965986,
+      "recall_interval": [
+        0.8225991290609149,
+        0.9265310843550127
+      ]
     },
     "expletive_there": {
       "clears_floor": false,
-      "flagged": 178,
+      "flagged": 184,
       "held_out_clean": 142,
       "held_out_violating": 151,
-      "neighbours": 15,
-      "precision": 0.6685393258426966,
+      "judge_calls_per_true_finding": 1.52,
+      "neighbours": 25,
+      "precision": 0.657608695652174,
       "precision_interval": [
-        0.5964652447151064,
-        0.7334922567587037
+        0.5864502204076826,
+        0.7223205737082109
       ],
-      "recall": 0.7880794701986755
+      "recall": 0.8013245033112583,
+      "recall_interval": [
+        0.7305580252371815,
+        0.857139337745376
+      ]
     },
     "filler_phrase": {
       "clears_floor": false,
-      "flagged": 27,
+      "flagged": 65,
       "held_out_clean": 142,
       "held_out_violating": 65,
-      "neighbours": 25,
-      "precision": 0.8888888888888888,
+      "judge_calls_per_true_finding": 1.76,
+      "neighbours": 1,
+      "precision": 0.5692307692307692,
       "precision_interval": [
-        0.7194181745602705,
-        0.9614803521050127
+        0.44832757984982086,
+        0.6824073246265422
       ],
-      "recall": 0.36923076923076925
+      "recall": 0.5692307692307692,
+      "recall_interval": [
+        0.44832757984982086,
+        0.6824073246265422
+      ]
     },
     "formulaic_filler": {
       "clears_floor": false,
-      "flagged": 167,
+      "flagged": 194,
       "held_out_clean": 142,
       "held_out_violating": 142,
-      "neighbours": 5,
-      "precision": 0.6826347305389222,
+      "judge_calls_per_true_finding": 1.53,
+      "neighbours": 25,
+      "precision": 0.654639175257732,
       "precision_interval": [
-        0.6086108105272849,
-        0.7484450821826873
+        0.5853109938485203,
+        0.7179619275188768
       ],
-      "recall": 0.8028169014084507
+      "recall": 0.8943661971830986,
+      "recall_interval": [
+        0.8330226167242017,
+        0.9349338511148785
+      ]
     },
     "formulaic_opener": {
       "clears_floor": false,
-      "flagged": 174,
+      "flagged": 211,
       "held_out_clean": 142,
       "held_out_violating": 154,
-      "neighbours": 5,
-      "precision": 0.632183908045977,
+      "judge_calls_per_true_finding": 1.67,
+      "neighbours": 25,
+      "precision": 0.5971563981042654,
       "precision_interval": [
-        0.5583987843958771,
-        0.700258357690114
+        0.5298104314375915,
+        0.6610278419694207
       ],
-      "recall": 0.7142857142857143
+      "recall": 0.8181818181818182,
+      "recall_interval": [
+        0.7497702953634329,
+        0.8711053166425275
+      ]
     },
     "hedge_stack": {
       "clears_floor": false,
-      "flagged": 39,
+      "flagged": 51,
       "held_out_clean": 142,
       "held_out_violating": 61,
-      "neighbours": 15,
-      "precision": 0.8461538461538461,
+      "judge_calls_per_true_finding": 1.34,
+      "neighbours": 9,
+      "precision": 0.7450980392156863,
       "precision_interval": [
-        0.7027023013426569,
-        0.9275262615494854
+        0.6113145589385128,
+        0.8445437675873361
       ],
-      "recall": 0.5409836065573771
+      "recall": 0.6229508196721312,
+      "recall_interval": [
+        0.49747627570942377,
+        0.7338566957163277
+      ]
     },
     "inflated_diction": {
-      "clears_floor": false,
-      "flagged": 200,
+      "clears_floor": true,
+      "flagged": 227,
       "held_out_clean": 142,
       "held_out_violating": 150,
-      "neighbours": 3,
-      "precision": 0.72,
+      "judge_calls_per_true_finding": 1.51,
+      "neighbours": 25,
+      "precision": 0.6607929515418502,
       "precision_interval": [
-        0.6540756858222899,
-        0.7776320715736488
+        0.5969833931619297,
+        0.7192507691381063
       ],
-      "recall": 0.96
+      "recall": 1.0,
+      "recall_interval": [
+        0.9750288608542812,
+        1.0
+      ]
     },
     "lazy_extreme": {
       "clears_floor": false,
-      "flagged": 11,
+      "flagged": 32,
       "held_out_clean": 142,
       "held_out_violating": 50,
-      "neighbours": 25,
-      "precision": 0.8181818181818182,
+      "judge_calls_per_true_finding": 1.6,
+      "neighbours": 5,
+      "precision": 0.625,
       "precision_interval": [
-        0.5230138624217553,
-        0.9486333993289995
+        0.45254100589525126,
+        0.7706633153404079
       ],
-      "recall": 0.18
+      "recall": 0.4,
+      "recall_interval": [
+        0.2760818978624575,
+        0.5381881089724063
+      ]
     },
     "long_sentence": {
       "clears_floor": false,
-      "flagged": 158,
+      "flagged": 188,
       "held_out_clean": 142,
       "held_out_violating": 149,
-      "neighbours": 3,
-      "precision": 0.7088607594936709,
+      "judge_calls_per_true_finding": 1.53,
+      "neighbours": 25,
+      "precision": 0.6542553191489362,
       "precision_interval": [
-        0.6337367703368448,
-        0.7740693808628467
+        0.5837922774384031,
+        0.7185404804201635
       ],
-      "recall": 0.7516778523489933
+      "recall": 0.825503355704698,
+      "recall_interval": [
+        0.7565971884556043,
+        0.8780467828192319
+      ]
     },
     "passive_voice": {
       "clears_floor": false,
       "flagged": 125,
       "held_out_clean": 142,
       "held_out_violating": 149,
+      "judge_calls_per_true_finding": 1.69,
       "neighbours": 3,
       "precision": 0.592,
       "precision_interval": [
         0.5043494517691636,
         0.674164320180269
       ],
-      "recall": 0.4966442953020134
+      "recall": 0.4966442953020134,
+      "recall_interval": [
+        0.41746103138640367,
+        0.5759962472602477
+      ]
     },
     "prose_semicolon": {
       "clears_floor": false,
-      "flagged": 156,
+      "flagged": 195,
       "held_out_clean": 142,
       "held_out_violating": 144,
-      "neighbours": 3,
-      "precision": 0.7243589743589743,
+      "judge_calls_per_true_finding": 1.55,
+      "neighbours": 25,
+      "precision": 0.6461538461538462,
       "precision_interval": [
-        0.649484863559195,
-        0.7884486906594814
+        0.5768075631593559,
+        0.7098527735106368
       ],
-      "recall": 0.7847222222222222
+      "recall": 0.875,
+      "recall_interval": [
+        0.8110615834667573,
+        0.9194499910833017
+      ]
     },
     "spaced_hyphen": {
       "clears_floor": false,
       "flagged": 148,
       "held_out_clean": 142,
       "held_out_violating": 149,
+      "judge_calls_per_true_finding": 1.47,
       "neighbours": 15,
       "precision": 0.6824324324324325,
       "precision_interval": [
         0.6036259821808041,
         0.7520077835329397
       ],
-      "recall": 0.6778523489932886
+      "recall": 0.6778523489932886,
+      "recall_interval": [
+        0.5991623670811488,
+        0.7476018646463392
+      ]
     },
     "three_item_list": {
       "clears_floor": false,
       "flagged": 160,
       "held_out_clean": 142,
       "held_out_violating": 166,
+      "judge_calls_per_true_finding": 1.37,
       "neighbours": 15,
       "precision": 0.73125,
       "precision_interval": [
         0.6577302097802682,
         0.7939255357690915
       ],
-      "recall": 0.7048192771084337
+      "recall": 0.7048192771084337,
+      "recall_interval": [
+        0.6314314077232263,
+        0.768941645757193
+      ]
     },
     "throat_clearing": {
       "clears_floor": false,
-      "flagged": 96,
+      "flagged": 107,
       "held_out_clean": 142,
       "held_out_violating": 79,
-      "neighbours": 15,
-      "precision": 0.71875,
+      "judge_calls_per_true_finding": 1.51,
+      "neighbours": 3,
+      "precision": 0.6635514018691588,
       "precision_interval": [
-        0.6217391618504083,
-        0.7989271736249847
+        0.5697372482952349,
+        0.7460286735247316
       ],
-      "recall": 0.8734177215189873
+      "recall": 0.8987341772151899,
+      "recall_interval": [
+        0.8126986682072592,
+        0.9477888163415664
+      ]
     },
     "throat_clearing_opener": {
       "clears_floor": false,
       "flagged": 92,
       "held_out_clean": 142,
       "held_out_violating": 75,
+      "judge_calls_per_true_finding": 1.39,
       "neighbours": 25,
       "precision": 0.717391304347826,
       "precision_interval": [
         0.618110791059949,
         0.7992445118565297
       ],
-      "recall": 0.88
+      "recall": 0.88,
+      "recall_interval": [
+        0.7874015748031495,
+        0.9355670103092784
+      ]
     },
     "utilize": {
-      "clears_floor": false,
-      "flagged": 187,
+      "clears_floor": true,
+      "flagged": 207,
       "held_out_clean": 142,
       "held_out_violating": 149,
-      "neighbours": 5,
-      "precision": 0.7165775401069518,
+      "judge_calls_per_true_finding": 1.42,
+      "neighbours": 15,
+      "precision": 0.7053140096618358,
       "precision_interval": [
-        0.6481300650302929,
-        0.7763056974030548
+        0.6399207411426205,
+        0.763225507036107
       ],
-      "recall": 0.8993288590604027
+      "recall": 0.9798657718120806,
+      "recall_interval": [
+        0.9424797402749024,
+        0.9931294132539797
+      ]
     },
     "vague_quantity": {
-      "clears_floor": false,
-      "flagged": 178,
+      "clears_floor": true,
+      "flagged": 184,
       "held_out_clean": 142,
       "held_out_violating": 151,
-      "neighbours": 15,
-      "precision": 0.7584269662921348,
+      "judge_calls_per_true_finding": 1.32,
+      "neighbours": 25,
+      "precision": 0.7554347826086957,
       "precision_interval": [
-        0.690513980301093,
-        0.8154208552920826
+        0.6885202534936966,
+        0.8119013783493031
       ],
-      "recall": 0.8940397350993378
+      "recall": 0.9205298013245033,
+      "recall_interval": [
+        0.8662352324106176,
+        0.9539577906529518
+      ]
     },
     "weak_sentence_starter": {
       "clears_floor": false,
-      "flagged": 157,
+      "flagged": 189,
       "held_out_clean": 142,
       "held_out_violating": 149,
-      "neighbours": 3,
-      "precision": 0.6751592356687898,
+      "judge_calls_per_true_finding": 1.51,
+      "neighbours": 25,
+      "precision": 0.6613756613756614,
       "precision_interval": [
-        0.5984787454536229,
-        0.7434725905191601
+        0.591289354784694,
+        0.7250324347047108
       ],
-      "recall": 0.7114093959731543
+      "recall": 0.8389261744966443,
+      "recall_interval": [
+        0.7715094438388466,
+        0.8893054128493849
+      ]
     },
     "wordiness": {
       "clears_floor": false,
-      "flagged": 107,
+      "flagged": 122,
       "held_out_clean": 142,
       "held_out_violating": 123,
-      "neighbours": 15,
-      "precision": 0.6635514018691588,
+      "judge_calls_per_true_finding": 1.61,
+      "neighbours": 1,
+      "precision": 0.6229508196721312,
       "precision_interval": [
-        0.5697372482952349,
-        0.7460286735247316
+        0.534436471496458,
+        0.703958463087972
       ],
-      "recall": 0.5772357723577236
+      "recall": 0.6178861788617886,
+      "recall_interval": [
+        0.5296783542069307,
+        0.6989532619190092
+      ]
     }
   },
-  "rules_clearing_the_floor": [],
-  "verdict": "no-go"
+  "rules_clearing_the_floor": [
+    "ai_closer",
+    "business_jargon",
+    "inflated_diction",
+    "utilize",
+    "vague_quantity"
+  ],
+  "verdict": "go"
 }

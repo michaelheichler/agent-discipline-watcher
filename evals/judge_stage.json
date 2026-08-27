@@ -1,0 +1,67 @@
+{
+  "ai_closer": {
+    "after_judge": {
+      "held_out_violating": 120,
+      "kept": 97,
+      "precision": 1.0,
+      "recall": 0.8083
+    },
+    "candidate_stage": {
+      "flagged": 185,
+      "precision": 0.7837837837837838,
+      "recall": 1.0
+    }
+  },
+  "business_jargon": {
+    "after_judge": {
+      "held_out_violating": 98,
+      "kept": 60,
+      "precision": 0.9667,
+      "recall": 0.5918
+    },
+    "candidate_stage": {
+      "flagged": 149,
+      "precision": 0.6241610738255033,
+      "recall": 0.9489795918367347
+    }
+  },
+  "inflated_diction": {
+    "after_judge": {
+      "held_out_violating": 120,
+      "kept": 86,
+      "precision": 1.0,
+      "recall": 0.7167
+    },
+    "candidate_stage": {
+      "flagged": 227,
+      "precision": 0.6607929515418502,
+      "recall": 1.0
+    }
+  },
+  "utilize": {
+    "after_judge": {
+      "held_out_violating": 123,
+      "kept": 120,
+      "precision": 1.0,
+      "recall": 0.9756
+    },
+    "candidate_stage": {
+      "flagged": 207,
+      "precision": 0.7053140096618358,
+      "recall": 0.9798657718120806
+    }
+  },
+  "vague_quantity": {
+    "after_judge": {
+      "held_out_violating": 132,
+      "kept": 82,
+      "precision": 1.0,
+      "recall": 0.6212
+    },
+    "candidate_stage": {
+      "flagged": 184,
+      "precision": 0.7554347826086957,
+      "recall": 0.9205298013245033
+    }
+  }
+}
