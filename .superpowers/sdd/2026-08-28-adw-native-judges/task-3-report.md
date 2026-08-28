@@ -61,7 +61,7 @@ Combined full evidence: `1,669 passed, 18 skipped, 268 subtests passed`.
 
 ## Concern
 
-Claude native agent settings cannot directly execute the Python Luna provider themselves. The generated `luna` profile therefore carries the static literal `model: "luna"` and explicit route prompt, while `luna_review()` is the provider-facing integration helper and owns the no-double-spend fallback transition. A future host adapter may need to connect Claude's native Luna route to that helper without adding a sibling fallback.
+The initial implementation exposed a static `model: "luna"` entry because Claude native agent settings cannot execute the Python Luna provider. Fix round 1 replaced that route with live command handlers and retained native agents only for Claude presets; the remaining prompt-tool boundary is documented below.
 
 ## Commits
 
