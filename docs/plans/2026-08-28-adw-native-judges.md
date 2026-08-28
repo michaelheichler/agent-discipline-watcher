@@ -9,6 +9,7 @@ Reduce ADW context growth and session debris while making model-backed review na
 - Keep deterministic scanning and hard-block behavior unchanged.
 - Never invoke `claude -p`, `codex exec`, an MCP judge, or the OpenAI API-key client.
 - Codex judging must use `openai_codex`, reuse existing Codex authentication, create ephemeral threads, request structured output, and use `gpt-5.6-luna` with `high` effort.
+- Run the SDK with an ADW-owned minimal `CODEX_HOME` under `~/.adw/runtime`, an empty judge working directory, and only a link to the existing Codex authentication file when one exists. Do not inherit user plugins, MCP configuration, project instructions, skills, apps, or session history.
 - ADW must not expose or persist authentication tokens. Missing Codex subscription authentication produces a concise login action, not an API-key fallback.
 - Claude model reviews use native `type: "agent"` hooks. Do not place a native agent hook on a pre-write gate because a malformed agent response must never deny a write.
 - Claude `mixed` keeps the current responsibility split: Haiku judges code comments after eligible writes, Sonnet judges prose and documents once at `Stop`.
@@ -31,7 +32,7 @@ Tests must cover Python 3.14 winning over Python 3.9, the configured interpreter
 
 Introduce typed `JudgeRequest` and `JudgeResult` contracts shared by comment, pattern, and document review. Centralize prompt templates and assign a rubric version. Keep candidate extraction local so only candidate text and required source context reach a model.
 
-Implement a Luna provider with `openai_codex`. Start an ephemeral, read-only thread with only ADW base/developer instructions, no dynamic tools, no apps, and no configured MCP servers. Validate Luna availability through the SDK model list, run at high effort, use a strict JSON output schema, enforce timeout and bounded retry behavior, and return usage metadata. Reuse existing Codex authentication automatically. Report the SDK ChatGPT or device-code login action when no subscription session exists. Do not implement API-key login.
+Implement a Luna provider with `openai_codex`. Launch it with the isolated ADW `CODEX_HOME`, documented app/web/shell/agent feature disables, and an empty working directory. Start an ephemeral, read-only thread with only ADW base/developer instructions and no configured MCP servers. Validate Luna availability through the SDK model list, run at high effort, use a strict JSON output schema, enforce timeout and bounded retry behavior, and return usage metadata. Reject and do not cache any result whose SDK items show a tool, app, MCP, command, or subagent call. Reuse existing Codex authentication automatically. Report the SDK ChatGPT or device-code login action when no subscription session exists. Do not implement API-key login.
 
 Add a local result cache before the provider boundary. Do not cache transport failures or malformed model output. Tests use a protocol-faithful fake SDK boundary and cover exact model, effort, ephemeral mode, read-only sandbox, structured output, authentication failure, malformed output, retry classification, cache hit, cache miss, and rubric invalidation.
 
