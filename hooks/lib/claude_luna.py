@@ -1,7 +1,9 @@
 """Run ADW's Luna-backed Claude command handlers."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import stat
 from typing import Any
 
 from . import claude_journal, claude_native, payloads
@@ -18,10 +20,41 @@ EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_pat
 MAX_FEEDBACK_CHARS = 900
 MAX_DOCUMENT_CHARS = 24_000
 MAX_LIVE_CANDIDATES = claude_journal.MAX_ROWS
+MAX_LIVE_PATHS = 32
+MAX_LIVE_PATH_CHARS = 4096
+MAX_LIVE_FILE_BYTES = 128 * 1024
+MAX_LIVE_SCAN_BYTES = 512 * 1024
 
 
 def _bounded(value: object) -> str:
     return " ".join(str(value).split())[:MAX_FEEDBACK_CHARS]
+
+
+def _bounded_file_text(path: Path, limit: int) -> tuple[str, int] | None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except (OSError, ValueError):
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > limit:
+            return None
+        data = os.read(descriptor, limit)
+        final_metadata = os.fstat(descriptor)
+        if (
+            final_metadata.st_size > limit
+            or final_metadata.st_size != metadata.st_size
+            or len(data) != final_metadata.st_size
+        ):
+            return None
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+    try:
+        return data.decode("utf-8"), len(data)
+    except UnicodeDecodeError:
+        return None
 
 
 def _read_candidates(payload: object) -> tuple[Candidate, ...]:
@@ -33,19 +66,27 @@ def _read_candidates(payload: object) -> tuple[Candidate, ...]:
     cwd = Path(cwd_text)
     found: list[Candidate] = []
     try:
-        paths = payloads.edited_paths(payload)
+        paths = payloads.edited_paths(payload)[:MAX_LIVE_PATHS]
     except (OSError, RuntimeError, TypeError, ValueError):
         return ()
+    scanned = 0
     for raw_path in paths:
-        path = payloads.resolved_path(raw_path, cwd)
-        if path.suffix.lower() != ".py":
+        if scanned >= MAX_LIVE_SCAN_BYTES:
+            break
+        if not isinstance(raw_path, str) or len(raw_path) > MAX_LIVE_PATH_CHARS:
             continue
         try:
-            if not path.is_file():
-                continue
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            path = payloads.resolved_path(raw_path, cwd)
+        except (OSError, RuntimeError, TypeError, ValueError):
             continue
+        if path.suffix.lower() != ".py":
+            continue
+        limit = min(MAX_LIVE_FILE_BYTES, MAX_LIVE_SCAN_BYTES - scanned)
+        bounded = _bounded_file_text(path, limit)
+        if bounded is None:
+            continue
+        text, read_bytes = bounded
+        scanned += read_bytes
         for candidate in candidates(str(path), text):
             found.append(Candidate(candidate.path, candidate.line, candidate.text[:claude_journal.MAX_CANDIDATE_CHARS]))
             if len(found) >= MAX_LIVE_CANDIDATES:
@@ -157,18 +198,24 @@ def run(
     preset_path: str | Path | None = None,
 ) -> dict:
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
-    if event == "PostToolUse":
-        built = post_request(payload)
-        role = "comment"
-    elif event == "Stop":
-        built = stop_request(payload, _state_root(payload, state_root))
-        role = "document"
-    else:
+    if event not in {"PostToolUse", "Stop"}:
         return {}
+    role = "comment" if event == "PostToolUse" else "document"
     try:
         claude_native.recover(settings_path=settings_path, preset_path=preset_path)
+        selected = claude_native.read_preset(preset_path, settings_path=settings_path)
+        if selected is None:
+            selected = claude_native.default_preset(
+                preset_path=preset_path, settings_path=settings_path,
+            )
     except (OSError, ValueError):
         return {}
+    if selected != "luna":
+        return {}
+    if event == "PostToolUse":
+        built = post_request(payload)
+    else:
+        built = stop_request(payload, _state_root(payload, state_root))
     if built is None:
         return {}
     request = built[0]

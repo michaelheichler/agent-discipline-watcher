@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import pytest
 
 from lib import claude_journal, claude_luna, claude_native
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -47,7 +49,13 @@ def test_post_handler_extracts_the_just_written_candidate_without_waiting_for_jo
         "items": [{"index": 0, "verdict": "describes_code", "reason": "the opening names behavior"}],
     }))
 
-    response = claude_luna.run(_post_payload(source), provider=provider, state_root=tmp_path / "state")
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    response = claude_luna.run(
+        _post_payload(source), provider=provider, state_root=tmp_path / "state",
+        settings_path=settings, preset_path=preset,
+    )
 
     assert provider.requests
     request = provider.requests[0]
@@ -72,7 +80,13 @@ def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judgin
     }
     provider = Provider(lambda request: _result(request, {"items": []}))
 
-    claude_luna.run(payload, provider=provider, state_root=tmp_path / "state")
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    claude_luna.run(
+        payload, provider=provider, state_root=tmp_path / "state",
+        settings_path=settings, preset_path=preset,
+    )
 
     assert provider.requests
     request = provider.requests[0]
@@ -80,6 +94,48 @@ def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judgin
     assert request.candidates == tuple(item[:claude_journal.MAX_CANDIDATE_CHARS] for item in request.candidates)
     assert any("Counts the retries" in item for item in request.candidates)
     assert any("Tracks the cache" in item for item in request.candidates)
+
+
+def test_post_handler_bounds_paths_file_bytes_and_total_scan_before_extracting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_PATHS", 2)
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_FILE_BYTES", 100)
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_SCAN_BYTES", 150)
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    last = tmp_path / "last.py"
+    first.write_text("value = 1\n", encoding="utf-8")
+    second.write_text("value = 2\n", encoding="utf-8")
+    last.write_text("# Counts the retries because the report header needs a total.\nvalue = 3\n", encoding="utf-8")
+    oversized = tmp_path / "oversized.py"
+    oversized.write_text("# " + ("x" * 200) + "\n# Counts the retries because the report header needs a total.\n", encoding="utf-8")
+    patch = "\n".join(f"*** Update File: {path.name}\n@@" for path in (first, second, last))
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "apply_patch", "tool_use_id": "tool-1", "tool_input": {"input": patch},
+    }
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    provider = Provider(lambda request: _result(request, {"items": []}))
+
+    claude_luna.run(payload, provider=provider, settings_path=settings, preset_path=preset)
+
+    assert provider.requests == []
+    oversized_payload = {
+        **payload,
+        "tool_input": {"input": "*** Update File: oversized.py\n@@"},
+    }
+    claude_luna.run(oversized_payload, provider=provider, settings_path=settings, preset_path=preset)
+    assert provider.requests == []
+
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_PATHS", 10)
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_SCAN_BYTES", 25)
+    total_payload = {
+        **payload,
+        "tool_input": {"input": "\n".join(f"*** Update File: {path.name}\n@@" for path in (first, second, last))},
+    }
+    claude_luna.run(total_payload, provider=provider, settings_path=settings, preset_path=preset)
+    assert provider.requests == []
 
 
 def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_document(tmp_path: Path) -> None:
@@ -204,9 +260,10 @@ def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path
     response = json.loads(result.stdout)
     assert response["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "Luna" in response["hookSpecificOutput"]["additionalContext"]
-    assert claude_native.read_preset(preset) == "haiku"
+    assert claude_native.read_preset(preset) == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "haiku"
+    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "sonnet"
 
 
 def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_path: Path) -> None:
@@ -236,9 +293,12 @@ def test_stop_handler_reads_only_bounded_current_session_journal(tmp_path: Path)
         "notes": [{"quote": "A paragraph with enough text to inspect.", "problem": "weak bridge", "fix": "Name the transition."}],
     }))
 
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     response = claude_luna.run(
         {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False},
-        provider=provider, state_root=state_root,
+        provider=provider, state_root=state_root, settings_path=settings, preset_path=preset,
     )
 
     request = provider.requests[0]
@@ -275,8 +335,9 @@ def test_luna_success_has_no_native_double_spend_and_failure_switches_the_matchi
         _post_payload(source), provider=failure, settings_path=settings, preset_path=preset,
     )
     assert "login required" in response["hookSpecificOutput"]["additionalContext"]
-    assert claude_native.read_preset(preset) == "haiku"
-    assert json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "haiku"
+    assert claude_native.read_preset(preset) == "mixed"
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "haiku"
 
 
 def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
@@ -296,7 +357,7 @@ def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
 
     assert response["decision"] == "block"
     assert "subscription unavailable" in response["reason"]
-    assert claude_native.read_preset(preset) == "sonnet"
+    assert claude_native.read_preset(preset) == "mixed"
 
 
 def test_luna_failure_reports_no_second_transition_after_role_fallback_is_active(tmp_path: Path) -> None:
@@ -315,5 +376,40 @@ def test_luna_failure_reports_no_second_transition_after_role_fallback_is_active
     )
 
     assert "Switched subsequent events" in first["hookSpecificOutput"]["additionalContext"]
-    assert "Switched subsequent events" not in second["hookSpecificOutput"]["additionalContext"]
-    assert "remains configured" in second["hookSpecificOutput"]["additionalContext"]
+    assert second == {}
+
+
+def test_queued_luna_handler_skips_after_effective_preset_falls_back(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("mixed", settings_path=settings, preset_path=preset)
+    source = tmp_path / "a.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    provider = Provider(error=AssertionError("stale Luna command must not judge"))
+
+    response = claude_luna.run(
+        _post_payload(source), provider=provider, settings_path=settings, preset_path=preset,
+    )
+
+    assert response == {}
+    assert provider.requests == []
+
+
+def test_live_luna_recovers_a_corrupt_transaction_and_runs_when_luna_is_current(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    preset.with_name(preset.name + ".txn").write_text("corrupt", encoding="utf-8")
+    source = tmp_path / "a.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    provider = Provider(lambda request: _result(request, {
+        "items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}],
+    }))
+
+    response = claude_luna.run(
+        _post_payload(source), provider=provider, settings_path=settings, preset_path=preset,
+    )
+
+    assert response == {}
+    assert provider.requests
+    assert not preset.with_name(preset.name + ".txn").exists()

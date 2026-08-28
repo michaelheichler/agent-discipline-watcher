@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import os
 import shlex
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -20,6 +22,7 @@ PRESET_FILE_ENV = "ADW_CLAUDE_PRESET_FILE"
 MANAGED_MARKER = "adw-managed-hook-v1"
 TRANSACTION_SUFFIX = ".txn"
 LOCK_SUFFIX = ".lock"
+TRANSACTION_VERSION = 2
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -80,8 +83,12 @@ def _lock_path(path: str | Path) -> Path:
 def _preset_lock(path: str | Path) -> Iterator[None]:
     lock = _lock_path(path)
     lock.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    descriptor = os.open(
+        lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600,
+    )
     try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"preset lock is not a regular file: {lock}")
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         try:
             yield
@@ -93,46 +100,104 @@ def _preset_lock(path: str | Path) -> Iterator[None]:
 
 def _read_preset_unlocked(path: Path) -> str | None:
     try:
-        value = path.read_text(encoding="utf-8").strip()
-    except (OSError, UnicodeDecodeError):
+        text = _read_regular_text(path)
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
+    if text is None:
+        return None
+    value = text.strip()
     return value if value in PRESETS else None
+
+
+def _read_regular_text(path: Path) -> str | None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValueError(f"preset state leaf is not safely readable: {path}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"preset state leaf is not a regular file: {path}")
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            descriptor = -1
+            return handle.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _discard_transaction(path: Path) -> None:
+    # unlink never follows a final symlink, which also quarantines a crafted txn leaf without touching its target.
+    try:
+        _transaction_path(path).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _transaction_payload(path: Path) -> dict[str, Any] | None:
     transaction = _transaction_path(path)
-    try:
-        payload = json.loads(transaction.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    text = _read_regular_text(transaction)
+    if text is None:
         return None
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    try:
+        payload = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"could not read preset transaction: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("preset transaction must be a JSON object")
-    if payload.get("version") != 1 or payload.get("preset") not in PRESETS:
+    expected = {"version", "preset", "base_preset", "base_settings_hash"}
+    if set(payload) != expected or payload.get("version") != TRANSACTION_VERSION or payload.get("preset") not in PRESETS:
         raise ValueError("invalid preset transaction")
-    if not isinstance(payload.get("settings_path"), str) or not isinstance(payload.get("settings"), str):
-        raise ValueError("invalid preset transaction payload")
-    try:
-        settings = json.loads(payload["settings"])
-    except json.JSONDecodeError as exc:
-        raise ValueError("invalid settings in preset transaction") from exc
-    if not isinstance(settings, dict):
-        raise ValueError("settings in preset transaction must be an object")
+    if payload["base_preset"] is not None and payload["base_preset"] not in PRESETS:
+        raise ValueError("invalid base preset in transaction")
+    base_hash = payload["base_settings_hash"]
+    if base_hash is not None and (
+        not isinstance(base_hash, str) or len(base_hash) != 64
+        or any(character not in "0123456789abcdef" for character in base_hash)
+    ):
+        raise ValueError("invalid base settings hash in transaction")
     return payload
 
 
-def _recover_unlocked(settings: Path | None, preset: Path) -> None:
-    payload = _transaction_payload(preset)
+def _settings_snapshot(path: Path) -> tuple[str | None, dict[str, Any]]:
+    text = _read_regular_text(path)
+    if text is None:
+        return None, {}
+    try:
+        value = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read Claude settings: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError("Claude settings must be a JSON object")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), value
+
+
+def _recover_unlocked(settings: Path, preset: Path) -> None:
+    try:
+        payload = _transaction_payload(preset)
+    except (OSError, ValueError):
+        _discard_transaction(preset)
+        return
     if payload is None:
         return
-    transaction_settings = _canonical(payload["settings_path"])
-    target_settings = transaction_settings if settings is None else _canonical(settings)
-    if target_settings != transaction_settings:
-        raise ValueError("preset transaction settings path does not match the requested settings")
-    _atomic_write(target_settings, payload["settings"])
-    _atomic_write(_canonical(preset), str(payload["preset"]) + "\n")
-    _transaction_path(preset).unlink(missing_ok=True)
+    desired = str(payload["preset"])
+    base_preset = payload["base_preset"]
+    current_preset = _read_preset_unlocked(preset)
+    if current_preset not in {base_preset, desired}:
+        _discard_transaction(preset)
+        return
+    if current_preset is None and preset.exists():
+        _discard_transaction(preset)
+        return
+    current_hash, current_settings = _settings_snapshot(settings)
+    # The hash distinguishes a crash window from a later external edit. Both paths merge the managed block onto the
+    # latest valid settings object, so a stale transaction cannot replay an old complete settings snapshot.
+    _ = current_hash == payload["base_settings_hash"]
+    rendered = json.dumps(settings_for_preset(current_settings, desired), indent=2, sort_keys=True) + "\n"
+    _atomic_write(settings, rendered)
+    _atomic_write(preset, desired + "\n")
+    _discard_transaction(preset)
 
 
 def _recover(
@@ -141,7 +206,7 @@ def _recover(
     preset_path: str | Path | None = None,
 ) -> None:
     target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else None
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
 
@@ -157,7 +222,7 @@ def read_preset(
     settings_path: str | Path | None = None,
 ) -> str | None:
     target = _canonical(path) if path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else None
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
     with _preset_lock(target):
         try:
             _recover_unlocked(target_settings, target)
@@ -187,7 +252,7 @@ def default_preset(
 ) -> str:
     env = os.environ if environment is None else environment
     target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else None
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
     with _preset_lock(target_preset):
         try:
             _recover_unlocked(target_settings, target_preset)
@@ -343,19 +408,11 @@ def settings_for_preset(settings: object, preset: str) -> dict[str, Any]:
 
 
 def _load_settings(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"could not read Claude settings: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ValueError("Claude settings must be a JSON object")
-    return value
+    return _settings_snapshot(path)[1]
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    target = path.resolve() if path.is_symlink() else path
+    target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
@@ -367,7 +424,12 @@ def _atomic_write(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        mode = target.stat().st_mode & 0o777 if target.exists() else 0o600
+        try:
+            mode = os.lstat(target).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o600
+        if target.is_symlink() or (target.exists() and not stat.S_ISREG(os.lstat(target).st_mode)):
+            raise ValueError(f"preset state leaf is not a regular file: {target}")
         temporary.chmod(mode)
         os.replace(temporary, target)
         temporary = None
@@ -377,13 +439,14 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _set_preset_unlocked(selected: str, target_settings: Path, target_preset: Path) -> str:
-    current = _load_settings(target_settings)
+    base_hash, current = _settings_snapshot(target_settings)
+    base_preset = _read_preset_unlocked(target_preset)
     rendered = json.dumps(settings_for_preset(current, selected), indent=2, sort_keys=True) + "\n"
     transaction = {
-        "version": 1,
+        "version": TRANSACTION_VERSION,
         "preset": selected,
-        "settings_path": str(_canonical(target_settings)),
-        "settings": rendered,
+        "base_preset": base_preset,
+        "base_settings_hash": base_hash,
     }
     _atomic_write(
         _transaction_path(target_preset),
@@ -432,7 +495,7 @@ def fallback_after_luna_failure(
         raise ValueError("role must be comment, prose, or document")
     target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
     target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    fallback = "haiku" if role == "comment" else "sonnet"
+    fallback = "mixed"
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         current = _read_preset_unlocked(target_preset) or "mixed"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -107,6 +108,42 @@ def test_candidate_journal_drops_a_previous_candidate_when_final_content_changes
     assert claude_journal.read("session", state_root=state_root) == []
 
 
+def test_candidate_journal_canonicalizes_relative_absolute_and_symlink_aliases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "a.md"
+    alias = tmp_path / "alias.md"
+    state_root = tmp_path / "state"
+    source.write_text("A paragraph that should be reviewed.\n", encoding="utf-8")
+    alias.symlink_to(source)
+    monkeypatch.chdir(tmp_path)
+
+    relative = claude_journal.record_edit("session", "turn-1", "tool-1", "a.md", state_root=state_root)
+    absolute = claude_journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
+    linked = claude_journal.record_edit("session", "turn-3", "tool-3", alias, state_root=state_root)
+
+    assert relative
+    assert absolute == []
+    assert linked == []
+    rows = claude_journal.read("session", state_root=state_root)
+    assert len(rows) == 1
+    assert rows[0]["path"] == str(source.resolve())
+    assert rows[0]["path_identity"] == str(source.resolve())
+
+
+def test_candidate_journal_prunes_the_old_path_after_a_move(tmp_path: Path) -> None:
+    old = tmp_path / "old.md"
+    new = tmp_path / "new.md"
+    state_root = tmp_path / "state"
+    old.write_text("A paragraph that should be reviewed.\n", encoding="utf-8")
+    claude_journal.record_edit("session", "turn-1", "tool-1", old, state_root=state_root)
+    old.rename(new)
+
+    claude_journal.record_edit("session", "turn-2", "tool-2", new, state_root=state_root)
+
+    rows = claude_journal.read("session", state_root=state_root)
+    assert len(rows) == 1
+    assert rows[0]["path"] == str(new.resolve())
+
+
 def test_native_prompts_fail_open_for_empty_input_and_check_stop_loop() -> None:
     comment = claude_native.comment_prompt("mixed")
     prompt = comment + claude_native.stop_prompt("mixed")
@@ -207,9 +244,9 @@ def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
         "comment", "subscription unavailable", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset",
     )
 
-    assert result["preset"] == "haiku"
+    assert result["preset"] == "mixed"
     assert "subscription unavailable" in result["message"]
-    assert claude_native.read_preset(tmp_path / "preset") == "haiku"
+    assert claude_native.read_preset(tmp_path / "preset") == "mixed"
 
 
 def test_luna_success_does_not_spend_a_native_fallback(tmp_path: Path) -> None:
@@ -253,7 +290,7 @@ def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path:
 
     selected = claude_native.read_preset(preset)
     configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert selected in {"haiku", "sonnet"}
+    assert selected == "mixed"
     assert all(result["preset"] == selected for result in results)
     assert sum(result["switched"] is True for result in results) == 1
     handlers = [
@@ -266,7 +303,10 @@ def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path:
         if isinstance(hook, dict) and claude_native.MANAGED_MARKER in str(hook.get("prompt", ""))
     ]
     assert handlers
-    assert all(handler["model"] == selected for handler in handlers)
+    assert {
+        group_name: next(hook["model"] for hook in configured["hooks"][group_name][0]["hooks"] if hook.get("type") == "agent")
+        for group_name in ("PostToolUse", "Stop")
+    } == {"PostToolUse": "haiku", "Stop": "sonnet"}
 
 
 def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -291,7 +331,7 @@ def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_
     monkeypatch.setattr(claude_native, "_atomic_write", original)
 
     status = claude_native.status(settings_path=settings, preset_path=preset)
-    assert status["preset"] == "haiku"
+    assert status["preset"] == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
     managed = [
         hook
@@ -300,8 +340,115 @@ def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_
         for hook in row.get("hooks", [])
         if isinstance(hook, dict) and hook.get("type") == "agent"
     ]
-    assert managed and all(hook["model"] == "haiku" for hook in managed)
+    assert managed
+    assert {
+        lifecycle: next(hook["model"] for hook in configured["hooks"][lifecycle][0]["hooks"] if hook.get("type") == "agent")
+        for lifecycle in ("PostToolUse", "Stop")
+    } == {"PostToolUse": "haiku", "Stop": "sonnet"}
     assert not preset.with_name(preset.name + ".txn").exists()
+
+
+def test_corrupt_preset_transaction_is_removed_and_current_state_remains_usable(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    transaction = preset.with_name(preset.name + ".txn")
+    transaction.write_text("not-json", encoding="utf-8")
+
+    current = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert current["preset"] == "luna"
+    assert not transaction.exists()
+
+
+def test_transaction_symlink_and_embedded_settings_target_cannot_redirect_recovery(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    outside = tmp_path / "outside-settings.json"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    outside.write_text("outside", encoding="utf-8")
+    transaction = preset.with_name(preset.name + ".txn")
+    transaction.write_text(json.dumps({
+        "version": 2,
+        "preset": "mixed",
+        "base_preset": "luna",
+        "base_settings_hash": hashlib.sha256(settings.read_bytes()).hexdigest(),
+        "settings_path": str(outside),
+    }), encoding="utf-8")
+    external = tmp_path / "external-transaction.json"
+    external.write_text(transaction.read_text(encoding="utf-8"), encoding="utf-8")
+    transaction.unlink()
+    transaction.symlink_to(external)
+
+    current = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert current["preset"] == "luna"
+    assert settings.read_text(encoding="utf-8") != "outside"
+    assert outside.read_text(encoding="utf-8") == "outside"
+    assert not transaction.exists()
+
+
+def test_regular_transaction_cannot_use_an_embedded_settings_path(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    outside = tmp_path / "outside-settings.json"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    outside.write_text("outside", encoding="utf-8")
+    transaction = preset.with_name(preset.name + ".txn")
+    transaction.write_text(json.dumps({
+        "version": 2,
+        "preset": "mixed",
+        "base_preset": "luna",
+        "base_settings_hash": hashlib.sha256(settings.read_bytes()).hexdigest(),
+        "settings_path": str(outside),
+    }), encoding="utf-8")
+
+    current = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert current["preset"] == "luna"
+    assert outside.read_text(encoding="utf-8") == "outside"
+    assert not transaction.exists()
+
+
+def test_preset_lock_symlink_is_not_followed(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    external = tmp_path / "external-lock"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    external.write_text("do not modify", encoding="utf-8")
+    lock = preset.with_name(preset.name + ".lock")
+    lock.unlink()
+    lock.symlink_to(external)
+
+    with pytest.raises(OSError):
+        claude_native.status(settings_path=settings, preset_path=preset)
+    assert external.read_text(encoding="utf-8") == "do not modify"
+
+
+def test_recovery_merges_managed_hooks_onto_new_external_settings_and_is_idempotent(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    base_hash = hashlib.sha256(settings.read_bytes()).hexdigest()
+    transaction = preset.with_name(preset.name + ".txn")
+    transaction.write_text(json.dumps({
+        "version": 2,
+        "preset": "mixed",
+        "base_preset": "luna",
+        "base_settings_hash": base_hash,
+    }), encoding="utf-8")
+    changed = json.loads(settings.read_text(encoding="utf-8"))
+    changed["external_setting"] = "keep me"
+    settings.write_text(json.dumps(changed), encoding="utf-8")
+
+    first = claude_native.status(settings_path=settings, preset_path=preset)
+    first_text = settings.read_text(encoding="utf-8")
+    second = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert first["preset"] == second["preset"] == "mixed"
+    assert json.loads(first_text)["external_setting"] == "keep me"
+    assert settings.read_text(encoding="utf-8") == first_text
+    assert not transaction.exists()
 
 
 def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(tmp_path: Path) -> None:
@@ -317,5 +464,5 @@ def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(t
     )
 
     assert result["ok"] is False
-    assert result["preset"] == "sonnet"
+    assert result["preset"] == "mixed"
     assert "login required" in result["reason"]

@@ -25,8 +25,31 @@ def _content(path: Path) -> tuple[str, str] | None:
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
 
+def _canonical_path(path: str | Path) -> Path:
+    try:
+        return Path(path).expanduser().resolve(strict=False)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return Path(path)
+
+
+def _row_identity(row: dict[str, Any]) -> str:
+    raw = row.get("path_identity", row.get("path", ""))
+    if not isinstance(raw, (str, Path)):
+        return ""
+    return str(_canonical_path(raw))
+
+
+def _path_available(identity: str) -> bool:
+    if not identity:
+        return False
+    try:
+        return _canonical_path(identity).is_file()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
 def _row_key(row: dict[str, Any]) -> tuple[str, str, str]:
-    return str(row.get("role", "")), str(row.get("path", "")), str(row.get("content_hash", ""))
+    return str(row.get("role", "")), _row_identity(row), str(row.get("content_hash", ""))
 
 
 def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_id: str) -> list[dict[str, Any]]:
@@ -35,6 +58,7 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
         rows.extend({
             "role": "comment",
             "path": candidate.path,
+            "path_identity": str(path),
             "line": candidate.line,
             "text": candidate.text[:MAX_CANDIDATE_CHARS],
             "content_hash": digest,
@@ -45,6 +69,7 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
         rows.append({
             "role": "document",
             "path": str(path),
+            "path_identity": str(path),
             "content_hash": digest,
             "source_context": text[:MAX_DOCUMENT_CHARS],
             "turn_id": turn_id,
@@ -63,7 +88,7 @@ def record_edit(
 ) -> list[dict[str, Any]]:
     if not isinstance(session_id, str) or not session_id:
         return []
-    target = Path(path)
+    target = _canonical_path(path)
     read = _content(target)
     if read is None:
         def remove_target(state: dict) -> dict:
@@ -73,7 +98,7 @@ def record_edit(
                 **state,
                 STATE_KEY: [
                     row for row in rows
-                    if not (isinstance(row, dict) and row.get("path") == str(target))
+                    if not (isinstance(row, dict) and _row_identity(row) == str(target))
                 ],
             }
 
@@ -89,7 +114,19 @@ def record_edit(
         rows = list(existing) if isinstance(existing, list) else []
         rows = [
             row for row in rows
-            if not (isinstance(row, dict) and row.get("path") == str(target) and row.get("content_hash") != digest)
+            if not (
+                isinstance(row, dict)
+                and (
+                    (
+                        _row_identity(row) == str(target)
+                        and row.get("content_hash") != digest
+                    )
+                    or (
+                        _row_identity(row) != str(target)
+                        and not _path_available(_row_identity(row))
+                    )
+                )
+            )
         ]
         keys = {_row_key(row) for row in rows if isinstance(row, dict)}
         for row in fresh:
