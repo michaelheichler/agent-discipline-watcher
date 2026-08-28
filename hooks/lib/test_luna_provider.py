@@ -4,11 +4,11 @@ from collections import deque
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-import time
+import stat
 
 import pytest
 
-from lib import luna_provider
+from lib import luna_provider, luna_storage
 from lib.judge_contracts import JudgeRequest, ReviewKind
 from lib.luna_provider import (
     ApprovalMode,
@@ -53,6 +53,7 @@ class FakeSession:
     results: deque[SdkRunResult | BaseException]
     starts: list[SdkThreadStart] = field(default_factory=list)
     threads: list[FakeThread] = field(default_factory=list)
+    close_calls: int = 0
 
     def account(self) -> SdkAccount | None:
         return self.account_state
@@ -67,15 +68,27 @@ class FakeSession:
         self.threads.append(thread)
         return thread
 
+    def close(self) -> None:
+        self.close_calls += 1
+
 
 @dataclass
 class FakeSdk:
     session: FakeSession
     launches: list[SdkLaunch] = field(default_factory=list)
+    auth_stats: list[os.stat_result | None] = field(default_factory=list)
+    config_texts: list[str] = field(default_factory=list)
+    cwd_was_empty: list[bool] = field(default_factory=list)
     attempts: int = 0
 
     def open(self, launch: SdkLaunch) -> FakeSession:
         self.launches.append(launch)
+        try:
+            self.auth_stats.append((launch.codex_home / "auth.json").stat())
+        except FileNotFoundError:
+            self.auth_stats.append(None)
+        self.config_texts.append((launch.codex_home / "config.toml").read_text(encoding="utf-8"))
+        self.cwd_was_empty.append(launch.cwd.is_dir() and not tuple(launch.cwd.iterdir()))
         return self.session
 
     def retry_on_overload(self, operation, *, max_attempts: int):
@@ -87,10 +100,6 @@ class FakeSdk:
                 if attempt + 1 == max_attempts:
                     raise
         raise AssertionError("unreachable")
-
-    def is_retryable_error(self, error: BaseException) -> bool:
-        return isinstance(error, RetryableFakeError)
-
 
 def _model(*, hidden: bool = False, efforts: tuple[str, ...] = ("low", "high")) -> SdkModel:
     return SdkModel(id="gpt-5.6-luna", model="gpt-5.6-luna", hidden=hidden, supported_reasoning_efforts=efforts)
@@ -137,7 +146,7 @@ def test_luna_judge_uses_the_subscription_protocol_and_returns_usage(tmp_path: P
     assert start.ephemeral is True
     assert start.sandbox is Sandbox.READ_ONLY
     assert start.approval_mode is ApprovalMode.DENY_ALL
-    assert start.cwd.is_dir() and not tuple(start.cwd.iterdir())
+    assert sdk.cwd_was_empty == [True]
     turn = sdk.session.threads[0].turns[0]
     assert turn.model == "gpt-5.6-luna"
     assert turn.effort == "high"
@@ -203,6 +212,7 @@ def test_transport_failures_are_not_retried_or_cached(tmp_path: Path) -> None:
         judge.judge(_request())
 
     assert sdk.attempts == 1
+    assert sdk.session.close_calls == 1
     assert list((tmp_path / "cache").glob("*.json")) == []
 
 
@@ -299,16 +309,25 @@ def test_overload_exhaustion_stops_after_exactly_three_attempts(tmp_path: Path) 
 
 
 def test_child_environment_strips_provider_credentials(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "must-not-pass")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-pass")
-    monkeypatch.setenv("PATH", "/bin")
+    monkeypatch.setattr(luna_provider.os, "environ", {
+        "OPENAI_API_KEY": "must-not-pass",
+        "ANTHROPIC_API_KEY": "must-not-pass",
+        "PYTHONHOME": "/ambient/python",
+        "PYTHONPATH": "/ambient/modules",
+        "DYLD_INSERT_LIBRARIES": "/ambient/inject.dylib",
+        "UNRELATED_SECRET": "must-not-pass",
+        "PATH": "/bin",
+        "LANG": "C.UTF-8",
+    })
 
     environment = luna_provider._child_environment(tmp_path / "codex-home")
 
-    assert "OPENAI_API_KEY" not in environment
-    assert "ANTHROPIC_API_KEY" not in environment
-    assert environment["PATH"] == "/bin"
-    assert environment["CODEX_HOME"] == str(tmp_path / "codex-home")
+    assert environment == {
+        "PATH": "/bin",
+        "LANG": "C.UTF-8",
+        "CODEX_HOME": str(tmp_path / "codex-home"),
+        "PYTHONPATH": str(Path(luna_provider.__file__).parents[1]),
+    }
 
 
 def test_runtime_symlink_fails_closed_without_touching_its_target(tmp_path: Path) -> None:
@@ -338,7 +357,7 @@ def test_cache_symlink_fails_closed_without_reading_its_target(tmp_path: Path) -
     assert outside.read_text(encoding="utf-8") == "outside"
 
 
-def test_runtime_home_contains_only_minimal_config_and_auth_symlink(tmp_path: Path) -> None:
+def test_runtime_home_contains_only_minimal_config_and_verified_auth_hard_link(tmp_path: Path) -> None:
     auth = tmp_path / "source-auth.json"
     auth.write_text("secret", encoding="utf-8")
     judge, sdk = _judge(tmp_path)
@@ -347,19 +366,131 @@ def test_runtime_home_contains_only_minimal_config_and_auth_symlink(tmp_path: Pa
     judge.judge(_request())
 
     codex_home = sdk.launches[0].codex_home
-    assert (codex_home / "auth.json").is_symlink()
-    assert (codex_home / "auth.json").resolve() == auth
-    assert (codex_home / "config.toml").read_text(encoding="utf-8") == (
+    assert sdk.auth_stats[0] is not None
+    assert stat.S_ISREG(sdk.auth_stats[0].st_mode)
+    assert (sdk.auth_stats[0].st_dev, sdk.auth_stats[0].st_ino) == (auth.stat().st_dev, auth.stat().st_ino)
+    assert sdk.config_texts[0] == (
         'web_search = "disabled"\n\n[features]\napps = false\nshell_tool = false\n\n[agents]\nenabled = false\n\n[apps._default]\nenabled = false\n\n[mcp_servers]\n'
     )
+    assert not codex_home.exists()
 
 
-def test_runtime_home_drops_a_stale_auth_copy_when_no_source_exists(tmp_path: Path) -> None:
-    judge, sdk = _judge(tmp_path)
-    stale_auth = tmp_path / "runtime" / "codex-judge" / "home" / "auth.json"
-    stale_auth.parent.mkdir(parents=True)
-    stale_auth.write_text("never retain copied credentials", encoding="utf-8")
+def test_each_call_uses_a_fresh_runtime_and_cleans_it_afterward(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path, (_result(), _result()))
 
     judge.judge(_request())
+    judge.judge(_request(rubric_version="adw-rubric-v2"))
 
-    assert not (sdk.launches[0].codex_home / "auth.json").exists()
+    homes = [launch.codex_home for launch in sdk.launches]
+    cwds = [launch.cwd for launch in sdk.launches]
+    assert homes[0] != homes[1]
+    assert cwds[0] != cwds[1]
+    assert all(not path.exists() for path in homes + cwds)
+
+
+def test_auth_source_leaf_swap_fails_closed_and_cleans_runtime(tmp_path: Path, monkeypatch) -> None:
+    auth = tmp_path / "source-auth.json"
+    replacement = tmp_path / "replacement-auth.json"
+    auth.write_text("original", encoding="utf-8")
+    replacement.write_text("replacement", encoding="utf-8")
+    judge, sdk = _judge(tmp_path)
+    judge = LunaJudge(
+        sdk=sdk, runtime_root=tmp_path / "runtime", cache_root=tmp_path / "cache", auth_source=auth,
+    )
+    real_link = luna_storage.os.link
+
+    def swap_then_link(source, destination, *, src_dir_fd, dst_dir_fd, follow_symlinks):
+        auth.unlink()
+        replacement.rename(auth)
+        return real_link(
+            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(luna_storage.os, "link", swap_then_link)
+
+    with pytest.raises(LunaProviderFailure, match="changed while linking"):
+        judge.judge(_request())
+
+    assert sdk.launches == []
+    assert not tuple((tmp_path / "runtime").iterdir())
+
+
+def test_runtime_directory_swap_fails_closed_without_touching_target(tmp_path: Path, monkeypatch) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    runtime = tmp_path / "runtime"
+    cache = tmp_path / "cache"
+    real_mkdir = luna_storage.os.mkdir
+    swapped = False
+
+    def mkdir_then_swap(path, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        result = real_mkdir(path, mode, dir_fd=dir_fd)
+        if path == "runtime" and not swapped:
+            swapped = True
+            runtime.rename(tmp_path / "displaced-runtime")
+            runtime.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(luna_storage.os, "mkdir", mkdir_then_swap)
+    judge = LunaJudge(
+        sdk=_judge(tmp_path)[1], runtime_root=runtime, cache_root=cache,
+        auth_source=tmp_path / "missing-auth.json",
+    )
+
+    with pytest.raises(LunaProviderFailure, match="directory"):
+        judge.judge(_request())
+
+    assert not tuple(outside.iterdir())
+
+
+def test_cache_fifo_is_rejected_before_provider_execution(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path)
+    request = _request()
+    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path.parent.mkdir()
+    os.mkfifo(cache_path)
+
+    with pytest.raises(LunaProviderFailure, match="regular file"):
+        judge.judge(request)
+
+    assert sdk.launches == []
+    assert stat.S_ISFIFO(cache_path.lstat().st_mode)
+
+
+def test_auth_device_is_rejected_before_provider_execution(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path)
+    judge = LunaJudge(
+        sdk=sdk, runtime_root=tmp_path / "runtime", cache_root=tmp_path / "cache",
+        auth_source=Path("/dev/null"),
+    )
+
+    with pytest.raises(LunaProviderFailure, match="regular file"):
+        judge.judge(_request())
+
+    assert sdk.launches == []
+
+
+def test_cache_metadata_mismatch_unlinks_leaf_before_provider_execution(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path)
+    request = _request()
+    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path.parent.mkdir()
+    cache_path.write_text(
+        '{"payload":{"items":[{"index":0,"verdict":"violating","reason":"stale"}]},'
+        '"provider":"wrong-provider","model":"gpt-5.6-luna","effort":"high",'
+        '"rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
+        encoding="utf-8",
+    )
+    real_open = sdk.open
+
+    def assert_cache_removed(launch):
+        assert not cache_path.exists()
+        return real_open(launch)
+
+    sdk.open = assert_cache_removed
+
+    result = judge.judge(request)
+
+    assert result.cached is False
