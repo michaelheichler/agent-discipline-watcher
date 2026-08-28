@@ -7,6 +7,7 @@ import subprocess
 
 from lib import claude_journal, claude_luna, claude_native
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from lib.luna_provider import LunaJudge
 from lib.luna_storage import LunaProviderFailure
 
 
@@ -58,6 +59,43 @@ def test_post_handler_extracts_the_just_written_candidate_without_waiting_for_jo
     assert "the opening names behavior" in response["hookSpecificOutput"]["additionalContext"]
 
 
+def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judging(tmp_path: Path) -> None:
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    huge = "Counts the retries because " + ("the report header needs a total " * 40)
+    first.write_text(f"# {huge}\nvalue = 1\n", encoding="utf-8")
+    second.write_text("# Tracks the cache because retries must remain bounded.\nvalue = 2\n", encoding="utf-8")
+    patch = f"*** Update File: {first.name}\n@@\n*** Update File: {second.name}\n@@"
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "apply_patch", "tool_use_id": "tool-1", "tool_input": {"input": patch},
+    }
+    provider = Provider(lambda request: _result(request, {"items": []}))
+
+    claude_luna.run(payload, provider=provider, state_root=tmp_path / "state")
+
+    assert provider.requests
+    request = provider.requests[0]
+    assert len(request.candidates) <= claude_journal.MAX_ROWS
+    assert request.candidates == tuple(item[:claude_journal.MAX_CANDIDATE_CHARS] for item in request.candidates)
+    assert any("Counts the retries" in item for item in request.candidates)
+    assert any("Tracks the cache" in item for item in request.candidates)
+
+
+def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_document(tmp_path: Path) -> None:
+    document = tmp_path / "doc.md"
+    state_root = tmp_path / "state"
+    document.write_text("A paragraph that was journalled.\n", encoding="utf-8")
+    assert claude_journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    document.unlink()
+
+    assert claude_journal.record_edit("session", "turn-2", "tool-2", document, state_root=state_root) == []
+    assert claude_journal.read("session", state_root=state_root) == []
+    assert claude_luna.stop_request(
+        {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False}, state_root,
+    ) is None
+
+
 def test_post_handler_fails_open_for_irrelevant_or_malformed_input(tmp_path: Path) -> None:
     provider = Provider(error=AssertionError("must not judge"))
 
@@ -87,6 +125,88 @@ def test_live_luna_command_routes_raw_hook_input_through_the_resolver(tmp_path: 
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "{}"
+
+
+def test_live_luna_command_valid_event_success_has_production_response_shape(tmp_path: Path) -> None:
+    source = tmp_path / "clean.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
+    result = subprocess.run(
+        command, shell=True,
+        input=json.dumps({
+            "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+            "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
+        }),
+        env={**os.environ, "HOME": str(tmp_path / "home")}, capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {}
+
+
+def test_live_luna_command_uses_a_valid_cache_hit_for_success_without_spending_again(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
+    }
+    built = claude_luna.post_request(payload)
+    assert built is not None
+    request = built[0]
+    result = _result(request, {
+        "items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}],
+    })
+    judge = LunaJudge(
+        runtime_root=home / ".adw" / "runtime", cache_root=home / ".adw" / "cache" / "judges",
+        auth_source=home / ".codex" / "auth.json",
+    )
+    cache_file = judge._cache_path(judge._cache_key(request))
+    cache_file.parent.mkdir(parents=True)
+    cache_file.write_text(json.dumps({**result.__dict__, "cached": False}), encoding="utf-8")
+    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
+    command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
+
+    process = subprocess.run(
+        command, shell=True, input=json.dumps(payload),
+        env={
+            **os.environ, "HOME": str(home), "ADW_CLAUDE_SETTINGS": str(tmp_path / "settings.json"),
+            "ADW_CLAUDE_PRESET_FILE": str(tmp_path / "preset"),
+        }, capture_output=True, text=True, check=False,
+    )
+
+    assert process.returncode == 0, process.stderr
+    assert json.loads(process.stdout) == {}
+    assert claude_native.read_preset(tmp_path / "preset") == "luna"
+
+
+def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
+    result = subprocess.run(
+        command, shell=True,
+        input=json.dumps({
+            "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+            "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
+        }),
+        env={
+            **os.environ, "HOME": str(tmp_path / "home"), "ADW_CLAUDE_SETTINGS": str(settings),
+            "ADW_CLAUDE_PRESET_FILE": str(preset),
+        }, capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    response = json.loads(result.stdout)
+    assert response["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "Luna" in response["hookSpecificOutput"]["additionalContext"]
+    assert claude_native.read_preset(preset) == "haiku"
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "haiku"
 
 
 def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_path: Path) -> None:

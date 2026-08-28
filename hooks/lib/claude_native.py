@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+import fcntl
 import os
 import shlex
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 
 PRESETS = ("mixed", "luna", "haiku", "sonnet")
@@ -16,6 +18,8 @@ PRESET_ENV = "ADW_CLAUDE_PRESET"
 SETTINGS_ENV = "ADW_CLAUDE_SETTINGS"
 PRESET_FILE_ENV = "ADW_CLAUDE_PRESET_FILE"
 MANAGED_MARKER = "adw-managed-hook-v1"
+TRANSACTION_SUFFIX = ".txn"
+LOCK_SUFFIX = ".lock"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -58,31 +62,138 @@ def settings_path(environment: Mapping[str, str] | None = None) -> Path:
     return Path(env.get(SETTINGS_ENV, str(Path.home() / ".claude" / "settings.json"))).expanduser()
 
 
-def read_preset(path: str | Path | None = None) -> str | None:
-    target = Path(path) if path is not None else preset_path()
+def _canonical(path: str | Path) -> Path:
+    return Path(path).expanduser().resolve()
+
+
+def _transaction_path(path: str | Path) -> Path:
+    target = _canonical(path)
+    return target.with_name(target.name + TRANSACTION_SUFFIX)
+
+
+def _lock_path(path: str | Path) -> Path:
+    target = _canonical(path)
+    return target.with_name(target.name + LOCK_SUFFIX)
+
+
+@contextmanager
+def _preset_lock(path: str | Path) -> Iterator[None]:
+    lock = _lock_path(path)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        value = target.read_text(encoding="utf-8").strip()
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
+def _read_preset_unlocked(path: Path) -> str | None:
+    try:
+        value = path.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeDecodeError):
         return None
     return value if value in PRESETS else None
 
 
-def default_preset(
-    environment: Mapping[str, str] | None = None,
+def _transaction_payload(path: Path) -> dict[str, Any] | None:
+    transaction = _transaction_path(path)
+    try:
+        payload = json.loads(transaction.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read preset transaction: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("preset transaction must be a JSON object")
+    if payload.get("version") != 1 or payload.get("preset") not in PRESETS:
+        raise ValueError("invalid preset transaction")
+    if not isinstance(payload.get("settings_path"), str) or not isinstance(payload.get("settings"), str):
+        raise ValueError("invalid preset transaction payload")
+    try:
+        settings = json.loads(payload["settings"])
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid settings in preset transaction") from exc
+    if not isinstance(settings, dict):
+        raise ValueError("settings in preset transaction must be an object")
+    return payload
+
+
+def _recover_unlocked(settings: Path | None, preset: Path) -> None:
+    payload = _transaction_payload(preset)
+    if payload is None:
+        return
+    transaction_settings = _canonical(payload["settings_path"])
+    target_settings = transaction_settings if settings is None else _canonical(settings)
+    if target_settings != transaction_settings:
+        raise ValueError("preset transaction settings path does not match the requested settings")
+    _atomic_write(target_settings, payload["settings"])
+    _atomic_write(_canonical(preset), str(payload["preset"]) + "\n")
+    _transaction_path(preset).unlink(missing_ok=True)
+
+
+def _recover(
     *,
+    settings_path: str | Path | None = None,
     preset_path: str | Path | None = None,
-) -> str:
-    env = os.environ if environment is None else environment
+) -> None:
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _canonical(settings_path) if settings_path is not None else None
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+
+
+def recover(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None) -> None:
+    """Complete a durable preset transition left by an interrupted writer."""
+    _recover(settings_path=settings_path, preset_path=preset_path)
+
+
+def read_preset(
+    path: str | Path | None = None,
+    *,
+    settings_path: str | Path | None = None,
+) -> str | None:
+    target = _canonical(path) if path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _canonical(settings_path) if settings_path is not None else None
+    with _preset_lock(target):
+        try:
+            _recover_unlocked(target_settings, target)
+        except (OSError, ValueError):
+            return None
+        return _read_preset_unlocked(target)
+
+
+def _default_preset_unlocked(env: Mapping[str, str], target_preset: Path) -> str:
     explicit = env.get(PRESET_ENV, "").strip()
     if explicit:
         return _validate_preset(explicit)
     haiku_only = env.get(HAIKU_ONLY_ENV, "").strip().lower()
     if haiku_only in {"1", "true", "yes"}:
         return "haiku"
-    stored = read_preset(preset_path)
+    stored = _read_preset_unlocked(target_preset)
     if stored is not None:
         return stored
     return "haiku" if env.get(REMOTE_ENV) == "true" else "mixed"
+
+
+def default_preset(
+    environment: Mapping[str, str] | None = None,
+    *,
+    preset_path: str | Path | None = None,
+    settings_path: str | Path | None = None,
+) -> str:
+    env = os.environ if environment is None else environment
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _canonical(settings_path) if settings_path is not None else None
+    with _preset_lock(target_preset):
+        try:
+            _recover_unlocked(target_settings, target_preset)
+        except (OSError, ValueError):
+            pass
+        return _default_preset_unlocked(env, target_preset)
 
 
 def _model_for(preset: str, role: str) -> str:
@@ -172,10 +283,21 @@ def _is_managed_hook(value: object) -> bool:
     if not isinstance(value, dict):
         return False
     if value.get("type") == "agent":
-        return MANAGED_MARKER in str(value.get("prompt", ""))
+        prompt = value.get("prompt")
+        return isinstance(prompt, str) and prompt.splitlines()[:1] == [MANAGED_MARKER]
     if value.get("type") == "command":
-        command = str(value.get("command", ""))
-        return MANAGED_MARKER in command or "claude_luna.sh" in command
+        command = value.get("command")
+        if not isinstance(command, str):
+            return False
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return False
+        return (
+            len(parts) == 2
+            and parts[0] == f"ADW_CLAUDE_MANAGED={MANAGED_MARKER}"
+            and Path(parts[1]).is_absolute()
+        )
     return False
 
 
@@ -254,6 +376,25 @@ def _atomic_write(path: Path, text: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _set_preset_unlocked(selected: str, target_settings: Path, target_preset: Path) -> str:
+    current = _load_settings(target_settings)
+    rendered = json.dumps(settings_for_preset(current, selected), indent=2, sort_keys=True) + "\n"
+    transaction = {
+        "version": 1,
+        "preset": selected,
+        "settings_path": str(_canonical(target_settings)),
+        "settings": rendered,
+    }
+    _atomic_write(
+        _transaction_path(target_preset),
+        json.dumps(transaction, indent=2, sort_keys=True) + "\n",
+    )
+    _atomic_write(_canonical(target_settings), rendered)
+    _atomic_write(_canonical(target_preset), selected + "\n")
+    _transaction_path(target_preset).unlink(missing_ok=True)
+    return selected
+
+
 def set_preset(
     preset: str,
     *,
@@ -261,17 +402,22 @@ def set_preset(
     preset_path: str | Path | None = None,
 ) -> str:
     selected = _validate_preset(preset)
-    target_settings = Path(settings_path).expanduser() if settings_path is not None else globals()["settings_path"]()
-    target_preset = Path(preset_path).expanduser() if preset_path is not None else globals()["preset_path"]()
-    current = _load_settings(target_settings)
-    rendered = json.dumps(settings_for_preset(current, selected), indent=2, sort_keys=True) + "\n"
-    _atomic_write(target_settings, rendered)
-    _atomic_write(target_preset, selected + "\n")
-    return selected
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        return _set_preset_unlocked(selected, target_settings, target_preset)
 
 
 def status(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None, environment: Mapping[str, str] | None = None) -> dict[str, str]:
-    selected = read_preset(preset_path) or default_preset(environment, preset_path=preset_path)
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    env = os.environ if environment is None else environment
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        selected = _read_preset_unlocked(target_preset)
+        if selected is None:
+            selected = _default_preset_unlocked(env, target_preset)
     return {"preset": selected, "settings": str(settings_path or globals()["settings_path"]()), "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates"}
 
 
@@ -284,14 +430,18 @@ def fallback_after_luna_failure(
 ) -> dict[str, Any]:
     if role not in {"comment", "prose", "document"}:
         raise ValueError("role must be comment, prose, or document")
-    current = read_preset(preset_path) or "mixed"
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
     fallback = "haiku" if role == "comment" else "sonnet"
-    if current == "luna":
-        set_preset(fallback, settings_path=settings_path, preset_path=preset_path)
-        switched = True
-    else:
-        fallback = current
-        switched = False
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        current = _read_preset_unlocked(target_preset) or "mixed"
+        if current == "luna":
+            _set_preset_unlocked(fallback, target_settings, target_preset)
+            switched = True
+        else:
+            fallback = current
+            switched = False
     bounded = " ".join(str(reason).split())[:MAX_FAILURE_MESSAGE]
     transition = f"Switched subsequent events to {fallback}." if switched else f"{fallback} remains configured."
     return {

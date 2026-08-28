@@ -17,6 +17,7 @@ from .narration_candidates import candidates
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "Bash"})
 MAX_FEEDBACK_CHARS = 900
 MAX_DOCUMENT_CHARS = 24_000
+MAX_LIVE_CANDIDATES = claude_journal.MAX_ROWS
 
 
 def _bounded(value: object) -> str:
@@ -45,7 +46,10 @@ def _read_candidates(payload: object) -> tuple[Candidate, ...]:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        found.extend(candidates(str(path), text))
+        for candidate in candidates(str(path), text):
+            found.append(Candidate(candidate.path, candidate.line, candidate.text[:claude_journal.MAX_CANDIDATE_CHARS]))
+            if len(found) >= MAX_LIVE_CANDIDATES:
+                return tuple(found)
     return tuple(found)
 
 
@@ -160,6 +164,10 @@ def run(
         built = stop_request(payload, _state_root(payload, state_root))
         role = "document"
     else:
+        return {}
+    try:
+        claude_native.recover(settings_path=settings_path, preset_path=preset_path)
+    except (OSError, ValueError):
         return {}
     if built is None:
         return {}

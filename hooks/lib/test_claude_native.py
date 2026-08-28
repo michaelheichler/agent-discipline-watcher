@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 import pytest
 
@@ -124,10 +126,14 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
     old_command = {
         "type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} /old-handler",
     }
-    stale_luna_command = {"type": "command", "command": "/stale/claude_luna.sh"}
+    managed_luna_command = {
+        "type": "command",
+        "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} {claude_native.LUNA_HANDLER_PATH}",
+    }
+    unrelated_luna_command = {"type": "command", "command": "/other/claude_luna.sh"}
     unrelated = {"type": "command", "command": "keep-this"}
     merged = claude_native.settings_for_preset(
-        {"hooks": {"PostToolUse": [{"hooks": [old_agent, old_command, stale_luna_command, unrelated]}]}}, "mixed",
+        {"hooks": {"PostToolUse": [{"hooks": [old_agent, old_command, managed_luna_command, unrelated_luna_command, unrelated]}]}}, "mixed",
     )
 
     handlers = [
@@ -137,7 +143,8 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
     ]
     assert old_agent not in handlers
     assert old_command not in handlers
-    assert stale_luna_command not in handlers
+    assert managed_luna_command not in handlers
+    assert unrelated_luna_command in handlers
     assert unrelated in handlers
     assert any(handler["type"] == "agent" for handler in handlers)
 
@@ -225,6 +232,76 @@ def test_luna_success_does_not_spend_a_native_fallback(tmp_path: Path) -> None:
     assert result["ok"] is True
     assert provider.calls == 1
     assert claude_native.read_preset(tmp_path / "preset") == "luna"
+
+
+def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    start = threading.Barrier(3)
+
+    def transition(role: str) -> dict:
+        start.wait()
+        return claude_native.fallback_after_luna_failure(
+            role, "subscription unavailable", settings_path=settings, preset_path=preset,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(transition, role) for role in ("comment", "document")]
+        start.wait()
+        results = [future.result() for future in futures]
+
+    selected = claude_native.read_preset(preset)
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    assert selected in {"haiku", "sonnet"}
+    assert all(result["preset"] == selected for result in results)
+    assert sum(result["switched"] is True for result in results) == 1
+    handlers = [
+        hook
+        for groups in configured["hooks"].values()
+        if isinstance(groups, list)
+        for group in groups
+        if isinstance(group, dict)
+        for hook in group.get("hooks", [])
+        if isinstance(hook, dict) and claude_native.MANAGED_MARKER in str(hook.get("prompt", ""))
+    ]
+    assert handlers
+    assert all(handler["model"] == selected for handler in handlers)
+
+
+def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    original = claude_native._atomic_write
+    crashed = False
+
+    def crash_before_preset(path: Path, text: str) -> None:
+        nonlocal crashed
+        if Path(path) == preset and not crashed:
+            crashed = True
+            raise RuntimeError("injected crash")
+        original(path, text)
+
+    monkeypatch.setattr(claude_native, "_atomic_write", crash_before_preset)
+    with pytest.raises(RuntimeError, match="injected crash"):
+        claude_native.fallback_after_luna_failure(
+            "comment", "subscription unavailable", settings_path=settings, preset_path=preset,
+        )
+    monkeypatch.setattr(claude_native, "_atomic_write", original)
+
+    status = claude_native.status(settings_path=settings, preset_path=preset)
+    assert status["preset"] == "haiku"
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    managed = [
+        hook
+        for group in configured["hooks"].values()
+        for row in group
+        for hook in row.get("hooks", [])
+        if isinstance(hook, dict) and hook.get("type") == "agent"
+    ]
+    assert managed and all(hook["model"] == "haiku" for hook in managed)
+    assert not preset.with_name(preset.name + ".txn").exists()
 
 
 def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(tmp_path: Path) -> None:

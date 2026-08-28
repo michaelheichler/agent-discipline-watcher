@@ -66,6 +66,18 @@ def record_edit(
     target = Path(path)
     read = _content(target)
     if read is None:
+        def remove_target(state: dict) -> dict:
+            existing = state.get(STATE_KEY)
+            rows = list(existing) if isinstance(existing, list) else []
+            return {
+                **state,
+                STATE_KEY: [
+                    row for row in rows
+                    if not (isinstance(row, dict) and row.get("path") == str(target))
+                ],
+            }
+
+        session_state.update_state(session_id, remove_target, state_root)
         return []
     digest, text = read
     fresh = _candidate_rows(target, digest, text, turn_id, tool_use_id)
