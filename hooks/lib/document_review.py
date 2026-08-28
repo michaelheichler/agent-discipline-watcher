@@ -8,6 +8,11 @@ import subprocess
 from typing import NamedTuple
 
 try:
+    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+except ImportError:
+    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+
+try:
     from .judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
 except ImportError:
     from judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
@@ -93,8 +98,15 @@ def parse_notes(raw: str, text: str) -> tuple[Note, ...]:
     )
 
 
+def request_for(path: str, text: str) -> JudgeRequest:
+    return JudgeRequest(
+        review_kind=ReviewKind.DOCUMENT,
+        source_context=f"Document: {path}\n\n{text[:MAX_REVIEW_CHARS]}",
+    )
+
+
 def build_prompt(path: str, text: str) -> str:
-    return f"Document: {path}\n\n{text[:MAX_REVIEW_CHARS]}"
+    return build_judge_prompt(request_for(path, text))
 
 
 def review(path: str, text: str) -> tuple[Note, ...]:

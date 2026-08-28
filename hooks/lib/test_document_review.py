@@ -5,6 +5,7 @@ import json
 import pytest
 
 from lib import document_review
+from lib.judge_contracts import ReviewKind
 
 DOCUMENT = (
     "The cache holds 4096 entries.\n"
@@ -24,6 +25,13 @@ def test_a_quote_is_anchored_to_the_line_it_came_from() -> None:
     notes = document_review.parse_notes(raw, DOCUMENT)
 
     assert [(note.line, note.problem) for note in notes] == [(3, "Throat clearing before the claim.")]
+
+
+def test_document_text_adapts_to_the_shared_judge_contract() -> None:
+    request = document_review.request_for("a.md", DOCUMENT)
+
+    assert request.review_kind is ReviewKind.DOCUMENT
+    assert "Document: a.md" in request.source_context
 
 
 def test_a_quote_the_document_does_not_carry_anchors_to_no_line() -> None:

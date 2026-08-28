@@ -8,6 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 try:
+    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+except ImportError:
+    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+
+try:
     from .judge import JUDGE_TIMEOUT_SECONDS, _environment, available
 except ImportError:
     from judge import JUDGE_TIMEOUT_SECONDS, _environment, available
@@ -42,14 +47,19 @@ class PatternRule(NamedTuple):
     clean_examples: tuple[str, ...]
 
 
-def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> str:
-    violating = "\n".join(f"  violating: {text}" for text in rule.violating_examples)
-    clean = "\n".join(f"  clean: {text}" for text in rule.clean_examples)
-    items = "\n".join(f"{index}. {candidate.text.strip()}" for index, candidate in enumerate(candidates))
-    return (
-        f"Pattern: {rule.name}\nFix it asks for: {rule.action}\n"
-        f"Real examples:\n{violating}\n{clean}\n\nJudge each sentence.\n{items}"
+def request_for(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> JudgeRequest:
+    return JudgeRequest(
+        review_kind=ReviewKind.PATTERN,
+        candidates=tuple(candidate.text for candidate in candidates),
+        rule_name=rule.name,
+        rule_action=rule.action,
+        violating_examples=rule.violating_examples,
+        clean_examples=rule.clean_examples,
     )
+
+
+def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> str:
+    return build_judge_prompt(request_for(rule, candidates))
 
 
 def _command(model: str) -> list[str]:

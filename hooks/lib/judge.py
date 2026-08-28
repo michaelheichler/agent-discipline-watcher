@@ -8,6 +8,11 @@ import shutil
 import subprocess
 from typing import NamedTuple
 
+try:
+    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+except ImportError:
+    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+
 JUDGE_MODEL = "claude-haiku-4-5"
 JUDGE_TIMEOUT_SECONDS = 120
 RECURSION_GUARD = "ADW_JUDGE_ACTIVE"
@@ -69,12 +74,15 @@ def _command() -> list[str]:
     ]
 
 
-def build_prompt(candidates: tuple[Candidate, ...]) -> str:
-    items = "\n".join(
-        f"{index}. {candidate.text.strip()}"
-        for index, candidate in enumerate(candidates)
+def request_for(candidates: tuple[Candidate, ...]) -> JudgeRequest:
+    return JudgeRequest(
+        review_kind=ReviewKind.COMMENT,
+        candidates=tuple(candidate.text for candidate in candidates),
     )
-    return "Judge each line.\n" + items
+
+
+def build_prompt(candidates: tuple[Candidate, ...]) -> str:
+    return build_judge_prompt(request_for(candidates))
 
 
 def _run(prompt: str) -> str | None:

@@ -5,6 +5,7 @@ import json
 import pytest
 
 from lib import pattern_judge
+from lib.judge_contracts import ReviewKind
 from lib.pattern_judge import PatternCandidate, PatternRule
 
 RULE = PatternRule("ai_closer", "End when the answer is done.", ("Let me know if you need anything else.",), ("The build passed.",))
@@ -26,6 +27,14 @@ def test_the_prompt_carries_the_rule_its_fix_and_both_example_sides() -> None:
     assert "violating: Let me know if you need anything else." in prompt
     assert "clean: The build passed." in prompt
     assert "0. I hope this helps." in prompt
+
+
+def test_pattern_candidates_adapt_to_the_shared_judge_contract() -> None:
+    request = pattern_judge.request_for(RULE, CANDIDATES)
+
+    assert request.review_kind is ReviewKind.PATTERN
+    assert request.rule_name == RULE.name
+    assert request.candidates == tuple(candidate.text for candidate in CANDIDATES)
 
 
 def test_only_the_lines_the_judge_calls_violating_survive(monkeypatch) -> None:

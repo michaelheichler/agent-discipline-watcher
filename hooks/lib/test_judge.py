@@ -4,6 +4,7 @@ import shutil
 import pytest
 
 from lib import judge
+from lib.judge_contracts import ReviewKind
 from lib.judge import Candidate
 
 # Held apart from the examples in the system prompt, because a candidate copied from the prompt would test recall of the prompt.
@@ -18,6 +19,13 @@ def test_the_prompt_numbers_every_candidate() -> None:
 
     assert "0. Counts the retries" in prompt
     assert "1. Capped at 300" in prompt
+
+
+def test_comment_candidates_adapt_to_the_shared_judge_contract() -> None:
+    request = judge.request_for(CANDIDATES)
+
+    assert request.review_kind is ReviewKind.COMMENT
+    assert request.candidates == tuple(candidate.text for candidate in CANDIDATES)
 
 
 def test_verdicts_bind_back_to_their_candidate() -> None:
