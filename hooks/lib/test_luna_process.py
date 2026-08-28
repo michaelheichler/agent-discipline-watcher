@@ -296,3 +296,68 @@ def test_successful_worker_exit_is_not_signalled(tmp_path: Path, monkeypatch) ->
 
     assert result.payload["items"][0]["verdict"] == "clean"
     assert signals == []
+
+
+def test_runtime_leaves_cannot_be_swapped_into_external_worker_markers(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    outside_cwd = tmp_path / "outside-cwd"
+    outside_home = tmp_path / "outside-home"
+    outside_cwd.mkdir()
+    outside_home.mkdir()
+    judge = _judge(tmp_path, monkeypatch, f"""
+        import json
+        import os
+        from pathlib import Path
+        import sys
+
+        from lib.luna_worker import _decode_request, _prepare_descriptor_launch
+
+        request = json.loads(sys.stdin.read())
+        try:
+            _request, launch = _decode_request(request)
+            _prepare_descriptor_launch(launch)
+            if launch.cwd_fd is None:
+                Path("cwd.marker").write_text("worker cwd", encoding="utf-8")
+                Path(os.environ["CODEX_HOME"], "home.marker").write_text(
+                    "worker home", encoding="utf-8",
+                )
+            else:
+                with os.fdopen(os.open(
+                    "cwd.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.cwd_fd,
+                ), "w", encoding="utf-8") as marker:
+                    marker.write("worker cwd")
+                with os.fdopen(os.open(
+                    "home.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.codex_home_fd,
+                ), "w", encoding="utf-8") as marker:
+                    marker.write("worker home")
+            print({json.dumps(json.dumps(SUCCESS))})
+        except BaseException as exc:
+            print(json.dumps({{
+                "ok": False,
+                "error": {{"category": getattr(exc, "category", "configuration"), "message": str(exc)}},
+            }}))
+    """)
+    real_popen = subprocess.Popen
+
+    def swap_runtime_leaves_before_spawn(*args, **kwargs):
+        call_dirs = list((tmp_path / "runtime").iterdir())
+        assert len(call_dirs) == 1
+        call_dir = call_dirs[0]
+        os.chmod(call_dir, 0o700)
+        (call_dir / "cwd").rename(tmp_path / "displaced-cwd")
+        (call_dir / "cwd").symlink_to(outside_cwd, target_is_directory=True)
+        (call_dir / "home").rename(tmp_path / "displaced-home")
+        (call_dir / "home").symlink_to(outside_home, target_is_directory=True)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(luna_provider.subprocess, "Popen", swap_runtime_leaves_before_spawn)
+
+    with pytest.raises(LunaProviderFailure, match="runtime descriptor"):
+        judge.judge(_request())
+
+    assert not (outside_cwd / "cwd.marker").exists()
+    assert not (outside_home / "home.marker").exists()
+    assert not tuple((tmp_path / "displaced-cwd").iterdir())
+    assert not tuple((tmp_path / "displaced-home").iterdir())
+    assert not tuple((tmp_path / "runtime").iterdir())

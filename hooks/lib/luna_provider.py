@@ -82,6 +82,12 @@ class SdkLaunch:
     codex_home: Path
     cwd: Path
     config_overrides: tuple[str, ...]
+    call_fd: int | None = None
+    codex_home_fd: int | None = None
+    cwd_fd: int | None = None
+    call_identity: tuple[int, int] | None = None
+    codex_home_identity: tuple[int, int] | None = None
+    cwd_identity: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -193,7 +199,11 @@ class OpenAICodexSdk:
             ) from exc
         codex = Codex(CodexConfig(
             config_overrides=launch.config_overrides,
-            cwd=str(launch.cwd), env=_sdk_environment(launch.codex_home),
+            # A descriptor-bound worker has already fchdir'ed to its owned cwd.
+            # Passing None lets the SDK child inherit that directory without a
+            # second path lookup between the worker and app-server spawns.
+            cwd=(None if launch.cwd_fd is not None else str(launch.cwd)),
+            env=_sdk_environment(launch.codex_home),
         ))
         return _OpenAICodexSession(codex, CodexSandbox, CodexApprovalMode, ReasoningEffort)
 
@@ -235,6 +245,11 @@ class LunaJudge:
                 launch = SdkLaunch(
                     codex_home=runtime.codex_home, cwd=runtime.cwd,
                     config_overrides=CONFIG_OVERRIDES,
+                    call_fd=runtime.call_fd,
+                    codex_home_fd=runtime.codex_home_fd, cwd_fd=runtime.cwd_fd,
+                    call_identity=runtime.call_identity,
+                    codex_home_identity=runtime.codex_home_identity,
+                    cwd_identity=runtime.cwd_identity,
                 )
                 if not isinstance(self._sdk, OpenAICodexSdk):
                     result = run_sdk_request(request, launch, self._sdk)
@@ -244,13 +259,25 @@ class LunaJudge:
             return result
 
     def _run_worker(self, request: JudgeRequest, launch: SdkLaunch) -> JudgeResult:
+        if (
+            launch.call_fd is None or launch.codex_home_fd is None or launch.cwd_fd is None
+            or launch.call_identity is None or launch.codex_home_identity is None
+            or launch.cwd_identity is None
+        ):
+            raise LunaProviderFailure(
+                "Luna worker requires descriptor-pinned runtime paths", category="configuration",
+            )
         deadline = time.monotonic() + JUDGE_TIMEOUT_SECONDS
         payload = {
             "review_kind": request.review_kind.value, "candidates": request.candidates,
             "source_context": request.source_context, "rule_name": request.rule_name,
             "rule_action": request.rule_action, "violating_examples": request.violating_examples,
             "clean_examples": request.clean_examples, "rubric_version": request.rubric_version,
-            "codex_home": str(launch.codex_home), "cwd": str(launch.cwd),
+            "call_fd": launch.call_fd, "codex_home_fd": launch.codex_home_fd,
+            "cwd_fd": launch.cwd_fd,
+            "call_identity": launch.call_identity,
+            "codex_home_identity": launch.codex_home_identity,
+            "cwd_identity": launch.cwd_identity,
             "config_overrides": launch.config_overrides,
         }
         process: subprocess.Popen[str] | None = None
@@ -262,9 +289,9 @@ class LunaJudge:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
-                cwd=launch.cwd,
-                env=_child_environment(launch.codex_home),
+                env=_child_environment(Path("../home")),
                 start_new_session=True,
+                pass_fds=(launch.call_fd, launch.codex_home_fd, launch.cwd_fd),
             )
             remaining = deadline - time.monotonic()
             if remaining <= 0:

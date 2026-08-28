@@ -216,3 +216,21 @@ def test_openai_codex_adapter_retries_exactly_three_times_then_exhausts(monkeypa
         sdk.retry_on_overload(overloaded, max_attempts=3)
 
     assert recorder.retry_attempts == 3
+
+
+def test_descriptor_bound_launch_inherits_worker_cwd_for_sdk_child(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    recorder = Recorder()
+    install_official_shaped_module(monkeypatch, recorder)
+    launch = SdkLaunch(
+        codex_home=Path("../home"), cwd=Path("."), config_overrides=CONFIG_OVERRIDES,
+        call_fd=3, codex_home_fd=4, cwd_fd=5,
+        call_identity=(1, 2), codex_home_identity=(1, 3), cwd_identity=(1, 4),
+    )
+
+    OpenAICodexSdk().open(launch)
+
+    assert recorder.config is not None
+    assert recorder.config.cwd is None
+    assert recorder.config.env["CODEX_HOME"] == "../home"

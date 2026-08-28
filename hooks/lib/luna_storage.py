@@ -26,6 +26,12 @@ class LunaProviderFailure(RuntimeError):
 class RuntimePaths:
     codex_home: Path
     cwd: Path
+    call_fd: int | None = None
+    codex_home_fd: int | None = None
+    cwd_fd: int | None = None
+    call_identity: tuple[int, int] | None = None
+    codex_home_identity: tuple[int, int] | None = None
+    cwd_identity: tuple[int, int] | None = None
 
 
 class SecureJudgeStorage:
@@ -89,20 +95,34 @@ class SecureJudgeStorage:
     def runtime(self, *, config_text: str, auth_source: Path) -> Iterator[RuntimePaths]:
         runtime_fd = self._require_fd(self._runtime_fd)
         call_name, call_fd = _create_random_directory(runtime_fd)
+        home_fd = -1
+        cwd_fd = -1
         try:
             home_fd = _mkdir_open_chain(call_fd, ("home",))
-            try:
-                cwd_fd = _mkdir_open_chain(call_fd, ("cwd",))
-                try:
-                    _atomic_write(home_fd, "config.toml", config_text)
-                    _link_verified_auth(auth_source, home_fd)
-                finally:
-                    os.close(cwd_fd)
-            finally:
-                os.close(home_fd)
+            cwd_fd = _mkdir_open_chain(call_fd, ("cwd",))
+            _atomic_write(home_fd, "config.toml", config_text)
+            _link_verified_auth(auth_source, home_fd)
             call_path = self.runtime_path / call_name
-            yield RuntimePaths(codex_home=call_path / "home", cwd=call_path / "cwd")
+            os.fchmod(call_fd, 0o500)
+            yield RuntimePaths(
+                codex_home=call_path / "home", cwd=call_path / "cwd",
+                call_fd=call_fd, codex_home_fd=home_fd, cwd_fd=cwd_fd,
+                call_identity=_directory_identity(call_fd),
+                codex_home_identity=_directory_identity(home_fd),
+                cwd_identity=_directory_identity(cwd_fd),
+            )
         finally:
+            try:
+                os.fchmod(call_fd, 0o700)
+            except OSError:
+                pass
+            if cwd_fd >= 0:
+                _remove_directory_contents(cwd_fd)
+                os.close(cwd_fd)
+            if home_fd >= 0:
+                _remove_directory_contents(home_fd)
+                os.close(home_fd)
+            _remove_directory_contents(call_fd)
             os.close(call_fd)
             _remove_tree_at(runtime_fd, call_name)
 
@@ -152,6 +172,13 @@ def _validate_leaf_name(name: str) -> None:
 def _require_directory_fd(descriptor: int, label: str) -> None:
     if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
         raise LunaProviderFailure(f"unsafe Luna storage directory: {label}")
+
+
+def _directory_identity(descriptor: int) -> tuple[int, int]:
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise LunaProviderFailure("unsafe Luna runtime descriptor: expected a directory")
+    return metadata.st_dev, metadata.st_ino
 
 
 def _mkdir_open_chain(parent_fd: int, parts: tuple[str, ...]) -> int:
@@ -310,3 +337,23 @@ def _remove_tree_at(parent_fd: int, name: str) -> None:
         os.rmdir(name, dir_fd=parent_fd)
     except FileNotFoundError:
         pass
+
+
+def _remove_directory_contents(descriptor: int) -> None:
+    """Remove entries through an already-owned directory descriptor."""
+    try:
+        entries = tuple(os.scandir(descriptor))
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            metadata = os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISDIR(metadata.st_mode):
+            _remove_tree_at(descriptor, entry.name)
+        else:
+            try:
+                os.unlink(entry.name, dir_fd=descriptor)
+            except FileNotFoundError:
+                pass
