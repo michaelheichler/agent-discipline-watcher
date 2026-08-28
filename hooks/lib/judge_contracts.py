@@ -9,6 +9,20 @@ from typing import Any
 
 
 RUBRIC_VERSION = "adw-rubric-v1"
+COMMENT_RUBRIC = (
+    "A comment may state why code is the way it is, but may not describe what code does. "
+    "The opening clause decides it. Use describes_code when code is the subject and its behaviour is named; "
+    "use states_why when the opening names a decision, constraint, measurement, or consequence."
+)
+PATTERN_RUBRIC = (
+    "Judge only the named pattern. A sentence may be poor for another reason and still be clean for this pattern. "
+    "Use the rule, requested fix, and both example sides to decide each candidate."
+)
+DOCUMENT_RUBRIC = (
+    "Coherence: hidden argument order, missing paragraph bridges, unintroduced referents, and contradictions. "
+    "Style: repeated paragraph shapes, register shifts, buried subjects, and stock openers or closers. "
+    "Quote the sentence you mean exactly."
+)
 
 
 class ReviewKind(StrEnum):
@@ -124,17 +138,17 @@ def output_schema(request: JudgeRequest) -> dict[str, Any]:
 def build_prompt(request: JudgeRequest) -> str:
     if request.review_kind is ReviewKind.COMMENT:
         items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
-        return "Judge each line.\n" + items
+        return f"{COMMENT_RUBRIC}\nReturn one item per candidate.\n\nJudge each line.\n{items}"
     if request.review_kind is ReviewKind.PATTERN:
         violating = "\n".join(f"violating: {text}" for text in request.violating_examples)
         clean = "\n".join(f"clean: {text}" for text in request.clean_examples)
         items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
         return (
-            f"Pattern: {request.rule_name}\nFix it asks for: {request.rule_action}\n"
+            f"{PATTERN_RUBRIC}\nPattern: {request.rule_name}\nFix it asks for: {request.rule_action}\n"
             f"Real examples:\n  {violating.replace(chr(10), chr(10) + '  ')}\n"
             f"  {clean.replace(chr(10), chr(10) + '  ')}\n\nJudge each sentence.\n{items}"
         )
-    return request.source_context
+    return f"{DOCUMENT_RUBRIC}\n\nDocument:\n{request.source_context}"
 
 
 def content_hash(request: JudgeRequest) -> str:

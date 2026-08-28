@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import stat
 import tempfile
 import time
 from hashlib import sha256
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -196,7 +198,7 @@ class OpenAICodexSdk:
             ) from exc
         codex = Codex(CodexConfig(
             config_overrides=launch.config_overrides,
-            cwd=str(launch.cwd), env={"CODEX_HOME": str(launch.codex_home)},
+            cwd=str(launch.cwd), env=_child_environment(launch.codex_home),
         ))
         return _OpenAICodexSession(codex, CodexSandbox, CodexApprovalMode, ReasoningEffort)
 
@@ -231,6 +233,7 @@ class LunaJudge:
         self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
+        _ensure_directory(self._cache_root)
         key = self._cache_key(request)
         cached = self._read_cache(key, request)
         if cached is not None:
@@ -242,29 +245,30 @@ class LunaJudge:
         return result
 
     def _run_once(self, request: JudgeRequest) -> JudgeResult:
-        launch = self._prepare_runtime()
-        session = self._sdk.open(launch)
-        try:
-            account = session.account()
-            if account is None or account.root_type != "chatgpt":
-                raise LunaProviderFailure(
-                    "Luna judging requires a ChatGPT subscription session. Complete Codex ChatGPT browser login or device-code login, then retry."
-                )
-            self._validate_luna(session.models(include_hidden=True))
-            thread = session.thread_start(SdkThreadStart(
-                model=LUNA_MODEL, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
-                approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
-                developer_instructions=DEVELOPER_INSTRUCTIONS,
-            ))
-            raw = self._run_with_timeout(thread, SdkTurn(
-                prompt=build_prompt(request), model=LUNA_MODEL, effort=LUNA_EFFORT,
-                sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
-                output_schema=output_schema(request),
-            ))
-        finally:
-            close = getattr(session, "close", None)
-            if callable(close):
-                close()
+        with _lifecycle_deadline(JUDGE_TIMEOUT_SECONDS):
+            launch = self._prepare_runtime()
+            session = self._sdk.open(launch)
+            try:
+                account = session.account()
+                if account is None or account.root_type != "chatgpt":
+                    raise LunaProviderFailure(
+                        "Luna judging requires a ChatGPT subscription session. Complete Codex ChatGPT browser login or device-code login, then retry."
+                    )
+                self._validate_luna(session.models(include_hidden=True))
+                thread = session.thread_start(SdkThreadStart(
+                    model=LUNA_MODEL, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
+                    approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
+                    developer_instructions=DEVELOPER_INSTRUCTIONS,
+                ))
+                raw = thread.run(SdkTurn(
+                    prompt=build_prompt(request), model=LUNA_MODEL, effort=LUNA_EFFORT,
+                    sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
+                    output_schema=output_schema(request),
+                ))
+            finally:
+                close = getattr(session, "close", None)
+                if callable(close):
+                    close()
         self._reject_tool_items(raw.items)
         try:
             if not raw.final_response or not raw.final_response.strip():
@@ -279,37 +283,26 @@ class LunaJudge:
         )
 
     def _prepare_runtime(self) -> SdkLaunch:
+        _ensure_directory(self._runtime_root)
         root = self._runtime_root / "codex-judge"
         home = root / "home"
         cwd = root / "cwd"
-        home.mkdir(parents=True, exist_ok=True)
-        cwd.mkdir(parents=True, exist_ok=True)
+        _ensure_directory(home)
+        _ensure_directory(cwd)
         if any(cwd.iterdir()):
             raise LunaProviderFailure("isolated Luna judge cwd is not empty")
         config = home / "config.toml"
-        config.write_text(MINIMAL_CONFIG, encoding="utf-8")
-        os.chmod(config, 0o600)
+        _write_regular(config, MINIMAL_CONFIG)
         auth = home / "auth.json"
-        if self._auth_source.is_file():
+        if _is_regular_file(self._auth_source):
             if auth.is_symlink() and auth.resolve() == self._auth_source.resolve():
                 pass
             else:
                 auth.unlink(missing_ok=True)
                 auth.symlink_to(self._auth_source.resolve())
-        elif auth.exists() or auth.is_symlink():
+        elif _path_exists(auth):
             auth.unlink()
         return SdkLaunch(codex_home=home, cwd=cwd, config_overrides=CONFIG_OVERRIDES)
-
-    def _run_with_timeout(self, thread: SdkThread, turn: SdkTurn) -> SdkRunResult:
-        pool = ThreadPoolExecutor(max_workers=1)
-        future = pool.submit(thread.run, turn)
-        try:
-            return future.result(timeout=JUDGE_TIMEOUT_SECONDS)
-        except FutureTimeout as exc:
-            future.cancel()
-            raise LunaProviderFailure("Luna judge timed out") from exc
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
 
     def _validate_luna(self, models: tuple[SdkModel, ...]) -> None:
         luna = next((model for model in models if model.id == LUNA_MODEL or model.model == LUNA_MODEL), None)
@@ -328,8 +321,8 @@ class LunaJudge:
         rows = payload.get("items")
         if not isinstance(rows, list):
             return
-        if any(row["index"] < 0 or row["index"] >= len(request.candidates) for row in rows):
-            raise ValueError("response item index is outside local candidates")
+        if [row["index"] for row in rows] != list(range(len(request.candidates))):
+            raise ValueError("response indexes must cover local candidates in order")
 
     def _cache_key(self, request: JudgeRequest) -> str:
         identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT, request.rubric_version))
@@ -341,9 +334,11 @@ class LunaJudge:
     def _read_cache(self, key: str, request: JudgeRequest) -> JudgeResult | None:
         path = self._cache_path(key)
         try:
+            _require_regular_or_absent(path)
             if path.stat().st_mtime < time.time() - CACHE_TTL_SECONDS:
+                _delete_cache_file(path)
                 return None
-            row = json.loads(path.read_text(encoding="utf-8"))
+            row = json.loads(_read_regular(path))
             result = JudgeResult(**row)
             if (
                 result.provider != PROVIDER_NAME or result.model != LUNA_MODEL
@@ -354,15 +349,18 @@ class LunaJudge:
             self._validate_candidate_indexes(request, result.payload)
             return result
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            _delete_cache_file(path)
             return None
 
     def _write_cache(self, key: str, result: JudgeResult) -> None:
-        self._cache_root.mkdir(parents=True, exist_ok=True)
+        _ensure_directory(self._cache_root)
+        destination = self._cache_path(key)
+        _require_regular_or_absent(destination)
         descriptor, temporary = tempfile.mkstemp(dir=self._cache_root, prefix=f".{key}.", suffix=".tmp")
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 json.dump({**result.__dict__, "cached": False}, handle, ensure_ascii=True, sort_keys=True)
-            os.replace(temporary, self._cache_path(key))
+            os.replace(temporary, destination)
         except BaseException:
             try:
                 os.unlink(temporary)
@@ -387,3 +385,105 @@ def _usage_dict(usage: object) -> dict[str, Any]:
         return usage
     dumped = getattr(usage, "model_dump", None)
     return dumped(mode="json") if callable(dumped) else {}
+
+
+def _child_environment(codex_home: Path) -> dict[str, str]:
+    """Keep host runtime variables but never pass provider credentials to Codex."""
+    environment = {
+        key: value for key, value in os.environ.items()
+        if not key.upper().startswith(("OPENAI_", "ANTHROPIC_"))
+    }
+    environment["CODEX_HOME"] = str(codex_home)
+    return environment
+
+
+def _path_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _ensure_directory(path: Path) -> None:
+    missing: list[Path] = []
+    current = path
+    while True:
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            missing.append(current)
+            current = current.parent
+            continue
+        if stat.S_ISLNK(mode):
+            raise LunaProviderFailure(f"unsafe symlink in Luna storage path: {current}")
+        if not stat.S_ISDIR(mode):
+            raise LunaProviderFailure(f"Luna storage path is not a directory: {current}")
+        break
+    for directory in reversed(missing):
+        try:
+            os.mkdir(directory, 0o700)
+        except FileExistsError:
+            pass
+        mode = directory.lstat().st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise LunaProviderFailure(f"unsafe symlink in Luna storage path: {directory}")
+
+
+def _require_regular_or_absent(path: Path) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(mode):
+        raise LunaProviderFailure(f"unsafe symlink in Luna storage path: {path}")
+    if not stat.S_ISREG(mode):
+        raise LunaProviderFailure(f"Luna storage leaf is not a regular file: {path}")
+
+
+def _is_regular_file(path: Path) -> bool:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return False
+    if stat.S_ISLNK(mode):
+        raise LunaProviderFailure(f"unsafe auth symlink: {path}")
+    return stat.S_ISREG(mode)
+
+
+def _write_regular(path: Path, text: str) -> None:
+    _ensure_directory(path.parent)
+    _require_regular_or_absent(path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def _read_regular(path: Path) -> str:
+    _require_regular_or_absent(path)
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _delete_cache_file(path: Path) -> None:
+    try:
+        _require_regular_or_absent(path)
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+@contextmanager
+def _lifecycle_deadline(seconds: float):
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    def timed_out(_signal, _frame):
+        raise LunaProviderFailure("Luna judge timed out")
+    signal.signal(signal.SIGALRM, timed_out)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)

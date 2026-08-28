@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
+import time
 
 import pytest
 
+from lib import luna_provider
 from lib.judge_contracts import JudgeRequest, ReviewKind
 from lib.luna_provider import (
     ApprovalMode,
     LunaJudge,
     LunaProviderFailure,
+    OpenAICodexSdk,
     Sandbox,
     SdkAccount,
     SdkItem,
@@ -141,6 +145,8 @@ def test_luna_judge_uses_the_subscription_protocol_and_returns_usage(tmp_path: P
     assert turn.approval_mode is ApprovalMode.DENY_ALL
     assert turn.output_schema["additionalProperties"] is False
     assert turn.output_schema["properties"]["items"]["items"]["additionalProperties"] is False
+    assert "Judge only the named pattern" in turn.prompt
+    assert "Judge only the named pattern" in turn.prompt
 
 
 def test_missing_chatgpt_subscription_reports_login_without_starting_a_thread(tmp_path: Path) -> None:
@@ -244,6 +250,97 @@ def test_tool_items_are_rejected_and_never_cached(tmp_path: Path, item_type: str
         judge.judge(_request())
 
     assert list((tmp_path / "cache").glob("*.json")) == []
+
+
+def test_document_prompt_carries_the_existing_document_rubric(tmp_path: Path) -> None:
+    document_response = '{"notes":[]}'
+    judge, sdk = _judge(tmp_path, (_result(document_response),))
+
+    judge.judge(JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context="A document."))
+
+    prompt = sdk.session.threads[0].turns[0].prompt
+    assert "Coherence:" in prompt
+    assert "Quote the sentence" in prompt
+
+
+def test_rejected_partial_indexes_are_not_cached(tmp_path: Path) -> None:
+    partial = '{"items":[{"index":0,"verdict":"violating","reason":"only one"}]}'
+    judge, _sdk = _judge(tmp_path, (_result(partial),))
+    request = JudgeRequest(
+        review_kind=ReviewKind.PATTERN,
+        candidates=("first", "second"),
+        rule_name="ai_closer",
+        rule_action="End when done.",
+    )
+
+    with pytest.raises(LunaProviderFailure, match="malformed"):
+        judge.judge(request)
+
+    assert list((tmp_path / "cache").glob("*.json")) == []
+
+
+def test_overload_exhaustion_stops_after_exactly_three_attempts(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path, (RetryableFakeError("busy"),) * 3)
+
+    with pytest.raises(RetryableFakeError, match="busy"):
+        judge.judge(_request())
+
+    assert sdk.attempts == 3
+
+
+def test_lifecycle_timeout_covers_sdk_startup(tmp_path: Path, monkeypatch) -> None:
+    judge, sdk = _judge(tmp_path)
+    original_open = sdk.open
+
+    def delayed_open(launch):
+        time.sleep(0.05)
+        return original_open(launch)
+
+    monkeypatch.setattr(sdk, "open", delayed_open)
+    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.01)
+
+    with pytest.raises(LunaProviderFailure, match="timed out"):
+        judge.judge(_request())
+
+
+def test_child_environment_strips_provider_credentials(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-pass")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-pass")
+    monkeypatch.setenv("PATH", "/bin")
+
+    environment = luna_provider._child_environment(tmp_path / "codex-home")
+
+    assert "OPENAI_API_KEY" not in environment
+    assert "ANTHROPIC_API_KEY" not in environment
+    assert environment["PATH"] == "/bin"
+    assert environment["CODEX_HOME"] == str(tmp_path / "codex-home")
+
+
+def test_runtime_symlink_fails_closed_without_touching_its_target(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    runtime = tmp_path / "runtime"
+    runtime.symlink_to(outside, target_is_directory=True)
+    judge, _sdk = _judge(tmp_path)
+    judge = LunaJudge(sdk=judge._sdk, runtime_root=runtime, cache_root=tmp_path / "cache", auth_source=tmp_path / "missing")
+
+    with pytest.raises(LunaProviderFailure, match="symlink"):
+        judge.judge(_request())
+
+    assert not tuple(outside.iterdir())
+
+
+def test_cache_symlink_fails_closed_without_reading_its_target(tmp_path: Path) -> None:
+    judge, _sdk = _judge(tmp_path)
+    cache = tmp_path / "cache"
+    outside = tmp_path / "outside.json"
+    outside.write_text("outside", encoding="utf-8")
+    cache.symlink_to(outside)
+
+    with pytest.raises(LunaProviderFailure, match="symlink"):
+        judge.judge(_request())
+
+    assert outside.read_text(encoding="utf-8") == "outside"
 
 
 def test_runtime_home_contains_only_minimal_config_and_auth_symlink(tmp_path: Path) -> None:
