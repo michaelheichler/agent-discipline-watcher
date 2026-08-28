@@ -143,6 +143,11 @@ if [ -f "$skill_dir/bin/agent-discipline" ]; then
   ln -snf "$skill_dir/bin/adw-cli" "$HOME/.local/bin/adw-cli"
 fi
 
+if [ -x "$skill_dir/bin/adw-judge" ]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -snf "$skill_dir/bin/adw-judge" "$HOME/.local/bin/adw-judge"
+fi
+
 rc_block='\n# >>> agent-discipline-watcher >>>\nexport PATH="$HOME/.local/bin:$PATH"\n[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ] && . "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash"\n# <<< agent-discipline-watcher <<<\n'
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
   if ! grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" 2>/dev/null; then

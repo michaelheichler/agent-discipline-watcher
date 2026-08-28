@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from failure import _config_roots, normalize_payload, record_success
-from lib import blocker_state, payloads, scan_input
+from lib import blocker_state, claude_journal, payloads, scan_input
 from lib.config import effective_config, effective_hook_config
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
@@ -42,6 +42,7 @@ class _EditJournal:
     payload: RecordPayload
     paths: list[str]
     root: str | Path | None
+    state_root: str | Path | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +77,16 @@ def _journal_edits(journal: _EditJournal, turn_id: str = "") -> None:
             },
             journal.root,
         )
+        if journal.payload["session_id"]:
+            try:
+                claude_journal.record_edit(
+                    journal.payload["session_id"], turn_id,
+                    journal.payload["tool_use_id"],
+                    payloads.resolved_path(path, Path(journal.payload["cwd"] or ".")),
+                    state_root=journal.state_root,
+                )
+            except Exception as exc:
+                sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
 
 
 def _stamped(findings: list[dict], path: Path) -> list[dict]:
@@ -218,7 +229,7 @@ def _gate_context_for(
     cwd = Path(projected["cwd"] or ".")
     paths = list(payloads.edited_paths(payload))
     return _RecordGateContext(
-        journal=_EditJournal(projected, paths, ledger_root),
+        journal=_EditJournal(projected, paths, ledger_root, state_root),
         tracked_paths=[str(payloads.resolved_path(raw, cwd)) for raw in paths],
         cwd=cwd,
         config=cfg,
