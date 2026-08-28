@@ -36,16 +36,13 @@ def run(payload: dict, config: dict | None = None) -> dict:
             session_state.advance_turn(session_id, cfg.get("state_root"))
             close_turn(session_id, lease_root_for(cfg))
 
-        try:
-            return run_with_ledger(
-                hook="stop",
-                payload=payload,
-                gate=lambda _turn_id: _verdict(payload, cfg),
-                ledger_root=cfg.get("ledger_root"),
-                state_root=cfg.get("state_root"),
-            )
-        finally:
-            session_state.release_session_lease(session_id, cfg.get("state_root"))
+        return run_with_ledger(
+            hook="stop",
+            payload=payload,
+            gate=lambda _turn_id: _verdict(payload, cfg),
+            ledger_root=cfg.get("ledger_root"),
+            state_root=cfg.get("state_root"),
+        )
     except Exception as exc:
         return stop_block(STATE_FAILURE + str(exc))
 

@@ -50,3 +50,42 @@ Combined: 1,574 passed, 18 skipped.
 - Confirmed installed hook copies retain the resolver under `hooks/`, including plugin roots with spaces.
 - Confirmed retention never enumerates `runtime` or `models`, and ledger compaction iterates source lines rather than calling `read_text`/`readlines`.
 - Concern: report records currently appear only in any string-valued ledger fields; report retention also protects conventional live-session report filenames. Malformed ledger rows are retained rather than discarded to avoid evidence loss.
+
+## Fix round 1
+
+### Changes
+
+- Stop now retains the active lease. A new `SessionEnd` hook releases it, and both the dispatcher and Claude manifest route `SessionEnd` to that entrypoint.
+- SessionStart acquires the current lease before retention, so a resumed old session survives its own startup cleanup. Repeated startup cleanup is covered with real filesystem state.
+- Ledger appends and compaction now use the same cross-process `.ledger.lock`, so an append cannot target the inode being atomically replaced. The retention helper no longer uses a mutable default argument.
+
+### RED commands and output
+
+- `./.venv/bin/python -m pytest hooks/test_stop.py::test_stop_keeps_the_session_lease_for_the_active_session -q` -> `1 failed`; the lease set was empty.
+- `./.venv/bin/python -m pytest hooks/test_session_end.py -q` -> collection error; `session_end` was missing.
+- `./.venv/bin/python -m pytest hooks/test_run_dispatch.py::RunDispatchTests::test_no_event_routes_to_an_empty_script -q` -> `1 failed`; `SessionEnd` dispatcher entry was absent.
+- `./.venv/bin/python -m pytest hooks/test_plugin_wiring.py::PluginManifestTests::test_session_end_releases_the_active_session_lease -q` -> `1 failed`; manifest had no SessionEnd command.
+- `./.venv/bin/python -m pytest hooks/test_session_start.py::ReadableOutputInjectionTests::test_resumed_old_session_is_protected_before_startup_cleanup -q` -> `1 failed`; the resumed state directory was removed.
+- `./.venv/bin/python -m pytest hooks/lib/test_retention.py::test_append_waits_for_ledger_compaction_and_is_not_lost -q` -> `1 failed`; append completed while compaction was paused.
+
+### GREEN commands and output
+
+- `./.venv/bin/python -m pytest hooks/test_session_end.py hooks/test_stop.py::test_stop_keeps_the_session_lease_for_the_active_session hooks/test_plugin_wiring.py::PluginManifestTests::test_session_end_releases_the_active_session_lease -q` -> `3 passed`.
+- `./.venv/bin/python -m pytest hooks/test_run_dispatch.py -q` -> `19 passed, 24 subtests passed`.
+- `./.venv/bin/python -m pytest hooks/test_session_start.py -q` -> `9 passed`.
+- `./.venv/bin/python -m pytest hooks/lib/test_retention.py::test_append_waits_for_ledger_compaction_and_is_not_lost -q` -> `1 passed`.
+- Focused suite: `./.venv/bin/python -m pytest hooks/test_session_end.py hooks/test_stop.py hooks/test_session_start.py hooks/test_run_dispatch.py hooks/test_plugin_wiring.py hooks/lib/test_retention.py hooks/lib/test_ledger_reporting.py -q` -> `122 passed, 64 subtests passed`.
+
+### Full suite
+
+- `./.venv/bin/python -m pytest hooks/lib -q` -> `605 passed, 17 skipped, 50 subtests passed`.
+- `./.venv/bin/python -m pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 223 subtests passed`.
+- `./.venv/bin/python -m pytest pi/test_merge_settings.py -q` -> `11 passed`.
+
+Combined: 1,579 passed, 18 skipped.
+
+### Self-review
+
+- Verified `SessionEnd` is a supported manifest event, dispatcher route, and a real entrypoint that releases only the session lease.
+- Verified SessionStart protects its own session before sweeping.
+- Verified the deterministic append-versus-compaction test blocks append until replacement completes, then retains the appended row.

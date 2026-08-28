@@ -113,6 +113,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh SessionEnd",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

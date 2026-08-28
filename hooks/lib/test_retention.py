@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from lib import retention, session_state
+from lib import reporting, retention, session_state
 
 
 AGE = 30 * 24 * 60 * 60
@@ -93,3 +93,33 @@ def test_corrupt_session_lease_does_not_block_stale_cleanup(tmp_path: Path) -> N
 
     assert not stale.exists()
     assert not (leases / "stale.lease.json").exists()
+
+
+def test_append_waits_for_ledger_compaction_and_is_not_lost(tmp_path: Path, monkeypatch) -> None:
+    data = tmp_path / "data"
+    ledger = data / "ledger"
+    ledger.mkdir(parents=True)
+    (ledger / "ledger.jsonl").write_text('{"ts":"2000-01-01T00:00:00+00:00"}\n', encoding="utf-8")
+    compacting = threading.Event()
+    release = threading.Event()
+    original = retention._compact_ledger
+
+    def paused_compaction(*args, **kwargs):
+        compacting.set()
+        assert release.wait(2)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(retention, "_compact_ledger", paused_compaction)
+    sweep = threading.Thread(target=retention.sweep, kwargs={"state_root": data / "state", "ledger_root": ledger, "data_root": data})
+    sweep.start()
+    assert compacting.wait(2)
+    appended = threading.Event()
+    writer = threading.Thread(target=lambda: (reporting.append_row({"session_id": "new"}, ledger), appended.set()))
+    writer.start()
+    assert not appended.wait(0.1)
+    release.set()
+    sweep.join(2)
+    writer.join(2)
+
+    assert appended.is_set()
+    assert '"new"' in (ledger / "ledger.jsonl").read_text(encoding="utf-8")

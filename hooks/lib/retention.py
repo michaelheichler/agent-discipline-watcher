@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import session_state
+from . import reporting, session_state
 
 MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 LOCK_FILENAME = ".retention.lock"
@@ -77,11 +77,12 @@ def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Pa
     return kept_reports
 
 
-def _remove_old_files(root: Path, cutoff: float, keep: set[Path] = set()) -> None:
+def _remove_old_files(root: Path, cutoff: float, keep: set[Path] | None = None) -> None:
     if not root.is_dir():
         return
+    preserved = keep or set()
     for path in root.rglob("*"):
-        if path.is_dir() or path.resolve() in keep:
+        if path.is_dir() or path.resolve() in preserved:
             continue
         try:
             if path.stat().st_mtime < cutoff:
@@ -117,7 +118,8 @@ def sweep(
         cutoff = current - MAX_AGE_SECONDS
         live = session_state.live_session_ids(state, current)
         session_state.sweep_stale(MAX_AGE_SECONDS, state, current)
-        kept = _compact_ledger(ledger / "ledger.jsonl", cutoff, live, reports)
+        with reporting.ledger_lock(ledger):
+            kept = _compact_ledger(ledger / "ledger.jsonl", cutoff, live, reports)
         kept.update(_preserved_reports(reports, live))
         _remove_old_files(reports, cutoff, kept)
         _remove_old_files(data / "cache", cutoff)

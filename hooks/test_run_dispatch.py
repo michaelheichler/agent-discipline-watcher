@@ -26,6 +26,7 @@ DISPATCH = {
     "SubagentStart": "subagent_start.py",
     "SubagentStop": "subagent_stop.py",
     "Stop": "stop.py",
+    "SessionEnd": "session_end.py",
     "JudgeReview": "judge_review.py",
 }
 

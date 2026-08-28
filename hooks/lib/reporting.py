@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -7,6 +8,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,7 @@ except ImportError:
     from findings import Finding, Outcome
 
 LEDGER_FILENAME = "ledger.jsonl"
+LEDGER_LOCK_FILENAME = ".ledger.lock"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
 REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
@@ -196,6 +199,19 @@ def _ledger_dir(root: str | os.PathLike[str] | None) -> Path:
     return Path(root) if root is not None else _default_ledger_root()
 
 
+@contextmanager
+def ledger_lock(root: str | os.PathLike[str] | None):
+    directory = _ledger_dir(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(directory / LEDGER_LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
 def ledger_path(root: str | os.PathLike[str] | None = None) -> Path:
     """Exposed because bin/agent-discipline needs the ledger file location without reaching into this module's private layout."""
     return _ledger_dir(root) / LEDGER_FILENAME
@@ -212,11 +228,10 @@ def _ledger_row(**fields) -> dict:
 def append_row(row: dict, root: str | os.PathLike[str] | None = None) -> None:
     """Swallow ledger write errors because an unwritable evidence sink must never fail a hook."""
     try:
-        directory = _ledger_dir(root)
-        directory.mkdir(parents=True, exist_ok=True)
         line = json.dumps(row, ensure_ascii=True)
-        with (directory / LEDGER_FILENAME).open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        with ledger_lock(root):
+            with (_ledger_dir(root) / LEDGER_FILENAME).open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: ledger append failed: {exc}\n")
 

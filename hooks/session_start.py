@@ -44,8 +44,8 @@ def run(payload: dict | None = None, config: dict | None = None) -> dict:
         settings = config if isinstance(config, dict) else {}
         state_root = settings.get("state_root") if isinstance(settings.get("state_root"), str) else None
         ledger_root = settings.get("ledger_root") if isinstance(settings.get("ledger_root"), str) else None
-        retention.sweep(state_root=state_root, ledger_root=ledger_root)
         session_state.acquire_session_lease(session_id, state_root)
+        retention.sweep(state_root=state_root, ledger_root=ledger_root)
     readable = readable_output_context()
     context = f"{CONTRACT}\n\n{readable}" if readable else CONTRACT
     return {

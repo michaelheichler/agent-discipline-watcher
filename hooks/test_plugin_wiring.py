@@ -70,6 +70,11 @@ def merged_watcher_hooks(skill_dir: str) -> dict:
 
 
 class PluginManifestTests(unittest.TestCase):
+    def test_session_end_releases_the_active_session_lease(self):
+        config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+        commands = [entry["command"] for event, entry in hook_commands(config) if event == "SessionEnd"]
+        self.assertEqual(commands, ['"${CLAUDE_PLUGIN_ROOT}"/hooks/run.sh SessionEnd'])
+
     def test_hook_description_matches_deterministic_runtime(self):
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
         self.assertNotIn("semantic", config["description"].lower())
