@@ -57,6 +57,18 @@ class ReadableOutputInjectionTests(unittest.TestCase):
         self.assertEqual(result, "")
         self.assertIn("readable-output skill unreadable", buffer.getvalue())
 
+    def test_session_start_runs_retention_and_acquires_a_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {"state_root": str(root / "state"), "ledger_root": str(root / "ledger")}
+            with patch("session_start.retention.sweep") as sweep:
+                session_start.run({"session_id": "s1"}, config)
+
+            sweep.assert_called_once()
+            self.assertEqual(
+                session_start.session_state.live_session_ids(config["state_root"]), frozenset({"s1"})
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

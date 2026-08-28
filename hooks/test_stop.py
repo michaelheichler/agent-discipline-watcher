@@ -36,6 +36,15 @@ def test_stop_retry_does_not_advance_again(tmp_path: Path) -> None:
     assert session_state.read_state("s1", config["state_root"])["turn_count"] == 1
 
 
+def test_stop_releases_the_session_lease(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    session_state.acquire_session_lease("s1", config["state_root"])
+
+    stop.run(_payload(), config)
+
+    assert session_state.live_session_ids(config["state_root"]) == frozenset()
+
+
 def test_stop_records_a_heartbeat_without_scanning_chat(tmp_path: Path) -> None:
     config = _config(tmp_path)
     assert stop.run(_payload(), config) == {}

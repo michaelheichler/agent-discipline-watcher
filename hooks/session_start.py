@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from lib import retention, session_state
 from lib.hookio import CONTRACT, read_payload, write_payload
 
 SESSION_START_EVENT = "SessionStart"
@@ -37,6 +38,14 @@ def readable_output_context(path: Path | None = None) -> str:
 
 def run(payload: dict | None = None, config: dict | None = None) -> dict:
     """Send the short line to the transcript and the full contract to the model, because systemMessage alone never reaches the model."""
+    fields = payload if isinstance(payload, dict) else {}
+    session_id = fields.get("session_id")
+    if isinstance(session_id, str) and session_id:
+        settings = config if isinstance(config, dict) else {}
+        state_root = settings.get("state_root") if isinstance(settings.get("state_root"), str) else None
+        ledger_root = settings.get("ledger_root") if isinstance(settings.get("ledger_root"), str) else None
+        retention.sweep(state_root=state_root, ledger_root=ledger_root)
+        session_state.acquire_session_lease(session_id, state_root)
     readable = readable_output_context()
     context = f"{CONTRACT}\n\n{readable}" if readable else CONTRACT
     return {

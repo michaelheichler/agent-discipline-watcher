@@ -369,6 +369,8 @@ def run_with_ledger(*values: object, **fields: object) -> dict:
     session_id = str(invocation.payload.get("session_id") or "")
     # A sessionless invocation skips the ledger because it has no turn_id to stamp.
     turn_id = _read_turn_id(session_id, invocation.state_root) if session_id else ""
+    if session_id:
+        session_state.acquire_session_lease(session_id, invocation.state_root)
     started = time.monotonic()
     try:
         return gate(turn_id)

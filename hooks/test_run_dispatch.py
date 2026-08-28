@@ -47,12 +47,12 @@ class RunDispatchTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _stub(self, directory, name, *, meets_floor):
+    def _stub(self, directory, name, *, meets_floor, version="3.99.0"):
         # run.sh probes a candidate with -c before running a hook, so the stub answers that call separately.
         stub = Path(directory) / name
         stub.write_text(
             "#!/bin/sh\n"
-            f'if [ "$1" = "-c" ]\nthen\n  exit {0 if meets_floor else 1}\nfi\n'
+            f'if [ "$1" = "-c" ]\nthen\n  {"printf \"%s\\n\" \"" + version + "\"; " if meets_floor else ""}exit {0 if meets_floor else 1}\nfi\n'
             f'echo "{STUB_MARKER}:{name} $@"\n'
         )
         stub.chmod(0o755)
@@ -161,6 +161,17 @@ class RunDispatchTests(unittest.TestCase):
         result = self._run_isolated(f"{stale}{os.pathsep}{fresh}", "SessionStart")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stdout.startswith(f"{STUB_MARKER}:python3"), result.stdout)
+
+    def test_newest_compatible_interpreter_wins_across_path_entries(self):
+        older = self._isolated_bin("older-compatible")
+        self._stub(older, "python3.9", meets_floor=True, version="3.9.9")
+        newer = self._isolated_bin("newer-compatible")
+        self._stub(newer, "python3.14", meets_floor=True, version="3.14.0")
+
+        result = self._run_isolated(f"{older}{os.pathsep}{newer}", "SessionStart")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(result.stdout.startswith(f"{STUB_MARKER}:python3.14"), result.stdout)
 
     def test_adw_python_overrides_the_path_search(self):
         override_dir = Path(self.tmp.name) / "override"

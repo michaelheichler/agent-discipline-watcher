@@ -73,6 +73,17 @@ backup_file() {
   cp "$1" "$1.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"
 }
 
+resolve_installer_python() {
+  . "$skill_dir/hooks/resolve-python.sh"
+  read -r installer_floor < "$skill_dir/.python-version"
+  installer_python="$(adw_resolve_python "$installer_floor")"
+  [ -n "$installer_python" ] || {
+    echo "pi/install.sh: no Python $installer_floor or newer on PATH. Install one, or point ADW_PYTHON at it." >&2
+    return 1
+  }
+  printf '%s\n' "$installer_python"
+}
+
 if [ "$remove" -eq 1 ]; then
   if [ -L "$extension_link" ]; then
     if [ "$(readlink "$extension_link")" = "$extension_src" ]; then
@@ -85,7 +96,8 @@ if [ "$remove" -eq 1 ]; then
   fi
   if [ -f "$omp_agent_dir/settings.json" ]; then
     backup_file "$omp_agent_dir/settings.json"
-    python3 "$skill_dir/pi/merge-settings.py" \
+    installer_python="$(resolve_installer_python)"
+    "$installer_python" "$skill_dir/pi/merge-settings.py" \
       --settings "$omp_agent_dir/settings.json" \
       --skill-dir "$skill_dir" \
       --remove
@@ -97,7 +109,8 @@ fi
 mkdir -p "$omp_agent_dir/extensions"
 ln -snf "$extension_src" "$extension_link"
 backup_file "$omp_agent_dir/settings.json"
-python3 "$skill_dir/pi/merge-settings.py" \
+installer_python="$(resolve_installer_python)"
+"$installer_python" "$skill_dir/pi/merge-settings.py" \
   --settings "$omp_agent_dir/settings.json" \
   --skill-dir "$skill_dir"
 echo "OMP extension linked at $extension_link"

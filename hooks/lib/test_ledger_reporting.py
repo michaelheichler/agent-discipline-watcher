@@ -210,6 +210,19 @@ class HeartbeatTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event"], "observed")
 
+    def test_run_with_ledger_renews_the_session_lease(self):
+        reporting.run_with_ledger(
+            hook="pre_write",
+            payload={"session_id": "s1"},
+            gate=lambda _turn_id: {},
+            ledger_root=self.root / "ledger",
+            state_root=self.root / "state",
+        )
+
+        self.assertEqual(
+            session_state.live_session_ids(self.root / "state"), frozenset({"s1"})
+        )
+
 
 class TurnIdStampingTests(unittest.TestCase):
     def setUp(self):

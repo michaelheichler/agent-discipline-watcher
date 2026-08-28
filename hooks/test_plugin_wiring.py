@@ -188,7 +188,9 @@ class PluginCommandExecutionTests(unittest.TestCase):
         self.dispatch = dispatch_map()
         self.tmp = tempfile.TemporaryDirectory()
         stub = Path(self.tmp.name) / "python3"
-        stub.write_text(f'#!/bin/sh\necho "{STUB_MARKER} $@"\n')
+        stub.write_text(
+            f'#!/bin/sh\nif [ "$1" = "-c" ]; then printf "3.99.0\\n"; exit 0; fi\necho "{STUB_MARKER} $@"\n'
+        )
         stub.chmod(0o755)
         self.env = os.environ.copy()
         self.env["PATH"] = self.tmp.name + os.pathsep + self.env.get("PATH", "")

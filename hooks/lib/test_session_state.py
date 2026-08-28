@@ -210,6 +210,39 @@ class SessionStateTests(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertFalse(quiet.exists())
 
+    def test_sweep_stale_keeps_an_old_session_with_a_live_lease(self):
+        session = self.root / "live"
+        session.mkdir()
+        (session / "state.json").write_text("{}", encoding="utf-8")
+        now = time.time()
+        old_mtime = now - 31 * 24 * 60 * 60
+        os.utime(session, (old_mtime, old_mtime))
+        session_state.acquire_session_lease("live", root=self.root, now=now)
+
+        removed = session_state.sweep_stale(
+            max_age_seconds=30 * 24 * 60 * 60, root=self.root, now=now
+        )
+
+        self.assertEqual(removed, 0)
+        self.assertTrue(session.exists())
+
+    def test_released_session_lease_no_longer_protects_stale_session(self):
+        session = self.root / "ended"
+        session.mkdir()
+        (session / "state.json").write_text("{}", encoding="utf-8")
+        now = time.time()
+        old_mtime = now - 31 * 24 * 60 * 60
+        os.utime(session, (old_mtime, old_mtime))
+        session_state.acquire_session_lease("ended", root=self.root, now=now)
+        session_state.release_session_lease("ended", root=self.root)
+
+        removed = session_state.sweep_stale(
+            max_age_seconds=30 * 24 * 60 * 60, root=self.root, now=now
+        )
+
+        self.assertEqual(removed, 1)
+        self.assertFalse(session.exists())
+
     def test_sweep_stale_ignores_stray_files(self):
         (self.root / "stray.txt").write_text("x", encoding="utf-8")
         removed = session_state.sweep_stale(

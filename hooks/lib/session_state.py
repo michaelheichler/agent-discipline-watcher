@@ -13,6 +13,9 @@ STATE_FILENAME = "state.json"
 LOCK_FILENAME = ".lock"
 DATA_DIRNAME = ".adw"
 LEGACY_DATA_DIRNAME = ".agent-discipline"
+SESSION_LEASE_DIRNAME = "session-leases"
+SESSION_LEASE_SUFFIX = ".lease.json"
+SESSION_LEASE_TTL_SECONDS = 900
 
 
 def plugin_data_home() -> Path:
@@ -30,6 +33,11 @@ def models_root() -> Path:
 
 def _default_root() -> Path:
     return plugin_data_home() / "state"
+
+
+def session_lease_root(root: str | os.PathLike[str] | None = None) -> Path:
+    state_root = Path(root) if root is not None else _default_root()
+    return state_root.with_name(SESSION_LEASE_DIRNAME)
 
 
 def _validate_session_id(session_id: str) -> None:
@@ -183,6 +191,68 @@ def cleanup_session(
     shutil.rmtree(_session_directory(session_id, root), ignore_errors=True)
 
 
+def _session_lease_path(
+    session_id: str, root: str | os.PathLike[str] | None = None,
+) -> Path:
+    _validate_session_id(session_id)
+    return session_lease_root(root) / f"{session_id}{SESSION_LEASE_SUFFIX}"
+
+
+def acquire_session_lease(
+    session_id: str,
+    root: str | os.PathLike[str] | None = None,
+    now: float | None = None,
+) -> None:
+    path = _session_lease_path(session_id, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{session_id}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump({"session_id": session_id, "renewed_at": time.time() if now is None else now}, handle)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def release_session_lease(
+    session_id: str, root: str | os.PathLike[str] | None = None,
+) -> None:
+    _session_lease_path(session_id, root).unlink(missing_ok=True)
+
+
+def live_session_ids(
+    root: str | os.PathLike[str] | None = None,
+    now: float | None = None,
+) -> frozenset[str]:
+    current = time.time() if now is None else now
+    directory = session_lease_root(root)
+    if not directory.is_dir():
+        return frozenset()
+    live: set[str] = set()
+    for path in directory.glob(f"*{SESSION_LEASE_SUFFIX}"):
+        try:
+            row = json.loads(path.read_text(encoding="utf-8"))
+            session_id = row.get("session_id") if isinstance(row, dict) else None
+            renewed_at = row.get("renewed_at") if isinstance(row, dict) else None
+            _validate_session_id(session_id)
+            if not isinstance(renewed_at, (int, float)) or current - renewed_at > SESSION_LEASE_TTL_SECONDS:
+                raise ValueError("expired session lease")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            continue
+        live.add(session_id)
+    return frozenset(live)
+
+
 def _remove_if_stale(entry: Path, cutoff: float) -> bool:
     try:
         mtime = entry.stat().st_mtime
@@ -208,8 +278,9 @@ def sweep_stale(
     if not base.is_dir():
         return 0
     cutoff = (time.time() if now is None else now) - max_age_seconds
+    live = live_session_ids(root, now)
     removed = 0
     for entry in base.iterdir():
-        if entry.is_dir() and _remove_if_stale(entry, cutoff):
+        if entry.is_dir() and entry.name not in live and _remove_if_stale(entry, cutoff):
             removed += 1
     return removed

@@ -77,6 +77,17 @@ backup_file() {
   cp "$1" "$1.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"
 }
 
+installer_python=""
+if [ "$install_claude" -eq 1 ] || [ "$install_codex" -eq 1 ]; then
+  . "$skill_dir/hooks/resolve-python.sh"
+  read -r installer_floor < "$skill_dir/.python-version"
+  installer_python="$(adw_resolve_python "$installer_floor")"
+  [ -n "$installer_python" ] || {
+    echo "install.sh: no Python $installer_floor or newer on PATH. Install one, or point ADW_PYTHON at it." >&2
+    exit 2
+  }
+fi
+
 mkdir -p "$HOME/.agents/skills"
 ln -snf "$skill_dir" "$HOME/.agents/skills/agent-discipline-watcher"
 
@@ -84,13 +95,13 @@ if [ "$install_claude" -eq 1 ] && [ "$claude_legacy" -eq 1 ]; then
   mkdir -p "$HOME/.claude/skills"
   ln -snf "$skill_dir/skills/agent-discipline-watcher" "$HOME/.claude/skills/agent-discipline-watcher"
   backup_file "$HOME/.claude/settings.json"
-  python3 "$skill_dir/hooks/merge-claude-settings.py" \
+  "$installer_python" "$skill_dir/hooks/merge-claude-settings.py" \
     --settings "$HOME/.claude/settings.json" \
     --skill-dir "$skill_dir"
   echo "Claude installed through the legacy path-based wiring. Moving the checkout breaks it."
 elif [ "$install_claude" -eq 1 ]; then
   backup_file "$HOME/.claude/settings.json"
-  python3 "$skill_dir/hooks/merge-claude-settings.py" \
+  "$installer_python" "$skill_dir/hooks/merge-claude-settings.py" \
     --settings "$HOME/.claude/settings.json" \
     --remove-legacy
   legacy_link="$HOME/.claude/skills/agent-discipline-watcher"
@@ -112,7 +123,7 @@ if [ "$install_codex" -eq 1 ]; then
   backup_file "$HOME/.codex/config.toml"
   backup_file "$HOME/.codex/hooks.json"
   rm -f "$HOME/.codex/hooks.json"
-  python3 "$skill_dir/hooks/merge-codex-config.py" \
+  "$installer_python" "$skill_dir/hooks/merge-codex-config.py" \
     --config "$HOME/.codex/config.toml" \
     --skill-dir "$skill_dir"
   echo "Codex hooks installed globally. Run /hooks in Codex to review and trust new or changed hooks."
