@@ -1,12 +1,12 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.8**.
+Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.9**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
 ## Three layers
 
-**Regex.** 98 patterns run on every write. This layer is deterministic and asks no model to release a finding. It decides the gate.
+**Regex.** 98 patterns run on every write. Because this layer is deterministic and asks no model to release a finding, it is the one that decides the gate.
 
 **Meaning.** Off by default. The watcher embeds each sentence and votes it against one pattern's own violating and clean neighbours. A judge then decides whether the survivors instantiate the named pattern. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
@@ -22,9 +22,9 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 | `vague_quantity` | 0.9406 | block |
 | `business_jargon` | 0.8507 | block |
 
-22 more rules carry exemplars and no measurement. They stay silent until measured. The floor is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
+22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The judge behind both the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary sentences as `ai_closer` on two of four runs over one technical document, and Sonnet cleared the same document four times out of four. A judge that decides a hard block is worth the stronger model. The document reader runs on Sonnet for the same reason.
+The judge behind both the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary sentences as `ai_closer` on two of four runs over one technical document, and Sonnet cleared the same document four times out of four. A judge that decides a hard block justifies the stronger model. The document reader runs on Sonnet for the same reason.
 
 ## What the rules were measured against
 
@@ -32,7 +32,7 @@ The rules used to have no false-positive denominator. They have one now.
 
 **60000 human sentences** from news, encyclopedia articles, and books published mostly before 1930. No model wrote any of it. A rule that fires there is either doing its job or costing you an edit, and `evals/human_hit_rate.json` records the hit rate per genre.
 
-Every AI-tell rule fires on 1 sentence in 20000 or fewer. `passive_voice` fires on 1 in 4, and every hit read as a genuine passive.
+Every AI-tell rule fires on 1 sentence in 20000 or fewer. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
 
 **88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire zero times on human prose, so without this side they have no violating class and no measurement can reach them.
 
@@ -44,7 +44,7 @@ All three corpora rebuild byte for byte. See `evals/README.md`.
 
 Every tool call goes through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
-The gate scans a pending write before execution. PostToolUse rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
+Claude Code calls a hook twice around a tool: PreToolUse before the call runs, PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
 
 The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
 
@@ -60,7 +60,7 @@ Comments run through the same scan, and they are the one surface where the watch
 
 Code comments and docstrings may contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
 
-The opening clause decides it. A comment that opens on the code and its behaviour fails even when a `because` clause follows, and so does the subject-first form of the same sentence. `Returns the cached row because callers need stable identity` blocks, and so does `The reader returns the cached row because callers need stable identity`. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
+The opening clause decides it. A comment that opens on the code and its behaviour fails even when a `because` clause follows, in the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
 
 These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent, so the 60-character cap and the opening-clause test are a judgement rather than a number.
 

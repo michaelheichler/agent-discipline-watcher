@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.18.9 (2026-08-28)
+
+### Fixed
+
+- A parent session could not stop while a subagent held a blocker. The Stop hook aggregated every blocker scope in the session, so it handed the findings of an agent that owned the file to an orchestrator that had edited nothing. That orchestrator could not clear them, and the hook blocked until the nine-block cap overrode the turn. Each turn now gates on its own scope, and a subagent answers for what it wrote at its own SubagentStop, where the owner can fix it.
+- Dropping the inherited blockers would have left the parent blind, so it still hears the count. When a subagent ends with findings left, the parent Stop returns one line per agent naming how many and which files, as a user-visible system message that costs the model nothing and fires once before the scope clears.
+- The two-round cap on document readings never advanced past one. The reader took its round count before a call that runs for tens of seconds and wrote the increment back after, so every reading a burst of edits started read the same count and none of them saw another's. Nothing limited how often the watcher could read one document, each pass returned a different set of style notes, and the agent that kept fixing them never reached the round where the reader stands down. The reader now spends the round under the lock before the call starts, so an empty reading costs one too. The cap counts readings per changed document rather than readings that produced notes.
+- A document note outlived the document it quoted. The reader stores line anchors and quoted sentences from one reading, and nothing voided them when the file changed underneath. An agent that restructured a file kept receiving the original four notes against positions that no longer held that text. The Stop hook now compares the file against the digest the reader saw, and drops the blocker when they differ.
+
 ## 0.18.8 (2026-08-28)
 
 ### Changed

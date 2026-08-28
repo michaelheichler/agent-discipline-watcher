@@ -116,13 +116,26 @@ def test_stop_keeps_undecidable_batch_pending_after_clean_path_scan(tmp_path: Pa
     assert response == {"decision": "block", "reason": "Repair batch evaluation"}
 
 
-def test_parent_stop_aggregates_subagent_blockers(tmp_path: Path) -> None:
+def test_parent_stop_reports_subagent_blockers_without_blocking(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    target = tmp_path / "owned.md"
+    blocker_state.set_pending("s1", "agent-7", str(target), "Fix subagent finding", config["state_root"])
+    response = stop.run(_payload(), config)
+    assert "decision" not in response
+    assert "agent-7 left 1 unresolved finding in owned.md." in response["systemMessage"]
+
+
+def test_parent_stop_reports_subagent_blockers_only_once(tmp_path: Path) -> None:
     config = _config(tmp_path)
     blocker_state.set_pending("s1", "agent-7", "<batch-error>", "Fix subagent batch", config["state_root"])
-    assert stop.run(_payload(), config) == {
-        "decision": "block",
-        "reason": "Fix subagent batch",
-    }
+    stop.run(_payload(), config)
+    assert stop.run(_payload(), config) == {}
+
+
+def test_subagent_blockers_never_reach_the_parent_reason(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    blocker_state.set_pending("s1", "agent-7", "<batch-error>", "Fix subagent batch", config["state_root"])
+    assert "Fix subagent batch" not in stop.run(_payload(), config).get("systemMessage", "")
 
 
 def test_stop_blocks_malformed_payload(tmp_path: Path) -> None:

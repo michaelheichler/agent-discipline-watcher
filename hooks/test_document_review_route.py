@@ -1,4 +1,3 @@
-"""The reader runs on the async route and leaves a blocker behind, because the Stop hook has ten seconds and a whole-document read needs more."""
 from __future__ import annotations
 
 import pytest
@@ -90,8 +89,58 @@ def test_a_blocker_dies_with_the_file_it_names(tmp_path, monkeypatch) -> None:
     judge_review.run(_payload(target, "doc-deleted"))
     pending, _paths, _revision = blocker_state.details("doc-deleted", "", None)
     target.unlink()
+    state = judge_review.session_state.read_state("doc-deleted", None)
 
-    assert end_turn._residual_reasons(pending, []) == []
+    assert end_turn._residual_reasons(pending, [], end_turn._stale_document_keys(pending, state)) == []
+
+
+def test_a_note_is_dropped_once_the_document_it_quotes_is_rewritten(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
+    target = _document(tmp_path)
+    judge_review.run(_payload(target, "doc-moved"))
+    pending, _paths, _revision = blocker_state.details("doc-moved", "", None)
+    target.write_text("A heading was added.\n\n" + DOCUMENT, encoding="utf-8")
+    state = judge_review.session_state.read_state("doc-moved", None)
+
+    assert end_turn._residual_reasons(pending, [], end_turn._stale_document_keys(pending, state)) == []
+
+
+def test_a_note_stands_while_the_document_it_quotes_is_untouched(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
+    target = _document(tmp_path)
+    judge_review.run(_payload(target, "doc-standing"))
+    pending, _paths, _revision = blocker_state.details("doc-standing", "", None)
+    state = judge_review.session_state.read_state("doc-standing", None)
+
+    assert end_turn._residual_reasons(pending, [], end_turn._stale_document_keys(pending, state))
+
+
+def test_a_second_reader_on_the_same_text_finds_the_round_already_spent(tmp_path, monkeypatch) -> None:
+    seen = []
+
+    def read(path, text):
+        state = judge_review.session_state.read_state("doc-racing", None)
+        seen.append(document_review.previous(state, path))
+        return (NOTE,)
+
+    monkeypatch.setattr(document_review, "review", read)
+    monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
+    target = _document(tmp_path)
+    judge_review.run(_payload(target, "doc-racing"))
+
+    assert seen[0][1] == 1
+
+
+def test_an_empty_reading_still_spends_a_round(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(document_review, "review", lambda _path, _text: ())
+    monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
+    target = _document(tmp_path)
+    judge_review.run(_payload(target, "doc-empty"))
+    state = judge_review.session_state.read_state("doc-empty", None)
+
+    assert document_review.previous(state, str(target))[1] == 1
 
 
 def test_a_document_rewritten_past_the_round_cap_is_handed_back_to_the_user(tmp_path, monkeypatch) -> None:

@@ -107,22 +107,31 @@ class _Review(NamedTuple):
     release: bool
 
 
+def _claim_reading(scope: blocker_state.BlockerScope, key: str, fresh: str) -> tuple[str, int]:
+    # WHY: A read runs for tens of seconds. Spend the round first.
+    before: list[tuple[str, int]] = []
+
+    def mutate(state: dict) -> dict:
+        digest, rounds = document_review.previous(state, key)
+        before.append((digest, rounds))
+        if rounds >= document_review.MAX_REVIEW_ROUNDS or fresh == digest:
+            return state
+        return document_review.remember(state, key, fresh, rounds + 1)
+
+    session_state.update_state(scope.session_id, mutate, scope.root)
+    return before[0]
+
+
 def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str) -> _Review:
     """An unchanged document is left unread, because a second read costs a call and answers the same thing."""
     key = str(path)
-    state = session_state.read_state(scope.session_id, scope.root)
-    digest, rounds = document_review.previous(state, key)
     fresh = document_review.digest_of(text)
+    digest, rounds = _claim_reading(scope, key, fresh)
     if rounds >= document_review.MAX_REVIEW_ROUNDS:
         return _Review((), False, True)
     if fresh == digest:
         return _Review((), False, False)
     notes = document_review.review(key, text)
-    session_state.update_state(
-        scope.session_id,
-        lambda current: document_review.remember(current, key, fresh, rounds + bool(notes)),
-        scope.root,
-    )
     return _Review(notes, True, not notes)
 
 
