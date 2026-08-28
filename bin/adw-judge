@@ -1,16 +1,24 @@
-#!/usr/bin/env python3
-"""Select the native Claude model-judging preset."""
-from __future__ import annotations
+#!/bin/sh
+set -eu
 
-import sys
-from pathlib import Path
+[ "$#" -eq 1 ] || {
+  echo "usage: adw-judge mixed|luna|haiku|sonnet|status" >&2
+  exit 2
+}
+case "$1" in
+  mixed|luna|haiku|sonnet|status) ;;
+  *)
+    echo "adw-judge: invalid preset: $1" >&2
+    exit 2
+    ;;
+esac
 
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "hooks"))
-
-from lib.claude_native import main  # noqa: E402
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+. "$DIR/hooks/resolve-python.sh"
+read -r FLOOR < "$DIR/.python-version"
+PYTHON="$(adw_resolve_python "$FLOOR")"
+[ -n "$PYTHON" ] || {
+  echo "adw-judge: no Python $FLOOR or newer on PATH. Install one, or point ADW_PYTHON at it." >&2
+  exit 2
+}
+PYTHONPATH="$DIR/hooks${PYTHONPATH:+:$PYTHONPATH}" exec "$PYTHON" -m lib.claude_native "$1"

@@ -24,6 +24,18 @@ def test_mixed_profile_batches_comment_and_document_roles() -> None:
     assert "batch" in stop["hooks"][0]["prompt"].lower()
 
 
+def test_luna_profile_uses_live_commands_for_both_roles_and_never_model_luna() -> None:
+    generated = claude_native.generated_hooks("luna")
+
+    for lifecycle in ("PostToolUse", "Stop"):
+        handler = generated[lifecycle][0]["hooks"][0]
+        assert handler["type"] == "command"
+        assert "model" not in handler
+        assert "claude_luna.sh" in handler["command"]
+        assert claude_native.MANAGED_MARKER in handler["command"]
+    assert generated["PostToolUse"][0]["matcher"] == claude_native.WRITE_MATCHER
+
+
 def test_native_agents_never_register_a_pretool_hook() -> None:
     for preset in claude_native.PRESETS:
         assert "PreToolUse" not in claude_native.generated_hooks(preset)
@@ -45,7 +57,14 @@ def test_preset_switch_is_idempotent_and_preserves_unrelated_settings(tmp_path: 
     assert settings.read_text(encoding="utf-8") == once
     merged = json.loads(once)
     assert merged["model"] == "claude-opus"
-    assert {row["hooks"][0]["command"] for row in merged["hooks"]["Stop"] if row["hooks"][0]["type"] == "command"} == {"other"}
+    commands = [
+        row["hooks"][0]["command"]
+        for row in merged["hooks"]["Stop"]
+        if row["hooks"][0]["type"] == "command"
+    ]
+    assert "other" in commands
+    managed = [command for command in commands if claude_native.MANAGED_MARKER in command]
+    assert len(managed) == (1 if preset == "luna" else 0)
 
 
 def test_preset_selection_uses_only_exact_remote_signal_or_explicit_haiku(tmp_path: Path) -> None:
@@ -87,11 +106,40 @@ def test_candidate_journal_drops_a_previous_candidate_when_final_content_changes
 
 
 def test_native_prompts_fail_open_for_empty_input_and_check_stop_loop() -> None:
-    prompt = claude_native.comment_prompt("mixed") + claude_native.stop_prompt("mixed")
+    comment = claude_native.comment_prompt("mixed")
+    prompt = comment + claude_native.stop_prompt("mixed")
     assert "malformed" in prompt.lower()
     assert '"ok": true' in prompt
     assert "read-only" in prompt
     assert "stop_hook_active" in prompt
+    assert "raw host event" in comment.lower()
+    assert "journal" not in comment.lower()
+    assert claude_native.JOURNAL_READER_PATH in prompt
+
+
+def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_unrelated_hooks() -> None:
+    old_agent = {
+        "type": "agent", "model": "haiku", "prompt": claude_native.MANAGED_MARKER,
+    }
+    old_command = {
+        "type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} /old-handler",
+    }
+    stale_luna_command = {"type": "command", "command": "/stale/claude_luna.sh"}
+    unrelated = {"type": "command", "command": "keep-this"}
+    merged = claude_native.settings_for_preset(
+        {"hooks": {"PostToolUse": [{"hooks": [old_agent, old_command, stale_luna_command, unrelated]}]}}, "mixed",
+    )
+
+    handlers = [
+        hook
+        for group in merged["hooks"]["PostToolUse"]
+        for hook in group["hooks"]
+    ]
+    assert old_agent not in handlers
+    assert old_command not in handlers
+    assert stale_luna_command not in handlers
+    assert unrelated in handlers
+    assert any(handler["type"] == "agent" for handler in handlers)
 
 
 @pytest.mark.parametrize("value", (None, {}, [], "not-json", {"ok": "false"}, {"ok": False}, {"ok": True, "extra": 1}, {"ok": False, "reason": "fix", "extra": 1}))
@@ -117,6 +165,32 @@ def test_cli_rejects_extra_preset_arguments(tmp_path: Path) -> None:
         }, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 2
+
+
+def test_adw_judge_launcher_uses_the_newest_compatible_python(tmp_path: Path) -> None:
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    (binaries / "python3").write_text(
+        '#!/bin/sh\nif [ "$1" = "-c" ]; then printf "3.9.0\\n"; exit 0; fi\nexit 97\n', encoding="utf-8",
+    )
+    (binaries / "python3").chmod(0o755)
+    (binaries / "python3.14").write_text(
+        f'#!/bin/sh\nif [ "$1" = "-c" ]; then printf "3.14.0\\n"; exit 0; fi\nexec "{os.environ["PYTHON"] if "PYTHON" in os.environ else __import__("sys").executable}" "$@"\n',
+        encoding="utf-8",
+    )
+    (binaries / "python3.14").chmod(0o755)
+    result = subprocess.run(
+        [str(Path(__file__).parents[2] / "bin" / "adw-judge"), "status"],
+        env={
+            **os.environ,
+            "HOME": str(tmp_path / "home"),
+            "PATH": str(binaries) + os.pathsep + os.environ.get("PATH", ""),
+            "ADW_CLAUDE_SETTINGS": str(tmp_path / "settings.json"),
+            "ADW_CLAUDE_PRESET_FILE": str(tmp_path / "preset"),
+        }, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"preset": "mixed"' in result.stdout
 
 
 def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:

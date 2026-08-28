@@ -12,6 +12,7 @@ from .scanner import PROSE_EXTS
 
 STATE_KEY = "claude_candidate_journal"
 MAX_ROWS = 120
+MAX_STOP_ROWS = 24
 MAX_CANDIDATE_CHARS = 320
 MAX_DOCUMENT_CHARS = 24_000
 
@@ -97,3 +98,22 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     if not isinstance(rows, list):
         return []
     return [dict(row) for row in rows if isinstance(row, dict) and row.get("role") in {"comment", "document"}]
+
+
+def read_stop(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Return only bounded document candidates for the current session's Stop review."""
+    rows = read(session_id, state_root=state_root)
+    bounded: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("role") != "document":
+            continue
+        bounded.append({
+            "role": "document",
+            "path": str(row.get("path", ""))[:512],
+            "content_hash": str(row.get("content_hash", ""))[:64],
+            "source_context": str(row.get("source_context", ""))[:MAX_DOCUMENT_CHARS],
+        })
+    return bounded[-MAX_STOP_ROWS:]
+
+
+read_for_stop = read_stop

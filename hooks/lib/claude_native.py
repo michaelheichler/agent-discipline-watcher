@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
@@ -17,6 +18,9 @@ PRESET_FILE_ENV = "ADW_CLAUDE_PRESET_FILE"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
+PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
+JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
 
 
 class LunaUnavailable(RuntimeError):
@@ -88,21 +92,21 @@ def _model_for(preset: str, role: str) -> str:
         return "haiku"
     if preset == "sonnet":
         return "sonnet"
-    return "luna"
+    raise ValueError("luna uses command handlers, not a native model")
+
+
+def _luna_command() -> str:
+    return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(LUNA_HANDLER_PATH))}"
 
 
 def comment_prompt(preset: str) -> str:
     _validate_preset(preset)
-    route = (
-        "Use ADW's Luna subscription route and do not invoke a Claude fallback."
-        if preset == "luna" else "Use only the selected native Claude model."
-    )
     return (
         f"{MANAGED_MARKER}\n"
         "You are ADW's post-write comment verifier.\n"
-        "Inspect only the just-written candidate file and the bounded candidate data in the hook input. "
+        "Matching hooks run in parallel. Inspect only the just-written eligible file named by this raw host event; "
+        "do not expect another hook to have prepared context and do not duplicate the raw event content. "
         "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
-        f"{route}\n"
         "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
         "or has no ADW candidate, return exactly {\"ok\": true}.\n"
         "A successful check returns exactly {\"ok\": true}. A failed check returns {\"ok\": false, "
@@ -114,17 +118,14 @@ def comment_prompt(preset: str) -> str:
 
 def stop_prompt(preset: str) -> str:
     _validate_preset(preset)
-    route = (
-        "Use ADW's Luna subscription route and do not invoke a Claude fallback."
-        if preset == "luna" else "Use only the selected native Claude model."
-    )
     return (
         f"{MANAGED_MARKER}\n"
         "You are ADW's Stop verifier.\n"
         "Check stop_hook_active before doing any work. If it is true, return exactly {\"ok\": true}. "
-        "Read only the current session's bounded ADW candidate journal and the files named by those candidates. "
+        f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
+        "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
+        "unrelated files, or read files not named by the helper output. "
         "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
-        f"{route}\n"
         "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
         "returns exactly {\"ok\": true}. A clean review returns exactly {\"ok\": true}. A failed review "
         "returns {\"ok\": false, \"reason\": \"one bounded remediation instruction\"}.\n"
@@ -135,6 +136,17 @@ def stop_prompt(preset: str) -> str:
 
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
     selected = _validate_preset(preset)
+    if selected == "luna":
+        command = _luna_command()
+        return {
+            "PostToolUse": [{
+                "matcher": WRITE_MATCHER,
+                "hooks": [{"type": "command", "command": command, "timeout": 120}],
+            }],
+            "Stop": [{
+                "hooks": [{"type": "command", "command": command, "timeout": 120}],
+            }],
+        }
     return {
         "PostToolUse": [{
             "matcher": WRITE_MATCHER,
@@ -157,7 +169,14 @@ def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
 
 
 def _is_managed_hook(value: object) -> bool:
-    return isinstance(value, dict) and value.get("type") == "agent" and MANAGED_MARKER in str(value.get("prompt", ""))
+    if not isinstance(value, dict):
+        return False
+    if value.get("type") == "agent":
+        return MANAGED_MARKER in str(value.get("prompt", ""))
+    if value.get("type") == "command":
+        command = str(value.get("command", ""))
+        return MANAGED_MARKER in command or "claude_luna.sh" in command
+    return False
 
 
 def _without_managed(settings: dict[str, Any]) -> dict[str, Any]:
@@ -274,10 +293,11 @@ def fallback_after_luna_failure(
         fallback = current
         switched = False
     bounded = " ".join(str(reason).split())[:MAX_FAILURE_MESSAGE]
+    transition = f"Switched subsequent events to {fallback}." if switched else f"{fallback} remains configured."
     return {
         "preset": fallback,
         "switched": switched,
-        "message": f"Luna {role} review unavailable: {bounded}. Switched subsequent events to {fallback}.",
+        "message": f"Luna {role} review unavailable: {bounded}. {transition}",
     }
 
 
@@ -333,3 +353,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         parser.exit(2, f"adw-judge: {exc}\n")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

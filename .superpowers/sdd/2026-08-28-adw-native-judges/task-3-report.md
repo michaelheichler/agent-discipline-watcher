@@ -68,3 +68,50 @@ Claude native agent settings cannot directly execute the Python Luna provider th
 - `f827e4d fix: validate successful Luna worker results`
 - `4499399 feat: add native Claude judging presets`
 - `dddb1bc fix: route native Claude failures safely`
+
+## Fix round 1
+
+### Changes
+
+- Corrected the Luna preset to generate marked command handlers on `PostToolUse` and `Stop`. The handlers run the Task 2 `LunaJudge` through `claude_luna.sh`; no generated Luna entry has `type: "agent"` or `model: "luna"`.
+- Added live Luna routing. PostToolUse extracts candidates directly from the raw host event and the just-edited eligible Python file, without waiting for the parallel deterministic journal hook or copying raw tool content into the judge request. Stop reads only the bounded current-session document rows through `read_claude_journal.sh` and batches them into one document `JudgeRequest`.
+- Added bounded result-to-feedback conversion. Comment findings become PostToolUse continuation context; document findings become bounded Stop feedback. Provider and malformed-result failures produce one bounded actionable message and use the existing atomic role fallback transition. A later failure reports the already-configured fallback instead of switching again.
+- Added `read_claude_journal.py` and its exact resolver-backed shell entrypoint. It accepts exactly one validated session id and returns only bounded document rows.
+- Updated native prompts for parallel-hook ordering. PostToolUse uses only the raw host event and scopes to the just-written file. Native Stop prompts name the exact journal reader helper and forbid direct state or unrelated-file scans.
+- Replaced the `env python3` `bin/adw-judge` shebang with a resolver-backed shell launcher. It validates exactly one allowed argument before selecting the newest compatible Python, then invokes the Python module without unsafe argument interpolation.
+- Managed settings regeneration now removes both marked/native agent entries and Luna command entries while preserving unrelated hooks. Existing exact remote default and explicit Desktop/Cowork Haiku behavior remains unchanged.
+
+### TDD evidence
+
+RED commands and observed output:
+
+- `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> collection failed with `ImportError: cannot import name 'claude_luna'`; the live handler did not exist.
+- After the first implementation, the managed-entry, launcher, and old Luna profile assumptions failed (`3 failed`), exposing stale command cleanup, CLI module execution, and updated preservation assertions.
+- `.venv/bin/python -m pytest hooks/lib/test_claude_native.py::test_managed_luna_command_and_agent_entries_are_replaced_without_touching_unrelated_hooks -q` -> failed because an unmarked stale `claude_luna.sh` command was retained.
+
+GREEN commands and observed output:
+
+- `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `35 passed in 0.68s`.
+- `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py hooks/lib/test_luna_provider.py hooks/lib/test_judge.py hooks/lib/test_pattern_judge.py hooks/lib/test_document_review.py hooks/test_plugin_wiring.py hooks/test_merge_configs.py hooks/test_run_dispatch.py -q` -> `174 passed, 1 skipped, 54 subtests passed in 7.12s`.
+- `bash -n install.sh hooks/run.sh pi/install.sh hooks/claude_luna.sh hooks/read_claude_journal.sh bin/adw-judge`, Python compile checks for changed modules, and `git diff --check` exited 0.
+
+### Full required suites
+
+- `.venv/bin/python -m pytest hooks/lib -q` -> `707 passed, 17 skipped, 50 subtests passed in 20.26s`.
+- `.venv/bin/python -m pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 218 subtests passed in 22.88s`.
+- `.venv/bin/python -m pytest pi/test_merge_settings.py -q` -> `11 passed in 0.63s`.
+
+Combined fix-round evidence: `1,681 passed, 18 skipped, 268 subtests passed`.
+
+### Self-review
+
+- Confirmed only non-Luna presets generate native agent handlers, and only on `PostToolUse` and `Stop`. Luna generates command handlers on both lifecycles and never spends a sibling Claude fallback on a successful Luna result.
+- Confirmed PostToolUse Luna requests are built from the event's own eligible paths and current file candidates, while Stop requests use only `read_for_stop()` rows for the exact session. Missing, malformed, irrelevant, already-active Stop, and empty-journal inputs fail open without a provider call.
+- Confirmed feedback is bounded and role-specific, provider failures transition atomically only while Luna remains active, and a repeated failure does not claim a second transition.
+- Confirmed the journal reader's one-argument shell path uses the shared newest-compatible Python resolver and rejects unsafe session ids through the Python boundary. The preset launcher validates exact argv before resolution.
+- Confirmed settings cleanup recognizes both native agent markers and Luna command paths, preserves unrelated hook groups, and keeps exact remote/Cowork selection semantics.
+- Confirmed no Task 4 files or lifecycle work were changed, and production search still finds no `claude -p`, `codex exec`, API-key judge, or MCP judge path.
+
+### Concern
+
+The native Stop agent invokes the exact journal reader through its available inspection tools, so the prompt remains an instruction rather than a hard tool-security boundary, consistent with the Claude hook contract. The helper itself is deterministic, session-scoped, bounded, and read-only; generated command handlers bypass that agent-tool limitation for Luna reviews.
