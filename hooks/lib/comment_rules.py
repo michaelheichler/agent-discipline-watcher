@@ -26,7 +26,7 @@ CAUSAL_REASON_RE = re.compile(
 VAGUE_REASON_RE = re.compile(r"^(?:yes|no|reason|reasons|needed|necessary|stuff|things|logic)[.!]?$", re.IGNORECASE)
 GENERIC_REASON_WORDS = frozenset({"break", "breaks", "needed", "necessary", "reason", "reasons"})
 WHY_COMMENT_RE = re.compile(
-    r"(?:^why:\s*\S|\b(?:because|otherwise|unless|assumes|requires|guarantees)\b|"
+    r"(?:^why:\s*\S|\b(?:because|otherwise|unless)\b|"
     r"\bdue to\b|\bso that\b|\bin order to\b|\bexcept when\b|\binstead of\b|"
     r"\brather than\b|\bwork(?:around for|s around)\b|\bbug in\b|"
     r"\bcallers (?:rely on|must)\b|\brelied on by\b|\binvariant:\s*\S|"
@@ -52,6 +52,7 @@ CONTENT_STOPWORDS = frozenset({
     "of", "on", "or", "the", "this", "to", "with",
 })
 IMPLICIT_BUDGET_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:ms|s|us|ns)\s+budget\b", re.IGNORECASE)
+COMMENT_CHAR_CAP = 60
 WHAT_COMMENT_ACTION = (
     "Only WHY comments are allowed. WHAT comments are never allowed. "
     "State the reason the code is this way, or delete the comment."
@@ -126,8 +127,8 @@ CLEAN_CODE_LINE_RULES = (
 COMMENT_BODY_RULES = (
     (lambda text: bool(VC_COMMENT_RE.match(text)), "version_control_comment",
      "Comment narrates change history in ", "Delete it. Put change history in the commit message."),
-    (lambda text: len(text) > 150, "long_comment",
-     "Long comment in ", "Keep only one terse reason or move prose to docs."),
+    (lambda text: len(text) > COMMENT_CHAR_CAP, "long_comment",
+     "Long comment in ", "Cut it to one terse reason under 60 characters, or move it to the wiki."),
     (lambda text: bool(re.match(r"^(?:now(?:\s+we)?|this\s+(?:function|method|class))\b", text, re.IGNORECASE)),
      "narration_comment", "Comment narrates code in ", "Delete it and let names and structure carry the intent."),
 )
@@ -244,9 +245,31 @@ def _identifier_tokens(parts) -> frozenset[str]:
     )
 
 
+# Third person and gerund only, because a bare participle like "Set to 1.5 because" states a decision while "Sets the cap" describes the code.
+NARRATION_OPENER_RE = re.compile(
+    r"^(?:[A-Za-z]+(?:s|ing))\s+"
+    r"(?:the|a|an|it|this|to|into|out|off|from|by|on|as|every|each|one|two|all)\b",
+)
+# WHY: Rewriting "Votes a sentence" as "The reader votes a sentence" walked past the opener test and kept the same narration.
+SUBJECT_OPENER_RE = re.compile(
+    r"^(?:The|A|An|This|That|Each|Every|One|Its)\s+"
+    r"(?:[a-z][a-z-]*\s+){0,2}"
+    r"(?:is|are|was|were|[a-z]+(?:s|ed|ing))\b",
+)
+
+
+def opens_with_narration(text: str) -> bool:
+    stripped = text.strip()
+    return bool(NARRATION_OPENER_RE.match(stripped) or SUBJECT_OPENER_RE.match(stripped))
+
+
+def states_why(text: str) -> bool:
+    return _has_strong_why_marker(text) and not opens_with_narration(text)
+
+
 def _comment_is_what(text: str) -> bool:
-    if WHAT_OPENER_RE.match(text):
-        return not _has_strong_why_marker(text)
+    if WHAT_OPENER_RE.match(text) or opens_with_narration(text):
+        return not states_why(text)
     return not _has_why_marker(text)
 
 
@@ -369,7 +392,7 @@ def _what_docstring_rows(path: str, hit: tuple[int, str]) -> list[dict]:
             continue
         if structured:
             continue
-        if _has_strong_why_marker(line):
+        if states_why(line):
             continue
         rows.append(_finding(Finding(family="clean_code", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
     return rows

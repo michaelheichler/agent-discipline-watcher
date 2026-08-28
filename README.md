@@ -1,20 +1,20 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.7**.
+Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.18.8**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
-## Two layers
+## Three layers
 
 **Regex.** 98 patterns run on every write. This layer is deterministic and asks no model to release a finding. It decides the gate.
 
-**Meaning.** Off by default. The watcher embeds each sentence and votes it against one pattern's own violating and clean neighbours. A reader then decides whether the survivors instantiate the named pattern. This layer catches what the regex misses, because a paraphrase has no literal to match.
+**Meaning.** Off by default. The watcher embeds each sentence and votes it against one pattern's own violating and clean neighbours. A judge then decides whether the survivors instantiate the named pattern. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
-**Document.** New in 0.18.7. When an agent finishes a prose file, one reader takes the whole document and names what a line rule cannot see. An order that hides the argument, a missing bridge between paragraphs, a referent the document uses before introducing it, a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The watcher skips a document unchanged since its last reading, and after two rounds it stands down and leaves the call to you.
+**Document.** New in 0.18.7. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. An order that hides the argument, a missing bridge between paragraphs, a referent the document uses before introducing it, a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The watcher skips a document unchanged since its last reading, and after two rounds it stands down and leaves the call to you.
 
 A rule speaks only where a measurement covers it, and blocks only where that measurement earned the block.
 
-| rule | precision after the reader | gate |
+| rule | precision after the judge | gate |
 | --- | --- | --- |
 | `ai_closer` | 1.0000 | block |
 | `utilize` | 1.0000 | block |
@@ -24,13 +24,13 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The floor is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The reader behind both the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary sentences as `ai_closer` on two of four runs over one technical document, and Sonnet cleared the same document four times out of four. A reader that decides a hard block is worth the stronger model.
+The judge behind both the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary sentences as `ai_closer` on two of four runs over one technical document, and Sonnet cleared the same document four times out of four. A judge that decides a hard block is worth the stronger model. The document reader runs on Sonnet for the same reason.
 
 ## What the rules were measured against
 
 The rules used to have no false-positive denominator. They have one now.
 
-**60000 human sentences** from news, encyclopedia articles, and books published mostly before 1930. No model wrote any of it. A rule that fires there is either doing its job or costing you an edit, and `evals/human_hit_rate.json` records which per genre.
+**60000 human sentences** from news, encyclopedia articles, and books published mostly before 1930. No model wrote any of it. A rule that fires there is either doing its job or costing you an edit, and `evals/human_hit_rate.json` records the hit rate per genre.
 
 Every AI-tell rule fires on 1 sentence in 20000 or fewer. `passive_voice` fires on 1 in 4, and every hit read as a genuine passive.
 
@@ -48,13 +48,21 @@ The gate scans a pending write before execution. PostToolUse rescans the file on
 
 The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
 
-The meaning layer, the judged gate, and the document reader all run on the async PostToolUse route, so none of them delays a write. That route wakes the session afterwards with what it found, and the document reader also leaves a blocker the Stop hook reports. A markdown write costs about 10 seconds and up to five reader calls.
+The meaning layer, the judged gate, and the document reader all run on the async PostToolUse route, so none of them delays a write. That route wakes the session afterwards with what it found, and the document reader also leaves a blocker the Stop hook reports. That feedback arrives about 10 seconds after a prose write and costs up to five judge calls. The write itself waits for none of it.
 
-The scanner reads every prose extension it knows on that route, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences, because the layer used to embed style attributes as if they were prose.
+A session scratchpad is exempt from that route. A file under a `scratchpad` directory in the system temp root gets the deterministic scan and no judge call, because throwaway working notes are not worth the tokens.
+
+The scanner reads every prose extension it knows on that route, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as if they were prose.
 
 ## Comment policy
 
-Code comments and docstrings may contain one strict WHY line. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
+Comments run through the same scan, and they are the one surface where the watcher is stricter than it is on prose.
+
+Code comments and docstrings may contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
+
+The opening clause decides it. A comment that opens on the code and its behaviour fails even when a `because` clause follows, and so does the subject-first form of the same sentence. `Returns the cached row because callers need stable identity` blocks, and so does `The reader returns the cached row because callers need stable identity`. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
+
+These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent, so the 60-character cap and the opening-clause test are a judgement rather than a number.
 
 ## Install
 
@@ -117,7 +125,7 @@ Set these in the `env` block of `~/.claude/settings.json`, because that block is
 | `ADW_EMBEDDING_URLS` | A comma separated list, tried in order. The first that answers wins. |
 | `ADW_EMBEDDING_MODEL` | Model name sent in the request body. Defaults to `LFM2.5-Embedding-350M`. |
 
-With none of the URL variables set, the watcher runs its own server on a free port. It resolves the build from the platform, an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs, and it stops the process by pid when the last session ends.
+With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs, and it stops the process by pid when the last session ends.
 
 ### Thresholds
 
@@ -162,9 +170,9 @@ The watcher migrates an existing `~/.agent-discipline` once, on first run.
 
 Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
 
-Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates, the reader confirms them on the async route, and the watcher reports only what survives. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
+Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates, the judge confirms them on the async route, and the watcher reports only what survives. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
 
-`three_item_list` is the one rule at the judged gate today. Its regex fires on 278 of 60000 human sentences, which is ordinary writing, so the regex alone cannot speak. Behind the reader it clears 121 held-out candidates at 1.0000 precision with 0 false positives. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
+`three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Behind the judge it clears 121 held-out candidates at 1.0000 precision with 0 false positives. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
 
 ## Self protection
 

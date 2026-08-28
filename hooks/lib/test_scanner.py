@@ -674,13 +674,20 @@ def test_extended_why_markers_allow_comments():
         "# reject empty input because callers must retry",
         "# preserve this hook because it is relied on by plugins",
         "# invariant: the queue is never empty",
-        "# assumes the caller holds the lock",
-        "# requires an absolute path",
-        "# guarantees stable ordering",
         "# must return a value or raise",
     )
     for line in lines:
         assert _what_rows("sample.py", line) == [], line
+
+
+def test_a_contract_verb_no_longer_buys_a_narration_opener_a_pass():
+    lines = (
+        "# assumes the caller holds the lock",
+        "# requires an absolute path",
+        "# guarantees stable ordering",
+    )
+    for line in lines:
+        assert _what_rows("sample.py", line) != [], line
 
 
 def test_what_opener_covers_inflections_without_becoming_a_rule():
@@ -806,13 +813,24 @@ def test_weak_why_markers_do_not_bypass_a_what_opener():
         assert "weak_why_comment" in rules or "what_comment" in rules, line
 
 
-def test_strong_causal_markers_clear_a_what_opener():
+def test_a_causal_marker_does_not_rescue_a_narration_opener():
     lines = (
         "# Returns the cached row because callers need stable identity",
         "# Returns the cached row so that retries preserve ordering",
         "# Returns the cached row in order to avoid another read",
-        "# Returns the cached row due to a remote outage",
-        "# Returns the cached row to prevent duplicate work",
+        "# The reader returns the cached row because callers need stable identity",
+        "# A cached row is returned because callers need stable identity",
+    )
+    for line in lines:
+        assert _what_rows("sample.py", line) != [], line
+
+
+def test_a_reason_that_leads_clears_the_line():
+    lines = (
+        "# Callers need stable identity, because a fresh read renumbers every row",
+        "# Set to 1.5 because the Tukey fence lands at 36.5 words on 5000 sentences",
+        "# Kept out of the blocking path because a gate that waits stalls every write",
+        "# Resolved, because os.replace on a symlink destroys the link instead of its target",
     )
     for line in lines:
         assert _what_rows("sample.py", line) == [], line

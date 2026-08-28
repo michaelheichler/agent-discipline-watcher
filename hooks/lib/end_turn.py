@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import blocker_state, payloads, scan_input
+from . import blocker_state, document_review, payloads, scan_input
 from .baseline import strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
@@ -57,9 +57,18 @@ def _remaining_reason(session_id: str, agent_id: str, root) -> str:
     return "\n".join(dict.fromkeys(pending.values()))
 
 
+def _document_target_is_gone(key: str) -> bool:
+    prefix = document_review.BLOCKER_KEY_PREFIX
+    return key.startswith(prefix) and not Path(key[len(prefix):]).is_file()
+
+
 def _residual_reasons(pending: dict[str, str], paths: list[str]) -> list[str]:
+    # WHY: A deleted file can never clear a blocker keyed on its path.
     resolved = set(paths) | {"<batch>"}
-    return [value for key, value in pending.items() if key not in resolved]
+    return [
+        value for key, value in pending.items()
+        if key not in resolved and not _document_target_is_gone(key)
+    ]
 
 
 def _scope_reason(payload: dict, cfg: dict, agent_id: str) -> str:

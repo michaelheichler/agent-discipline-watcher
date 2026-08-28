@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.18.8 (2026-08-28)
+
+### Changed
+
+- A `because` clause no longer rescues a comment that opens on the code. The opening clause decides it, which is the standard the judge prompt has always stated and the deterministic rule never enforced. `Returns the cached row because callers need stable identity` blocks. So does its subject-first twin, `The reader returns the cached row because callers need stable identity`, which is the form that walked past the opener test for a whole release. `Callers need stable identity, because a fresh read renumbers every row` passes.
+- Comments cap at 60 characters, down from 150. Anything longer belongs on a wiki page.
+- `assumes`, `requires` and `guarantees` stopped counting as reasons. They open a contract, not a justification, and every opener exception went with them.
+- On this repository the tightened rules report 239 findings across 69 of 147 files: 148 over the character cap, 75 narrating docstrings, 16 narrating comments.
+
+### Added
+
+- A session scratchpad skips every model-backed route. A file under a `scratchpad` directory in the system temp root gets the deterministic scan and no judge call. Both conditions have to hold, since the directory name alone would exempt a real project folder and the temp root alone would exempt every test fixture.
+
+### Fixed
+
+- A document blocker outlived the file it named. Its key never appears in the touched-path list by design, so deleting the file left the Stop hook blocking on a path that no longer existed. The key now dies with the file.
+- The 0.18.6 entry claimed a Python 3.11 floor. That release shipped 3.14, and lowering the floor in 0.18.7 is what rewrote the older entry. Released history reads as it shipped again.
+- The README counted two layers while describing three, and used one word for both the pattern judge and the document reader.
+
 ## 0.18.7 (2026-08-28)
 
 ### Added
@@ -33,7 +52,7 @@
 
 ### Changed
 
-- The interpreter floor is Python 3.11, the oldest release that carries `tomllib` and `dataclass(slots=True)`, declared once in `.python-version`. `run.sh`, `.pylintrc` and the CI workflow all read that file, and `hooks/test_run_dispatch.py` fails when any of them drifts from it.
+- The interpreter floor is Python 3.14, declared once in `.python-version`. `run.sh`, `.pylintrc` and the CI workflow all read that file, and `hooks/test_run_dispatch.py` fails when any of them drifts from it.
 - A missing or too-old interpreter now exits 2 and names the version it needs. Failing loudly beats a watcher that loads its contract and enforces nothing.
 
 ### Added

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -18,6 +19,15 @@ JUDGED_SUFFIXES = (".py",)
 PROSE_SUFFIXES = tuple(sorted(PROSE_EXTS))
 WAKE_EXIT_CODE = 2
 MAX_CANDIDATES = 40
+SCRATCH_DIRNAME = "scratchpad"
+TEMP_ROOTS = (Path(tempfile.gettempdir()).resolve(), Path("/tmp"), Path("/private/tmp"))
+
+
+def _is_session_scratch(path: Path) -> bool:
+    # WHY: A throwaway file is not worth a judge call.
+    if SCRATCH_DIRNAME not in path.parts:
+        return False
+    return any(str(path).startswith(str(root)) for root in TEMP_ROOTS)
 
 
 def _target(payload: object, suffixes: tuple[str, ...]) -> Path | None:
@@ -25,7 +35,7 @@ def _target(payload: object, suffixes: tuple[str, ...]) -> Path | None:
     if not raw:
         return None
     path = Path(raw)
-    if path.suffix not in suffixes or not path.is_file():
+    if path.suffix not in suffixes or not path.is_file() or _is_session_scratch(path):
         return None
     return path
 

@@ -68,7 +68,7 @@ def test_stop_rescans_touched_file_and_allows_clean_retry(tmp_path: Path) -> Non
     response = stop.run({**_payload(), "cwd": str(tmp_path)}, config)
     assert response["decision"] == "block"
     assert "what_comment" in response["reason"]
-    target.write_text("# Keep the counter explicit because callers inspect module state.\nx = 1\n", encoding="utf-8")
+    target.write_text("# Explicit because callers inspect module state\nx = 1\n", encoding="utf-8")
     assert stop.run({**_payload(True), "cwd": str(tmp_path)}, config) == {}
 
 
