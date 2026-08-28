@@ -115,3 +115,39 @@ Combined fix-round evidence: `1,681 passed, 18 skipped, 268 subtests passed`.
 ### Concern
 
 The native Stop agent invokes the exact journal reader through its available inspection tools, so the prompt remains an instruction rather than a hard tool-security boundary, consistent with the Claude hook contract. The helper itself is deterministic, session-scoped, bounded, and read-only; generated command handlers bypass that agent-tool limitation for Luna reviews.
+
+## Fix round 2
+
+### Changes
+
+- Serialized preset transitions with an ADW-owned lock and durable `.txn` record containing the authoritative rendered settings and selected preset. Reads, default selection, status, preset writes, Luna fallback, and live hooks recover the record before observing or changing state, so an interrupted two-file replacement converges without reporting a preset different from its managed settings.
+- Capped live Luna comment candidates to the established journal row maximum and candidate-text maximum before constructing `JudgeRequest`, including multi-file `apply_patch` payloads.
+- Removed all candidate-journal rows for a path when the edited target is deleted or unreadable, preventing a later Stop hook from reviewing stale document context.
+- Tightened managed-hook ownership: native prompts require the exact ADW marker as their first line, and Luna commands require the explicit ADW marker plus the exact two-token command shape. Unmarked commands containing `claude_luna.sh` remain untouched.
+- Added production shell-entrypoint coverage for a valid cache-backed success (no provider spend or fallback), a valid provider-failure response and role fallback, plus the no-candidate fail-open shape.
+
+### TDD evidence
+
+RED: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `4 failed, 37 passed`; failures covered unmarked same-filename command deletion, interrupted settings/preset replacement, unbounded multi-file live candidates, and stale deleted journal rows.
+
+GREEN: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `42 passed` after the scoped implementation. The focused tests include concurrent comment/document failure serialization, injected replacement failure recovery, bounded candidates, deleted targets, exact command ownership, shell cache-hit success/no double-spend, and shell provider-failure fallback.
+
+### Full required suites
+
+- `.venv/bin/python -m pytest hooks/lib -q` -> `714 passed, 17 skipped, 50 subtests passed in 21.21s`.
+- `.venv/bin/python -m pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 218 subtests passed in 23.00s`.
+- `.venv/bin/python -m pytest pi/test_merge_settings.py -q` -> `11 passed in 0.62s`.
+- Python compile checks for the changed modules and `git diff --check` exited 0.
+
+Combined fix-round evidence: `1,688 passed, 18 skipped, 268 subtests passed`.
+
+### Self-review
+
+- Confirmed the transaction record is atomically written before either live file, remains recoverable after failure at any later replacement point, and is removed only after both target files are replaced. The lock serializes fallback races; exactly one concurrent role observes Luna and switches, while the other reports the already-active native preset.
+- Confirmed live PostToolUse extraction still reads only eligible current files from its raw event, preserves deterministic path/candidate order, bounds request size before provider invocation, and never injects a parallel native fallback. Stop continues to consume only the exact current-session bounded journal helper.
+- Confirmed deleted/unreadable paths are removed under the existing session-state lock, and exact marker parsing preserves unrelated command hooks with the same script filename.
+- Confirmed shell integration uses only the subscription Luna handler and safe temporary cache/settings/home boundaries; cache-backed success leaves Luna active, while provider failure emits the actual PostToolUse response shape and switches to Haiku once. No Task 4 files or provider modes were added.
+
+### Concern
+
+The preset and settings are necessarily separate host files, so an external reader that bypasses ADW can observe a replacement window. ADW's lock plus durable authoritative transaction is invoked on every ADW read, status, set, fallback, and hook path and repairs that window before reporting or serving subsequent work.
