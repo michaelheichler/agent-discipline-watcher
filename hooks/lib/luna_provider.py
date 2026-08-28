@@ -401,17 +401,9 @@ class LunaJudge:
                 storage.unlink_cache(name)
                 return None
             row = json.loads(text)
-            result = JudgeResult(**row)
-            if (
-                result.provider != PROVIDER_NAME or result.model != LUNA_MODEL
-                or result.effort != LUNA_EFFORT or result.rubric_version != request.rubric_version
-            ):
-                storage.unlink_cache(name)
-                return None
-            validate_payload(result.payload, output_schema(request))
-            self._validate_candidate_indexes(request, result.payload)
+            result = self._validate_worker_result(request, row)
             return result
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (LunaProviderFailure, TypeError, ValueError, json.JSONDecodeError):
             storage.unlink_cache(name)
             return None
 

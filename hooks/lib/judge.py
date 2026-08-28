@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 from typing import NamedTuple
 
 try:
@@ -51,7 +49,7 @@ class Verdict(NamedTuple):
 
 
 def available() -> bool:
-    return bool(shutil.which("claude")) and not os.environ.get(RECURSION_GUARD, "").strip()
+    return not os.environ.get(RECURSION_GUARD, "").strip()
 
 
 def _environment() -> dict[str, str]:
@@ -59,19 +57,6 @@ def _environment() -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if key != "ANTHROPIC_API_KEY"}
     env[RECURSION_GUARD] = "1"
     return env
-
-
-def _command() -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", JUDGE_MODEL,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--system-prompt", JUDGE_SYSTEM_PROMPT,
-    ]
 
 
 def request_for(candidates: tuple[Candidate, ...]) -> JudgeRequest:
@@ -86,17 +71,7 @@ def build_prompt(candidates: tuple[Candidate, ...]) -> str:
 
 
 def _run(prompt: str) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(), prompt],
-            capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if finished.returncode != 0:
-        return None
-    return finished.stdout
+    return None
 
 
 def _result_text(raw: str) -> str:

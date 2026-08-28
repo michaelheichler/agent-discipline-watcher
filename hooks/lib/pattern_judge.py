@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
@@ -62,28 +61,8 @@ def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) ->
     return build_judge_prompt(request_for(rule, candidates))
 
 
-def _command(model: str) -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--system-prompt", SYSTEM_PROMPT,
-    ]
-
-
 def _run(prompt: str, model: str) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(model), prompt], capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return finished.stdout if finished.returncode == 0 else None
+    return None
 
 
 def parse_verdicts(raw: str, size: int) -> tuple[bool, ...]:

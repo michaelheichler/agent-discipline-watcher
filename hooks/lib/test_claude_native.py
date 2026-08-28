@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -72,12 +74,49 @@ def test_candidate_journal_deduplicates_final_content_hash_and_excludes_unrelate
     assert str(unrelated) not in json.dumps(rows)
 
 
+def test_candidate_journal_drops_a_previous_candidate_when_final_content_changes(tmp_path: Path) -> None:
+    source = tmp_path / "a.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    state_root = tmp_path / "state"
+
+    claude_journal.record_edit("session", "turn-1", "tool-1", source, state_root=state_root)
+    source.write_text("value = 2\n", encoding="utf-8")
+    claude_journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
+
+    assert claude_journal.read("session", state_root=state_root) == []
+
+
 def test_native_prompts_fail_open_for_empty_input_and_check_stop_loop() -> None:
     prompt = claude_native.comment_prompt("mixed") + claude_native.stop_prompt("mixed")
     assert "malformed" in prompt.lower()
     assert '"ok": true' in prompt
     assert "read-only" in prompt
     assert "stop_hook_active" in prompt
+
+
+@pytest.mark.parametrize("value", (None, {}, [], "not-json", {"ok": "false"}, {"ok": False}, {"ok": True, "extra": 1}, {"ok": False, "reason": "fix", "extra": 1}))
+def test_malformed_or_empty_native_decisions_fail_open(value: object) -> None:
+    assert claude_native.parse_decision(value) == {"ok": True}
+
+
+def test_native_false_decision_is_bounded_continuation_feedback() -> None:
+    assert claude_native.parse_decision({"ok": False, "reason": "Fix the named candidate."}) == {
+        "ok": False,
+        "reason": "Fix the named candidate.",
+    }
+
+
+def test_cli_rejects_extra_preset_arguments(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [str(Path(__file__).parents[2] / "bin" / "adw-judge"), "mixed", "sonnet"],
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "ADW_CLAUDE_SETTINGS": str(tmp_path / "settings.json"),
+            "ADW_CLAUDE_PRESET_FILE": str(tmp_path / "preset"),
+        }, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
 
 
 def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
@@ -90,3 +129,42 @@ def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
     assert result["preset"] == "haiku"
     assert "subscription unavailable" in result["message"]
     assert claude_native.read_preset(tmp_path / "preset") == "haiku"
+
+
+def test_luna_success_does_not_spend_a_native_fallback(tmp_path: Path) -> None:
+    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
+
+    class Provider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def judge(self, request):
+            self.calls += 1
+            return {"ok": True, "request": request}
+
+    provider = Provider()
+    result = claude_native.luna_review(
+        object(), "comment", provider=provider,
+        settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset",
+    )
+
+    assert result["ok"] is True
+    assert provider.calls == 1
+    assert claude_native.read_preset(tmp_path / "preset") == "luna"
+
+
+def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(tmp_path: Path) -> None:
+    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
+
+    class Provider:
+        def judge(self, request):
+            raise claude_native.LunaUnavailable("login required")
+
+    result = claude_native.luna_review(
+        object(), "document", provider=Provider(),
+        settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset",
+    )
+
+    assert result["ok"] is False
+    assert result["preset"] == "sonnet"
+    assert "login required" in result["reason"]

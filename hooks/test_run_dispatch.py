@@ -27,7 +27,6 @@ DISPATCH = {
     "SubagentStop": "subagent_stop.py",
     "Stop": "stop.py",
     "SessionEnd": "session_end.py",
-    "JudgeReview": "judge_review.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)

@@ -19,10 +19,29 @@ WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
 
 
+class LunaUnavailable(RuntimeError):
+    """Provider failure that allows the managed native fallback to take over."""
+
+
 def _validate_preset(value: str) -> str:
     if value not in PRESETS:
         raise ValueError("preset must be exactly mixed, luna, haiku, or sonnet")
     return value
+
+
+def parse_decision(value: object) -> dict[str, Any]:
+    """Keep malformed native output from becoming a deterministic gate decision."""
+    if type(value) is not dict or type(value.get("ok")) is not bool:
+        return {"ok": True}
+    expected = {"ok"} if value["ok"] is True else {"ok", "reason"}
+    if set(value) != expected:
+        return {"ok": True}
+    if value["ok"] is True:
+        return {"ok": True}
+    reason = value.get("reason")
+    if type(reason) is not str or not reason.strip():
+        return {"ok": True}
+    return {"ok": False, "reason": " ".join(reason.split())[:MAX_FAILURE_MESSAGE]}
 
 
 def preset_path(environment: Mapping[str, str] | None = None) -> Path:
@@ -88,7 +107,8 @@ def comment_prompt(preset: str) -> str:
         "or has no ADW candidate, return exactly {\"ok\": true}.\n"
         "A successful check returns exactly {\"ok\": true}. A failed check returns {\"ok\": false, "
         "\"reason\": \"one bounded remediation instruction\"}.\n"
-        "Do not deny or undo the completed write."
+        "Do not deny or undo the completed write.\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
@@ -107,7 +127,9 @@ def stop_prompt(preset: str) -> str:
         f"{route}\n"
         "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
         "returns exactly {\"ok\": true}. A clean review returns exactly {\"ok\": true}. A failed review "
-        "returns {\"ok\": false, \"reason\": \"one bounded remediation instruction\"}."
+        "returns {\"ok\": false, \"reason\": \"one bounded remediation instruction\"}.\n"
+        "Use the session_id from this hook input to locate only its journal.\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
@@ -257,6 +279,43 @@ def fallback_after_luna_failure(
         "switched": switched,
         "message": f"Luna {role} review unavailable: {bounded}. Switched subsequent events to {fallback}.",
     }
+
+
+def luna_review(
+    request: object,
+    role: str,
+    *,
+    provider: object | None = None,
+    settings_path: str | Path | None = None,
+    preset_path: str | Path | None = None,
+) -> dict[str, Any]:
+    if role not in {"comment", "prose", "document"}:
+        raise ValueError("role must be comment, prose, or document")
+    if provider is None:
+        try:
+            from .luna_provider import LunaJudge
+        except ImportError:
+            from luna_provider import LunaJudge
+        provider = LunaJudge()
+    try:
+        result = provider.judge(request)
+    except LunaUnavailable as exc:
+        fallback = fallback_after_luna_failure(
+            role, str(exc), settings_path=settings_path, preset_path=preset_path,
+        )
+        return {"ok": False, "reason": fallback["message"], "preset": fallback["preset"]}
+    except Exception as exc:
+        try:
+            from .luna_storage import LunaProviderFailure
+        except ImportError:
+            from luna_storage import LunaProviderFailure
+        if not isinstance(exc, LunaProviderFailure):
+            raise
+        fallback = fallback_after_luna_failure(
+            role, str(exc), settings_path=settings_path, preset_path=preset_path,
+        )
+        return {"ok": False, "reason": fallback["message"], "preset": fallback["preset"]}
+    return {"ok": True, "result": result}
 
 
 def main(argv: list[str] | None = None) -> int:

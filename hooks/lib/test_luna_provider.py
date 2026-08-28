@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+import json
 import os
 from pathlib import Path
 import stat
@@ -255,6 +256,21 @@ def test_invalid_cache_payload_is_not_returned_as_a_judgment(tmp_path: Path) -> 
         '{"payload":{"items":[{"index":"wrong"}]},"provider":"openai-codex","model":"gpt-5.6-luna","effort":"high","rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
         encoding="utf-8",
     )
+
+    result = judge.judge(request)
+
+    assert result.cached is False
+    assert len(sdk.session.starts) == 2
+
+
+def test_truthy_non_boolean_cached_cache_entry_is_a_miss(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path, (_result(), _result()))
+    request = _request()
+    judge.judge(request)
+    cache_path = judge._cache_path(judge._cache_key(request))
+    row = json.loads(cache_path.read_text(encoding="utf-8"))
+    row["cached"] = "false"
+    cache_path.write_text(json.dumps(row), encoding="utf-8")
 
     result = judge.judge(request)
 

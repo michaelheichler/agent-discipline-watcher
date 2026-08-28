@@ -14,3 +14,5 @@ adw-judge "$ARGUMENTS"
 ```
 
 The executable accepts only `mixed`, `luna`, `haiku`, `sonnet`, or `status`. It validates the value and writes the managed settings block atomically. Claude watches settings-only changes automatically. Use `/reload-plugins` only after installing or updating plugin source.
+
+Desktop or Cowork sessions have no reliable hook marker. For an explicit Haiku-only configuration, set `ADW_CLAUDE_HAIKU_ONLY=1` and run `adw-judge haiku`.

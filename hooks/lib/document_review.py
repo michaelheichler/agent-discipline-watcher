@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 from typing import NamedTuple
 
 try:
@@ -47,28 +46,8 @@ class Note(NamedTuple):
     fix: str
 
 
-def _command() -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", REVIEW_MODEL,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--system-prompt", SYSTEM_PROMPT,
-    ]
-
-
 def _run(prompt: str) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(), prompt], capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return finished.stdout if finished.returncode == 0 else None
+    return None
 
 
 def _line_of(text: str, quote: str) -> int:

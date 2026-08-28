@@ -68,14 +68,16 @@ def record_edit(
         return []
     digest, text = read
     fresh = _candidate_rows(target, digest, text, turn_id, tool_use_id)
-    if not fresh:
-        return []
 
     added: list[dict[str, Any]] = []
 
     def update(state: dict) -> dict:
         existing = state.get(STATE_KEY)
         rows = list(existing) if isinstance(existing, list) else []
+        rows = [
+            row for row in rows
+            if not (isinstance(row, dict) and row.get("path") == str(target) and row.get("content_hash") != digest)
+        ]
         keys = {_row_key(row) for row in rows if isinstance(row, dict)}
         for row in fresh:
             if _row_key(row) not in keys:
