@@ -151,3 +151,38 @@ Combined fix-round evidence: `1,688 passed, 18 skipped, 268 subtests passed`.
 ### Concern
 
 The preset and settings are necessarily separate host files, so an external reader that bypasses ADW can observe a replacement window. ADW's lock plus durable authoritative transaction is invoked on every ADW read, status, set, fallback, and hook path and repairs that window before reporting or serving subsequent work.
+
+## Fix round 3
+
+### Changes
+
+- Luna outage fallback now deterministically selects `mixed` for every first failure, restoring Haiku comment and Sonnet document roles regardless of which concurrent role observes the outage first. Queued Luna commands check the recovered effective preset before extracting candidates or calling the provider.
+- Live PostToolUse extraction now limits edited paths, path length, bytes per regular file, total bytes scanned, and candidate count. Descriptor-relative no-follow reads and pre/post `fstat` checks fail closed for symlinks, non-regular leaves, changing files, oversized files, and malformed paths.
+- Candidate journal rows now store canonical path identities. Relative, absolute, symlink aliases deduplicate to one row; changed, deleted, unreadable, moved, and stale old-path rows are pruned under the session-state lock.
+- Transaction recovery now removes corrupt or symlink transactions without following their targets, rejects fixed-schema records with embedded settings targets, refuses lock symlinks/non-regular leaves, and derives settings only from the explicit/default caller configuration. Recovery merges the desired managed hook block onto the latest settings object, preserving newer external settings and discarding stale transactions whose current preset no longer matches the recorded intent.
+
+### TDD evidence
+
+RED: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `10 failed, 37 passed`; failures covered the new deterministic `mixed` fallback expectations, corrupt/unsafe/stale transaction cases, bounded extraction seams, and queued-handler effective-preset guarding.
+
+GREEN: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `52 passed` after implementation. Tests cover concurrent mixed fallback, injected crash recovery, corrupt and symlink transaction cleanup, embedded-target rejection, lock no-follow behavior, external-settings merge/idempotence, canonical aliases and moves, bounded path/file/scan input, current-preset live recovery, and stale queued-command no-op behavior.
+
+### Full required suites
+
+- `.venv/bin/python -m pytest hooks/lib -q` -> `724 passed, 17 skipped, 50 subtests passed in 20.57s`.
+- `.venv/bin/python -m pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 218 subtests passed in 26.35s`.
+- `.venv/bin/python -m pytest pi/test_merge_settings.py -q` -> `11 passed in 0.66s`.
+- Python compile checks for changed modules, shell syntax checks, and `git diff --check` exited 0.
+
+Combined fix-round evidence: `1,698 passed, 18 skipped, 268 subtests passed`.
+
+### Self-review
+
+- Confirmed every Luna command path recovers state and verifies exact effective `luna` before request construction/provider invocation; successful Luna reviews never install or spend a native fallback, while any provider failure transitions once to `mixed`.
+- Confirmed extraction limits happen before `narration_candidates` parsing and are enforced with no-follow descriptor reads; deterministic path order and all established candidate/document bounds remain intact.
+- Confirmed journal identity is canonical for new rows and comparison, stale aliases are deduplicated, and delete/move cleanup cannot leave an old Stop document row.
+- Confirmed transaction schema contains only the desired preset, base preset, and base settings hash. Recovery never consumes a settings path from disk, rejects corrupt/symlink txn and lock leaves safely, and merges current settings so external fields survive stale replay. No Task 4 lifecycle or provider mode was changed.
+
+### Concern
+
+The preset/settings files remain separate host files, so a reader that intentionally bypasses ADW can observe an intermediate replacement. ADW lock acquisition plus the authoritative transaction recovery protocol repairs that window before any ADW read, status, set, fallback, or live hook reports or uses the state.
