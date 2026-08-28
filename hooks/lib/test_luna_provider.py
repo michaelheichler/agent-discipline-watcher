@@ -459,6 +459,108 @@ def test_cache_fifo_is_rejected_before_provider_execution(tmp_path: Path) -> Non
     assert stat.S_ISFIFO(cache_path.lstat().st_mode)
 
 
+def test_worker_result_requires_exact_provider_identity(tmp_path: Path) -> None:
+    judge, _sdk = _judge(tmp_path)
+    request = _request()
+    result = {
+        "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "named pattern"}]},
+        "provider": "other-provider",
+        "model": "gpt-5.6-luna",
+        "effort": "high",
+        "rubric_version": request.rubric_version,
+        "usage": {},
+        "cached": False,
+    }
+
+    with pytest.raises(LunaProviderFailure) as error:
+        judge._validate_worker_result(request, result)
+    assert error.value.category == "worker_protocol"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    (
+        ("provider", 1),
+        ("model", None),
+        ("effort", True),
+        ("rubric_version", []),
+        ("cached", 0),
+        ("cached", "false"),
+        ("cached", True),
+    ),
+)
+def test_worker_result_rejects_wrong_scalar_types(tmp_path: Path, field: str, value: object) -> None:
+    judge, _sdk = _judge(tmp_path)
+    request = _request()
+    result = {
+        "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "named pattern"}]},
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "effort": "high",
+        "rubric_version": request.rubric_version,
+        "usage": {},
+        "cached": False,
+    }
+    result[field] = value
+
+    with pytest.raises(LunaProviderFailure) as error:
+        judge._validate_worker_result(request, result)
+    assert error.value.category == "worker_protocol"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("payload", []),
+        ("payload", {"items": [{"index": "0", "verdict": "violating", "reason": "named pattern"}]}),
+        ("usage", []),
+        ("usage", "tokens"),
+    ),
+)
+def test_worker_result_rejects_malformed_payload_and_usage(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    judge, _sdk = _judge(tmp_path)
+    request = _request()
+    result = {
+        "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "named pattern"}]},
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "effort": "high",
+        "rubric_version": request.rubric_version,
+        "usage": {},
+        "cached": False,
+    }
+    result[field] = value
+
+    with pytest.raises(LunaProviderFailure) as error:
+        judge._validate_worker_result(request, result)
+    assert error.value.category == "worker_protocol"
+
+
+def test_worker_result_requires_complete_candidate_indexes(tmp_path: Path) -> None:
+    judge, _sdk = _judge(tmp_path)
+    request = JudgeRequest(
+        review_kind=ReviewKind.PATTERN,
+        candidates=("first", "second"),
+        rule_name="ai_closer",
+        rule_action="End when done.",
+    )
+    result = {
+        "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "named pattern"}]},
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "effort": "high",
+        "rubric_version": request.rubric_version,
+        "usage": {},
+        "cached": False,
+    }
+
+    with pytest.raises(LunaProviderFailure) as error:
+        judge._validate_worker_result(request, result)
+    assert error.value.category == "worker_protocol"
+
+
 def test_auth_device_is_rejected_before_provider_execution(tmp_path: Path) -> None:
     judge, sdk = _judge(tmp_path)
     judge = LunaJudge(

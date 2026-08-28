@@ -255,6 +255,7 @@ class LunaJudge:
                     result = run_sdk_request(request, launch, self._sdk)
                 else:
                     result = self._run_worker(request, launch)
+            result = self._validate_worker_result(request, result)
             self._write_cache(storage, key, result)
             return result
 
@@ -314,7 +315,7 @@ class LunaJudge:
             result = row.get("result")
             if not isinstance(result, dict):
                 raise ValueError("worker response omitted a result")
-            value = JudgeResult(**result)
+            value = self._validate_worker_result(request, result)
             successful = True
             return value
         except subprocess.TimeoutExpired as exc:
@@ -332,6 +333,53 @@ class LunaJudge:
     @staticmethod
     def _validate_candidate_indexes(request: JudgeRequest, payload: dict[str, Any]) -> None:
         _validate_candidate_indexes(request, payload)
+
+    @staticmethod
+    def _validate_worker_result(request: JudgeRequest, result: object) -> JudgeResult:
+        """Validate the worker's success payload before callers or cache storage trust it."""
+        try:
+            if isinstance(result, JudgeResult):
+                result = result.__dict__
+            if type(result) is not dict:
+                raise ValueError("worker result must be an object")
+            expected_fields = {
+                "payload", "provider", "model", "effort", "rubric_version", "usage", "cached",
+            }
+            if set(result) != expected_fields:
+                raise ValueError("worker result fields are invalid")
+            if result["provider"] != PROVIDER_NAME:
+                raise ValueError("worker result provider identity is invalid")
+            if result["model"] != LUNA_MODEL:
+                raise ValueError("worker result model identity is invalid")
+            if result["effort"] != LUNA_EFFORT:
+                raise ValueError("worker result effort identity is invalid")
+            if result["rubric_version"] != request.rubric_version:
+                raise ValueError("worker result rubric identity is invalid")
+            for field in ("provider", "model", "effort", "rubric_version"):
+                if type(result[field]) is not str:
+                    raise ValueError(f"worker result {field} type is invalid")
+            if type(result["cached"]) is not bool or result["cached"] is not False:
+                raise ValueError("worker result cached flag is invalid")
+            if type(result["payload"]) is not dict:
+                raise ValueError("worker result payload type is invalid")
+            if type(result["usage"]) is not dict:
+                raise ValueError("worker result usage type is invalid")
+            payload = validate_payload(result["payload"], output_schema(request))
+            _validate_candidate_indexes(request, payload)
+            return JudgeResult(
+                payload=payload,
+                provider=result["provider"],
+                model=result["model"],
+                effort=result["effort"],
+                rubric_version=result["rubric_version"],
+                usage=result["usage"],
+                cached=result["cached"],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise LunaProviderFailure(
+                "Luna worker returned a semantically invalid success result",
+                category="worker_protocol",
+            ) from exc
 
     def _cache_key(self, request: JudgeRequest) -> str:
         identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT, request.rubric_version))
@@ -368,6 +416,10 @@ class LunaJudge:
             return None
 
     def _write_cache(self, storage: SecureJudgeStorage, key: str, result: JudgeResult) -> None:
+        if result.cached is not False:
+            raise LunaProviderFailure(
+                "Luna judge refused to cache a non-fresh result", category="worker_protocol",
+            )
         text = json.dumps(
             {**result.__dict__, "cached": False}, ensure_ascii=True, sort_keys=True,
         )
