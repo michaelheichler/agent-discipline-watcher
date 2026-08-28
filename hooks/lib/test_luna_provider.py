@@ -146,7 +146,17 @@ def test_luna_judge_uses_the_subscription_protocol_and_returns_usage(tmp_path: P
     assert turn.output_schema["additionalProperties"] is False
     assert turn.output_schema["properties"]["items"]["items"]["additionalProperties"] is False
     assert "Judge only the named pattern" in turn.prompt
-    assert "Judge only the named pattern" in turn.prompt
+
+
+def test_comment_prompt_carries_comment_label_rubric(tmp_path: Path) -> None:
+    response = '{"items":[{"index":0,"verdict":"states_why","reason":"constraint first"}]}'
+    judge, sdk = _judge(tmp_path, (_result(response),))
+
+    judge.judge(JudgeRequest(review_kind=ReviewKind.COMMENT, candidates=("Kept for callers.",)))
+
+    prompt = sdk.session.threads[0].turns[0].prompt
+    assert "describes_code" in prompt
+    assert "states_why" in prompt
 
 
 def test_missing_chatgpt_subscription_reports_login_without_starting_a_thread(tmp_path: Path) -> None:

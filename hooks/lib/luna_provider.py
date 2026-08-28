@@ -6,6 +6,7 @@ import os
 import signal
 import stat
 import tempfile
+import threading
 import time
 from hashlib import sha256
 from contextlib import contextmanager
@@ -122,7 +123,6 @@ class SdkSession(Protocol):
 class CodexSdk(Protocol):
     def open(self, launch: SdkLaunch) -> SdkSession: ...
     def retry_on_overload(self, operation: Callable[[], SdkRunResult], *, max_attempts: int) -> SdkRunResult: ...
-    def is_retryable_error(self, error: BaseException) -> bool: ...
 
 
 class _OpenAICodexThread:
@@ -208,13 +208,6 @@ class OpenAICodexSdk:
         except ImportError as exc:
             raise LunaProviderFailure("Luna judging needs the openai-codex package; reinstall ADW runtime dependencies.") from exc
         return retry_on_overload(operation, max_attempts=max_attempts)
-
-    def is_retryable_error(self, error: BaseException) -> bool:
-        try:
-            from openai_codex import is_retryable_error
-        except ImportError:
-            return False
-        return is_retryable_error(error)
 
 
 class LunaJudge:
@@ -453,37 +446,74 @@ def _is_regular_file(path: Path) -> bool:
 
 def _write_regular(path: Path, text: str) -> None:
     _ensure_directory(path.parent)
-    _require_regular_or_absent(path)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(text)
+    directory = _open_directory(path.parent)
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path.name, flags, 0o600, dir_fd=directory)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    finally:
+        os.close(directory)
 
 
 def _read_regular(path: Path) -> str:
-    _require_regular_or_absent(path)
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
-        return handle.read()
+    directory = _open_directory(path.parent)
+    try:
+        descriptor = os.open(path.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory)
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise LunaProviderFailure("Luna storage leaf is not a regular file")
+            return handle.read()
+    finally:
+        os.close(directory)
 
 
 def _delete_cache_file(path: Path) -> None:
     try:
-        _require_regular_or_absent(path)
-        path.unlink(missing_ok=True)
+        directory = _open_directory(path.parent)
+        try:
+            descriptor = os.open(path.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory)
+            try:
+                if stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    os.unlink(path.name, dir_fd=directory)
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(directory)
     except OSError:
         pass
 
 
+def _open_directory(path: Path) -> int:
+    absolute = Path(os.path.abspath(path))
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in absolute.parts[1:]:
+            next_descriptor = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0), dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 @contextmanager
 def _lifecycle_deadline(seconds: float):
+    if threading.current_thread() is not threading.main_thread():
+        raise LunaProviderFailure("Luna judge timeout requires the main thread")
     previous_handler = signal.getsignal(signal.SIGALRM)
-    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
     def timed_out(_signal, _frame):
         raise LunaProviderFailure("Luna judge timed out")
     signal.signal(signal.SIGALRM, timed_out)
+    started = time.monotonic()
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
     try:
         yield
     finally:
-        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
         signal.signal(signal.SIGALRM, previous_handler)
+        elapsed = time.monotonic() - started
+        remaining = max(0.0, previous_timer[0] - elapsed)
+        signal.setitimer(signal.ITIMER_REAL, remaining, previous_timer[1])
