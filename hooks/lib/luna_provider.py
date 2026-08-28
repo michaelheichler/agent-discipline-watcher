@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import stat
+import subprocess
+import sys
 import tempfile
-import threading
 import time
 from hashlib import sha256
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -218,12 +217,14 @@ class LunaJudge:
         runtime_root: str | os.PathLike[str] | None = None,
         cache_root: str | os.PathLike[str] | None = None,
         auth_source: str | os.PathLike[str] | None = None,
+        worker_mode: bool = False,
     ) -> None:
         root = plugin_data_home()
         self._sdk = sdk or OpenAICodexSdk()
         self._runtime_root = Path(runtime_root) if runtime_root is not None else root / "runtime"
         self._cache_root = Path(cache_root) if cache_root is not None else root / "cache" / "judges"
         self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
+        self._worker_mode = worker_mode
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
         _ensure_directory(self._cache_root)
@@ -231,17 +232,19 @@ class LunaJudge:
         cached = self._read_cache(key, request)
         if cached is not None:
             return replace(cached, cached=True)
-        result = self._sdk.retry_on_overload(
-            lambda: self._run_once(request), max_attempts=MAX_OVERLOAD_ATTEMPTS,
-        )
+        if self._worker_mode or not isinstance(self._sdk, OpenAICodexSdk):
+            result = self._sdk.retry_on_overload(
+                lambda: self._run_once(request), max_attempts=MAX_OVERLOAD_ATTEMPTS,
+            )
+        else:
+            result = self._run_worker(request)
         self._write_cache(key, result)
         return result
 
     def _run_once(self, request: JudgeRequest) -> JudgeResult:
-        with _lifecycle_deadline(JUDGE_TIMEOUT_SECONDS):
-            launch = self._prepare_runtime()
-            session = self._sdk.open(launch)
-            try:
+        launch = self._prepare_runtime()
+        session = self._sdk.open(launch)
+        try:
                 account = session.account()
                 if account is None or account.root_type != "chatgpt":
                     raise LunaProviderFailure(
@@ -258,10 +261,10 @@ class LunaJudge:
                     sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
                     output_schema=output_schema(request),
                 ))
-            finally:
-                close = getattr(session, "close", None)
-                if callable(close):
-                    close()
+        finally:
+            close = getattr(session, "close", None)
+            if callable(close):
+                close()
         self._reject_tool_items(raw.items)
         try:
             if not raw.final_response or not raw.final_response.strip():
@@ -274,6 +277,39 @@ class LunaJudge:
             payload=payload, provider=PROVIDER_NAME, model=LUNA_MODEL, effort=LUNA_EFFORT,
             rubric_version=request.rubric_version, usage=raw.usage,
         )
+
+    def _run_worker(self, request: JudgeRequest) -> JudgeResult:
+        launch = self._prepare_runtime()
+        payload = {
+            "review_kind": request.review_kind.value, "candidates": request.candidates,
+            "source_context": request.source_context, "rule_name": request.rule_name,
+            "rule_action": request.rule_action, "violating_examples": request.violating_examples,
+            "clean_examples": request.clean_examples, "rubric_version": request.rubric_version,
+            "runtime_root": str(self._runtime_root), "cache_root": str(self._cache_root),
+            "auth_source": str(self._auth_source),
+        }
+        process = subprocess.Popen(
+            [sys.executable, "-m", "lib.luna_worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True, cwd=launch.cwd, env=_child_environment(launch.codex_home),
+            start_new_session=True,
+        )
+        try:
+            stdout, _ = process.communicate(json.dumps(payload), timeout=JUDGE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            os.killpg(process.pid, 15)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, 9)
+                process.wait()
+            raise LunaProviderFailure("Luna judge timed out") from exc
+        try:
+            row = json.loads(stdout)
+            if process.returncode or not isinstance(row.get("result"), dict):
+                raise LunaProviderFailure(str(row.get("error", "Luna worker failed")))
+            return JudgeResult(**row["result"])
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise LunaProviderFailure("Luna worker returned malformed output") from exc
 
     def _prepare_runtime(self) -> SdkLaunch:
         _ensure_directory(self._runtime_root)
@@ -387,6 +423,7 @@ def _child_environment(codex_home: Path) -> dict[str, str]:
         if not key.upper().startswith(("OPENAI_", "ANTHROPIC_"))
     }
     environment["CODEX_HOME"] = str(codex_home)
+    environment["PYTHONPATH"] = str(Path(__file__).parents[1])
     return environment
 
 
@@ -498,22 +535,3 @@ def _open_directory(path: Path) -> int:
     except BaseException:
         os.close(descriptor)
         raise
-
-
-@contextmanager
-def _lifecycle_deadline(seconds: float):
-    if threading.current_thread() is not threading.main_thread():
-        raise LunaProviderFailure("Luna judge timeout requires the main thread")
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    def timed_out(_signal, _frame):
-        raise LunaProviderFailure("Luna judge timed out")
-    signal.signal(signal.SIGALRM, timed_out)
-    started = time.monotonic()
-    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield
-    finally:
-        signal.signal(signal.SIGALRM, previous_handler)
-        elapsed = time.monotonic() - started
-        remaining = max(0.0, previous_timer[0] - elapsed)
-        signal.setitimer(signal.ITIMER_REAL, remaining, previous_timer[1])

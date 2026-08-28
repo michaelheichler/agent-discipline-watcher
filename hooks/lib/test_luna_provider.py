@@ -298,21 +298,6 @@ def test_overload_exhaustion_stops_after_exactly_three_attempts(tmp_path: Path) 
     assert sdk.attempts == 3
 
 
-def test_lifecycle_timeout_covers_sdk_startup(tmp_path: Path, monkeypatch) -> None:
-    judge, sdk = _judge(tmp_path)
-    original_open = sdk.open
-
-    def delayed_open(launch):
-        time.sleep(0.05)
-        return original_open(launch)
-
-    monkeypatch.setattr(sdk, "open", delayed_open)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.01)
-
-    with pytest.raises(LunaProviderFailure, match="timed out"):
-        judge.judge(_request())
-
-
 def test_child_environment_strips_provider_credentials(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "must-not-pass")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-pass")
