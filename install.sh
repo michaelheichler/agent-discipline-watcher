@@ -122,7 +122,25 @@ if [ "$install_codex" -eq 1 ]; then
   rm -f "$HOME/.codex/skills/agent-discipline-watcher"
   backup_file "$HOME/.codex/config.toml"
   backup_file "$HOME/.codex/hooks.json"
-  rm -f "$HOME/.codex/hooks.json"
+  # Codex hooks.json is user-owned legacy state. The TOML merger owns only the
+  # ADW block in config.toml and must never delete this separate file.
+  mkdir -p "$HOME/.adw/runtime/codex"
+  codex_runtime="$HOME/.adw/runtime/codex/venv"
+  codex_runtime_python="$codex_runtime/bin/python"
+  if [ ! -x "$codex_runtime_python" ]; then
+    "$installer_python" -m venv "$codex_runtime"
+  fi
+  [ -x "$codex_runtime_python" ] || {
+    echo "install.sh: failed to create the ADW Codex runtime" >&2
+    exit 2
+  }
+  codex_runtime_manifest="$HOME/.adw/runtime/codex/requirements.txt"
+  if [ ! -f "$codex_runtime_manifest" ] || ! cmp -s \
+      "$skill_dir/hooks/codex-runtime.requirements.txt" "$codex_runtime_manifest"; then
+    "$codex_runtime_python" -m pip install --quiet --disable-pip-version-check --no-input \
+      -r "$skill_dir/hooks/codex-runtime.requirements.txt"
+    cp "$skill_dir/hooks/codex-runtime.requirements.txt" "$codex_runtime_manifest"
+  fi
   "$installer_python" "$skill_dir/hooks/merge-codex-config.py" \
     --config "$HOME/.codex/config.toml" \
     --skill-dir "$skill_dir"

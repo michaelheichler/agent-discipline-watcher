@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,8 @@ REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
+MAX_CURRENT_LEDGER_BYTES = 256 * 1024
+MAX_CURRENT_LEDGER_ROWS = 512
 
 # Heartbeat rows carry outcome="" because they record an observation, not a decision.
 OUTCOMES = Outcome
@@ -123,7 +126,7 @@ def compact_block(
     lead: str = BLOCK_LEAD,
 ) -> tuple[str, str]:
     max_rows = int((config or {}).get("max_rows", 8))
-    unique = _deduplicated(findings)
+    unique = _deduplicated(findings, config)
     report = write_full_report(unique, config)
     rows = [format_row(item) for item in unique[:max_rows]]
     extra = len(unique) - len(rows)
@@ -136,11 +139,42 @@ def compact_block(
     return reason, report
 
 
-def _deduplicated(findings: list[dict]) -> list[dict]:
-    seen: set[tuple[object, object, object]] = set()
+def _canonical_path(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        return str(Path(value).expanduser().resolve(strict=False))
+    except (OSError, RuntimeError, ValueError):
+        return value
+
+
+def _finding_content_hash(finding: dict) -> str:
+    value = finding.get("content_hash")
+    if isinstance(value, str) and value:
+        return value
+    identity = {key: finding.get(key) for key in ("detail", "snippet", "action", "line")}
+    encoded = json.dumps(identity, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _deduplicated(findings: list[dict], config: dict | None = None) -> list[dict]:
+    cfg = config or {}
+    session_id = cfg.get("session_id", "")
+    turn_id = cfg.get("turn_id", "")
+    seen: set[tuple[object, ...]] = set()
     result: list[dict] = []
-    for finding in findings:
-        key = (finding.get("path") or finding.get("file"), finding.get("line"), finding.get("rule"))
+    for raw_finding in findings:
+        finding = raw_finding.to_dict() if isinstance(raw_finding, Finding) else raw_finding
+        if not isinstance(finding, dict):
+            continue
+        path = finding.get("path") or finding.get("file")
+        key = (
+            session_id,
+            turn_id,
+            finding.get("rule"),
+            _canonical_path(path),
+            _finding_content_hash(finding),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -339,9 +373,10 @@ def record_findings(
     config: dict | None = None,
 ) -> list[tuple[dict, str]]:
     """Persist each verdict because gate behavior needs countable evidence for observe reports and false-signal review."""
+    candidates = _deduplicated(findings, {"session_id": session_id, "turn_id": turn_id})
     evaluated = [
         (Finding.from_dict(finding), finding, _resolve_outcome(finding, config))
-        for finding in findings
+        for finding in candidates
     ]
     if session_id:
         for value, _finding, outcome in evaluated:
@@ -383,7 +418,11 @@ def run_with_ledger(*values: object, **fields: object) -> dict:
     invocation, gate = _ledger_call(values, fields)
     session_id = str(invocation.payload.get("session_id") or "")
     # A sessionless invocation skips the ledger because it has no turn_id to stamp.
-    turn_id = _read_turn_id(session_id, invocation.state_root) if session_id else ""
+    host_turn_id = invocation.payload.get("turn_id")
+    turn_id = (
+        host_turn_id if isinstance(host_turn_id, str) and host_turn_id
+        else _read_turn_id(session_id, invocation.state_root)
+    ) if session_id else ""
     if session_id:
         session_state.acquire_session_lease(session_id, invocation.state_root)
     started = time.monotonic()
@@ -422,6 +461,61 @@ def read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> lis
 
 # Kept because callers outside this module referenced the old private name before it was promoted.
 _read_jsonl = read_jsonl
+
+
+def read_session_turn(
+    session_id: str,
+    turn_id: str,
+    root: str | os.PathLike[str] | None = None,
+    *,
+    max_bytes: int = MAX_CURRENT_LEDGER_BYTES,
+    max_rows: int = MAX_CURRENT_LEDGER_ROWS,
+) -> list[dict]:
+    """Read only the bounded tail needed to correlate one active turn."""
+    if (
+        not isinstance(session_id, str) or not session_id
+        or not isinstance(turn_id, str) or not turn_id
+    ):
+        return []
+    path = _ledger_dir(root) / LEDGER_FILENAME
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            window = max(1, int(max_bytes))
+            handle.seek(max(0, size - window))
+            data = handle.read(window)
+    except OSError:
+        return []
+    if size > len(data):
+        newline = data.find(b"\n")
+        data = data[newline + 1:] if newline >= 0 else b""
+    try:
+        lines = data.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        lines = data.decode("utf-8", errors="ignore").splitlines()
+    rows: list[dict] = []
+    for line in reversed(lines):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        if row.get("session_id") == session_id and row.get("turn_id") != turn_id:
+            break
+        if row.get("session_id") == session_id and row.get("turn_id") == turn_id:
+            rows.append(row)
+            if len(rows) >= max(1, int(max_rows)):
+                break
+    rows.reverse()
+    return rows
+
+
+read_current_session_turn = read_session_turn
+read_current_turn = read_session_turn
 
 
 def observe_report(

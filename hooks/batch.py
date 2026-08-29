@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from hashlib import sha256
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -212,8 +213,10 @@ def _reported_entries(
         for call_id, _tool_name, _tool_input, _normalized, _raw_paths in normalized.calls
     }
     reported: set[tuple[str, str]] = set()
-    rows = reporting.read_jsonl(
-        reporting.LEDGER_FILENAME, turn.config.get("ledger_root")
+    rows = reporting.read_session_turn(
+        turn.session_id,
+        turn.turn_id,
+        turn.config.get("ledger_root"),
     )
     for row in reversed(rows):
         if row.get("session_id") != turn.session_id:
@@ -287,8 +290,12 @@ def _scan_path(path: Path, cfg: dict) -> list[dict]:
     text = _read_path(path, cfg)
     if text is None:
         return []
+    digest = sha256(text.encode("utf-8")).hexdigest()
     findings = strip_committed(path, scan_all(str(path), text, cfg), cfg)
-    return [Finding.from_dict(finding).with_path(str(path)).to_dict() for finding in findings]
+    return [
+        Finding.from_dict(finding).with_path(str(path)).with_content_hash(digest).to_dict()
+        for finding in findings
+    ]
 
 
 def _read_path(path: Path, cfg: dict) -> str | None:

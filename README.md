@@ -76,7 +76,11 @@ These rules carry no measurement yet. The prose rules have 60000 human sentences
 
 ### Codex
 
-`install.sh` wires Codex from this checkout.
+`install.sh` wires Codex from this checkout, preserves any existing
+`~/.codex/hooks.json`, and provisions an ADW-owned virtual environment with
+the pinned `openai-codex==0.147.0` runtime. Luna reviews use the Codex
+ChatGPT subscription only. Log in through Codex's browser or device-code
+flow before using model review. There is no API-key fallback.
 
 ```bash
 ./install.sh
@@ -101,7 +105,18 @@ Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Restart O
 
 A Unix shell and the Python named in `.python-version`, which is the one place the floor is declared. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor, so a system `python3` too old to import this codebase is skipped rather than trusted. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that silently stops enforcing is worse than one that refuses to start.
 
-The meaning layer additionally wants the `claude` CLI on PATH for the judge, and it provisions its own model.
+Claude native presets are selected with `/agent-discipline-watcher:adw-judge
+mixed|luna|haiku|sonnet|status`. `mixed` uses Haiku for comments and Sonnet
+for prose and document Stop reviews. `luna` uses the subscription-backed
+Codex runtime and switches to `mixed` only after Luna is unavailable. Remote
+Claude sessions select Haiku by default. Desktop and Cowork have no reliable
+hook marker, so set `ADW_CLAUDE_HAIKU_ONLY=1` when an explicit Haiku-only
+preset is required.
+
+Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
+Missing runtime, subscription login, model availability, or provider
+transport emits one bounded actionable finding. Run `./install.sh --codex -y`
+to repair the runtime, then complete Codex ChatGPT login.
 
 ## Environment variables
 
@@ -162,7 +177,13 @@ Everything is under `~/.adw`.
 ~/.adw/embedding-leases   who is holding the model
 ~/.adw/embedding-server   the model, its runtime, and the running record
 ~/.adw/cache              exemplar vectors, keyed by exemplar digest
+~/.adw/runtime/codex      pinned openai-codex runtime (retained, not pruned)
 ```
+
+Session state, reports, ledger rows, judge cache entries, and logs older than
+30 days are swept at SessionStart. The current session and live lease are
+preserved. The persistent Codex runtime and embedding models are outside that
+retention sweep.
 
 The watcher migrates an existing `~/.agent-discipline` once, on first run.
 
@@ -186,7 +207,7 @@ Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payloa
 
 ## Active integrations
 
-Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, and `PostToolUse`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings.
+Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings or deleting legacy `~/.codex/hooks.json`. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
 
 OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks run on `tool_call` for `write` and `bash` and return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
 
@@ -202,4 +223,4 @@ bun test pi/extensions/agent-discipline-watcher/index.test.ts
 claude plugin validate . --strict
 ```
 
-`evals/README.md` documents how to rebuild the measurements. The corpora stay gitignored and rebuild byte for byte from their sources.
+`evals/README.md` documents how to rebuild the measurements. The corpora stay gitignored and rebuild byte for byte from their sources. If a Luna review reports a missing package or login, repair the pinned runtime and Codex subscription session instead of setting an API key.

@@ -131,6 +131,10 @@ def session_id(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "session_id")
 
 
+def turn_id(payload: object) -> str:
+    return _exact_string(exact_string_dict(payload), "turn_id")
+
+
 def cwd(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "cwd")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import time
+from hashlib import sha256
 from dataclasses import dataclass
 from collections.abc import Callable
 from pathlib import Path
@@ -89,9 +90,13 @@ def _journal_edits(journal: _EditJournal, turn_id: str = "") -> None:
                 sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
 
 
-def _stamped(findings: list[dict], path: Path) -> list[dict]:
+def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) -> list[dict]:
     """Stamp the resolved path onto each finding, because the scanner works from text and the report names files."""
-    return [Finding.from_dict(finding).with_path(str(path)).to_dict() for finding in findings]
+    stamped = []
+    for finding in findings:
+        item = Finding.from_dict(finding).with_path(str(path))
+        stamped.append(item.with_content_hash(content_hash) if content_hash else item)
+    return stamped
 
 
 def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
@@ -106,9 +111,10 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
         if text is None:
             owned_rows.extend(_stamped(scan_input.fallback_findings(path), path))
             continue
+        digest = sha256(text.encode("utf-8")).hexdigest()
         owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
-        owned_rows.extend(_stamped(owned, path))
-        inherited_rows.extend(_stamped(inherited, path))
+        owned_rows.extend(_stamped(owned, path, digest))
+        inherited_rows.extend(_stamped(inherited, path, digest))
     return owned_rows, inherited_rows
 
 

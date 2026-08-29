@@ -368,8 +368,8 @@ CLAUDE_ROUTES = (
     "PostToolUse", "PostToolBatch", "PostToolUseFailure", "SubagentStart",
     "SubagentStop", "Stop",
 )
-# Listed separately because Codex wires a reduced set and must not gain Claude-only routes.
-CODEX_ROUTES = ("SessionStart", "PreToolUse", "PostToolUse")
+# Listed separately because Codex wires its documented lifecycle set and must not gain Claude-only routes.
+CODEX_ROUTES = ("SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd")
 
 
 def _route_pattern(route: str) -> re.Pattern[str]:
@@ -583,9 +583,12 @@ class MergeConfigTests(unittest.TestCase):
         watcher_block = twice.split("# >>> agent-discipline-watcher >>>", 1)[1].split(
             "# <<< agent-discipline-watcher <<<", 1
         )[0]
-        expected_counts = {"SessionStart": 1, "PreToolUse": 2, "PostToolUse": 1}
+        expected_counts = {
+            "SessionStart": 1, "PreToolUse": 2, "PostToolUse": 1,
+            "Stop": 1, "SessionEnd": 1,
+        }
         for event, expected in expected_counts.items():
-            needle = f'command = "\\"{SKILL_DIR}/hooks/run.sh\\" {event}"'
+            needle = f'command = "ADW_CODEX_HOOK=1 \\"{SKILL_DIR}/hooks/run.sh\\" {event}"'
             assert watcher_block.count(needle) == expected
 
     def test_codex_snippet_quotes_the_executable_for_a_skill_dir_with_a_space(self):
@@ -606,7 +609,9 @@ class MergeConfigTests(unittest.TestCase):
         session_start = [command for command in commands if command.endswith("SessionStart")]
         assert session_start
         for command in session_start:
-            assert shlex.split(command)[0] == f"{skill_dir}/hooks/run.sh"
+            tokens = shlex.split(command)
+            assert tokens[0] == "ADW_CODEX_HOOK=1"
+            assert tokens[1] == f"{skill_dir}/hooks/run.sh"
 
     def test_codex_merge_refuses_when_no_toml_parser_is_available(self):
         merger = load_codex_merger()

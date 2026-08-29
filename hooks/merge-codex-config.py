@@ -105,7 +105,7 @@ def split_hook_table_trailer(table: str) -> tuple[str, str]:
 
 
 def strip_legacy_inline_array(line: str) -> str:
-    if not _mentions_legacy(line) or "[" not in line or "]" not in line:
+    if "[" not in line or "]" not in line:
         return line
     match = re.match(r"^\s*([A-Za-z]+)\s*=\s*\[(.*)\]\s*$", line)
     if not match or match.group(1) not in HOOK_LIFECYCLES:

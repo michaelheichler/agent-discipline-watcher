@@ -2,26 +2,38 @@
 matcher = "startup|resume|clear|compact"
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "\"__SKILL_DIR__/hooks/run.sh\" SessionStart"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SessionStart"
 statusMessage = "Loading agent discipline watcher"
 
 [[hooks.PreToolUse]]
 matcher = "apply_patch|Edit|Write"
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "\"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
 timeout = 30
 
 [[hooks.PreToolUse]]
 matcher = "Bash"
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "\"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
 timeout = 30
 
 [[hooks.PostToolUse]]
 matcher = "apply_patch|Edit|Write"
 [[hooks.PostToolUse.hooks]]
 type = "command"
-command = "\"__SKILL_DIR__/hooks/run.sh\" PostToolUse"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PostToolUse"
 timeout = 30
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" Stop"
+timeout = 120
+
+[[hooks.SessionEnd]]
+[[hooks.SessionEnd.hooks]]
+type = "command"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SessionEnd"
+timeout = 10

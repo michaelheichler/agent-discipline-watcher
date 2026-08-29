@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import operator
 import sys
 from collections.abc import Callable
@@ -8,6 +9,7 @@ from collections.abc import Callable
 
 CONTRACT_MAX_CHARS = 4000
 MAX_RESPONSE_BYTES = 4096
+MAX_MESSAGE_BYTES = 900
 STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
 UNDECIDABLE_PREFIX = "agent-discipline-watcher could not evaluate this "
 UNDECIDABLE_SUFFIX = " and blocked it rather than letting it through. Repair the gate config and retry. Cause: "
@@ -71,18 +73,30 @@ def _compact_specific(specific: object) -> dict | None:
 
 
 def _bounded_payload(payload: dict) -> dict:
-    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    bounded = dict(payload)
+    for key in ("reason", "systemMessage"):
+        if isinstance(bounded.get(key), str):
+            bounded[key] = _clip_utf8(bounded[key], MAX_MESSAGE_BYTES)
+    specific = bounded.get("hookSpecificOutput")
+    if isinstance(specific, dict):
+        bounded_specific = dict(specific)
+        for key in ("additionalContext", "permissionDecisionReason"):
+            if isinstance(bounded_specific.get(key), str):
+                bounded_specific[key] = _clip_utf8(bounded_specific[key], MAX_MESSAGE_BYTES)
+        bounded["hookSpecificOutput"] = bounded_specific
+
+    raw = json.dumps(bounded, ensure_ascii=True, separators=(",", ":"))
     if len(raw.encode("utf-8")) <= MAX_RESPONSE_BYTES:
-        return payload
-    reason = _clip_utf8(payload.get("reason", payload.get("systemMessage", "")), 900)
-    if "decision" in payload:
-        bounded = {"decision": payload["decision"], "reason": reason}
+        return bounded
+    reason = _clip_utf8(bounded.get("reason", bounded.get("systemMessage", "")), MAX_MESSAGE_BYTES)
+    if "decision" in bounded:
+        compacted = {"decision": bounded["decision"], "reason": reason}
     else:
-        bounded = {"systemMessage": reason}
-    compact_specific = _compact_specific(payload.get("hookSpecificOutput"))
+        compacted = {"systemMessage": reason}
+    compact_specific = _compact_specific(bounded.get("hookSpecificOutput"))
     if compact_specific:
-        bounded["hookSpecificOutput"] = compact_specific
-    return bounded
+        compacted["hookSpecificOutput"] = compact_specific
+    return compacted
 
 
 def write_payload(payload: dict) -> None:
@@ -134,6 +148,8 @@ def system_message(message: str) -> dict:
 
 def advise(message: str, event: str) -> dict:
     """Put observed findings in model context because a user-only system message cannot make the agent consider them."""
+    if os.environ.get("ADW_CODEX_HOOK") == "1":
+        return context(message, event)
     return {
         "systemMessage": message,
         "hookSpecificOutput": {"hookEventName": event, "additionalContext": message},

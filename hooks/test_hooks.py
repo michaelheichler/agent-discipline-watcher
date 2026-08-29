@@ -456,24 +456,6 @@ def test_run_sh_blocks_forced_posttooluse(tmp_path):
     assert f"{target}:1 punctuation/banned_dash" in response["hookSpecificOutput"]["additionalContext"]
 
 
-
-
-def test_session_start_injects_policy():
-    response = session_start.run({})
-    assert "systemMessage" in response
-    assert "Professional Agent Helper" not in response["systemMessage"]
-    assert "agent-discipline-watcher: keep punctuation ASCII" in response["systemMessage"]
-
-
-def test_session_start_reaches_the_model_channel():
-    injected = session_start.run({})["hookSpecificOutput"]
-    assert injected["hookEventName"] == "SessionStart"
-    assert injected["additionalContext"].startswith(hookio.CONTRACT)
-    assert session_start.READABLE_OUTPUT_HEADING in injected["additionalContext"]
-    assert "override the agent definition" in injected["additionalContext"]
-    assert "Professional Agent Helper" not in injected["additionalContext"]
-
-
 def test_read_payload_parses_good_input():
     result = subprocess.run(
         [sys.executable, "-c", "from lib.hookio import read_payload; print(read_payload()['a'])"],

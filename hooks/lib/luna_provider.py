@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from .judge_contracts import JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload
+from .codex_runtime import require_runtime
 from .luna_storage import LunaProviderFailure, SecureJudgeStorage
 
 
@@ -269,6 +270,10 @@ class LunaJudge:
                 "Luna worker requires descriptor-pinned runtime paths", category="configuration",
             )
         deadline = time.monotonic() + JUDGE_TIMEOUT_SECONDS
+        try:
+            worker_python = require_runtime() if self._default_storage else Path(sys.executable)
+        except RuntimeError as exc:
+            raise LunaProviderFailure(str(exc), category="configuration") from exc
         payload = {
             "review_kind": request.review_kind.value, "candidates": request.candidates,
             "source_context": request.source_context, "rule_name": request.rule_name,
@@ -285,7 +290,7 @@ class LunaJudge:
         successful = False
         try:
             process = subprocess.Popen(
-                [sys.executable, "-m", "lib.luna_worker"],
+                [str(worker_python), "-m", "lib.luna_worker"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
