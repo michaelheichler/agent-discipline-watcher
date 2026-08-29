@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.19.0 (2026-08-29)
+
+### Added
+
+- Native Claude Code judging presets: `/agent-discipline-watcher:adw-judge mixed|luna|haiku|sonnet|status`. `mixed` keeps Haiku on comment checks and Sonnet on prose and document reviews. `luna` routes both roles through the subscription-backed Codex Luna judge. Remote Claude sessions default to Haiku, and Desktop or Cowork can opt into the explicit Haiku-only setting.
+- Codex synchronization for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. Codex always uses GPT-5.6 Luna at high effort through the official `openai-codex` subscription runtime, with one review per completed interaction and no API-key or model fallback.
+- Active-session leases and retention sweeps for state, journals, findings, reports, caches, and logs. Live sessions and runtime/model directories stay protected while stale orphan JSON and cache artifacts are removed.
+
+### Changed
+
+- Hook responses, model feedback, journals, and review inputs are bounded and deduplicated so repeated hooks do not inflate the orchestration context. Content-hash cache entries are reused for 30 days and written through crash-safe state transitions.
+- Installers provision the ADW-owned Codex runtime and merge only the managed Codex hook block, preserving unrelated user configuration. Claude installation is handled by the Claude Code marketplace and plugin commands.
+
+### Fixed
+
+- Claude and Codex review retries now preserve the failed turn identity, reclaim expired reservations, and clear retry state after a successful review or session end. Stop and SessionEnd output stays bounded even when a provider or state store fails.
+
 ## 0.18.9 (2026-08-28)
 
 ### Fixed
