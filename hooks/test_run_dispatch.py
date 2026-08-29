@@ -50,9 +50,10 @@ class RunDispatchTests(unittest.TestCase):
     def _stub(self, directory, name, *, meets_floor, version="3.99.0"):
         # run.sh probes a candidate with -c before running a hook, so the stub answers that call separately.
         stub = Path(directory) / name
+        probe = f'printf "%s\\n" "{version}"; ' if meets_floor else ""
         stub.write_text(
             "#!/bin/sh\n"
-            f'if [ "$1" = "-c" ]\nthen\n  {"printf \"%s\\n\" \"" + version + "\"; " if meets_floor else ""}exit {0 if meets_floor else 1}\nfi\n'
+            f'if [ "$1" = "-c" ]\nthen\n  {probe}exit {0 if meets_floor else 1}\nfi\n'
             f'echo "{STUB_MARKER}:{name} $@"\n'
         )
         stub.chmod(0o755)

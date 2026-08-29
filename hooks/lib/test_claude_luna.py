@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import stat
+import subprocess
 import threading
+
 import pytest
 
 from lib import claude_journal, claude_luna, claude_native
@@ -67,6 +67,49 @@ def test_post_handler_extracts_the_just_written_candidate_without_waiting_for_jo
     assert "raw response content" not in json.dumps(request.candidates)
     assert response["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "the opening names behavior" in response["hookSpecificOutput"]["additionalContext"]
+def test_post_handler_reviews_literal_bash_write_targets(tmp_path: Path) -> None:
+    source = tmp_path / "a.py"
+    source.write_text("# Returns the cache because callers need stable identity.\nvalue = 1\n", encoding="utf-8")
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "Bash", "tool_use_id": "tool-1",
+        "tool_input": {"command": f"cat > {source} <<'EOF'\nignored\nEOF\n"},
+    }
+    provider = Provider(lambda request: _result(request, {
+        "items": [{"index": 0, "verdict": "describes_code", "reason": "the opening names behavior"}],
+    }))
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+
+    response = claude_luna.run(
+        payload, provider=provider, state_root=tmp_path / "state",
+        settings_path=settings, preset_path=preset,
+    )
+
+    assert provider.requests
+    assert response["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+
+
+
+def test_luna_state_failure_is_not_reported_as_a_clean_review(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "a.py"
+    source.write_text("# Returns the cache because callers need stable identity.\nvalue = 1\n", encoding="utf-8")
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+
+    def broken_operation(**_kwargs):
+        raise OSError("preset state unavailable")
+
+    monkeypatch.setattr(claude_native, "luna_operation", broken_operation)
+    response = claude_luna.run(
+        _post_payload(source), state_root=tmp_path / "state",
+        settings_path=settings, preset_path=preset,
+    )
+
+    assert "Luna comment review unavailable" in response["hookSpecificOutput"]["additionalContext"]
+
 
 
 def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judging(tmp_path: Path) -> None:
@@ -390,6 +433,7 @@ def test_post_handler_fails_open_for_irrelevant_or_malformed_input(tmp_path: Pat
     assert provider.requests == []
 
 
+
 def test_live_luna_command_routes_raw_hook_input_through_the_resolver(tmp_path: Path) -> None:
     command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
     result = subprocess.run(
@@ -497,6 +541,20 @@ def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_pat
 
     assert result.returncode == 0, result.stderr
     assert "Only the current session document." in result.stdout
+
+def test_luna_launcher_ignores_exported_cdpath(tmp_path: Path) -> None:
+    launcher = Path(__file__).parents[1] / "claude_luna.sh"
+    result = subprocess.run(
+        ["./claude_luna.sh"],
+        cwd=launcher.parent,
+        input=json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": str(tmp_path)}),
+        env={**os.environ, "CDPATH": str(tmp_path), "HOME": str(tmp_path / "home")},
+        capture_output=True, text=True, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "{}"
+
 
 
 def test_stop_handler_reads_only_bounded_current_session_journal(tmp_path: Path) -> None:

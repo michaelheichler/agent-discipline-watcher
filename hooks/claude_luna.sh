@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+CDPATH=
 
 [ "$#" -eq 0 ] || {
   echo "claude_luna.sh: accepts hook input on stdin and no arguments" >&2

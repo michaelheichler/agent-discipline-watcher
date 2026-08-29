@@ -43,3 +43,17 @@ def test_a_docstring_and_a_comment_both_reach_the_judge() -> None:
 
 def test_unparseable_source_yields_no_candidate() -> None:
     assert candidates("a.py", "def broken(:\n") == ()
+
+
+def test_typescript_comments_reach_the_judge_without_scanning_strings() -> None:
+    source = (
+        'const text = "Returns the cache because callers need stable identity.";\n'
+        "// Returns the cache because callers need stable identity.\n"
+        "const value = 1;\n"
+    )
+
+    found = candidates("a.ts", source)
+
+    assert [(item.line, item.text) for item in found] == [
+        (2, "Returns the cache because callers need stable identity."),
+    ]

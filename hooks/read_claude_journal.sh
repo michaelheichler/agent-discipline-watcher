@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+CDPATH=
 
 [ "$#" -eq 1 ] || {
   echo "read_claude_journal.sh: requires exactly one session id" >&2

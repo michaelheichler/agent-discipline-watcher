@@ -332,8 +332,8 @@ def run(
                 return _failure(
                     event, role, exc, settings_path=settings_path, preset_path=preset_path,
                 )
-    except (OSError, ValueError):
-        return {}
+    except (OSError, ValueError) as exc:
+        return _failure(event, role, exc, settings_path=settings_path, preset_path=preset_path)
     if request.review_kind is ReviewKind.COMMENT:
         feedback = _comment_feedback(result, built[1])
         return context(feedback, event) if feedback else {}

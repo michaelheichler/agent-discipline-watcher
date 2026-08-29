@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.1 (2026-08-29)
+### Fixed
+
+- Luna comment reviews now cover supported comment-bearing source files beyond Python, reuse the shared Bash target extractor, report state failures instead of returning a clean-looking empty response, and remain safe when launched with an exported `CDPATH`.
+- Added regression coverage for TypeScript comments, literal Bash write targets, Luna state failures, launcher path resolution, and Python 3.11 test compatibility.
+
+
 ## 0.19.0 (2026-08-29)
 
 ### Added
@@ -16,6 +23,7 @@
 ### Fixed
 
 - Claude and Codex review retries now preserve the failed turn identity, reclaim expired reservations, and clear retry state after a successful review or session end. Stop and SessionEnd output stays bounded even when a provider or state store fails.
+- Luna comment reviews now cover supported comment-bearing source files beyond Python, reuse the shared Bash target extractor, report state failures instead of returning a clean-looking empty response, and remain safe when launched with an exported `CDPATH`.
 
 ## 0.18.9 (2026-08-28)
 
