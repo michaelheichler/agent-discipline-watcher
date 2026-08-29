@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import stat
+import threading
 import pytest
 
 from lib import claude_journal, claude_luna, claude_native
@@ -136,6 +138,134 @@ def test_post_handler_bounds_paths_file_bytes_and_total_scan_before_extracting(t
     }
     claude_luna.run(total_payload, provider=provider, settings_path=settings, preset_path=preset)
     assert provider.requests == []
+
+
+@pytest.mark.parametrize("tool_name, field", [("apply_patch", "input"), ("Bash", "command")])
+def test_live_path_extraction_caps_raw_patch_or_bash_before_payload_parser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_name: str, field: str,
+) -> None:
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    calls = 0
+
+    def forbidden_parser(_payload: object) -> tuple[str, ...]:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("raw oversized input must not reach edited_paths")
+
+    monkeypatch.setattr(claude_luna.payloads, "edited_paths", forbidden_parser)
+    oversized = "*** Update File: candidate.py\n" + ("x" * (claude_luna.MAX_LIVE_SCAN_BYTES * 2))
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": tool_name, "tool_use_id": "tool-1", "tool_input": {field: oversized},
+    }
+
+    assert claude_luna._read_candidates(payload) == ()
+    assert calls == 0
+
+
+def test_live_path_extraction_fails_open_for_malformed_unicode_edit_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def forbidden_parser(_payload: object) -> tuple[str, ...]:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("malformed raw input must not reach edited_paths")
+
+    monkeypatch.setattr(claude_luna.payloads, "edited_paths", forbidden_parser)
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "apply_patch", "tool_use_id": "tool-1",
+        "tool_input": {"input": "*** Update File: candidate.py\n\ud800"},
+    }
+
+    assert claude_luna._read_candidates(payload) == ()
+    assert calls == 0
+
+
+def test_live_read_rejects_symlinked_parent_components(tmp_path: Path) -> None:
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    source = real_root / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    alias_root = tmp_path / "alias"
+    alias_root.symlink_to(real_root, target_is_directory=True)
+    payload = _post_payload(alias_root / "candidate.py")
+
+    assert claude_luna._read_candidates(payload) == ()
+
+
+def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    original_fstat = claude_luna.os.fstat
+    regular_calls = 0
+
+    def swapped_fstat(descriptor: int):
+        nonlocal regular_calls
+        metadata = original_fstat(descriptor)
+        if stat.S_ISREG(metadata.st_mode):
+            regular_calls += 1
+        if regular_calls == 2:
+            values = list(metadata)
+            values[1] += 1
+            return os.stat_result(values)
+        return metadata
+
+    monkeypatch.setattr(claude_luna.os, "fstat", swapped_fstat)
+
+    assert claude_luna._read_candidates(_post_payload(source)) == ()
+
+
+def test_queued_luna_call_cannot_begin_provider_spend_after_failure_commits_mixed(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+    calls = 0
+    calls_lock = threading.Lock()
+
+    class Provider:
+        def judge(self, request: JudgeRequest) -> JudgeResult:
+            nonlocal calls
+            with calls_lock:
+                calls += 1
+                number = calls
+            if number == 1:
+                first_started.set()
+                assert release_first.wait(2)
+                raise LunaProviderFailure("subscription unavailable", category="authentication")
+            second_started.set()
+            return _result(request, {"items": []})
+
+    provider = Provider()
+    responses: list[dict] = []
+
+    def invoke() -> None:
+        responses.append(claude_luna.run(
+            _post_payload(source), provider=provider,
+            settings_path=settings, preset_path=preset,
+        ))
+
+    first = threading.Thread(target=invoke)
+    first.start()
+    assert first_started.wait(2)
+    second = threading.Thread(target=invoke)
+    second.start()
+    release_first.set()
+    first.join(3)
+    second.join(3)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert calls == 1
+    assert not second_started.is_set()
+    assert claude_native.read_preset(preset) == "mixed"
 
 
 def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_document(tmp_path: Path) -> None:

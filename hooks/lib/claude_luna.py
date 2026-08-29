@@ -24,6 +24,7 @@ MAX_LIVE_PATHS = 32
 MAX_LIVE_PATH_CHARS = 4096
 MAX_LIVE_FILE_BYTES = 128 * 1024
 MAX_LIVE_SCAN_BYTES = 512 * 1024
+MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
 
 
 def _bounded(value: object) -> str:
@@ -31,30 +32,129 @@ def _bounded(value: object) -> str:
 
 
 def _bounded_file_text(path: Path, limit: int) -> tuple[str, int] | None:
+    """Read one regular file through no-follow directory descriptors."""
+    descriptor = -1
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        target = Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        for part in target.parent.parts:
+            if part in (target.anchor, ""):
+                continue
+            if part in (".", ".."):
+                raise ValueError("unsafe path component")
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            try:
+                if not stat.S_ISDIR(os.fstat(child).st_mode):
+                    raise ValueError("live candidate parent is not a directory")
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        leaf = os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
+        if not stat.S_ISREG(leaf.st_mode):
+            return None
+        handle = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=descriptor)
+        try:
+            opened = os.fstat(handle)
+            if _file_metadata(opened) != _file_metadata(leaf) or opened.st_size > limit:
+                return None
+            data = bytearray()
+            while len(data) <= limit:
+                chunk = os.read(handle, min(65536, limit + 1 - len(data)))
+                if not chunk:
+                    break
+                data.extend(chunk)
+            if len(data) > limit:
+                return None
+            final = os.fstat(handle)
+            if _file_metadata(final) != _file_metadata(opened) or len(data) != final.st_size:
+                return None
+        finally:
+            os.close(handle)
+        try:
+            return bytes(data).decode("utf-8"), len(data)
+        except UnicodeDecodeError:
+            return None
     except (OSError, ValueError):
         return None
-    try:
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > limit:
-            return None
-        data = os.read(descriptor, limit)
-        final_metadata = os.fstat(descriptor)
-        if (
-            final_metadata.st_size > limit
-            or final_metadata.st_size != metadata.st_size
-            or len(data) != final_metadata.st_size
-        ):
-            return None
-    except OSError:
-        return None
     finally:
-        os.close(descriptor)
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _file_metadata(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
+
+
+def _byte_size(value: str) -> int:
+    # Avoid allocating an encoded copy for obviously huge host payloads.
+    if len(value) > MAX_LIVE_RAW_EDIT_BYTES:
+        return MAX_LIVE_RAW_EDIT_BYTES + 1
     try:
-        return data.decode("utf-8"), len(data)
-    except UnicodeDecodeError:
-        return None
+        return len(value.encode("utf-8"))
+    except UnicodeError:
+        # Host JSON may contain lone surrogates; treat them as malformed input.
+        return MAX_LIVE_RAW_EDIT_BYTES + 1
+
+
+def _bounded_raw_edit(payload: object) -> bool:
+    """Reject pathological patch/Bash bodies before edited_paths parses them."""
+    if type(payload) is not dict:
+        return False
+    tool = payloads.tool_name(payload)
+    if tool not in {"apply_patch", "Bash"}:
+        return True
+    fields = payloads.exact_string_dict(payload)
+    tool_input: dict[str, object] = {}
+    for key in ("tool_input", "toolInput", "input"):
+        candidate = payloads.exact_string_dict(fields.get(key))
+        if candidate:
+            tool_input = candidate
+            break
+    for key in ("patch", "command", "input"):
+        value = tool_input.get(key)
+        if type(value) is str:
+            if _byte_size(value) > MAX_LIVE_RAW_EDIT_BYTES:
+                return False
+            marker_count = sum(value.count(marker) for marker in (
+                "*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:",
+            ))
+            if marker_count > MAX_LIVE_PATHS:
+                return False
+            if tool == "Bash" and value.count("\n") > MAX_LIVE_PATHS * 8:
+                return False
+            return True
+        if type(value) is list:
+            total = 0
+            for part in value:
+                if type(part) is not str:
+                    return False
+                total += _byte_size(part)
+                if total > MAX_LIVE_RAW_EDIT_BYTES:
+                    return False
+            return len(value) <= MAX_LIVE_PATHS * 8
+    return True
+
+
+def _safe_edited_paths(payload: object) -> tuple[str, ...]:
+    if not _bounded_raw_edit(payload):
+        return ()
+    try:
+        paths = payloads.edited_paths(payload)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return ()
+    if len(paths) > MAX_LIVE_PATHS:
+        return ()
+    return tuple(paths)
 
 
 def _read_candidates(payload: object) -> tuple[Candidate, ...]:
@@ -65,10 +165,7 @@ def _read_candidates(payload: object) -> tuple[Candidate, ...]:
         return ()
     cwd = Path(cwd_text)
     found: list[Candidate] = []
-    try:
-        paths = payloads.edited_paths(payload)[:MAX_LIVE_PATHS]
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return ()
+    paths = _safe_edited_paths(payload)
     scanned = 0
     for raw_path in paths:
         if scanned >= MAX_LIVE_SCAN_BYTES:
@@ -175,12 +272,18 @@ def _failure(
     *,
     settings_path: str | Path | None,
     preset_path: str | Path | None,
+    locked_paths: tuple[Path, Path] | None = None,
 ) -> dict:
     reason = _bounded(f"{type(exc).__name__}: {exc}")
     try:
-        transition = claude_native.fallback_after_luna_failure(
-            role, reason, settings_path=settings_path, preset_path=preset_path,
-        )
+        if locked_paths is None:
+            transition = claude_native.fallback_after_luna_failure(
+                role, reason, settings_path=settings_path, preset_path=preset_path,
+            )
+        else:
+            transition = claude_native._fallback_after_luna_failure_unlocked(
+                role, reason, settings_path=locked_paths[0], preset_path=locked_paths[1],
+            )
         message = _bounded(transition["message"])
     except (OSError, ValueError) as fallback_error:
         message = _bounded(f"Luna {role} review unavailable: {reason}. Repair the ADW preset configuration: {fallback_error}")
@@ -201,17 +304,6 @@ def run(
     if event not in {"PostToolUse", "Stop"}:
         return {}
     role = "comment" if event == "PostToolUse" else "document"
-    try:
-        claude_native.recover(settings_path=settings_path, preset_path=preset_path)
-        selected = claude_native.read_preset(preset_path, settings_path=settings_path)
-        if selected is None:
-            selected = claude_native.default_preset(
-                preset_path=preset_path, settings_path=settings_path,
-            )
-    except (OSError, ValueError):
-        return {}
-    if selected != "luna":
-        return {}
     if event == "PostToolUse":
         built = post_request(payload)
     else:
@@ -219,17 +311,29 @@ def run(
     if built is None:
         return {}
     request = built[0]
-    if provider is None:
-        from .luna_provider import LunaJudge
-        provider = LunaJudge()
     try:
-        result = provider.judge(request)
-        if not isinstance(result, JudgeResult):
-            raise LunaProviderFailure("Luna handler received an invalid judge result", category="worker_protocol")
-    except Exception as exc:
-        return _failure(
-            event, role, exc, settings_path=settings_path, preset_path=preset_path,
-        )
+        with claude_native.luna_operation(
+            settings_path=settings_path, preset_path=preset_path,
+        ) as locked_paths:
+            selected = claude_native._read_preset_unlocked(locked_paths[1])
+            if selected is None:
+                selected = claude_native._default_preset_unlocked(os.environ, locked_paths[1])
+            if selected != "luna":
+                return {}
+            if provider is None:
+                from .luna_provider import LunaJudge
+                provider = LunaJudge()
+            try:
+                result = provider.judge(request)
+                if not isinstance(result, JudgeResult):
+                    raise LunaProviderFailure("Luna handler received an invalid judge result", category="worker_protocol")
+            except Exception as exc:
+                return _failure(
+                    event, role, exc, settings_path=settings_path, preset_path=preset_path,
+                    locked_paths=locked_paths,
+                )
+    except (OSError, ValueError):
+        return {}
     if request.review_kind is ReviewKind.COMMENT:
         feedback = _comment_feedback(result, built[1])
         return context(feedback, event) if feedback else {}

@@ -186,3 +186,55 @@ Combined fix-round evidence: `1,698 passed, 18 skipped, 268 subtests passed`.
 ### Concern
 
 The preset/settings files remain separate host files, so a reader that intentionally bypasses ADW can observe an intermediate replacement. ADW lock acquisition plus the authoritative transaction recovery protocol repairs that window before any ADW read, status, set, fallback, or live hook reports or uses the state.
+
+## Fix round 4
+
+### Changes
+
+- Bounded raw `apply_patch` and `Bash` payload bodies and marker/path counts before invoking the shared edited-path parser; malformed or oversized host input fails open without model spend.
+- Reworked live candidate reads to traverse every parent component with no-follow descriptors, reject symlinked/non-directory parents and symlinked/non-regular leaves, bound bytes before candidate parsing, and compare device, inode, mode, size, mtime, and ctime before and after the read.
+- Distinguished canonical journal outcomes: proven missing/non-regular paths are pruned (including aliases and moved old paths), while transient permission/I/O/decode failures retain valid prior context.
+- Reworked transaction and lock handling to traverse parents descriptor-relatively, reject unsafe leaves, quarantine the exact corrupt transaction leaf (regular, symlink, or directory) under a bounded name, and continue without broad deletion. Safe final settings-file aliases remain supported only when their pinned target is regular.
+- Added managed-hook signatures to durable preset intents. Recovery completes only when the desired managed block is already present, applies only when the current block still equals the recorded base generation, and quarantines stale intents after an external managed edit while preserving unrelated settings.
+- Serialized the effective Luna preset check, provider call, and failure transition under one ADW lock-held operation, with an unlocked fallback helper to avoid reentrant deadlock; queued handlers do not spend after a committed mixed fallback.
+- Treated malformed Unicode in raw patch/Bash bodies as bounded host input: lone surrogates now fail open before shared edited-path parsing rather than raising during UTF-8 sizing.
+- Treated malformed persisted journal paths as proven missing rows, so stale-row cleanup fails closed without crashing or retaining invalid context.
+
+### TDD evidence
+
+RED: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `8 failed, 54 passed`; failures covered pre-parse oversized payloads, symlinked live parents, same-size inode swaps, corrupt transaction directories/symlinks, preset parent symlinks, stale managed edits, and queued-provider serialization.
+
+GREEN: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `62 passed in 1.37s`.
+
+Takeover follow-up RED: `.venv/bin/python -m pytest hooks/lib/test_claude_luna.py::test_live_path_extraction_fails_open_for_malformed_unicode_edit_body -q` -> failed with `UnicodeEncodeError` while sizing the raw edit body.
+
+Takeover follow-up GREEN: `.venv/bin/python -m pytest hooks/lib/test_claude_luna.py::test_live_path_extraction_fails_open_for_malformed_unicode_edit_body hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `63 passed in 1.95s`.
+
+Additional takeover RED: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py::test_candidate_journal_discards_malformed_stale_path_rows_without_crashing -q` -> failed with `ValueError` from `os.stat` on an embedded-NUL persisted path.
+
+Additional takeover GREEN: `.venv/bin/python -m pytest hooks/lib/test_claude_native.py::test_candidate_journal_discards_malformed_stale_path_rows_without_crashing hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `64 passed in 1.76s`.
+
+### Full required suites
+
+- `.venv/bin/python -m pytest hooks/lib -q` -> `734 passed, 17 skipped, 50 subtests passed in 20.17s`.
+- `.venv/bin/python -m pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 218 subtests passed in 23.12s`.
+- `.venv/bin/python -m pytest pi/test_merge_settings.py -q` -> `11 passed in 0.54s`.
+- `bash -n install.sh hooks/run.sh pi/install.sh hooks/claude_luna.sh hooks/read_claude_journal.sh bin/adw-judge`, Python compile checks for changed modules/tests, and `git diff --check` exited 0.
+
+Combined round-4 evidence: `1,759 passed, 18 skipped, 268 subtests passed` across the required suites.
+
+Takeover verification: the fresh top-level hook suite passed (`963 passed, 1 skipped, 218 subtests passed`), Pi settings passed (`11 passed`), shell syntax/compile/whitespace checks exited 0, and the focused native/Luna suite passed (`64 passed`). The fresh `hooks/lib` suite reached `732 passed, 17 skipped, 50 subtests passed` but retained four failures in the unchanged `hooks/lib/test_luna_process.py` subprocess timing/descendant tests (`test_parent_deadline_covers_each_worker_stage[*]` and `test_timeout_kills_descendants_even_when_group_leader_exits_on_term`); no Task 3 file or code path is involved in those failures.
+
+### Self-review
+
+- Confirmed raw payload limits execute before `payloads.edited_paths`, and the live reader never parses or scans an unbounded patch/Bash body. Candidate reads are no-follow and metadata-pinned, including same-size inode replacement races.
+- Confirmed journal cleanup removes only proven missing/moved/non-regular identities; transient permission and I/O outcomes leave existing rows available for Stop review.
+- Confirmed lock and transaction parents are opened component-by-component with `O_NOFOLLOW`; corrupt leaves are renamed descriptor-relatively to bounded quarantine names, and no recursive or broad deletion is used. Final settings aliases preserve the alias while writing only a safely regular target.
+- Confirmed stale preset recovery compares exact ADW-owned managed-hook generations, preserves newer unrelated settings, and does not replay an externally changed managed block. Luna's check/provider/fallback sequence is serialized without nested lock acquisition.
+- Confirmed malformed Unicode raw edit bodies are rejected before `payloads.edited_paths`, with no candidate parsing or provider spend.
+- Confirmed malformed persisted journal paths are pruned as missing without disturbing valid current-session candidates.
+- Confirmed no Task 4 files or lifecycle work changed; deterministic gates and plugin hook wiring remain unchanged. The recorded round-4 full suites passed; takeover verification separately records the four unchanged Luna process-test failures.
+
+### Concern
+
+ADW still cannot prevent a process that intentionally bypasses its lock from observing the two host files between atomic replacements. ADW-owned reads and writes recover under the lock before using state, and unsafe parent/leaf symlinks fail closed rather than being followed.

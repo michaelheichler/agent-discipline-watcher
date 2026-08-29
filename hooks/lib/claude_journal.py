@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
+import stat
 from typing import Any
 
 from . import session_state
@@ -17,12 +19,40 @@ MAX_CANDIDATE_CHARS = 320
 MAX_DOCUMENT_CHARS = 24_000
 
 
+class _ReadOutcome:
+    def __init__(self, status: str, value: tuple[str, str] | None = None) -> None:
+        self.status = status
+        self.value = value
+
+
 def _content(path: Path) -> tuple[str, str] | None:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
+
+
+def _read_content(path: Path) -> _ReadOutcome:
+    """Separate proven absence from transient/unreadable filesystem errors."""
+    try:
+        value = _content(path)
+    except (PermissionError, OSError):
+        return _ReadOutcome("transient")
+    except (UnicodeDecodeError, ValueError):
+        return _ReadOutcome("transient")
+    if value is not None:
+        return _ReadOutcome("available", value)
+    try:
+        metadata = os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        return _ReadOutcome("missing")
+    except OSError:
+        return _ReadOutcome("transient")
+    if not stat.S_ISREG(metadata.st_mode):
+        return _ReadOutcome("missing")
+    # A regular file that could not be decoded/read is not proven absent.
+    return _ReadOutcome("transient")
 
 
 def _canonical_path(path: str | Path) -> Path:
@@ -42,10 +72,22 @@ def _row_identity(row: dict[str, Any]) -> str:
 def _path_available(identity: str) -> bool:
     if not identity:
         return False
+    return _path_status(identity) == "available"
+
+
+def _path_status(identity: str) -> str:
+    if not identity:
+        return "missing"
     try:
-        return _canonical_path(identity).is_file()
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return False
+        metadata = os.stat(_canonical_path(identity), follow_symlinks=False)
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "transient"
+    except ValueError:
+        # Malformed persisted paths cannot identify a live document.
+        return "missing"
+    return "available" if stat.S_ISREG(metadata.st_mode) else "missing"
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, str, str]:
@@ -89,8 +131,11 @@ def record_edit(
     if not isinstance(session_id, str) or not session_id:
         return []
     target = _canonical_path(path)
-    read = _content(target)
-    if read is None:
+    outcome = _read_content(target)
+    if outcome.status == "transient":
+        return []
+    read = outcome.value
+    if outcome.status == "missing" or read is None:
         def remove_target(state: dict) -> dict:
             existing = state.get(STATE_KEY)
             rows = list(existing) if isinstance(existing, list) else []
@@ -123,7 +168,7 @@ def record_edit(
                     )
                     or (
                         _row_identity(row) != str(target)
-                        and not _path_available(_row_identity(row))
+                        and _path_status(_row_identity(row)) == "missing"
                     )
                 )
             )

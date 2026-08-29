@@ -6,9 +6,9 @@ from contextlib import contextmanager
 import fcntl
 import hashlib
 import os
+import secrets
 import shlex
 import stat
-import tempfile
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
@@ -23,6 +23,8 @@ MANAGED_MARKER = "adw-managed-hook-v1"
 TRANSACTION_SUFFIX = ".txn"
 LOCK_SUFFIX = ".lock"
 TRANSACTION_VERSION = 2
+CORRUPT_SUFFIX = ".corrupt-"
+MAX_STATE_BYTES = 4 * 1024 * 1024
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -65,8 +67,17 @@ def settings_path(environment: Mapping[str, str] | None = None) -> Path:
     return Path(env.get(SETTINGS_ENV, str(Path.home() / ".claude" / "settings.json"))).expanduser()
 
 
+def _lexical(path: str | Path) -> Path:
+    """Normalize a path without resolving any symlink components."""
+    value = Path(path).expanduser()
+    if not value.is_absolute():
+        value = Path.cwd() / value
+    return Path(os.path.abspath(os.fspath(value)))
+
+
 def _canonical(path: str | Path) -> Path:
-    return Path(path).expanduser().resolve()
+    # Keep this local naming seam, but do not follow symlinked parents.
+    return _lexical(path)
 
 
 def _transaction_path(path: str | Path) -> Path:
@@ -79,13 +90,69 @@ def _lock_path(path: str | Path) -> Path:
     return target.with_name(target.name + LOCK_SUFFIX)
 
 
+_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+_LEAF_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+
+
+def _open_parent(path: Path, *, create: bool) -> int:
+    """Open every parent component with O_NOFOLLOW and return its descriptor."""
+    target = _lexical(path)
+    if not target.is_absolute():
+        raise ValueError(f"path must be absolute: {target}")
+    descriptor = os.open(target.anchor or os.sep, _DIRECTORY_FLAGS)
+    try:
+        for part in target.parent.parts:
+            if part in (target.anchor, ""):
+                continue
+            if part in (".", ".."):
+                raise ValueError(f"unsafe path component: {part}")
+            try:
+                child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o700, dir_fd=descriptor)
+                child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+            try:
+                if not stat.S_ISDIR(os.fstat(child).st_mode):
+                    raise ValueError(f"path parent is not a directory: {part}")
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _leaf_lstat(parent_fd: int, name: str) -> os.stat_result | None:
+    try:
+        return os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+
+
+def _metadata_key(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
+
+
 @contextmanager
 def _preset_lock(path: str | Path) -> Iterator[None]:
     lock = _lock_path(path)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(
-        lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600,
-    )
+    parent_fd = _open_parent(lock, create=True)
+    try:
+        descriptor = os.open(
+            lock.name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600,
+            dir_fd=parent_fd,
+        )
+    except BaseException:
+        os.close(parent_fd)
+        raise
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError(f"preset lock is not a regular file: {lock}")
@@ -96,6 +163,7 @@ def _preset_lock(path: str | Path) -> Iterator[None]:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
+        os.close(parent_fd)
 
 
 def _read_preset_unlocked(path: Path) -> str | None:
@@ -109,30 +177,90 @@ def _read_preset_unlocked(path: Path) -> str | None:
     return value if value in PRESETS else None
 
 
-def _read_regular_text(path: Path) -> str | None:
+def _read_regular_text(path: Path, *, allow_final_symlink: bool = False) -> str | None:
+    target = _lexical(path)
+    parent_fd = _open_parent(target, create=False)
+    descriptor = -1
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise ValueError(f"preset state leaf is not safely readable: {path}") from exc
-    try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise ValueError(f"preset state leaf is not a regular file: {path}")
-        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
-            descriptor = -1
-            return handle.read()
+        leaf = _leaf_lstat(parent_fd, target.name)
+        if leaf is None:
+            return None
+        if stat.S_ISLNK(leaf.st_mode):
+            if not allow_final_symlink:
+                raise ValueError(f"preset state leaf is not safely readable: {target}")
+            before = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError(f"preset state symlink target is not a regular file: {target}")
+            descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK, dir_fd=parent_fd)
+            opened = os.fstat(descriptor)
+            if _metadata_key(opened) != _metadata_key(before):
+                raise ValueError(f"preset state symlink target changed while reading: {target}")
+        elif stat.S_ISREG(leaf.st_mode):
+            descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS, dir_fd=parent_fd)
+            opened = os.fstat(descriptor)
+            if _metadata_key(opened) != _metadata_key(leaf):
+                raise ValueError(f"preset state leaf changed while reading: {target}")
+        else:
+            raise ValueError(f"preset state leaf is not a regular file: {target}")
+        if opened.st_size > MAX_STATE_BYTES:
+            raise ValueError(f"preset state leaf is too large: {target}")
+        data = bytearray()
+        while len(data) <= MAX_STATE_BYTES:
+            chunk = os.read(descriptor, min(65536, MAX_STATE_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > MAX_STATE_BYTES:
+            raise ValueError(f"preset state leaf is too large: {target}")
+        after = os.fstat(descriptor)
+        if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
+            raise ValueError(f"preset state leaf changed while reading: {target}")
+        if allow_final_symlink and stat.S_ISLNK(leaf.st_mode):
+            current_target = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
+            if _metadata_key(current_target) != _metadata_key(opened):
+                raise ValueError(f"preset state symlink target changed while reading: {target}")
+        return bytes(data).decode("utf-8")
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+        os.close(parent_fd)
 
 
-def _discard_transaction(path: Path) -> None:
-    # unlink never follows a final symlink, which also quarantines a crafted txn leaf without touching its target.
+def _unlink_transaction(path: Path) -> None:
+    transaction = _transaction_path(path)
+    parent_fd = _open_parent(transaction, create=False)
     try:
-        _transaction_path(path).unlink(missing_ok=True)
+        try:
+            os.unlink(transaction.name, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+    finally:
+        os.close(parent_fd)
+
+
+def _quarantine_transaction(path: Path) -> None:
+    """Move only the exact bad transaction leaf aside, without following it."""
+    transaction = _transaction_path(path)
+    try:
+        parent_fd = _open_parent(transaction, create=False)
     except OSError:
-        pass
+        return
+    try:
+        # Keep the destination bounded even if a caller supplied a pathological leaf name.
+        prefix = transaction.name[:64] or "adw.txn"
+        for _attempt in range(32):
+            quarantine = f"{prefix}{CORRUPT_SUFFIX}{secrets.token_hex(8)}"
+            try:
+                os.rename(transaction.name, quarantine, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+                return
+            except FileNotFoundError:
+                return
+            except FileExistsError:
+                continue
+            except OSError:
+                return
+    finally:
+        os.close(parent_fd)
 
 
 def _transaction_payload(path: Path) -> dict[str, Any] | None:
@@ -147,7 +275,8 @@ def _transaction_payload(path: Path) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         raise ValueError("preset transaction must be a JSON object")
     expected = {"version", "preset", "base_preset", "base_settings_hash"}
-    if set(payload) != expected or payload.get("version") != TRANSACTION_VERSION or payload.get("preset") not in PRESETS:
+    allowed = expected | {"base_managed_hash"}
+    if not set(payload).issubset(allowed) or not expected.issubset(payload) or payload.get("version") != TRANSACTION_VERSION or payload.get("preset") not in PRESETS:
         raise ValueError("invalid preset transaction")
     if payload["base_preset"] is not None and payload["base_preset"] not in PRESETS:
         raise ValueError("invalid base preset in transaction")
@@ -157,11 +286,47 @@ def _transaction_payload(path: Path) -> dict[str, Any] | None:
         or any(character not in "0123456789abcdef" for character in base_hash)
     ):
         raise ValueError("invalid base settings hash in transaction")
+    managed_hash = payload.get("base_managed_hash")
+    if managed_hash is not None and (
+        not isinstance(managed_hash, str) or len(managed_hash) != 64
+        or any(character not in "0123456789abcdef" for character in managed_hash)
+    ):
+        raise ValueError("invalid base managed hash in transaction")
     return payload
 
 
+def _managed_hooks(settings: object) -> dict[str, list[object]]:
+    if not isinstance(settings, dict):
+        return {}
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return {}
+    managed: dict[str, list[object]] = {}
+    for lifecycle, groups in hooks.items():
+        if not isinstance(lifecycle, str) or not isinstance(groups, list):
+            continue
+        entries: list[object] = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                continue
+            entries.extend(hook for hook in group["hooks"] if _is_managed_hook(hook))
+        if entries:
+            managed[lifecycle] = entries
+    return managed
+
+
+def _managed_hash(settings: object) -> str:
+    payload = json.dumps(_managed_hooks(settings), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _preset_managed_hash(preset: str | None) -> str:
+    hooks = generated_hooks(preset) if preset in PRESETS else {}
+    return _managed_hash({"hooks": hooks})
+
+
 def _settings_snapshot(path: Path) -> tuple[str | None, dict[str, Any]]:
-    text = _read_regular_text(path)
+    text = _read_regular_text(path, allow_final_symlink=True)
     if text is None:
         return None, {}
     try:
@@ -177,7 +342,7 @@ def _recover_unlocked(settings: Path, preset: Path) -> None:
     try:
         payload = _transaction_payload(preset)
     except (OSError, ValueError):
-        _discard_transaction(preset)
+        _quarantine_transaction(preset)
         return
     if payload is None:
         return
@@ -185,19 +350,26 @@ def _recover_unlocked(settings: Path, preset: Path) -> None:
     base_preset = payload["base_preset"]
     current_preset = _read_preset_unlocked(preset)
     if current_preset not in {base_preset, desired}:
-        _discard_transaction(preset)
+        _quarantine_transaction(preset)
         return
-    if current_preset is None and preset.exists():
-        _discard_transaction(preset)
+    _current_hash, current_settings = _settings_snapshot(settings)
+    current_managed_hash = _managed_hash(current_settings)
+    desired_managed_hash = _preset_managed_hash(desired)
+    base_managed_hash = payload.get("base_managed_hash") or _preset_managed_hash(base_preset)
+    if current_managed_hash == desired_managed_hash:
+        # The settings half already landed. Preserve unrelated external edits and
+        # finish only the remaining preset/txn bookkeeping.
+        if current_preset != desired:
+            _atomic_write(preset, desired + "\n")
+        _unlink_transaction(preset)
         return
-    current_hash, current_settings = _settings_snapshot(settings)
-    # The hash distinguishes a crash window from a later external edit. Both paths merge the managed block onto the
-    # latest valid settings object, so a stale transaction cannot replay an old complete settings snapshot.
-    _ = current_hash == payload["base_settings_hash"]
+    if current_managed_hash != base_managed_hash:
+        _quarantine_transaction(preset)
+        return
     rendered = json.dumps(settings_for_preset(current_settings, desired), indent=2, sort_keys=True) + "\n"
-    _atomic_write(settings, rendered)
+    _atomic_write_settings(settings, rendered)
     _atomic_write(preset, desired + "\n")
-    _discard_transaction(preset)
+    _unlink_transaction(preset)
 
 
 def _recover(
@@ -214,6 +386,19 @@ def _recover(
 def recover(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None) -> None:
     """Complete a durable preset transition left by an interrupted writer."""
     _recover(settings_path=settings_path, preset_path=preset_path)
+
+
+@contextmanager
+def luna_operation(
+    *, settings_path: str | Path | None = None,
+    preset_path: str | Path | None = None,
+) -> Iterator[tuple[Path, Path]]:
+    """Serialize Luna's effective-preset check, provider call, and fallback."""
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        yield target_settings, target_preset
 
 
 def read_preset(
@@ -412,30 +597,104 @@ def _load_settings(path: Path) -> dict[str, Any]:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
+    target = _lexical(path)
+    parent_fd = _open_parent(target, create=True)
+    leaf = _leaf_lstat(parent_fd, target.name)
+    if leaf is not None and stat.S_ISLNK(leaf.st_mode):
+        os.close(parent_fd)
+        raise ValueError(f"preset state leaf is not a regular file: {target}")
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=target.parent,
-            prefix=f".{target.name}.", suffix=".tmp", delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        try:
-            mode = os.lstat(target).st_mode & 0o777
-        except FileNotFoundError:
-            mode = 0o600
-        if target.is_symlink() or (target.exists() and not stat.S_ISREG(os.lstat(target).st_mode)):
-            raise ValueError(f"preset state leaf is not a regular file: {target}")
-        temporary.chmod(mode)
-        os.replace(temporary, target)
-        temporary = None
+        _atomic_write_regular_open(parent_fd, target.name, leaf, text)
     finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        os.close(parent_fd)
+
+
+def _atomic_write_settings(path: Path, text: str) -> None:
+    """Atomically write settings while safely preserving a final settings alias."""
+    target = _lexical(path)
+    parent_fd = _open_parent(target, create=True)
+    leaf = _leaf_lstat(parent_fd, target.name)
+    if leaf is None or not stat.S_ISLNK(leaf.st_mode):
+        os.close(parent_fd)
+        _atomic_write(target, text)
+        return
+    try:
+        link_target = os.readlink(target.name, dir_fd=parent_fd)
+        resolved_target = _lexical(Path(link_target) if os.path.isabs(link_target) else target.parent / link_target)
+        before = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"preset settings symlink target is not a regular file: {target}")
+    finally:
+        os.close(parent_fd)
+    _atomic_write_regular(resolved_target, text)
+    verify_parent = _open_parent(target, create=False)
+    try:
+        if os.readlink(target.name, dir_fd=verify_parent) != link_target:
+            raise ValueError(f"preset settings symlink changed while writing: {target}")
+        after = os.stat(target.name, dir_fd=verify_parent, follow_symlinks=True)
+        target_parent = _open_parent(resolved_target, create=False)
+        try:
+            target_after = os.stat(resolved_target.name, dir_fd=target_parent, follow_symlinks=False)
+        finally:
+            os.close(target_parent)
+        if not stat.S_ISREG(after.st_mode) or _metadata_key(after) != _metadata_key(target_after):
+            raise ValueError(f"preset settings symlink target changed while writing: {target}")
+    finally:
+        os.close(verify_parent)
+
+
+def _atomic_write_regular(path: Path, text: str) -> None:
+    target = _lexical(path)
+    parent_fd = _open_parent(target, create=True)
+    try:
+        leaf = _leaf_lstat(parent_fd, target.name)
+        _atomic_write_regular_open(parent_fd, target.name, leaf, text)
+    finally:
+        os.close(parent_fd)
+
+
+def _atomic_write_regular_open(parent_fd: int, name: str, leaf: os.stat_result | None, text: str) -> None:
+    temporary: Path | None = None
+    temporary_name = ""
+    try:
+        if leaf is not None and not stat.S_ISREG(leaf.st_mode):
+            raise ValueError(f"preset state leaf is not a regular file: {name}")
+        mode = leaf.st_mode & 0o777 if leaf is not None else 0o600
+        for _attempt in range(32):
+            temporary_name = f".{name}.{secrets.token_hex(8)}.tmp"
+            try:
+                descriptor = os.open(
+                    temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _LEAF_FLAGS,
+                    mode, dir_fd=parent_fd,
+                )
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise OSError("could not allocate preset state temporary file")
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            raise
+        # Refuse replacing a leaf that changed type while the temporary was written.
+        current = _leaf_lstat(parent_fd, name)
+        if current is not None and not stat.S_ISREG(current.st_mode):
+            raise ValueError(f"preset state leaf is not a regular file: {name}")
+        os.replace(temporary_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        temporary_name = ""
+    finally:
+        if temporary_name:
+            try:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
 
 
 def _set_preset_unlocked(selected: str, target_settings: Path, target_preset: Path) -> str:
@@ -447,14 +706,15 @@ def _set_preset_unlocked(selected: str, target_settings: Path, target_preset: Pa
         "preset": selected,
         "base_preset": base_preset,
         "base_settings_hash": base_hash,
+        "base_managed_hash": _managed_hash(current),
     }
     _atomic_write(
         _transaction_path(target_preset),
         json.dumps(transaction, indent=2, sort_keys=True) + "\n",
     )
-    _atomic_write(_canonical(target_settings), rendered)
+    _atomic_write_settings(_canonical(target_settings), rendered)
     _atomic_write(_canonical(target_preset), selected + "\n")
-    _transaction_path(target_preset).unlink(missing_ok=True)
+    _unlink_transaction(target_preset)
     return selected
 
 
@@ -484,27 +744,23 @@ def status(*, settings_path: str | Path | None = None, preset_path: str | Path |
     return {"preset": selected, "settings": str(settings_path or globals()["settings_path"]()), "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates"}
 
 
-def fallback_after_luna_failure(
+def _fallback_after_luna_failure_unlocked(
     role: str,
     reason: str,
     *,
-    settings_path: str | Path | None = None,
-    preset_path: str | Path | None = None,
+    settings_path: Path,
+    preset_path: Path,
 ) -> dict[str, Any]:
     if role not in {"comment", "prose", "document"}:
         raise ValueError("role must be comment, prose, or document")
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
     fallback = "mixed"
-    with _preset_lock(target_preset):
-        _recover_unlocked(target_settings, target_preset)
-        current = _read_preset_unlocked(target_preset) or "mixed"
-        if current == "luna":
-            _set_preset_unlocked(fallback, target_settings, target_preset)
-            switched = True
-        else:
-            fallback = current
-            switched = False
+    current = _read_preset_unlocked(preset_path) or "mixed"
+    if current == "luna":
+        _set_preset_unlocked(fallback, settings_path, preset_path)
+        switched = True
+    else:
+        fallback = current
+        switched = False
     bounded = " ".join(str(reason).split())[:MAX_FAILURE_MESSAGE]
     transition = f"Switched subsequent events to {fallback}." if switched else f"{fallback} remains configured."
     return {
@@ -512,6 +768,22 @@ def fallback_after_luna_failure(
         "switched": switched,
         "message": f"Luna {role} review unavailable: {bounded}. {transition}",
     }
+
+
+def fallback_after_luna_failure(
+    role: str,
+    reason: str,
+    *,
+    settings_path: str | Path | None = None,
+    preset_path: str | Path | None = None,
+) -> dict[str, Any]:
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        return _fallback_after_luna_failure_unlocked(
+            role, reason, settings_path=target_settings, preset_path=target_preset,
+        )
 
 
 def luna_review(

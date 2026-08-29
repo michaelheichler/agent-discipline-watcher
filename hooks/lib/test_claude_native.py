@@ -10,7 +10,7 @@ import threading
 
 import pytest
 
-from lib import claude_native, claude_journal
+from lib import claude_native, claude_journal, session_state
 
 
 def test_mixed_profile_batches_comment_and_document_roles() -> None:
@@ -142,6 +142,24 @@ def test_candidate_journal_prunes_the_old_path_after_a_move(tmp_path: Path) -> N
     rows = claude_journal.read("session", state_root=state_root)
     assert len(rows) == 1
     assert rows[0]["path"] == str(new.resolve())
+
+
+def test_candidate_journal_discards_malformed_stale_path_rows_without_crashing(tmp_path: Path) -> None:
+    source = tmp_path / "new.md"
+    state_root = tmp_path / "state"
+    source.write_text("A paragraph that should be reviewed.\n", encoding="utf-8")
+    session_state.write_state("session", {
+        claude_journal.STATE_KEY: [{
+            "role": "document", "path": "\x00invalid", "source_context": "stale",
+            "content_hash": "stale",
+        }],
+    }, state_root)
+
+    claude_journal.record_edit("session", "turn", "tool", source, state_root=state_root)
+
+    rows = claude_journal.read("session", state_root=state_root)
+    assert len(rows) == 1
+    assert rows[0]["path"] == str(source.resolve())
 
 
 def test_native_prompts_fail_open_for_empty_input_and_check_stop_loop() -> None:
@@ -361,6 +379,61 @@ def test_corrupt_preset_transaction_is_removed_and_current_state_remains_usable(
     assert not transaction.exists()
 
 
+@pytest.mark.parametrize("leaf_kind", ("directory", "symlink"))
+def test_corrupt_transaction_leaf_is_quarantined_without_dos_or_target_deletion(
+    tmp_path: Path, leaf_kind: str,
+) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    transaction = preset.with_name(preset.name + ".txn")
+    target = tmp_path / "transaction-target"
+    if leaf_kind == "directory":
+        transaction.mkdir()
+        (transaction / "keep").write_text("do not delete", encoding="utf-8")
+    else:
+        target.write_text("do not delete", encoding="utf-8")
+        transaction.symlink_to(target)
+
+    current = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert current["preset"] == "luna"
+    assert not transaction.exists() and not transaction.is_symlink()
+    quarantined = list(tmp_path.glob("preset.txn.corrupt-*"))
+    assert len(quarantined) == 1
+    assert target.read_text(encoding="utf-8") == "do not delete" if leaf_kind == "symlink" else True
+
+
+def test_preset_parent_symlink_is_rejected_without_following_target(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    alias_parent = tmp_path / "alias"
+    alias_parent.symlink_to(real_parent, target_is_directory=True)
+    settings = tmp_path / "settings.json"
+
+    with pytest.raises((OSError, ValueError)):
+        claude_native.set_preset(
+            "luna", settings_path=settings, preset_path=alias_parent / "preset",
+        )
+
+    assert not (real_parent / "preset").exists()
+    assert not settings.exists()
+
+
+def test_symlinked_settings_leaf_is_updated_when_parent_chain_is_safe(tmp_path: Path) -> None:
+    real_settings = tmp_path / "settings.json"
+    settings_alias = tmp_path / "settings-alias.json"
+    real_settings.write_text("{}", encoding="utf-8")
+    settings_alias.symlink_to(real_settings)
+
+    claude_native.set_preset(
+        "luna", settings_path=settings_alias, preset_path=tmp_path / "preset",
+    )
+
+    assert settings_alias.is_symlink()
+    assert json.loads(real_settings.read_text(encoding="utf-8"))["hooks"]["Stop"]
+
+
 def test_transaction_symlink_and_embedded_settings_target_cannot_redirect_recovery(tmp_path: Path) -> None:
     settings = tmp_path / "settings.json"
     preset = tmp_path / "preset"
@@ -449,6 +522,32 @@ def test_recovery_merges_managed_hooks_onto_new_external_settings_and_is_idempot
     assert json.loads(first_text)["external_setting"] == "keep me"
     assert settings.read_text(encoding="utf-8") == first_text
     assert not transaction.exists()
+
+
+def test_recovery_discards_stale_intent_after_external_managed_hook_edit(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    transaction = preset.with_name(preset.name + ".txn")
+    base_hash = hashlib.sha256(settings.read_bytes()).hexdigest()
+    transaction.write_text(json.dumps({
+        "version": 2,
+        "preset": "mixed",
+        "base_preset": "luna",
+        "base_settings_hash": base_hash,
+    }), encoding="utf-8")
+    changed = json.loads(settings.read_text(encoding="utf-8"))
+    changed["hooks"]["PostToolUse"][0]["hooks"][0]["command"] = (
+        f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} /external/new-handler"
+    )
+    settings.write_text(json.dumps(changed), encoding="utf-8")
+
+    current = claude_native.status(settings_path=settings, preset_path=preset)
+
+    assert current["preset"] == "luna"
+    assert json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"][0]["command"].endswith("/external/new-handler")
+    assert not transaction.exists()
+    assert list(tmp_path.glob("preset.txn.corrupt-*"))
 
 
 def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(tmp_path: Path) -> None:
