@@ -66,3 +66,14 @@ Failed turns remain blocked during Stop retries, with at most three provider
 attempts and a bounded retry-limit message. Successful reviews remain
 exactly-once. Correction tests cover teardown fail-open behavior, journal
 failure visibility, active retry blocking, and reservation rollback.
+
+## Correction round 2
+
+Stop retries now reuse the persisted failed-turn identity when Codex omits
+`turn_id`, even after local state advances. The identity is removed atomically
+when that turn succeeds and during SessionEnd cleanup. Luna in-flight
+reservations carry creation and expiry timestamps derived from the provider
+timeout. Active reservations return a bounded in-progress block; expired or
+killed-process reservations are atomically reclaimed and retried. Tests cover
+missing-turn retries, active in-progress blocking, stale-token reclamation,
+and retry-identity cleanup.

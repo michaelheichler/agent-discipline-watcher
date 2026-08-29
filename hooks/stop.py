@@ -43,6 +43,7 @@ def run(
         session_id = payloads.session_id(payload)
         retry = payloads.stop_hook_active(payload)
         host_turn_id = payloads.turn_id(payload)
+        retry_turn_id = codex_luna.retry_turn_id(session_id, cfg.get("state_root"))
         state_turn_id = ""
         if session_id and not retry:
             state = session_state.read_state(session_id, cfg.get("state_root"))
@@ -61,7 +62,7 @@ def run(
             if codex_mode:
                 reviewed = codex_luna.review(
                     payload,
-                    turn_id=host_turn_id or state_turn_id or turn_id,
+                    turn_id=host_turn_id or retry_turn_id or state_turn_id or turn_id,
                     state_root=cfg.get("state_root"),
                     provider=provider,
                 )
