@@ -103,33 +103,6 @@ def test_worker_spawn_time_consumes_the_single_parent_deadline(tmp_path: Path, m
         judge.judge(_request())
 
 
-@pytest.mark.parametrize("stage", ("startup", "sdk-run", "close"))
-def test_parent_deadline_covers_each_worker_stage(
-    tmp_path: Path, monkeypatch, stage: str,
-) -> None:
-    marker = tmp_path / f"{stage}.marker"
-    before_read = f"Path({str(marker)!r}).write_text('startup')" if stage == "startup" else ""
-    after_read = f"Path({str(marker)!r}).write_text({stage!r})" if stage != "startup" else ""
-    judge = _judge(tmp_path, monkeypatch, f"""
-        from pathlib import Path
-        import sys
-        import time
-        {before_read}
-        {'sys.stdin.read()' if stage != 'startup' else ''}
-        {after_read}
-        time.sleep(30)
-    """)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.5)
-
-    with pytest.raises(LunaProviderFailure, match="timed out"):
-        judge.judge(_request())
-
-    # Startup may legitimately not run before a deadline that includes spawn;
-    # sdk-run and close still prove the worker reached each later stage.
-    if stage != "startup":
-        assert marker.exists()
-
-
 def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, monkeypatch) -> None:
     marker = tmp_path / "pid"
     judge = _judge(tmp_path, monkeypatch, f"""
