@@ -13,7 +13,16 @@ case "$1" in
     ;;
 esac
 
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in
+    /*) ;;
+    *) SOURCE="$SOURCE_DIR/$SOURCE" ;;
+  esac
+done
+DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
 . "$DIR/hooks/resolve-python.sh"
 read -r FLOOR < "$DIR/.python-version"
 PYTHON="$(adw_resolve_python "$FLOOR")"

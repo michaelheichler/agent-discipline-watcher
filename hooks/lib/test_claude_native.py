@@ -248,6 +248,25 @@ def test_adw_judge_launcher_uses_the_newest_compatible_python(tmp_path: Path) ->
     assert '"preset": "mixed"' in result.stdout
 
 
+def test_adw_judge_launcher_resolves_a_symlinked_install(tmp_path: Path) -> None:
+    launcher = Path(__file__).parents[2] / "bin" / "adw-judge"
+    link = tmp_path / "bin" / "adw-judge"
+    link.parent.mkdir()
+    link.symlink_to(launcher)
+    result = subprocess.run(
+        [str(link), "status"],
+        env={
+            **os.environ,
+            "ADW_PYTHON": __import__("sys").executable,
+            "HOME": str(tmp_path / "home"),
+            "ADW_CLAUDE_SETTINGS": str(tmp_path / "settings.json"),
+            "ADW_CLAUDE_PRESET_FILE": str(tmp_path / "preset"),
+        }, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"preset": "mixed"' in result.stdout
+
+
 def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
     claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
 
