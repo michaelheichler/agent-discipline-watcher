@@ -51,3 +51,18 @@ Codex hook configuration remains intentionally command-based. The Luna
 provider's existing SDK boundary and typed-item rejection continue to be the
 security boundary for subscription judging; this task does not claim that a
 model prompt itself can enforce tool policy.
+
+## Correction round 1
+
+SessionEnd now always returns `{}`, including malformed payloads and release
+errors, while attempting to release any valid session lease. Luna journal and
+reservation failures now produce one bounded actionable Stop block instead of
+being treated as an empty journal. Reservations are represented as
+turn-scoped in-flight tokens and are promoted to the completed set only after
+a successful result. Provider, authentication, runtime, malformed-result, and
+commit failures roll back their token so a later eligible Stop can retry.
+
+Failed turns remain blocked during Stop retries, with at most three provider
+attempts and a bounded retry-limit message. Successful reviews remain
+exactly-once. Correction tests cover teardown fail-open behavior, journal
+failure visibility, active retry blocking, and reservation rollback.

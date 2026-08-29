@@ -12,7 +12,7 @@ import session_end
 import session_start
 import stop
 import subagent_start
-from lib import claude_journal, reporting, session_state
+from lib import claude_journal, codex_luna, reporting, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_storage import LunaProviderFailure
 
@@ -30,6 +30,19 @@ class Provider:
         self.calls.append(request)
         if self.error is not None:
             raise self.error
+        assert self.result is not None
+        return self.result
+
+
+class FlakyProvider(Provider):
+    def __init__(self, first_error: Exception, result: JudgeResult) -> None:
+        super().__init__(result=result)
+        self.first_error = first_error
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        self.calls.append(request)
+        if len(self.calls) == 1:
+            raise self.first_error
         assert self.result is not None
         return self.result
 
@@ -123,6 +136,48 @@ def test_codex_stop_provider_failure_is_one_bounded_actionable_block(tmp_path: P
     assert response["reason"]
     assert len(response["reason"].encode("utf-8")) <= 4096
     assert len(provider.calls) == 1
+
+
+def test_codex_stop_journal_failure_blocks_and_active_retry_does_not_silently_allow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
+    session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
+    monkeypatch.setattr(codex_luna.claude_journal, "read", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal unavailable")))
+
+    first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))
+    retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))
+
+    assert first["decision"] == "block"
+    assert "Luna review unavailable" in first["reason"]
+    assert retry["decision"] == "block"
+    assert "Luna review unavailable" in retry["reason"]
+
+
+def test_codex_stop_provider_failure_rolls_back_reservation_for_retry(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
+    source = tmp_path / "note.md"
+    source.write_text("A short document.\n", encoding="utf-8")
+    session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
+    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    provider = FlakyProvider(LunaProviderFailure("subscription unavailable", category="authentication"), _result(ReviewKind.DOCUMENT))
+
+    first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
+    retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=provider)
+
+    assert first["decision"] == "block"
+    assert retry == {}
+    assert len(provider.calls) == 2
+    assert session_state.read_state("s1", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
+
+
+def test_session_end_always_fails_open_and_best_effort_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = {"state_root": str(tmp_path / "state")}
+    assert session_end.run({}, config) == {}
+    monkeypatch.setattr(session_end.session_state, "release_session_lease", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read only")))
+    assert session_end.run({"session_id": "s1"}, config) == {}
 
 
 def test_bounded_current_session_ledger_read_does_not_call_full_reader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
