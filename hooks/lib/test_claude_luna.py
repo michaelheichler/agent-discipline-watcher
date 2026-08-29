@@ -164,6 +164,28 @@ def test_live_path_extraction_caps_raw_patch_or_bash_before_payload_parser(
     assert calls == 0
 
 
+@pytest.mark.parametrize("tool_name, field", [("apply_patch", "input"), ("Bash", "command")])
+def test_live_bounded_parser_rejects_oversized_lists_before_iterating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_name: str, field: str,
+) -> None:
+    calls = 0
+
+    def count_size(_value: str) -> int:
+        nonlocal calls
+        calls += 1
+        return 0
+
+    monkeypatch.setattr(claude_luna, "_byte_size", count_size)
+    parts = [""] * (claude_luna.MAX_LIVE_PATHS * 8 + 1)
+    payload = {
+        "hook_event_name": "PostToolUse", "cwd": str(tmp_path), "tool_name": tool_name,
+        "tool_input": {field: parts},
+    }
+
+    assert claude_luna._bounded_raw_edit(payload) is False
+    assert calls == 0
+
+
 def test_live_path_extraction_fails_open_for_malformed_unicode_edit_body(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -266,6 +288,72 @@ def test_queued_luna_call_cannot_begin_provider_spend_after_failure_commits_mixe
     assert calls == 1
     assert not second_started.is_set()
     assert claude_native.read_preset(preset) == "mixed"
+
+
+def test_luna_provider_does_not_hold_preset_lock_during_model_call(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingProvider:
+        def judge(self, request: JudgeRequest) -> JudgeResult:
+            started.set()
+            assert release.wait(2)
+            return _result(request, {"items": []})
+
+    provider = BlockingProvider()
+    thread = threading.Thread(target=lambda: claude_luna.run(
+        _post_payload(source), provider=provider, settings_path=settings, preset_path=preset,
+    ))
+    thread.start()
+    assert started.wait(2)
+
+    status_result: list[dict] = []
+    status_thread = threading.Thread(target=lambda: status_result.append(
+        claude_native.status(settings_path=settings, preset_path=preset),
+    ))
+    status_thread.start()
+    status_thread.join(0.5)
+    preset_result: list[str] = []
+    preset_thread = threading.Thread(target=lambda: preset_result.append(claude_native.set_preset(
+        "luna", settings_path=settings, preset_path=preset,
+    )))
+    preset_thread.start()
+    preset_thread.join(0.5)
+    release.set()
+    thread.join(3)
+
+    assert not status_thread.is_alive()
+    assert status_result and status_result[0]["preset"] == "luna"
+    assert not preset_thread.is_alive() and preset_result == ["luna"]
+    assert not thread.is_alive()
+
+
+def test_luna_provider_can_reenter_status_without_deadlock(tmp_path: Path) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    source = tmp_path / "candidate.py"
+    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+
+    class ReentrantProvider:
+        def judge(self, request: JudgeRequest) -> JudgeResult:
+            assert claude_native.status(settings_path=settings, preset_path=preset)["preset"] == "luna"
+            return _result(request, {"items": []})
+
+    finished: list[dict] = []
+    thread = threading.Thread(target=lambda: finished.append(claude_luna.run(
+        _post_payload(source), provider=ReentrantProvider(), settings_path=settings, preset_path=preset,
+    )))
+    thread.start()
+    thread.join(2)
+
+    assert not thread.is_alive()
+    assert finished == [{}]
 
 
 def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_document(tmp_path: Path) -> None:

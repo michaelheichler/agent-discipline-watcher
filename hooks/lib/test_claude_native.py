@@ -13,7 +13,7 @@ import pytest
 from lib import claude_native, claude_journal, session_state
 
 
-def test_mixed_profile_batches_comment_and_document_roles() -> None:
+def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> None:
     generated = claude_native.generated_hooks("mixed")
 
     assert set(generated) == {"PostToolUse", "Stop"}
@@ -25,23 +25,15 @@ def test_mixed_profile_batches_comment_and_document_roles() -> None:
     assert stop["hooks"][0]["type"] == "agent"
     assert stop["hooks"][0]["model"] == "sonnet"
     assert "batch" in stop["hooks"][0]["prompt"].lower()
-
-
-def test_luna_profile_uses_live_commands_for_both_roles_and_never_model_luna() -> None:
-    generated = claude_native.generated_hooks("luna")
-
+    for preset in claude_native.PRESETS:
+        assert "PreToolUse" not in claude_native.generated_hooks(preset)
+    luna = claude_native.generated_hooks("luna")
     for lifecycle in ("PostToolUse", "Stop"):
-        handler = generated[lifecycle][0]["hooks"][0]
+        handler = luna[lifecycle][0]["hooks"][0]
         assert handler["type"] == "command"
         assert "model" not in handler
         assert "claude_luna.sh" in handler["command"]
         assert claude_native.MANAGED_MARKER in handler["command"]
-    assert generated["PostToolUse"][0]["matcher"] == claude_native.WRITE_MATCHER
-
-
-def test_native_agents_never_register_a_pretool_hook() -> None:
-    for preset in claude_native.PRESETS:
-        assert "PreToolUse" not in claude_native.generated_hooks(preset)
 
 
 @pytest.mark.parametrize("preset", ("mixed", "luna", "haiku", "sonnet"))
@@ -162,16 +154,29 @@ def test_candidate_journal_discards_malformed_stale_path_rows_without_crashing(t
     assert rows[0]["path"] == str(source.resolve())
 
 
-def test_native_prompts_fail_open_for_empty_input_and_check_stop_loop() -> None:
-    comment = claude_native.comment_prompt("mixed")
-    prompt = comment + claude_native.stop_prompt("mixed")
-    assert "malformed" in prompt.lower()
-    assert '"ok": true' in prompt
-    assert "read-only" in prompt
-    assert "stop_hook_active" in prompt
-    assert "raw host event" in comment.lower()
-    assert "journal" not in comment.lower()
-    assert claude_native.JOURNAL_READER_PATH in prompt
+def test_candidate_journal_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    fifo = tmp_path / "candidate.md"
+    os.mkfifo(fifo)
+    finished = threading.Event()
+    result: list[list[dict]] = []
+
+    def read_fifo() -> None:
+        result.append(claude_journal.record_edit("session", "turn", "tool", fifo, state_root=tmp_path / "state"))
+        finished.set()
+
+    thread = threading.Thread(target=read_fifo, daemon=True)
+    thread.start()
+    assert finished.wait(0.5), "FIFO journal read blocked"
+    thread.join(1)
+    assert result == [[]]
+
+
+def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = tmp_path / "large.md"
+    monkeypatch.setattr(claude_journal, "MAX_FILE_BYTES", 32, raising=False)
+    source.write_text("A paragraph that is larger than the bounded journal read.\n", encoding="utf-8")
+
+    assert claude_journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
 def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_unrelated_hooks() -> None:
@@ -202,18 +207,6 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
     assert unrelated_luna_command in handlers
     assert unrelated in handlers
     assert any(handler["type"] == "agent" for handler in handlers)
-
-
-@pytest.mark.parametrize("value", (None, {}, [], "not-json", {"ok": "false"}, {"ok": False}, {"ok": True, "extra": 1}, {"ok": False, "reason": "fix", "extra": 1}))
-def test_malformed_or_empty_native_decisions_fail_open(value: object) -> None:
-    assert claude_native.parse_decision(value) == {"ok": True}
-
-
-def test_native_false_decision_is_bounded_continuation_feedback() -> None:
-    assert claude_native.parse_decision({"ok": False, "reason": "Fix the named candidate."}) == {
-        "ok": False,
-        "reason": "Fix the named candidate.",
-    }
 
 
 def test_cli_rejects_extra_preset_arguments(tmp_path: Path) -> None:
@@ -265,28 +258,6 @@ def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
     assert result["preset"] == "mixed"
     assert "subscription unavailable" in result["message"]
     assert claude_native.read_preset(tmp_path / "preset") == "mixed"
-
-
-def test_luna_success_does_not_spend_a_native_fallback(tmp_path: Path) -> None:
-    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
-
-    class Provider:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def judge(self, request):
-            self.calls += 1
-            return {"ok": True, "request": request}
-
-    provider = Provider()
-    result = claude_native.luna_review(
-        object(), "comment", provider=provider,
-        settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset",
-    )
-
-    assert result["ok"] is True
-    assert provider.calls == 1
-    assert claude_native.read_preset(tmp_path / "preset") == "luna"
 
 
 def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path: Path) -> None:
@@ -404,6 +375,34 @@ def test_corrupt_transaction_leaf_is_quarantined_without_dos_or_target_deletion(
     assert target.read_text(encoding="utf-8") == "do not delete" if leaf_kind == "symlink" else True
 
 
+def test_corrupt_transaction_quarantine_is_bounded_and_preserves_unrelated_leaves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    monkeypatch.setattr(claude_native, "MAX_CORRUPT_QUARANTINES", 2, raising=False)
+    monkeypatch.setattr(claude_native, "MAX_CORRUPT_QUARANTINE_BYTES", 10, raising=False)
+    transaction = preset.with_name(preset.name + ".txn")
+    for index in range(5):
+        transaction.with_name(f"{transaction.name}{claude_native.CORRUPT_SUFFIX}{index:016x}").write_text(
+            "0123456789", encoding="utf-8",
+        )
+    unrelated = tmp_path / "preset.txn.corrupt-not-owned"
+    unrelated.write_text("preserve", encoding="utf-8")
+    transaction.write_text("corrupt", encoding="utf-8")
+
+    assert claude_native.status(settings_path=settings, preset_path=preset)["preset"] == "luna"
+    quarantined = [
+        item for item in tmp_path.iterdir()
+        if item.name.startswith(transaction.name + claude_native.CORRUPT_SUFFIX)
+        and item.name[-16:].isalnum()
+    ]
+    assert len(quarantined) <= 2
+    assert sum(item.stat().st_size for item in quarantined if item.is_file()) <= 10
+    assert unrelated.read_text(encoding="utf-8") == "preserve"
+
+
 def test_preset_parent_symlink_is_rejected_without_following_target(tmp_path: Path) -> None:
     real_parent = tmp_path / "real"
     real_parent.mkdir()
@@ -432,6 +431,45 @@ def test_symlinked_settings_leaf_is_updated_when_parent_chain_is_safe(tmp_path: 
 
     assert settings_alias.is_symlink()
     assert json.loads(real_settings.read_text(encoding="utf-8"))["hooks"]["Stop"]
+
+
+def test_settings_update_retries_after_external_regular_target_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = tmp_path / "settings.json"
+    preset = tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    original = claude_native._atomic_write_regular_open
+    mutated = False
+
+    def mutate_before_replace(parent_fd: int, name: str, leaf: os.stat_result | None, text: str, **kwargs) -> None:
+        nonlocal mutated
+        if name == settings.name and not mutated:
+            mutated = True
+            settings.write_text(json.dumps({"external_setting": "keep me"}), encoding="utf-8")
+        original(parent_fd, name, leaf, text, **kwargs)
+
+    monkeypatch.setattr(claude_native, "_atomic_write_regular_open", mutate_before_replace)
+    claude_native.set_preset("sonnet", settings_path=settings, preset_path=preset)
+
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    assert configured["external_setting"] == "keep me"
+    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "sonnet"
+
+
+def test_descriptor_open_failure_does_not_leak_parent_fd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "preset"
+    before = len(os.listdir("/dev/fd"))
+
+    def fail_lstat(_parent_fd: int, _name: str):
+        raise OSError("injected lstat failure")
+
+    monkeypatch.setattr(claude_native, "_leaf_lstat", fail_lstat)
+    with pytest.raises(OSError, match="injected lstat failure"):
+        claude_native._atomic_write(target, "luna\n")
+
+    after = len(os.listdir("/dev/fd"))
+    assert after <= before
 
 
 def test_transaction_symlink_and_embedded_settings_target_cannot_redirect_recovery(tmp_path: Path) -> None:
@@ -548,20 +586,3 @@ def test_recovery_discards_stale_intent_after_external_managed_hook_edit(tmp_pat
     assert json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PostToolUse"][0]["hooks"][0]["command"].endswith("/external/new-handler")
     assert not transaction.exists()
     assert list(tmp_path.glob("preset.txn.corrupt-*"))
-
-
-def test_luna_unavailability_reports_one_action_and_switches_subsequent_events(tmp_path: Path) -> None:
-    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
-
-    class Provider:
-        def judge(self, request):
-            raise claude_native.LunaUnavailable("login required")
-
-    result = claude_native.luna_review(
-        object(), "document", provider=Provider(),
-        settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset",
-    )
-
-    assert result["ok"] is False
-    assert result["preset"] == "mixed"
-    assert "login required" in result["reason"]

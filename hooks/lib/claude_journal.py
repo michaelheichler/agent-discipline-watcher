@@ -17,6 +17,9 @@ MAX_ROWS = 120
 MAX_STOP_ROWS = 24
 MAX_CANDIDATE_CHARS = 320
 MAX_DOCUMENT_CHARS = 24_000
+MAX_FILE_BYTES = 128 * 1024
+_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+_LEAF_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
 
 
 class _ReadOutcome:
@@ -25,34 +28,82 @@ class _ReadOutcome:
         self.value = value
 
 
-def _content(path: Path) -> tuple[str, str] | None:
+def _metadata_key(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
+
+
+def _read_regular_content(path: Path) -> _ReadOutcome:
+    """Read a bounded regular file through no-follow descriptors before decoding."""
+    parent_fd = -1
+    descriptor = -1
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
+        target = Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
+        parent_fd = os.open(target.anchor or os.sep, _DIRECTORY_FLAGS)
+        for part in target.parent.parts:
+            if part in (target.anchor, ""):
+                continue
+            if part in (".", ".."):
+                raise ValueError("unsafe path component")
+            child = -1
+            try:
+                child = os.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+                if not stat.S_ISDIR(os.fstat(child).st_mode):
+                    return _ReadOutcome("missing")
+                os.close(parent_fd)
+                parent_fd = child
+                child = -1
+            finally:
+                if child >= 0:
+                    os.close(child)
+        try:
+            leaf = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return _ReadOutcome("missing")
+        if not stat.S_ISREG(leaf.st_mode):
+            return _ReadOutcome("missing")
+        descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS, dir_fd=parent_fd)
+        opened = os.fstat(descriptor)
+        if _metadata_key(opened) != _metadata_key(leaf) or opened.st_size > MAX_FILE_BYTES:
+            return _ReadOutcome("transient")
+        data = bytearray()
+        while len(data) <= MAX_FILE_BYTES:
+            chunk = os.read(descriptor, min(65536, MAX_FILE_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > MAX_FILE_BYTES:
+            return _ReadOutcome("transient")
+        final = os.fstat(descriptor)
+        if _metadata_key(final) != _metadata_key(opened) or len(data) != final.st_size:
+            return _ReadOutcome("transient")
+        try:
+            text = bytes(data).decode("utf-8")
+        except UnicodeDecodeError:
+            return _ReadOutcome("transient")
+        return _ReadOutcome("available", (hashlib.sha256(bytes(data)).hexdigest(), text))
+    except FileNotFoundError:
+        return _ReadOutcome("missing")
+    except (OSError, ValueError):
+        return _ReadOutcome("transient")
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if parent_fd >= 0:
+            try:
+                os.close(parent_fd)
+            except OSError:
+                pass
 
 
 def _read_content(path: Path) -> _ReadOutcome:
     """Separate proven absence from transient/unreadable filesystem errors."""
-    try:
-        value = _content(path)
-    except (PermissionError, OSError):
-        return _ReadOutcome("transient")
-    except (UnicodeDecodeError, ValueError):
-        return _ReadOutcome("transient")
-    if value is not None:
-        return _ReadOutcome("available", value)
-    try:
-        metadata = os.stat(path, follow_symlinks=False)
-    except FileNotFoundError:
-        return _ReadOutcome("missing")
-    except OSError:
-        return _ReadOutcome("transient")
-    if not stat.S_ISREG(metadata.st_mode):
-        return _ReadOutcome("missing")
-    # A regular file that could not be decoded/read is not proven absent.
-    return _ReadOutcome("transient")
+    return _read_regular_content(path)
 
 
 def _canonical_path(path: str | Path) -> Path:

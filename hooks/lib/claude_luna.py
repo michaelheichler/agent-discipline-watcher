@@ -134,6 +134,8 @@ def _bounded_raw_edit(payload: object) -> bool:
                 return False
             return True
         if type(value) is list:
+            if len(value) > MAX_LIVE_PATHS * 8:
+                return False
             total = 0
             for part in value:
                 if type(part) is not str:
@@ -141,7 +143,7 @@ def _bounded_raw_edit(payload: object) -> bool:
                 total += _byte_size(part)
                 if total > MAX_LIVE_RAW_EDIT_BYTES:
                     return False
-            return len(value) <= MAX_LIVE_PATHS * 8
+            return True
     return True
 
 
@@ -314,23 +316,21 @@ def run(
     try:
         with claude_native.luna_operation(
             settings_path=settings_path, preset_path=preset_path,
-        ) as locked_paths:
-            selected = claude_native._read_preset_unlocked(locked_paths[1])
-            if selected is None:
-                selected = claude_native._default_preset_unlocked(os.environ, locked_paths[1])
-            if selected != "luna":
+        ) as operation:
+            if operation is None:
                 return {}
             if provider is None:
                 from .luna_provider import LunaJudge
                 provider = LunaJudge()
             try:
-                result = provider.judge(request)
+                result = operation.invoke(provider.judge, request)
+                if result is None:
+                    return {}
                 if not isinstance(result, JudgeResult):
                     raise LunaProviderFailure("Luna handler received an invalid judge result", category="worker_protocol")
             except Exception as exc:
                 return _failure(
                     event, role, exc, settings_path=settings_path, preset_path=preset_path,
-                    locked_paths=locked_paths,
                 )
     except (OSError, ValueError):
         return {}

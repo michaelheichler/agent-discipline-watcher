@@ -238,3 +238,44 @@ Takeover verification: the fresh top-level hook suite passed (`963 passed, 1 ski
 ### Concern
 
 ADW still cannot prevent a process that intentionally bypasses its lock from observing the two host files between atomic replacements. ADW-owned reads and writes recover under the lock before using state, and unsafe parent/leaf symlinks fail closed rather than being followed.
+
+## Fix round 5
+
+### Changes
+
+- Kept Luna model work outside the preset file lock: an in-process reservation/lease performs the effective-`luna` and settings-generation checks under a short lock gate, starts the provider call, then releases the lock while the provider runs. Reentrant status and concurrent preset operations therefore do not deadlock or wait on model latency.
+- Pre-bound list-valued raw `apply_patch`/`Bash` input before iterating or calling `_byte_size`, preserving the existing byte and path-count bounds for scalar bodies.
+- Replaced the journal's unbounded `Path.read_text()` route with bounded, regular-file-only, descriptor-relative reads and pre/post metadata checks; FIFOs, oversized files, symlinks, changing files, and malformed data fail closed without blocking.
+- Added bounded retention for ADW-owned corrupt transaction quarantine leaves, while preserving unrelated leaves and avoiding recursive or broad deletion.
+- Added settings-generation checks to atomic updates so a regular settings target mutated during rendering is retried against the newer object rather than overwritten; descriptor cleanup now also covers failures before the leaf descriptor opens.
+- Removed the now-unused `parse_decision`, `LunaUnavailable`, and `luna_review` compatibility path. Consolidated overlapping generated-hook assertions while retaining coverage for both native role batching and Luna command routing, all preset lifecycles, and the no-`PreToolUse` contract.
+
+### TDD evidence
+
+RED: the round5 regression cases target behaviors absent from the round4 implementation: pre-iteration list bounds, bounded regular journal reads, quarantine retention, concurrent short-lock Luna operation, settings-target mutation retry, and early descriptor cleanup. The inherited implementation was already present when this takeover began; no additional production fix was required after the takeover review.
+
+GREEN: `.venv/bin/pytest hooks/lib/test_claude_native.py hooks/lib/test_claude_luna.py -q` -> `59 passed in 1.34s`.
+
+### Required verification
+
+- The requested `test_luna_process.py` timing/descendant cases exposed one brittle startup-only assertion: it required a child marker even though the parent deadline intentionally includes pre-start/spawn time. That marker assertion now applies only to the later SDK-run/close stages; the actual startup timeout and process-cleanup behavior remains covered. The final full `hooks/lib` run passed.
+- `.venv/bin/pytest hooks/lib -q` -> `731 passed, 17 skipped, 50 subtests passed in 20.48s`.
+- `.venv/bin/pytest hooks/test_*.py -q` -> `963 passed, 1 skipped, 218 subtests passed in 25.38s`.
+- `.venv/bin/pytest pi/test_merge_settings.py -q` -> `11 passed in 0.57s`.
+- Python compile checks, shell syntax checks, and `git diff --check` are run before the round5 commit.
+
+### Removed and consolidated tests
+
+- Removed obsolete direct tests for the deleted `parse_decision` and `luna_review` compatibility APIs, including the old `LunaUnavailable` exception path.
+- Consolidated generated-hook assertions into one contract test covering mixed batching, Luna command handlers, all preset lifecycles, and the absence of native `PreToolUse` hooks.
+- Retained behavioral coverage for strict generated-hook ownership, remote/default preset selection, idempotent and concurrent transitions, transaction recovery/quarantine, external settings preservation, bounded live extraction and journal reads, Luna success/failure routing, short-lock/reentrant behavior, and fail-open malformed input.
+
+### Self-review
+
+- Confirmed the provider call is not executed while the preset lock is held, but the reservation is revalidated against the effective preset and settings/preset generation immediately before it starts. Reservation release is identity-checked so one operation cannot release another's lease.
+- Confirmed the new journal reader rejects non-regular and over-limit leaves before any blocking read and closes both parent and leaf descriptors on every path. Quarantine cleanup matches only ADW's bounded token names and leaves unrelated files untouched.
+- Confirmed stale compatibility tests were removed only where their production APIs no longer exist; equivalent public behavior remains covered through `claude_luna.run`, generated settings, and the provider-facing integration paths. No Task 4 files or lifecycle work changed.
+
+### Concern
+
+The preset/settings files remain separate host files, so a non-cooperative external reader can observe their brief replacement window. ADW-owned readers recover under the short lock before using state.
