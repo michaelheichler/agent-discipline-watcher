@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import pre_write
+import pre_write  # pylint: disable=wrong-import-position
 
 WIRED_SETTINGS = json.dumps({
     "env": {"EXISTING": "1"},

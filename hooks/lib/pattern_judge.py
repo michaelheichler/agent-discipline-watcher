@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
@@ -61,20 +62,54 @@ def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) ->
     return build_judge_prompt(request_for(rule, candidates))
 
 
+def _command(model: str) -> list[str]:
+    return [
+        "claude", "-p",
+        "--model", model,
+        "--output-format", "json",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--tools", "",
+        "--system-prompt", SYSTEM_PROMPT,
+    ]
+
+
 def _run(prompt: str, model: str) -> str | None:
-    return None
+    try:
+        finished = subprocess.run(
+            [*_command(model), prompt],
+            capture_output=True, text=True, check=False,
+            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return finished.stdout if finished.returncode == 0 else None
 
 
 def parse_verdicts(raw: str, size: int) -> tuple[bool, ...]:
-    """An unanswered index reads as clean, because a finding the judge never confirmed must not reach the writer."""
+    """Require one valid verdict per candidate, because omission must never silently clear a finding."""
     body = json.loads(raw)
     if not isinstance(body, dict) or body.get("is_error") or not isinstance(body.get("result"), str):
         raise ValueError(f"the judge returned no usable result: {raw[:200]!r}")
     found = JSON_ARRAY_RE.search(body["result"])
     if found is None:
         raise ValueError(f"the judge answered without a JSON array: {body['result'][:160]!r}")
-    parsed = {int(row["index"]): str(row["verdict"]) for row in json.loads(found.group(0))}
-    return tuple(parsed.get(index, CLEAN) == VIOLATING for index in range(size))
+    rows = json.loads(found.group(0))
+    if not isinstance(rows, list) or len(rows) != size:
+        raise ValueError("the judge must answer every candidate exactly once")
+    parsed: dict[int, str] = {}
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("index"), int) or row["index"] in parsed:
+            raise ValueError("the judge returned duplicate or invalid candidate indexes")
+        verdict = row.get("verdict")
+        if verdict not in (VIOLATING, CLEAN):
+            raise ValueError("the judge returned an invalid verdict")
+        parsed[row["index"]] = verdict
+    if set(parsed) != set(range(size)):
+        raise ValueError("the judge must answer every candidate exactly once")
+    return tuple(parsed[index] == VIOLATING for index in range(size))
 
 
 def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...], model: str) -> tuple[bool, ...]:

@@ -129,8 +129,8 @@ def candidates_for(
     )
 
 
-def _vectors(texts: tuple[str, ...]) -> dict[str, Vector]:
-    answered = embed(texts)
+def _vectors(texts: tuple[str, ...], config: dict | None = None) -> dict[str, Vector]:
+    answered = embed(texts) if config is None else embed(texts, config)
     return dict(zip(texts, answered)) if answered else {}
 
 
@@ -150,13 +150,13 @@ def _cached_vectors() -> dict[str, Vector]:
     return {text: tuple(vector) for text, vector in rows}
 
 
-def exemplar_vectors(exemplars: tuple[Exemplar, ...]) -> dict[str, Vector]:
-    """Cached under the exemplar digest because embedding 2099 rows on every write cost the scan ten seconds it never needed to pay."""
+def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None) -> dict[str, Vector]:
+    """Cache exemplar vectors while applying the caller's source-egress policy to fresh embeddings."""
     cached = _cached_vectors()
     wanted = tuple(sorted({row.text for row in exemplars} - set(cached)))
     if not wanted:
         return cached
-    fresh = _vectors(wanted)
+    fresh = _vectors(wanted) if config is None else _vectors(wanted, config)
     if not fresh:
         return cached
     merged = {**cached, **fresh}
@@ -166,14 +166,18 @@ def exemplar_vectors(exemplars: tuple[Exemplar, ...]) -> dict[str, Vector]:
     return merged
 
 
-def scan(path: str, text: str) -> tuple[Finding, ...]:
-    """Answers nothing when the server is absent, because a missing vector must read as no finding rather than as clean prose."""
+def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...]:
+    """Answers nothing when the server is absent or source egress is disabled."""
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
         return ()
     exemplars = load_exemplars()
     manifest = load_manifest()
-    vectors = {**exemplar_vectors(exemplars), **_vectors(tuple({item.text for item in sentences}))}
+    cached = exemplar_vectors(exemplars) if config is None else exemplar_vectors(exemplars, config)
+    current = _vectors(tuple({item.text for item in sentences})) if config is None else _vectors(
+        tuple({item.text for item in sentences}), config
+    )
+    vectors = {**cached, **current}
     if not vectors:
         return ()
     work = tuple(
@@ -181,8 +185,10 @@ def scan(path: str, text: str) -> tuple[Finding, ...]:
         for rule in measured_rules(manifest)
     )
     blocking = blocking_rules(manifest)
+    selected_model = config.get("adw_model") if isinstance(config, dict) else None
+    model = selected_model.strip() if isinstance(selected_model, str) and selected_model.strip() else JUDGED_GATE_MODEL
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
-        for rule, kept in sorted(confirm_all(work, JUDGED_GATE_MODEL).items())
+        for rule, kept in sorted(confirm_all(work, model).items())
         for candidate in kept
     )

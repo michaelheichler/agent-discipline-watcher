@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import json
+import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
-from lib import blocker_state, document_review, payloads, session_state
+from lib import blocker_state, document_review, payloads, reporting, session_state
 from lib.hookio import PARSE_FAILURE, read_payload
 from lib.judge import Verdict, judge
 from lib.narration_candidates import candidates
 from lib.pattern_semantic import Finding
 from lib.pattern_semantic import scan as scan_patterns
 from lib.regex_judge import confirm as confirm_judged
+from lib.config import effective_hook_config
 from lib.scanner import PROSE_EXTS, scan_all
 
 JUDGED_SUFFIXES = (".py",)
@@ -32,19 +36,73 @@ def _is_session_scratch(path: Path) -> bool:
 
 def _target(payload: object, suffixes: tuple[str, ...]) -> Path | None:
     raw = payloads.file_path(payload)
-    if not raw:
+    cwd = payloads.cwd(payload)
+    if not raw or not cwd:
         return None
-    path = Path(raw)
-    if path.suffix not in suffixes or not path.is_file() or _is_session_scratch(path):
+    try:
+        root = Path(cwd).expanduser().resolve(strict=True)
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = root / path
+        path = path.resolve(strict=True)
+        path.relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if path.suffix not in suffixes or _is_session_scratch(path):
+        return None
+    try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            return None
+    except OSError:
         return None
     return path
-
-
-def _read(path: Path) -> str | None:
+def _review_config(payload: object) -> dict | None:
+    """Permit model review only when project policy explicitly allows source egress."""
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        config = effective_hook_config({}, payloads.cwd(payload) or None)
+    except (OSError, TypeError, ValueError):
         return None
+    boundary = config.get("data_boundary")
+    return config if isinstance(boundary, dict) and boundary.get("enabled") is True else None
+
+
+def _read(path: Path, cwd: str) -> str | None:
+    root_fd = -1
+    descriptor = -1
+    try:
+        root = Path(cwd).expanduser().resolve(strict=True)
+        relative = path.resolve(strict=True).relative_to(root)
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        root_fd = os.open(root, directory_flags)
+        descriptor = root_fd
+        for part in relative.parts[:-1]:
+            child = os.open(part, directory_flags, dir_fd=descriptor)
+            if descriptor != root_fd:
+                os.close(descriptor)
+            descriptor = child
+        leaf = os.open(
+            relative.parts[-1],
+            os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=descriptor,
+        )
+        try:
+            metadata = os.fstat(leaf)
+            if not stat.S_ISREG(metadata.st_mode):
+                return None
+            raw = os.read(leaf, 1_000_001)
+            after = os.fstat(leaf)
+            if (metadata.st_dev, metadata.st_ino) != (after.st_dev, after.st_ino) or len(raw) > 1_000_000:
+                return None
+            return raw.decode("utf-8")
+        finally:
+            os.close(leaf)
+    except (OSError, UnicodeDecodeError, RuntimeError, ValueError):
+        return None
+    finally:
+        if descriptor >= 0 and descriptor != root_fd:
+            os.close(descriptor)
+        if root_fd >= 0:
+            os.close(root_fd)
 
 
 def _pattern_message(findings: tuple[Finding, ...]) -> str:
@@ -55,42 +113,52 @@ def _pattern_message(findings: tuple[Finding, ...]) -> str:
     )
     lines = [lead]
     lines.extend(
-        f"{item.rule}:{item.line}: {item.text[:120]}" + ("" if item.blocking else " (observed)")
+        f"{reporting._safe_text(item.rule)}:{item.line}: {reporting._safe_text(item.text[:120])}"
+        + ("" if item.blocking else " (observed)")
         for item in findings
     )
     return "\n".join(lines)
 
 
 def _pattern_findings(payload: object) -> tuple[Finding, ...]:
-    """An absent model server must cost the write nothing at all, because this route runs after the file already landed."""
+    """Skip model-backed source review when project egress policy is disabled."""
+    config = _review_config(payload)
+    if config is None:
+        return ()
     path = _target(payload, PROSE_SUFFIXES)
     if path is None:
         return ()
-    text = _read(path)
+    text = _read(path, payloads.cwd(payload))
     if text is None:
         return ()
     try:
-        return scan_patterns(str(path), text)
+        return scan_patterns(str(path), text, config)
     except Exception:
         return ()
 
 
 def _judged_message(payload: object) -> str:
     """A judged rule never reaches the write path, because only a reader separates an ordinary series from slop cadence."""
+    config = _review_config(payload)
+    if config is None:
+        return ""
     path = _target(payload, PROSE_SUFFIXES)
     if path is None:
         return ""
-    text = _read(path)
+    text = _read(path, payloads.cwd(payload))
     if text is None:
         return ""
     try:
-        confirmed = confirm_judged(str(path), scan_all(str(path), text))
+        confirmed = confirm_judged(str(path), scan_all(str(path), text, config))
     except Exception:
         return ""
     if not confirmed:
         return ""
     lines = ["agent-discipline-watcher is observing these, not blocking."]
-    lines.extend(f"{item.rule}:{item.line}: {item.text[:120]} (observed)" for item in confirmed)
+    lines.extend(
+        f"{reporting._safe_text(item.rule)}:{item.line}: {reporting._safe_text(item.text[:120])} (observed)"
+        for item in confirmed
+    )
     return "\n".join(lines)
 
 
@@ -122,7 +190,7 @@ def _claim_reading(scope: blocker_state.BlockerScope, key: str, fresh: str) -> t
     return before[0]
 
 
-def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str) -> _Review:
+def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str, cfg: dict) -> _Review:
     """An unchanged document is left unread, because a second read costs a call and answers the same thing."""
     key = str(path)
     fresh = document_review.digest_of(text)
@@ -131,21 +199,24 @@ def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str) -> _Rev
         return _Review((), False, True)
     if fresh == digest:
         return _Review((), False, False)
-    notes = document_review.review(key, text)
+    notes = document_review.review(key, text, cfg)
     return _Review(notes, True, not notes)
 
 
 def _document_message(payload: object) -> str:
     """A whole document is read on the async route because the Stop hook has ten seconds and this call needs more."""
+    config = _review_config(payload)
+    if config is None:
+        return ""
     scope = _review_scope(payload)
     path = _target(payload, PROSE_SUFFIXES)
     if scope is None or path is None:
         return ""
-    text = _read(path)
+    text = _read(path, payloads.cwd(payload))
     if text is None:
         return ""
     try:
-        review = _notes_for(scope, path, text)
+        review = _notes_for(scope, path, text, config)
     except Exception:
         return ""
     key = document_review.BLOCKER_KEY_PREFIX + str(path)
@@ -164,20 +235,27 @@ def _message(verdicts: tuple[Verdict, ...]) -> str:
         "Rewrite each as one short WHY line, or delete it.",
     ]
     lines.extend(
-        f"{item.candidate.path}:{item.candidate.line}: {item.candidate.text[:120]} ({item.reason})"
+        f"{reporting._safe_text(item.candidate.path).replace(chr(10), ' ')}:{item.candidate.line}: "
+        f"{reporting._safe_text(item.candidate.text[:120]).replace(chr(10), ' ')} "
+        f"({reporting._safe_text(item.reason).replace(chr(10), ' ')})"
         for item in verdicts
     )
     return "\n".join(lines)
 
 
 def _comment_message(payload: object) -> str:
+    cfg = _review_config(payload)
+    if cfg is None:
+        return ""
     path = _target(payload, JUDGED_SUFFIXES)
     if path is None:
         return ""
-    text = _read(path)
+    text = _read(path, payloads.cwd(payload))
     if text is None:
         return ""
-    verdicts = judge(candidates(str(path), text)[:MAX_CANDIDATES])
+    selected_model = cfg.get("adw_model")
+    model = selected_model if isinstance(selected_model, str) else None
+    verdicts = judge(candidates(str(path), text)[:MAX_CANDIDATES], model)
     narrating = tuple(item for item in verdicts if item.narrates) if verdicts else ()
     return _message(narrating) if narrating else ""
 
@@ -199,7 +277,10 @@ def run(payload: object) -> tuple[int, str]:
 
 
 if __name__ == "__main__":
-    code, message = run(read_payload())
+    _code, message = run(read_payload())
     if message:
         print(message, file=sys.stderr)
-    sys.exit(code)
+        print(json.dumps({"systemMessage": message}, ensure_ascii=True))
+    else:
+        print("{}")
+    sys.exit(0)

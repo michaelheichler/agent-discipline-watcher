@@ -10,10 +10,19 @@ NOTE = document_review.Note(3, "It is important to note", "Throat clearing.", "S
 
 
 def _payload(path, session_id: str) -> dict:
-    return {"tool_name": "Write", "session_id": session_id, "tool_input": {"file_path": str(path)}}
+    return {
+        "cwd": str(path.parent),
+        "tool_name": "Write",
+        "session_id": session_id,
+        "tool_input": {"file_path": str(path)},
+    }
 
 
 def _document(tmp_path):
+    (tmp_path / ".agent-discipline.json").write_text(
+        '{"data_boundary":{"enabled":true}}',
+        encoding="utf-8",
+    )
     target = tmp_path / "notes.md"
     target.write_text(DOCUMENT, encoding="utf-8")
     return target
@@ -25,7 +34,7 @@ def _pending(session_id: str) -> dict[str, str]:
 
 
 def test_a_document_the_reader_faults_leaves_a_blocker_for_the_stop_hook(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
 
@@ -37,7 +46,7 @@ def test_a_document_the_reader_faults_leaves_a_blocker_for_the_stop_hook(tmp_pat
 
 
 def test_a_document_the_reader_clears_leaves_no_blocker(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: ())
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: ())
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
 
@@ -48,7 +57,7 @@ def test_a_document_the_reader_clears_leaves_no_blocker(tmp_path, monkeypatch) -
 
 def test_an_unchanged_document_is_not_read_twice(tmp_path, monkeypatch) -> None:
     reads = []
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: reads.append(1) or (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: reads.append(1) or (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
 
@@ -61,7 +70,7 @@ def test_an_unchanged_document_is_not_read_twice(tmp_path, monkeypatch) -> None:
 
 def test_a_session_scratch_file_costs_no_judge_call(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(judge_review, "TEMP_ROOTS", (tmp_path,))
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: pytest.fail("read a scratch file"))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: pytest.fail("read a scratch file"))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     scratch = tmp_path / "scratchpad"
     scratch.mkdir()
@@ -73,7 +82,7 @@ def test_a_session_scratch_file_costs_no_judge_call(tmp_path, monkeypatch) -> No
 
 def test_a_document_outside_a_scratchpad_still_reaches_the_reader(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(judge_review, "TEMP_ROOTS", (tmp_path,))
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
 
@@ -83,7 +92,7 @@ def test_a_document_outside_a_scratchpad_still_reaches_the_reader(tmp_path, monk
 
 
 def test_a_blocker_dies_with_the_file_it_names(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
     judge_review.run(_payload(target, "doc-deleted"))
@@ -95,7 +104,7 @@ def test_a_blocker_dies_with_the_file_it_names(tmp_path, monkeypatch) -> None:
 
 
 def test_a_note_is_dropped_once_the_document_it_quotes_is_rewritten(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
     judge_review.run(_payload(target, "doc-moved"))
@@ -107,7 +116,7 @@ def test_a_note_is_dropped_once_the_document_it_quotes_is_rewritten(tmp_path, mo
 
 
 def test_a_note_stands_while_the_document_it_quotes_is_untouched(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
     judge_review.run(_payload(target, "doc-standing"))
@@ -120,7 +129,7 @@ def test_a_note_stands_while_the_document_it_quotes_is_untouched(tmp_path, monke
 def test_a_second_reader_on_the_same_text_finds_the_round_already_spent(tmp_path, monkeypatch) -> None:
     seen = []
 
-    def read(path, text):
+    def read(path, text, _config):
         state = judge_review.session_state.read_state("doc-racing", None)
         seen.append(document_review.previous(state, path))
         return (NOTE,)
@@ -134,7 +143,7 @@ def test_a_second_reader_on_the_same_text_finds_the_round_already_spent(tmp_path
 
 
 def test_an_empty_reading_still_spends_a_round(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: ())
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: ())
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
     judge_review.run(_payload(target, "doc-empty"))
@@ -144,7 +153,7 @@ def test_an_empty_reading_still_spends_a_round(tmp_path, monkeypatch) -> None:
 
 
 def test_a_document_rewritten_past_the_round_cap_is_handed_back_to_the_user(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "review", lambda _path, _text: (NOTE,))
+    monkeypatch.setattr(document_review, "review", lambda _path, _text, _config: (NOTE,))
     monkeypatch.setattr(judge_review.session_state, "_default_root", lambda: tmp_path / "state")
     target = _document(tmp_path)
 

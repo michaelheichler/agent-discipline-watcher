@@ -15,6 +15,9 @@ from transformers import AutoTokenizer
 MODULE_NAME = "lfm2_bidirectional"
 MAX_LENGTH = 8192
 MAX_BATCH = 32
+MAX_INPUTS = 8192
+MAX_TEXT_CHARS = 16_384
+MAX_BODY_BYTES = 1_048_576
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 NOT_FOUND = {"error": "not found"}
@@ -55,6 +58,13 @@ def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 
 def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
+    """Encode a bounded collection in fixed-size tokenizer batches."""
+    if len(texts) > MAX_INPUTS:
+        raise ValueError(f"input contains more than {MAX_INPUTS} texts")
+    if any(not isinstance(text, str) for text in texts):
+        raise ValueError("input must contain only strings")
+    if any(len(text) > MAX_TEXT_CHARS for text in texts):
+        raise ValueError(f"input text exceeds {MAX_TEXT_CHARS} characters")
     vectors: list[list[float]] = []
     for start in range(0, len(texts), MAX_BATCH):
         vectors.extend(_encode(model, tokenizer, texts[start : start + MAX_BATCH]))
@@ -62,12 +72,45 @@ def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 
 def _texts(body: dict) -> list[str]:
+    """Validate one request's input list before tokenization can consume it."""
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
     given = body.get("input")
     if isinstance(given, str):
-        return [given]
-    if isinstance(given, list) and all(isinstance(item, str) for item in given):
-        return given
-    raise ValueError(f"input must be a string or a list of strings, got {given!r}")
+        texts = [given]
+    elif isinstance(given, list) and all(isinstance(item, str) for item in given):
+        texts = given
+    else:
+        raise ValueError("input must be a string or a list of strings")
+    if len(texts) > MAX_BATCH:
+        raise ValueError(f"input contains more than {MAX_BATCH} texts")
+    if any(len(text) > MAX_TEXT_CHARS for text in texts):
+        raise ValueError(f"input text exceeds {MAX_TEXT_CHARS} characters")
+    return texts
+
+
+class _PayloadTooLarge(ValueError):
+    """Mark a request rejected before its body is read into memory."""
+
+
+def _read_body(handler: BaseHTTPRequestHandler) -> bytes:
+    """Read exactly one bounded HTTP request body from the Content-Length header."""
+    header = handler.headers.get("Content-Length")
+    if header is None:
+        raise ValueError("Content-Length header is required")
+    header = header.strip()
+    if not header.isascii() or not header.isdigit():
+        raise ValueError("Content-Length header must be a non-negative integer")
+    try:
+        length = int(header)
+    except ValueError as error:
+        raise ValueError("Content-Length header is invalid") from error
+    if length > MAX_BODY_BYTES:
+        raise _PayloadTooLarge(f"request body exceeds {MAX_BODY_BYTES} bytes")
+    body = handler.rfile.read(length)
+    if len(body) != length:
+        raise ValueError("request body is truncated")
+    return body
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -90,9 +133,19 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, {"status": "ok"})
 
     def _embeddings(self) -> dict:
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode("utf-8"))
+        """Parse and encode one bounded JSON request."""
+        try:
+            raw = _read_body(self)
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+            raise ValueError("request body must be valid UTF-8 JSON") from error
+        if not isinstance(body, dict):
+            raise ValueError("request body must be a JSON object")
         vectors = embed(type(self).model, type(self).tokenizer, _texts(body))
-        rows = [{"object": "embedding", "index": index, "embedding": vector} for index, vector in enumerate(vectors)]
+        rows = [
+            {"object": "embedding", "index": index, "embedding": vector}
+            for index, vector in enumerate(vectors)
+        ]
         return {"object": "list", "data": rows, "model": type(self).model_id}
 
     def do_POST(self) -> None:
@@ -101,6 +154,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             self._send(200, self._embeddings())
+        except _PayloadTooLarge as error:
+            self._send(413, {"error": str(error)})
         except (ValueError, KeyError, TypeError) as error:
             self._send(400, {"error": str(error)})
 
@@ -109,6 +164,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def serve(directory: Path, port: int) -> None:
+    """Load the model and bind the worker only to a valid loopback port."""
+    if type(port) is not int or not 1 <= port <= 65_535:  # pylint: disable=unidiomatic-typecheck
+        raise ValueError("port must be between 1 and 65535")
     _Handler.model, _Handler.tokenizer = load(directory)
     _Handler.model_id = directory.name
     ThreadingHTTPServer(("127.0.0.1", port), _Handler).serve_forever()

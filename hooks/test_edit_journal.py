@@ -39,6 +39,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("print(1)\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_use_id": "toolu_1",
             "tool_input": {"file_path": str(target)},
@@ -57,6 +58,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("print(1)\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -70,6 +72,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -83,6 +86,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_use_id": "toolu_2",
             "tool_input": {"file_path": str(target)},
@@ -101,6 +105,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -116,6 +121,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("x = 1\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -127,6 +133,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("x = 1\n" * 1000, encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_use_id": "toolu-large",
             "tool_input": {"file_path": str(target)},
@@ -143,6 +150,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_bytes(b"# increments the counter\n\0x = 1\n")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -173,6 +181,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("# increments the counter\nx = 1\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -206,6 +215,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("print(1)\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -233,7 +243,7 @@ class EditJournalTests(unittest.TestCase):
         # A sessionless invocation skips the journal because it has no session to attribute the edit to.
         target = self.root / "a.py"
         target.write_text("print(1)\n", encoding="utf-8")
-        payload = {"tool_name": "Write", "tool_input": {"file_path": str(target)}}
+        payload = {"cwd": str(self.root), "tool_name": "Write", "tool_input": {"file_path": str(target)}}
         response = record.run(payload, self.cfg)
         self.assertEqual(response, {})
         self.assertEqual(self._ledger_rows(), [])
@@ -244,6 +254,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("print(1)\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
@@ -252,7 +263,7 @@ class EditJournalTests(unittest.TestCase):
 
     def test_heartbeat_fires_when_no_edit_was_made(self):
         """Guard the denominator on the path where no gate ran, since that turn still happened."""
-        payload = {"session_id": "s1", "tool_name": "Read", "tool_input": {}}
+        payload = {"cwd": str(self.root), "session_id": "s1", "tool_name": "Read", "tool_input": {}}
         record.run(payload, self.cfg)
         self.assertEqual(self._journal_rows(), [])
         self.assertEqual(len(self._heartbeat_rows()), 1)
@@ -263,6 +274,7 @@ class EditJournalTests(unittest.TestCase):
         target.write_text("print(1)\n", encoding="utf-8")
         payload = {
             "session_id": "s1",
+            "cwd": str(self.root),
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }

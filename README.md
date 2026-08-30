@@ -102,6 +102,7 @@ flow before using model review. There is no API-key fallback.
 ```
 
 Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Restart OMP after install, or pass `--extension` to load immediately.
+In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy screen. They edit the project `.agent-discipline.json` policy used by the same Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
 ## Requirements
 
@@ -194,6 +195,7 @@ The watcher migrates an existing `~/.agent-discipline` once, on first run.
 Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
 
 Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates, the judge confirms them on the async route, and the watcher reports only what survives. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
+In OMP, `/adw configure` and `/agent-discipline configure` edit this project policy through the same Python configuration engine. The screen covers family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, and the data boundary. Always-blocking rules stay locked. Unknown keys and environment values are not rendered.
 
 `three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Behind the judge it clears 121 held-out candidates at 1.0000 precision with 0 false positives. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
 
@@ -211,7 +213,7 @@ Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payloa
 
 Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings or deleting legacy `~/.codex/hooks.json`. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
 
-OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks run on `tool_call` for `write` and `bash` and return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
+OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks cover every OMP mutating file tool and Bash, then return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
 
 `archive/integrations/` keeps the OpenCode adapters as historical references. The installer, CI, and release verification do not test them.
 

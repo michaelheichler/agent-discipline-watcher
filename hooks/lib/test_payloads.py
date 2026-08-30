@@ -66,7 +66,7 @@ class BoundaryProjectionTests(unittest.TestCase):
         self.assertEqual(payloads.record_payload(payload)["file_path"], "")
         self.assertEqual(HostileDict.calls, 0)
 
-        self.assertEqual(record.run(HostileDict(PRE_TOOL_USE), {}), {})
+        self.assertEqual(record.run(HostileDict(PRE_TOOL_USE), {})["decision"], "block")
         self.assertEqual(HostileDict.calls, 0)
 
     def test_non_string_keys_are_filtered_before_field_lookup(self):

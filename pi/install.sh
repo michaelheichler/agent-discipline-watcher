@@ -6,6 +6,7 @@ omp_agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}"
 extension_name="agent-discipline-watcher"
 extension_src="$skill_dir/pi/extensions/$extension_name"
 extension_link="$omp_agent_dir/extensions/$extension_name"
+runtime_link="$HOME/.agents/skills/$extension_name"
 remove=0
 assume_yes=0
 
@@ -94,6 +95,9 @@ if [ "$remove" -eq 1 ]; then
   elif [ -e "$extension_link" ]; then
     echo "warning: $extension_link is not a symlink installed by this script; leaving it in place" >&2
   fi
+  if [ -L "$runtime_link" ] && [ "$(readlink "$runtime_link")" = "$skill_dir" ]; then
+    rm -f "$runtime_link"
+  fi
   if [ -f "$omp_agent_dir/settings.json" ]; then
     backup_file "$omp_agent_dir/settings.json"
     installer_python="$(resolve_installer_python)"
@@ -107,6 +111,8 @@ if [ "$remove" -eq 1 ]; then
 fi
 
 mkdir -p "$omp_agent_dir/extensions"
+mkdir -p "$HOME/.agents/skills"
+ln -snf "$skill_dir" "$runtime_link"
 ln -snf "$extension_src" "$extension_link"
 backup_file "$omp_agent_dir/settings.json"
 installer_python="$(resolve_installer_python)"

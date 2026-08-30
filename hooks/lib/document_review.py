@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 from typing import NamedTuple
 
 try:
@@ -15,6 +16,11 @@ try:
     from .judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
 except ImportError:
     from judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
+
+try:
+    from .reporting import _safe_text
+except ImportError:
+    from reporting import _safe_text
 
 REVIEW_MODEL = "claude-sonnet-5"
 MAX_REVIEW_CHARS = 24000
@@ -46,8 +52,29 @@ class Note(NamedTuple):
     fix: str
 
 
-def _run(prompt: str) -> str | None:
-    return None
+def _command(model: str = REVIEW_MODEL) -> list[str]:
+    return [
+        "claude", "-p",
+        "--model", model,
+        "--output-format", "json",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--tools", "",
+        "--system-prompt", SYSTEM_PROMPT,
+    ]
+
+
+def _run(prompt: str, model: str = REVIEW_MODEL) -> str | None:
+    try:
+        finished = subprocess.run(
+            [*_command(model), prompt], capture_output=True, text=True, check=False,
+            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return finished.stdout if finished.returncode == 0 else None
 
 
 def _line_of(text: str, quote: str) -> int:
@@ -83,16 +110,21 @@ def request_for(path: str, text: str) -> JudgeRequest:
         source_context=f"Document: {path}\n\n{text[:MAX_REVIEW_CHARS]}",
     )
 
-
 def build_prompt(path: str, text: str) -> str:
     return build_judge_prompt(request_for(path, text))
 
-
-def review(path: str, text: str) -> tuple[Note, ...]:
-    """An absent reviewer names nothing, because a document that was never read must not report as coherent."""
+def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]:
+    """Skip model review when the project data boundary does not permit source egress."""
+    if config is None:
+        return ()
+    boundary = config.get("data_boundary")
+    if not isinstance(boundary, dict) or boundary.get("enabled") is not True:
+        return ()
     if not text.strip() or not available():
         return ()
-    raw = _run(build_prompt(path, text))
+    selected_model = config.get("adw_model")
+    model = selected_model.strip() if isinstance(selected_model, str) and selected_model.strip() else REVIEW_MODEL
+    raw = _run(build_prompt(path, text), model)
     if raw is None:
         return ()
     try:
@@ -122,7 +154,11 @@ def remember(state: dict, path: str, digest: str, rounds: int) -> dict:
 
 
 def message(path: str, notes: tuple[Note, ...]) -> str:
-    lines = [f"agent-discipline-watcher read {path} whole and found these before you stop:"]
-    lines.extend(f"  {path}:{note.line}: {note.problem} Fix: {note.fix}" for note in notes)
+    safe_path = _safe_text(path).replace("\n", " ")
+    lines = [f"agent-discipline-watcher read {safe_path} whole and found these before you stop:"]
+    lines.extend(
+        f"  {safe_path}:{note.line}: {_safe_text(note.problem)} Fix: {_safe_text(note.fix)}"
+        for note in notes
+    )
     lines.append("Fix them, or say why they stand, then stop again.")
     return "\n".join(lines)

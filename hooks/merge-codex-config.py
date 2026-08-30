@@ -22,7 +22,7 @@ LEGACY = (
 )
 # Excludes our own name: strip_fences already removes our fenced block explicitly, by markers, not by name.
 PRIOR_PACKAGES = tuple(name for name in LEGACY if name != "agent-discipline-watcher")
-HOOK_LIFECYCLES = {
+CLAUDE_HOOK_LIFECYCLES = frozenset({
     "ConfigChange",
     "InstructionsLoaded",
     "PostToolBatch",
@@ -36,7 +36,22 @@ HOOK_LIFECYCLES = {
     "SubagentStop",
     "TaskCompleted",
     "UserPromptSubmit",
-}
+})
+CODEX_HOOK_LIFECYCLES = frozenset({
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "PreCompact",
+    "PostCompact",
+    "SessionStart",
+    "SessionEnd",
+    "UserPromptSubmit",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
+})
+# WHY: A separate vocabulary keeps Claude-only events out of Codex cleanup.
+HOOK_LIFECYCLES = CLAUDE_HOOK_LIFECYCLES | CODEX_HOOK_LIFECYCLES
 FENCE_START = "# >>> agent-discipline-watcher >>>"
 FENCE_END = "# <<< agent-discipline-watcher <<<"
 

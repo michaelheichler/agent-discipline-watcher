@@ -2,11 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { decodeAdwPolicy, sanitizeDisplay, type AdwBridgeRunner } from "./adw-config";
 
 import { createExtension } from "./index";
 import {
+  canonicalPath,
   hashlinePaths,
   hookToolName,
+  isMutatingTool,
   isPlainFilePath,
   isPostScanTool,
   isPreGateTool,
@@ -19,19 +22,26 @@ import {
 
 type Handler = (event: unknown, ctx?: unknown) => Promise<unknown>;
 
-function createHarness(run: (event: string, payload: Record<string, unknown>) => WatcherResult) {
+function createHarness(
+  run: (event: string, payload: Record<string, unknown>) => WatcherResult,
+  bridge: AdwBridgeRunner = (() => ({})) as AdwBridgeRunner,
+) {
   const handlers = new Map<string, Handler>();
+  const commands = new Map<string, { handler: Handler }>();
   const sent: unknown[] = [];
   const pi = {
     on(eventName: string, handler: Handler) {
       handlers.set(eventName, handler);
     },
+    registerCommand(name: string, spec: { handler: Handler }) {
+      commands.set(name, spec);
+    },
     async sendMessage(message: unknown, options: unknown) {
       sent.push({ message, options });
     },
   };
-  createExtension(pi as never, run as never);
-  return { handlers, sent };
+  createExtension(pi as never, run as never, bridge);
+  return { handlers, commands, sent };
 }
 
 function runScript(body: string): WatcherResult {
@@ -45,10 +55,71 @@ function runScript(body: string): WatcherResult {
   }
 }
 
+const TEST_CWD = process.cwd();
 const ctx = {
-  cwd: "/work",
+  cwd: TEST_CWD,
   sessionManager: { getSessionId: () => "s1" },
 };
+
+function bridgeState(values: Record<string, unknown>, operation: string): Record<string, unknown> {
+  return {
+    ok: true,
+    operation,
+    project_path: TEST_CWD,
+    config_path: `${TEST_CWD}/.agent-discipline.json`,
+    digest: null,
+    exists: operation === "write",
+    values,
+    effective: { adw_model: "" },
+    families: [{ name: "punctuation", states: ["off", "observe", "enforce"], locked: false }],
+    rules: [],
+    always_blocking_rules: [],
+    family_states: { punctuation: "enforce" },
+    rule_states: {},
+    runtime: { python: {}, embedding: {}, embedding_model: {} },
+  };
+}
+
+test("OMP model selection reaches the guarded Save request", async () => {
+  let saved: Record<string, unknown> | undefined;
+  const bridge: AdwBridgeRunner = request => {
+    if (request.operation === "write") {
+      saved = request.values;
+      return bridgeState(request.values ?? {}, "write");
+    }
+    return bridgeState({}, request.operation);
+  };
+  const { commands } = createHarness(() => ({}), bridge);
+  const command = commands.get("adw");
+  if (!command) throw new Error("ADW command was not registered");
+  const commandContext = {
+    cwd: TEST_CWD,
+    hasUI: true,
+    models: { list: () => [{ provider: "anthropic", id: "claude-sonnet-5" }, { provider: "openai-codex", id: "gpt-5.6" }] },
+    ui: {
+      notify() {},
+      async custom(factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: string) => void) => { handleInput?(data: string): void }) {
+        let outcome: string | undefined;
+        const component = factory({ requestRender() {} }, {}, {}, result => {
+          outcome = result;
+        });
+        for (let index = 0; index < 7; index += 1) component.handleInput?.("\u001b[B");
+        component.handleInput?.("\r");
+        component.handleInput?.("\r");
+        component.handleInput?.("\u001b");
+        for (let index = 0; index < 9; index += 1) component.handleInput?.("\u001b[B");
+        component.handleInput?.("\r");
+        await Promise.resolve();
+        await Promise.resolve();
+        return outcome;
+      },
+    },
+  };
+
+  await command.handler("configure", commandContext);
+
+  expect(saved?.adw_model).toBe("claude-sonnet-5");
+});
 
 describe("watcher helpers", () => {
   test("maps omp tool names to hook payloads", () => {
@@ -57,11 +128,73 @@ describe("watcher helpers", () => {
     expect(hookToolName("mcp__pi-agent_advise")).toBe("mcp__pi-agent_advise");
   });
 
+  test("registers separate ADW commands without touching the advisor command", () => {
+    const { commands } = createHarness(() => ({}));
+    expect([...commands.keys()]).toEqual(["adw", "agent-discipline"]);
+  });
+
+  test("sanitizes bridge values before OMP rendering", () => {
+    expect(sanitizeDisplay("\u001b[31mprivate\u001b[0m\n<markup>", 64)).toBe("private <markup>");
+    const state = decodeAdwPolicy({
+      ok: true,
+      digest: null,
+      values: { exempt_paths: ["safe", "\u001b[31munsafe"] },
+      effective: {},
+      families: [],
+      rules: [],
+      always_blocking_rules: [],
+      family_states: {},
+      rule_states: {},
+      runtime: {},
+    });
+    expect(state.values.exempt_paths).toEqual(["safe"]);
+  });
+
   test("normalizes camelCase write arguments", () => {
     expect(normalizeArgs({ filePath: "a.ts", newString: "x" })).toEqual({
       file_path: "a.ts",
       new_string: "x",
     });
+  });
+  test("rejects conflicting path aliases before dispatch", () => {
+    expect(() => normalizeArgs({ path: "src/a.ts", file_path: "src/b.ts" })).toThrow(
+      "conflicting path aliases",
+    );
+  });
+
+  test("canonicalizes supported target aliases and preserves edit text", () => {
+    expect(
+      normalizeArgs({
+        notebookPath: "src/notebook.ipynb",
+        newSource: "  indented source\n",
+        input: "[src/notebook.ipynb#A1B2]\n",
+      }),
+    ).toEqual({
+      file_path: "src/notebook.ipynb",
+      new_string: "  indented source\n",
+      input: "[src/notebook.ipynb#A1B2]\n",
+    });
+  });
+
+  test("rejects conflicting patch aliases", () => {
+    expect(() => normalizeArgs({ patch: "one", input: "two" })).toThrow(
+      "conflicting patch aliases",
+    );
+  });
+
+  test("canonicalizes targets under the session cwd", () => {
+    expect(canonicalPath("src/a.ts", TEST_CWD)).toBe(`${TEST_CWD}/src/a.ts`);
+    expect(canonicalPath("../outside.ts", TEST_CWD)).toBeUndefined();
+    expect(canonicalPath("/etc/hosts", TEST_CWD)).toBeUndefined();
+    expect(canonicalPath("src/\u0000a.ts", TEST_CWD)).toBeUndefined();
+  });
+
+  test("pre-gates every mutating file tool", () => {
+    for (const tool of ["write", "edit", "multiedit", "notebookedit", "apply_patch", "bash"]) {
+      expect(isMutatingTool(tool)).toBe(true);
+      expect(isPreGateTool(tool)).toBe(true);
+      expect(isPostScanTool(tool)).toBe(true);
+    }
   });
 
   test("extracts hashline edit paths from patch headers", () => {
@@ -69,35 +202,47 @@ describe("watcher helpers", () => {
     expect(hashlinePaths(patch)).toEqual(["src/a.ts", "lib/b.ts"]);
   });
 
-  test("uses resolvedPath for post-tool scans", () => {
-    expect(postToolPaths({}, { resolvedPath: "src/x.ts" })).toEqual(["src/x.ts"]);
+  test("ignores unverified resolvedPath for post-tool scans", () => {
+    expect(postToolPaths({}, { resolvedPath: "src/x.ts", pathVerified: true })).toEqual([]);
   });
 
-  test("extracts hashline paths from edit result content", () => {
+  test("ignores uncorrelated hashline paths from edit result content", () => {
     expect(
       postToolPaths(
         {},
         undefined,
         [{ type: "text", text: "[lib/b.ts#NEW1]\nPUT 1.=1:\n+ok\n" }],
       ),
-    ).toEqual(["lib/b.ts"]);
+    ).toEqual([]);
   });
 
-  test("unions paths from input, details, and result content", () => {
+  test("keeps input-derived paths while rejecting forged result paths", () => {
     expect(
       postToolPaths(
         { input: "[src/a.ts#A1B2]\n" },
-        { resolvedPath: "src/x.ts" },
+        { resolvedPath: "src/x.ts", pathVerified: true },
         [{ type: "text", text: "[lib/b.ts#NEW1]\n" }],
       ),
-    ).toEqual(["src/x.ts", "src/a.ts", "lib/b.ts"]);
+    ).toEqual(["src/a.ts"]);
   });
+
+  test("canonicalizes and correlates result paths under cwd", () => {
+    expect(
+      postToolPaths(
+        { path: "src/a.ts" },
+        undefined,
+        [{ type: "text", text: "[src/a.ts#A1B2]\n[../outside#BAD1]\n" }],
+        TEST_CWD,
+      ),
+    ).toEqual([`${TEST_CWD}/src/a.ts`]);
+  });
+
 
   test("skips non-plain write targets for pre-gates", () => {
     expect(isPlainFilePath("archive.zip:entry")).toBe(false);
     expect(isPlainFilePath("src/a.ts")).toBe(true);
     expect(isPreGateTool("write")).toBe(true);
-    expect(isPreGateTool("edit")).toBe(false);
+    expect(isPreGateTool("edit")).toBe(true);
   });
 
   test("resolves the shared skill checkout runner", () => {
@@ -108,6 +253,28 @@ describe("watcher helpers", () => {
     const result = runScript("echo broken >&2; exit 1");
     expect(result.decision).toBe("block");
     expect(result.reason).toContain("broken");
+  });
+  test("fails closed on malformed runner JSON and result fields", () => {
+    expect(runScript("printf '%s' 'not-json'")).toEqual({
+      decision: "block",
+      reason: "SessionStart watcher returned malformed JSON",
+    });
+    expect(runScript("printf '%s' '{\"decision\":123}'")).toEqual({
+      decision: "block",
+      reason: "SessionStart watcher returned malformed output",
+    });
+  });
+
+  test("bounds runner input before invoking the runner", () => {
+    const result = runWatcher("SessionStart", { content: "x".repeat(1_000_001) }, "/missing/runner");
+    expect(result).toEqual({
+      decision: "block",
+      reason: "SessionStart watcher input exceeded its size limit",
+    });
+  });
+  test("fails closed when runner output exceeds its limit", () => {
+    const result = runScript("printf '%65537s' ''");
+    expect(result.decision).toBe("block");
   });
 });
 
@@ -178,15 +345,86 @@ describe("omp event mapping", () => {
       }],
     });
   });
+  test.each(["write", "edit", "multiedit", "notebookedit", "apply_patch", "bash"])(
+    "advises when %s has no trusted post-tool target",
+    async (toolName) => {
+      let calls = 0;
+      const { handlers } = createHarness(() => {
+        calls += 1;
+        return {};
+      });
+      const result = await handlers.get("tool_result")!(
+        {
+          toolName,
+          input: {},
+          content: [{ type: "text", text: "saved" }],
+        },
+        ctx,
+      );
+      expect(calls).toBe(0);
+      expect(result).toEqual({
+        content: [{
+          type: "text",
+          text: "saved\n\n[agent-discipline-watcher]\nagent-discipline-watcher could not resolve the edited file path from this edit result. Re-verify the touched file before finishing.",
+        }],
+      });
+    },
+  );
 
-  test("scans hashline edit paths from result content", async () => {
+  test("blocks Stop after an unresolved mutating result", async () => {
+    const { handlers } = createHarness(() => ({}));
+    await handlers.get("tool_result")!(
+      {
+        toolName: "write",
+        input: {},
+        content: [{ type: "text", text: "saved" }],
+      },
+      ctx,
+    );
+    const result = await handlers.get("session_stop")!({}, ctx);
+    expect(result).toEqual({
+      decision: "block",
+      reason: "agent-discipline-watcher could not verify every mutating tool result. Re-verify the touched file before stopping.",
+    });
+  });
+  test("keeps Stop blocked after unresolved result followed by valid result", async () => {
+    const { handlers } = createHarness(() => ({}));
+    await handlers.get("tool_result")!(
+      {
+        toolName: "write",
+        input: {},
+        content: [{ type: "text", text: "saved" }],
+      },
+      ctx,
+    );
+    await handlers.get("tool_result")!(
+      {
+        toolName: "write",
+        input: { path: "a.md", content: "clean" },
+        content: [{ type: "text", text: "saved" }],
+      },
+      ctx,
+    );
+    const result = await handlers.get("session_stop")!({}, ctx);
+    expect(result).toEqual({
+      decision: "block",
+      reason: "agent-discipline-watcher could not verify every mutating tool result. Re-verify the touched file before stopping.",
+    });
+  });
+
+  test("rejects uncorrelated hashline paths from edit result content", async () => {
     const events: string[] = [];
     const { handlers } = createHarness((event, payload) => {
-      const filePath = (payload as { tool_input?: { file_path?: string } }).tool_input?.file_path ?? "";
+      const toolInput = payload.tool_input;
+      const filePath =
+        toolInput && typeof toolInput === "object" && !Array.isArray(toolInput) &&
+        "file_path" in toolInput && typeof toolInput.file_path === "string"
+          ? toolInput.file_path
+          : "";
       events.push(`${event}:${filePath}`);
       return {};
     });
-    await handlers.get("tool_result")!(
+    const result = await handlers.get("tool_result")!(
       {
         toolName: "edit",
         input: { input: "stale patch without headers" },
@@ -194,7 +432,15 @@ describe("omp event mapping", () => {
       },
       ctx,
     );
-    expect(events).toEqual(["PostToolUse:lib/b.ts"]);
+    expect(events).toEqual([]);
+    if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) {
+      throw new Error("expected a tool-result content response");
+    }
+    const first = result.content[0];
+    if (!first || typeof first !== "object" || !("text" in first) || typeof first.text !== "string") {
+      throw new Error("expected a text tool-result chunk");
+    }
+    expect(first.text).toContain("could not resolve the edited file path");
   });
 
   test("scans hashline edit paths from patch input", async () => {
@@ -212,7 +458,12 @@ describe("omp event mapping", () => {
       },
       ctx,
     );
-    expect(events).toEqual(["PostToolUse:src/a.ts", "PostToolUse:lib/b.ts"]);
+    expect(events).toEqual([
+      `PostToolUse:${TEST_CWD}/src/a.ts`,
+      `JudgeReview:${TEST_CWD}/src/a.ts`,
+      `PostToolUse:${TEST_CWD}/lib/b.ts`,
+      `JudgeReview:${TEST_CWD}/lib/b.ts`,
+    ]);
   });
 
   test("sends only the resolved file_path to PostToolUse, not the raw write content", async () => {
@@ -233,10 +484,10 @@ describe("omp event mapping", () => {
     );
     expect(payloads).toEqual([
       {
-        cwd: "/work",
+        cwd: TEST_CWD,
         session_id: "s1",
         tool_name: "Write",
-        tool_input: { file_path: "a.md" },
+        tool_input: { file_path: `${TEST_CWD}/a.md` },
       },
     ]);
   });
@@ -280,7 +531,7 @@ describe("omp event mapping", () => {
       return {};
     });
     await handlers.get("session_stop")!(event, ctx);
-    expect(payloads).toEqual([{ cwd: "/work", session_id: "s1", stop_hook_active: true }]);
+    expect(payloads).toEqual([{ cwd: TEST_CWD, session_id: "s1", stop_hook_active: true }]);
   });
 
   test("injects SessionStart context on the next turn", async () => {
@@ -301,5 +552,21 @@ describe("omp event mapping", () => {
         options: { deliverAs: "nextTurn", triggerTurn: false },
       },
     ]);
+  });
+  test("sends SessionStart block reasons as user-visible diagnostics", async () => {
+    const { handlers, sent } = createHarness(() => ({
+      decision: "block",
+      reason: "repair the blocked startup state",
+    }));
+    await handlers.get("session_start")!({}, ctx);
+    expect(sent[0]).toEqual({
+      message: {
+        customType: "agent-discipline-watcher.context",
+        content: "repair the blocked startup state",
+        display: false,
+        attribution: "agent-discipline-watcher",
+      },
+      options: { deliverAs: "nextTurn", triggerTurn: false },
+    });
   });
 });

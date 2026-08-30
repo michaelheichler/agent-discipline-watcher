@@ -90,3 +90,19 @@ def test_human_renderers_neutralize_control_and_markdown_injection() -> None:
         assert "\n# NOT A REAL HEADER" not in output
     assert "```" not in outputs[1]
     assert "\\`\\`\\`" in outputs[1]
+
+def test_human_renderers_escape_c1_and_bidi_controls() -> None:
+    finding = {
+        **FINDINGS[0],
+        "path": "evil\u0085\u202e.md",
+        "excerpt": "text\u2066",
+    }
+
+    text = render.render_text([finding], "scope")
+    markdown = render.render_md([finding], "scope")
+
+    assert "\u0085" not in text + markdown
+    assert "\u202e" not in text + markdown
+    assert "\u2066" not in text + markdown
+    assert "\\x85" in text
+    assert "\\u202e" in text

@@ -47,10 +47,9 @@ def test_only_the_lines_the_judge_calls_violating_survive(monkeypatch) -> None:
     assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == (CANDIDATES[0],)
 
 
-def test_an_index_the_judge_skipped_reads_as_clean() -> None:
-    kept = pattern_judge.parse_verdicts(_answer([{"index": 1, "verdict": "violating"}]), 3)
-
-    assert kept == (False, True, False)
+def test_an_incomplete_judge_answer_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        pattern_judge.parse_verdicts(_answer([{"index": 1, "verdict": "violating"}]), 3)
 
 
 def test_an_answer_without_an_array_raises_rather_than_confirming() -> None:

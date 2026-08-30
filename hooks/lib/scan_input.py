@@ -49,10 +49,9 @@ def file_line_count(path: Path) -> tuple[int, bool] | None:
         return None
 
 
-def fallback_findings(path: Path) -> list[dict]:
-    result = file_line_count(path)
-    count, capped = result if result is not None else (None, False)
-    policy = file_length_policy(count) if count is not None else None
+def fallback_findings_from_count(path: Path, count: int, capped: bool = True) -> list[dict]:
+    """Build a length or scan finding from an already-held file count without reopening the path."""
+    policy = file_length_policy(count)
     if policy is not None and policy[0] == "file_too_long":
         rule, action = policy
         shown = f"at least {count}" if capped else str(count)
@@ -73,6 +72,14 @@ def fallback_findings(path: Path) -> list[dict]:
         severity=None,
         tool_use_id=None,
     ).to_dict()]
+
+
+def fallback_findings(path: Path) -> list[dict]:
+    result = file_line_count(path)
+    if result is None:
+        return fallback_findings_from_count(path, 0, capped=False)
+    count, capped = result
+    return fallback_findings_from_count(path, count, capped)
 
 
 def read_scannable(path: Path, config: dict) -> str | None:

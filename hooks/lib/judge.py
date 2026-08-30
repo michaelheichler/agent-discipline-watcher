@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from typing import NamedTuple
 
 try:
@@ -70,8 +71,30 @@ def build_prompt(candidates: tuple[Candidate, ...]) -> str:
     return build_judge_prompt(request_for(candidates))
 
 
-def _run(prompt: str) -> str | None:
-    return None
+def _command(model: str = JUDGE_MODEL) -> list[str]:
+    return [
+        "claude", "-p",
+        "--model", model,
+        "--output-format", "json",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+        "--tools", "",
+        "--system-prompt", JUDGE_SYSTEM_PROMPT,
+    ]
+
+
+def _run(prompt: str, model: str = JUDGE_MODEL) -> str | None:
+    try:
+        finished = subprocess.run(
+            [*_command(model), prompt],
+            capture_output=True, text=True, check=False,
+            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return finished.stdout if finished.returncode == 0 else None
 
 
 def _result_text(raw: str) -> str:
@@ -82,29 +105,38 @@ def _result_text(raw: str) -> str:
 
 
 def parse_verdicts(text: str, candidates: tuple[Candidate, ...]) -> tuple[Verdict, ...]:
+    """Require one valid verdict per candidate, because omission must never silently clear a finding."""
     match = JSON_ARRAY_RE.search(text)
     if match is None:
         raise ValueError(f"judge answered without a JSON array: {text[:200]!r}")
     rows = json.loads(match.group(0))
+    if not isinstance(rows, list) or len(rows) != len(candidates):
+        raise ValueError("judge must answer every candidate exactly once")
+    parsed: dict[int, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict) or type(row.get("index")) is not int or row["index"] in parsed:  # pylint: disable=unidiomatic-typecheck
+            raise ValueError("judge returned duplicate or invalid candidate indexes")
+        if not 0 <= row["index"] < len(candidates):
+            raise ValueError("judge returned an out-of-range candidate index")
+        if row.get("verdict") not in (DESCRIBES_CODE, STATES_WHY):
+            raise ValueError("judge returned an invalid verdict")
+        parsed[row["index"]] = row
+    if set(parsed) != set(range(len(candidates))):
+        raise ValueError("judge must answer every candidate exactly once")
     return tuple(
-        Verdict(
-            candidates[row["index"]],
-            row.get("verdict") == DESCRIBES_CODE,
-            str(row.get("reason", "")),
-        )
-        for row in rows
-        if isinstance(row, dict) and isinstance(row.get("index"), int)
-        and 0 <= row["index"] < len(candidates)
-        and row.get("verdict") in (DESCRIBES_CODE, STATES_WHY)
+        Verdict(candidates[index], parsed[index]["verdict"] == DESCRIBES_CODE, str(parsed[index].get("reason", "")))
+        for index in range(len(candidates))
     )
 
 
-def judge(candidates: tuple[Candidate, ...]) -> tuple[Verdict, ...] | None:
+def judge(candidates: tuple[Candidate, ...], model: str | None = None) -> tuple[Verdict, ...] | None:
+    """Judge candidates with the selected OMP model or the safe default."""
     if not candidates:
         return ()
     if not available():
         return None
-    raw = _run(build_prompt(candidates))
+    selected = model.strip() if isinstance(model, str) and model.strip() else JUDGE_MODEL
+    raw = _run(build_prompt(candidates), selected)
     if raw is None:
         return None
     return parse_verdicts(_result_text(raw), candidates)

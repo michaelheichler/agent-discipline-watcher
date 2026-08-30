@@ -17,10 +17,17 @@ def _counts(findings: list[dict]) -> dict[str, int]:
 
 
 def _sanitize(value: object) -> str:
-    return "".join(
-        character if ord(character) > 31 and ord(character) != 127 else f"\\x{ord(character):02x}"
-        for character in str(value)
-    )
+    """Escape terminal controls and bidi markers before text or Markdown rendering."""
+    output: list[str] = []
+    for character in str(value):
+        code = ord(character)
+        if code <= 0x1F or code == 0x7F or 0x80 <= code <= 0x9F:
+            output.append(f"\\x{code:02x}")
+        elif 0x202A <= code <= 0x202E or 0x2066 <= code <= 0x2069:
+            output.append(f"\\u{code:04x}")
+        else:
+            output.append(character)
+    return "".join(output)
 
 
 def _markdown(value: object) -> str:

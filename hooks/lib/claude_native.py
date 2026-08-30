@@ -1,5 +1,7 @@
 """Generate and manage ADW's native Claude model-review hook block."""
 from __future__ import annotations
+# pylint: disable=too-many-lines,too-few-public-methods,too-many-branches,too-many-statements,unidiomatic-typecheck
+# The native settings adapter keeps its descriptor transaction and rollback invariants together.
 
 import json
 from contextlib import contextmanager
@@ -839,8 +841,6 @@ def _regular_generation(
         if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
             raise _SettingsChanged(f"settings target changed while writing: {name}")
         return hashlib.sha256(bytes(data)).hexdigest(), _metadata_key(after)
-    except _SettingsChanged:
-        raise
     except (OSError, UnicodeError) as exc:
         raise _SettingsChanged(f"settings target could not be checked while writing: {name}") from exc
     finally:
@@ -859,7 +859,6 @@ def _atomic_write_regular_open(
     *,
     expected_generation: tuple[str | None, tuple[int, int, int, int, int, int] | None] | None = None,
 ) -> None:
-    temporary: Path | None = None
     temporary_name = ""
     try:
         if leaf is not None and not stat.S_ISREG(leaf.st_mode):

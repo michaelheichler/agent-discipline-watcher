@@ -112,7 +112,7 @@ class BatchTestCase(unittest.TestCase):
         }
 
     def _record_call(self, call: dict, session_id: str = "s1") -> dict:
-        return record.run({"session_id": session_id, **call}, self.cfg)
+        return record.run({"session_id": session_id, "cwd": str(self.root), **call}, self.cfg)
 
     def _rows(self) -> list[dict]:
         ledger = self.ledger_root / reporting.LEDGER_FILENAME

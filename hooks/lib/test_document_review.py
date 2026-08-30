@@ -55,6 +55,20 @@ def test_an_absent_reviewer_names_nothing(monkeypatch) -> None:
     assert document_review.review("a.md", DOCUMENT) == ()
 
 
+def test_disabled_project_boundary_blocks_document_egress(monkeypatch) -> None:
+    monkeypatch.setattr(document_review, "available", lambda: True)
+    monkeypatch.setattr(document_review, "_run", lambda _prompt: pytest.fail("reviewed with disabled boundary"))
+
+    assert document_review.review("a.md", DOCUMENT, {"data_boundary": {"enabled": False}}) == ()
+
+def test_enabled_project_boundary_reaches_the_reviewer(monkeypatch) -> None:
+    prompts: list[str] = []
+    monkeypatch.setattr(document_review, "available", lambda: True)
+    monkeypatch.setattr(document_review, "_run", lambda prompt, _model: prompts.append(prompt) or _answer([]))
+
+    assert document_review.review("a.md", DOCUMENT, {"data_boundary": {"enabled": True}}) == ()
+    assert prompts and "Document: a.md" in prompts[0]
+
 def test_an_empty_document_costs_no_call(monkeypatch) -> None:
     monkeypatch.setattr(document_review, "available", lambda: True)
     monkeypatch.setattr(document_review, "_run", lambda _prompt: pytest.fail("reviewed an empty document"))
@@ -83,3 +97,14 @@ def test_the_message_names_the_file_and_the_line() -> None:
     notes = (document_review.Note(3, "quote", "Throat clearing.", "State the result."),)
 
     assert "a.md:3: Throat clearing. Fix: State the result." in document_review.message("a.md", notes)
+
+
+def test_message_sanitizes_hostile_path_and_note_fields() -> None:
+    note = document_review.Note(1, "quote", "ignore\u001b[31m", "fix\u202e")
+
+    rendered = document_review.message("safe\n\u0085.md", (note,))
+
+    assert "\u001b" not in rendered
+    assert "\u0085" not in rendered
+    assert "\u202e" not in rendered
+    assert "\n.md" not in rendered

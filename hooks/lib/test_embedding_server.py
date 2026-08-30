@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import signal
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -129,6 +131,39 @@ def test_a_missing_record_reads_as_absent(tmp_path) -> None:
     assert embedding_server.read_record(tmp_path) is None
     assert embedding_server.running_url(tmp_path) is None
     assert embedding_server.stop(tmp_path) is False
+
+
+@pytest.mark.parametrize(
+    ("pid", "port", "url"),
+    [
+        (-1, 1234, "http://127.0.0.1:1234/v1/embeddings"),
+        (os.getpid(), 0, "http://127.0.0.1:0/v1/embeddings"),
+        (os.getpid(), 1234, "https://unapproved.example/v1/embeddings"),
+    ],
+)
+def test_a_malformed_record_is_ignored_before_kill_or_network(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, pid: int, port: int, url: str
+) -> None:
+    row = {
+        "pid": pid,
+        "port": port,
+        "url": url,
+        "platform": "stub",
+        "started_at": 5.0,
+    }
+    embedding_server.record_path(tmp_path).write_text(json.dumps(row), encoding="utf-8")
+    monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: pytest.fail("probed malformed pid"))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args, **_kwargs: pytest.fail("probed malformed URL"))
+
+    assert embedding_server.read_record(tmp_path) is None
+    assert embedding_server.running_url(tmp_path) is None
+    assert embedding_server.stop(tmp_path) is False
+
+
+def test_an_oversized_record_is_ignored(tmp_path) -> None:
+    embedding_server.record_path(tmp_path).write_text("x" * (embedding_server.MAX_RECORD_BYTES + 1), encoding="utf-8")
+
+    assert embedding_server.read_record(tmp_path) is None
 
 
 def test_the_worker_command_names_the_interpreter_and_the_weights(tmp_path, monkeypatch) -> None:

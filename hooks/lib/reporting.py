@@ -182,8 +182,23 @@ def _deduplicated(findings: list[dict], config: dict | None = None) -> list[dict
     return result
 
 
-def _clip(value: object, limit: int) -> str:
+def _safe_text(value: object) -> str:
+    """Keep finding fields inert across terminal, Markdown, and model-message sinks."""
     text = str(value)
+    safe: list[str] = []
+    for character in text:
+        code = ord(character)
+        if character == "\n":
+            safe.append(character)
+        elif code < 32 or code == 127 or 0x80 <= code <= 0x9F or 0x202A <= code <= 0x202E or 0x2066 <= code <= 0x2069:
+            safe.append(" ")
+        else:
+            safe.append({"`": "'", "<": "‹", ">": "›"}.get(character, character))
+    return "".join(safe)
+
+
+def _clip(value: object, limit: int) -> str:
+    text = _safe_text(value)
     encoded = text.encode("utf-8")
     if len(encoded) <= limit:
         return text
@@ -215,14 +230,14 @@ def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
 
 
 def format_row(item: dict) -> str:
-    path = item.get("path") or item.get("file") or "<pending>"
-    status = item.get("status")
+    path = _safe_text(item.get("path") or item.get("file") or "<pending>").replace("\n", " ")
+    status = _safe_text(item.get("status")).replace("\n", " ") if item.get("status") else ""
     prefix = f"[{status}] " if status else ""
-    return (
-        f"{prefix}{path}:{item.get('line')} "
-        f"{item.get('family')}/{item.get('rule')}: "
-        f"{item.get('action')}"
-    )
+    family = _safe_text(item.get("family")).replace("\n", " ")
+    rule = _safe_text(item.get("rule")).replace("\n", " ")
+    line = _safe_text(item.get("line")).replace("\n", " ")
+    action = _safe_text(item.get("action")).replace("\n", " ")
+    return f"{prefix}{path}:{line} {family}/{rule}: {action}"
 
 
 def _default_ledger_root() -> Path:

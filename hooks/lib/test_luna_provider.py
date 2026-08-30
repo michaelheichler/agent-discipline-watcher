@@ -15,7 +15,6 @@ from lib.luna_provider import (
     ApprovalMode,
     LunaJudge,
     LunaProviderFailure,
-    OpenAICodexSdk,
     Sandbox,
     SdkAccount,
     SdkItem,

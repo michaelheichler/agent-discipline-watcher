@@ -68,10 +68,14 @@ class HookTestCase(unittest.TestCase):
         return reporting._read_jsonl(reporting.LEDGER_FILENAME, self.cfg["ledger_root"])
 
     def succeed(self, **overrides: object) -> dict:
+        record_gate = bool(overrides.pop("record_gate", False))
         payload = self.payload(**overrides)
         payload.pop("error")
         payload["hook_event_name"] = "PostToolUse"
-        return record.run(payload, self.cfg)
+        if record_gate:
+            return record.run(payload, self.cfg)
+        failure.record_success(payload, self.cfg)
+        return {}
 
 
 class FailureHookTests(HookTestCase):
@@ -575,7 +579,7 @@ class SuccessResetTests(HookTestCase):
             mock.patch.object(failure.session_state, "update_state", side_effect=OSError("read only")),
             mock.patch.object(failure.session_state, "update_state_strict", side_effect=OSError("read only")),
         ):
-            response = self.succeed()
+            response = self.succeed(record_gate=True)
         self.assertEqual(response["decision"], "block")
         self.assertIn("could not evaluate this edit", response["reason"])
         self.assertEqual(self.state(), before)
