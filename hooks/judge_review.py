@@ -253,9 +253,7 @@ def _comment_message(payload: object) -> str:
     text = _read(path, payloads.cwd(payload))
     if text is None:
         return ""
-    selected_model = cfg.get("adw_model")
-    model = selected_model if isinstance(selected_model, str) else None
-    verdicts = judge(candidates(str(path), text)[:MAX_CANDIDATES], model)
+    verdicts = judge(candidates(str(path), text)[:MAX_CANDIDATES], cfg.get("adw_model"))
     narrating = tuple(item for item in verdicts if item.narrates) if verdicts else ()
     return _message(narrating) if narrating else ""
 

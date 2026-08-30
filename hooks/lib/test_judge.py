@@ -85,9 +85,16 @@ def test_selected_model_reaches_the_comment_judge(monkeypatch) -> None:
         }),
     )
 
+    judge.judge(CANDIDATES, "claude-3-5-haiku-20241022")
     judge.judge(CANDIDATES, "claude-sonnet-5")
+    judge.judge(CANDIDATES, "claude-opus-4-1")
 
-    assert selected == ["claude-sonnet-5"]
+    assert selected == [
+        "claude-3-5-haiku-20241022",
+        judge.JUDGE_MODEL,
+        judge.JUDGE_MODEL,
+    ]
+    assert judge.JUDGE_MODEL == "claude-haiku-4-5"
 
 
 def test_an_errored_run_raises_rather_than_reporting_a_clean_file() -> None:

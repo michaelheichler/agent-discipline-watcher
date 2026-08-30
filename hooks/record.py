@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from failure import _config_roots, normalize_payload, record_success
-from lib import blocker_state, claude_journal, payloads, scan_input
+from lib import blocker_state, journal, payloads, scan_input
 from lib.config import effective_config, effective_hook_config
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
@@ -81,7 +81,7 @@ def _journal_edits(journal: _EditJournal, turn_id: str = "") -> None:
         )
         if journal.payload["session_id"]:
             try:
-                claude_journal.record_edit(
+                journal.record_edit(
                     journal.payload["session_id"], turn_id,
                     journal.payload["tool_use_id"],
                     payloads.resolved_path(path, Path(journal.payload["cwd"] or ".")),

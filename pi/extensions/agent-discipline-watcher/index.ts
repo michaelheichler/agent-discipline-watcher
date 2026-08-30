@@ -5,6 +5,7 @@ import {
   AdwConfigOverlayComponent,
   bridgeResponseError,
   decodeAdwPolicy,
+  isRecord,
   runConfigureBridge,
   sanitizeDisplay,
   type AdwBridgeRunner,
@@ -12,7 +13,13 @@ import {
   type AdwPolicyState,
 } from "./adw-config";
 import {
+  hashlineEdits,
+  hashlinePatchSource,
+  type HashlineEdit,
+} from "./hashline";
+import {
   blockReason,
+  canonicalPath,
   feedbackMessage,
   isPlainFilePath,
   isPostScanTool,
@@ -66,6 +73,18 @@ function stopHookRetryActive(event: SessionStopEvent): boolean {
 const UNRESOLVED_EDIT_SCAN =
   "agent-discipline-watcher could not resolve the edited file path from this edit result. Re-verify the touched file before finishing.";
 
+const JUDGES_INACTIVE =
+  "Data boundary is off, so every model judge stays inactive and only the regex rules run.";
+
+const UNDECODABLE_EDIT =
+  "agent-discipline-watcher could not decode this edit patch, so nothing was scanned. Split it into fewer sections and retry.";
+
+const UNRESOLVED_EDIT_TARGET =
+  "agent-discipline-watcher could not resolve an edit target inside the session directory, so nothing was scanned.";
+
+// Haiku only, because a stronger agent must never run.
+const HAIKU_MODEL_RE = /^claude-[\w.-]*haiku/i;
+
 function appendNotice(
   content: Array<{ type: string; text?: string }>,
   message: string,
@@ -108,6 +127,31 @@ function eventFailurePayload(
   return payload;
 }
 
+export function preGatePayloads(
+  ctx: ExtensionContext,
+  event: ToolCallEvent,
+  sections: readonly HashlineEdit[],
+): Array<Record<string, unknown>> {
+  if (sections.length === 0) {
+    return [
+      watcherPayload(ctx.cwd, sessionId(ctx), event.toolName, event.input, event.toolCallId),
+    ];
+  }
+  return sections.map((section) => {
+    const target = canonicalPath(section.path, ctx.cwd);
+    if (target === undefined) {
+      throw new Error(UNRESOLVED_EDIT_TARGET);
+    }
+    return watcherPayload(
+      ctx.cwd,
+      sessionId(ctx),
+      event.toolName,
+      { file_path: target, new_string: section.added },
+      event.toolCallId,
+    );
+  });
+}
+
 type AdwCommandContext = {
   cwd: string;
   hasUI: boolean;
@@ -143,6 +187,19 @@ function bridgeErrorText(error: unknown): string {
   return "ADW configuration bridge failed";
 }
 
+function judgesAreActive(state: AdwPolicyState): boolean {
+  const boundary = state.effective.data_boundary;
+  return isRecord(boundary) && boundary.enabled === true;
+}
+
+export function selectableModels(models: Array<{ provider: string; id: string }>): string[] {
+  return models
+    .filter(model => model.provider === "anthropic" && HAIKU_MODEL_RE.test(model.id))
+    .map(model => model.id)
+    .filter(model => sanitizeDisplay(model, 256) === model)
+    .slice(0, 256);
+}
+
 async function openAdwConfigure(
   args: string,
   ctx: AdwCommandContext,
@@ -168,14 +225,14 @@ async function openAdwConfigure(
     return;
   }
 
+  if (!judgesAreActive(state)) {
+    ctx.ui.notify(JUDGES_INACTIVE, "warning");
+  }
+
   const outcome = await ctx.ui.custom(
     (tui, _theme, _keybindings, done) =>
       new AdwConfigOverlayComponent(tui, state, {
-        availableModels: (ctx.models?.list() ?? [])
-          .filter(model => model.provider === "anthropic")
-          .map(model => model.id)
-          .filter(model => sanitizeDisplay(model, 256) === model)
-          .slice(0, 256),
+        availableModels: selectableModels(ctx.models?.list() ?? []),
         close: done,
         requestRender: () => tui.requestRender(),
         notify: (message, type) => ctx.ui.notify(sanitizeDisplay(message, 240), type),
@@ -252,19 +309,16 @@ function createExtension(
       return undefined;
     }
     try {
-      const result = run(
-        "PreToolUse",
-        watcherPayload(
-          ctx.cwd,
-          sessionId(ctx),
-          event.toolName,
-          event.input,
-          event.toolCallId,
-        ),
-      );
-      const reason = blockReason(result);
-      if (reason) {
-        return { block: true, reason: sanitizeDisplay(reason, 16 * 1024) };
+      const sections = hashlineEdits(hashlinePatchSource(event.input));
+      if (sections === undefined) {
+        return { block: true, reason: UNDECODABLE_EDIT };
+      }
+      for (const payload of preGatePayloads(ctx, event, sections)) {
+        const result = run("PreToolUse", payload);
+        const reason = blockReason(result);
+        if (reason) {
+          return { block: true, reason: sanitizeDisplay(reason, 16 * 1024) };
+        }
       }
       return undefined;
     } catch (error) {
@@ -279,6 +333,8 @@ function createExtension(
       return undefined;
     }
     const session = sessionId(ctx);
+    // Bash needs no target because pre_bash gates it pre-call.
+    const targetRequired = event.toolName.toLowerCase() !== "bash";
     let paths: string[];
     try {
       paths = postToolPaths(event.input, event.details, event.content, ctx.cwd);
@@ -286,7 +342,8 @@ function createExtension(
       paths = [];
     }
     if (event.isError) {
-      if (paths.length === 0) unresolvedSessions.add(session);
+      const unresolved = targetRequired && paths.length === 0;
+      if (unresolved) unresolvedSessions.add(session);
       let result;
       try {
         result = run("PostToolUseFailure", eventFailurePayload(ctx, event));
@@ -296,11 +353,14 @@ function createExtension(
       const messages: string[] = [];
       const message = feedbackMessage(result);
       if (message) messages.push(message);
-      if (paths.length === 0) messages.push(UNRESOLVED_EDIT_SCAN);
+      if (unresolved) messages.push(UNRESOLVED_EDIT_SCAN);
       const combined = [...new Set(messages)].join("\n\n");
       return combined ? { content: appendNotice(event.content, combined) } : undefined;
     }
     if (paths.length === 0) {
+      if (!targetRequired) {
+        return undefined;
+      }
       unresolvedSessions.add(session);
       return { content: appendNotice(event.content, UNRESOLVED_EDIT_SCAN) };
     }

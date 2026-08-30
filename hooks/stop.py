@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
-
-from lib import payloads, session_state
-from lib import codex_luna
+from lib import host, payloads, session_state, turn_adapter, turn_retry
 from lib.config import effective_hook_config
 from lib.embedding_session import close_turn, lease_root_for
 from lib.end_turn import foreign_scope_notice, unresolved_reason
@@ -24,7 +21,7 @@ def _verdict(payload: dict, cfg: dict) -> dict:
     reason = unresolved_reason(payload, cfg)
     if reason:
         return stop_block(reason)
-    if os.environ.get("ADW_CODEX_HOOK") == "1":
+    if host.is_codex_host():
         return {}
     notice = foreign_scope_notice(payload, cfg)
     return system_message(notice) if notice else {}
@@ -43,7 +40,8 @@ def run(
         session_id = payloads.session_id(payload)
         retry = payloads.stop_hook_active(payload)
         host_turn_id = payloads.turn_id(payload)
-        retry_turn_id = codex_luna.retry_turn_id(session_id, cfg.get("state_root"))
+        adapter = turn_adapter.for_turn(injected_provider=provider is not None)
+        retry_turn_id = turn_retry.retry_turn_id(session_id, cfg.get("state_root"))
         state_turn_id = ""
         if session_id and not retry:
             state = session_state.read_state(session_id, cfg.get("state_root"))
@@ -53,14 +51,12 @@ def run(
             session_state.advance_turn(session_id, cfg.get("state_root"))
             close_turn(session_id, lease_root_for(cfg))
 
-        codex_mode = os.environ.get("ADW_CODEX_HOOK") == "1" or provider is not None
-
         def gate(turn_id: str) -> dict:
             verdict = _verdict(payload, cfg)
             if verdict.get("decision") == "block":
                 return verdict
-            if codex_mode:
-                reviewed = codex_luna.review(
+            if adapter.reviews_turns:
+                reviewed = adapter.review(
                     payload,
                     turn_id=host_turn_id or retry_turn_id or state_turn_id or turn_id,
                     state_root=cfg.get("state_root"),

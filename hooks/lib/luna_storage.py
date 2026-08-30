@@ -1,4 +1,4 @@
-"""Descriptor-owned storage for the Luna judge boundary."""
+"""Descriptors rather than paths, because a path re-resolved after its check can point somewhere else."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -15,7 +15,7 @@ _LEAF_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
 
 
 class LunaProviderFailure(RuntimeError):
-    """A safe, user-facing Luna provider failure."""
+    """Carry a category because a caller must tell a missing login from a broken worker."""
 
     def __init__(self, message: str, *, category: str = "provider") -> None:
         super().__init__(message)
@@ -24,6 +24,8 @@ class LunaProviderFailure(RuntimeError):
 
 @dataclass(frozen=True)
 class RuntimePaths:
+    """Pin descriptors beside paths because a path alone cannot prove the directory never moved."""
+
     codex_home: Path
     cwd: Path
     call_fd: int | None = None
@@ -35,7 +37,7 @@ class RuntimePaths:
 
 
 class SecureJudgeStorage:
-    """Hold trusted directory descriptors for one complete judge call."""
+    """One open scope per judge call, because a descriptor reopened later cannot prove the same directory."""
 
     def __init__(
         self,
@@ -340,7 +342,7 @@ def _remove_tree_at(parent_fd: int, name: str) -> None:
 
 
 def _remove_directory_contents(descriptor: int) -> None:
-    """Remove entries through an already-owned directory descriptor."""
+    """Reached through the owned descriptor, because a path walk here would follow a symlink planted mid-call."""
     try:
         entries = tuple(os.scandir(descriptor))
     except OSError:

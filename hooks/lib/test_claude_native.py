@@ -10,7 +10,7 @@ import threading
 
 import pytest
 
-from lib import claude_native, claude_journal, session_state
+from lib import claude_native, journal, session_state
 
 
 def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> None:
@@ -62,12 +62,19 @@ def test_preset_switch_is_idempotent_and_preserves_unrelated_settings(tmp_path: 
     assert len(managed) == (1 if preset == "luna" else 0)
 
 
-def test_preset_selection_uses_only_exact_remote_signal_or_explicit_haiku(tmp_path: Path) -> None:
-    assert claude_native.default_preset({}, preset_path=tmp_path / "missing") == "mixed"
-    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "true"}, preset_path=tmp_path / "missing") == "haiku"
-    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "TRUE"}, preset_path=tmp_path / "missing") == "mixed"
-    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=tmp_path / "missing") == "haiku"
-    assert claude_native.default_preset({"TERM_PROGRAM": "Claude"}, preset_path=tmp_path / "missing") == "mixed"
+def test_preset_default_is_haiku_and_the_mix_is_opt_in(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+    assert claude_native.default_preset({}, preset_path=missing) == "haiku"
+    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "true"}, preset_path=missing) == "haiku"
+    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "TRUE"}, preset_path=missing) == "haiku"
+    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=missing) == "haiku"
+    assert claude_native.default_preset({"TERM_PROGRAM": "Claude"}, preset_path=missing) == "haiku"
+    assert claude_native.default_preset({"ADW_CLAUDE_PRESET": "mixed"}, preset_path=missing) == "mixed"
+
+    stored = tmp_path / "preset"
+    claude_native.set_preset("mixed", settings_path=tmp_path / "settings.json", preset_path=stored)
+    assert claude_native.default_preset({}, preset_path=stored) == "mixed"
+    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=stored) == "haiku"
 
 
 def test_candidate_journal_deduplicates_final_content_hash_and_excludes_unrelated_files(tmp_path: Path) -> None:
@@ -76,12 +83,12 @@ def test_candidate_journal_deduplicates_final_content_hash_and_excludes_unrelate
     unrelated = tmp_path / "b.py"
     unrelated.write_text("value = 2\n", encoding="utf-8")
 
-    first = claude_journal.record_edit("session", "turn-1", "tool-1", source, state_root=tmp_path / "state")
-    second = claude_journal.record_edit("session", "turn-1", "tool-2", source, state_root=tmp_path / "state")
+    first = journal.record_edit("session", "turn-1", "tool-1", source, state_root=tmp_path / "state")
+    second = journal.record_edit("session", "turn-1", "tool-2", source, state_root=tmp_path / "state")
 
     assert first
     assert second == []
-    rows = claude_journal.read("session", state_root=tmp_path / "state")
+    rows = journal.read("session", state_root=tmp_path / "state")
     assert len(rows) == 1
     assert rows[0]["path"] == str(source)
     assert rows[0]["content_hash"]
@@ -93,11 +100,11 @@ def test_candidate_journal_drops_a_previous_candidate_when_final_content_changes
     source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
     state_root = tmp_path / "state"
 
-    claude_journal.record_edit("session", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("session", "turn-1", "tool-1", source, state_root=state_root)
     source.write_text("value = 2\n", encoding="utf-8")
-    claude_journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
+    journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
 
-    assert claude_journal.read("session", state_root=state_root) == []
+    assert journal.read("session", state_root=state_root) == []
 
 
 def test_candidate_journal_canonicalizes_relative_absolute_and_symlink_aliases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,14 +115,14 @@ def test_candidate_journal_canonicalizes_relative_absolute_and_symlink_aliases(t
     alias.symlink_to(source)
     monkeypatch.chdir(tmp_path)
 
-    relative = claude_journal.record_edit("session", "turn-1", "tool-1", "a.md", state_root=state_root)
-    absolute = claude_journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
-    linked = claude_journal.record_edit("session", "turn-3", "tool-3", alias, state_root=state_root)
+    relative = journal.record_edit("session", "turn-1", "tool-1", "a.md", state_root=state_root)
+    absolute = journal.record_edit("session", "turn-2", "tool-2", source, state_root=state_root)
+    linked = journal.record_edit("session", "turn-3", "tool-3", alias, state_root=state_root)
 
     assert relative
     assert absolute == []
     assert linked == []
-    rows = claude_journal.read("session", state_root=state_root)
+    rows = journal.read("session", state_root=state_root)
     assert len(rows) == 1
     assert rows[0]["path"] == str(source.resolve())
     assert rows[0]["path_identity"] == str(source.resolve())
@@ -126,12 +133,12 @@ def test_candidate_journal_prunes_the_old_path_after_a_move(tmp_path: Path) -> N
     new = tmp_path / "new.md"
     state_root = tmp_path / "state"
     old.write_text("A paragraph that should be reviewed.\n", encoding="utf-8")
-    claude_journal.record_edit("session", "turn-1", "tool-1", old, state_root=state_root)
+    journal.record_edit("session", "turn-1", "tool-1", old, state_root=state_root)
     old.rename(new)
 
-    claude_journal.record_edit("session", "turn-2", "tool-2", new, state_root=state_root)
+    journal.record_edit("session", "turn-2", "tool-2", new, state_root=state_root)
 
-    rows = claude_journal.read("session", state_root=state_root)
+    rows = journal.read("session", state_root=state_root)
     assert len(rows) == 1
     assert rows[0]["path"] == str(new.resolve())
 
@@ -141,15 +148,15 @@ def test_candidate_journal_discards_malformed_stale_path_rows_without_crashing(t
     state_root = tmp_path / "state"
     source.write_text("A paragraph that should be reviewed.\n", encoding="utf-8")
     session_state.write_state("session", {
-        claude_journal.STATE_KEY: [{
+        journal.STATE_KEY: [{
             "role": "document", "path": "\x00invalid", "source_context": "stale",
             "content_hash": "stale",
         }],
     }, state_root)
 
-    claude_journal.record_edit("session", "turn", "tool", source, state_root=state_root)
+    journal.record_edit("session", "turn", "tool", source, state_root=state_root)
 
-    rows = claude_journal.read("session", state_root=state_root)
+    rows = journal.read("session", state_root=state_root)
     assert len(rows) == 1
     assert rows[0]["path"] == str(source.resolve())
 
@@ -161,7 +168,7 @@ def test_candidate_journal_rejects_fifo_without_blocking(tmp_path: Path) -> None
     result: list[list[dict]] = []
 
     def read_fifo() -> None:
-        result.append(claude_journal.record_edit("session", "turn", "tool", fifo, state_root=tmp_path / "state"))
+        result.append(journal.record_edit("session", "turn", "tool", fifo, state_root=tmp_path / "state"))
         finished.set()
 
     thread = threading.Thread(target=read_fifo, daemon=True)
@@ -173,10 +180,10 @@ def test_candidate_journal_rejects_fifo_without_blocking(tmp_path: Path) -> None
 
 def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "large.md"
-    monkeypatch.setattr(claude_journal, "MAX_FILE_BYTES", 32, raising=False)
+    monkeypatch.setattr(journal, "MAX_FILE_BYTES", 32, raising=False)
     source.write_text("A paragraph that is larger than the bounded journal read.\n", encoding="utf-8")
 
-    assert claude_journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
+    assert journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
 def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_unrelated_hooks() -> None:
@@ -245,7 +252,7 @@ def test_adw_judge_launcher_uses_the_newest_compatible_python(tmp_path: Path) ->
         }, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert '"preset": "mixed"' in result.stdout
+    assert '"preset": "haiku"' in result.stdout
 
 
 def test_adw_judge_launcher_resolves_a_symlinked_install(tmp_path: Path) -> None:
@@ -264,7 +271,7 @@ def test_adw_judge_launcher_resolves_a_symlinked_install(tmp_path: Path) -> None
         }, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert '"preset": "mixed"' in result.stdout
+    assert '"preset": "haiku"' in result.stdout
 
 
 def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:

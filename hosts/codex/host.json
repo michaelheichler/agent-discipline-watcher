@@ -1,0 +1,14 @@
+{
+  "name": "codex",
+  "title": "OpenAI Codex",
+  "summary": "The Codex CLI and its app surfaces, judging on Luna through the pinned SDK.",
+  "adapters": ["codex_luna"],
+  "entry_scripts": ["merge-codex-config.py"],
+  "installer": "install.sh",
+  "extra_paths": [],
+  "installer_note": "Merges one fenced block into config.toml and builds the pinned SDK runtime.",
+  "writes": [
+    "~/.codex/config.toml, inside the agent-discipline-watcher fence only",
+    "~/.adw/runtime/codex/venv"
+  ]
+}

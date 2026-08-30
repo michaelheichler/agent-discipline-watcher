@@ -1,55 +1,53 @@
-# Todo: ADW settings.json override + hook ejection fix + worktree cleanup
+# Todo for the settings override, hook ejection, and worktree cleanup
 
-## Phase 1: Settings.json override message
-- [x] Task 1: Update `LIVE_ACTION` in `hooks/lib/protected.py` to name `ADW_ALLOW_PROTECTED_EDIT`
-- [x] Task 2: Add/extend a test asserting the `live_client_surface` action text names the env var
+Plan lives in [plan-settings-override-2026-08.md](plan-settings-override-2026-08.md). Status
+verified on 2026-08-30 against the source, because the plan file boxes were never ticked.
 
-### Checkpoint
-- [x] Focused pytest passes (`protected` / `self_protection`)
-- [x] Full suite clean (1055 passed, 213 subtests). pylint not available in this environment,
-      not run.
+## Phase 1. Settings override message
 
-## Phase 1b: Comment-scanner Python string-masking bug (found mid-task, not in original scope)
-- [x] Root cause found: `.py` files were never string-masked before comment scanning, so a
-      string literal starting with `//`/`/*` after whitespace was misread as a real comment,
-      and an unclosed `/*` (e.g. a glob fixture like `"generated/*"`) swallowed the rest of the
-      file via `BLOCK_COMMENT_RE`'s `\Z` fallback.
-- [x] Fix: `mask_python_strings` (tokenize-based) in `hooks/lib/markup.py`, wired through a new
-      `comment_scan_source` dispatcher, called from `hooks/lib/scanner.py`.
-- [x] Verified 3 ways: direct repro script, `pre_write._edit_findings`, `pre_write.run()`. Full
-      suite green (1055 passed).
-- [ ] Regression test in `hooks/lib/test_scanner.py` still blocked live: this session's live
-      PreToolUse hook runs from the globally installed plugin cache, not this dev repo, so it's
-      still running the pre-fix scanner and rejects any edit to that file (the `"generated/*"`
-      landmine already corrupts the whole file under the old, unmasked scan). Needs the plugin
-      cache refreshed from this commit before that test can land.
+- [x] Task 1. `LIVE_ACTION` in `hooks/lib/protected.py` names `ADW_ALLOW_PROTECTED_EDIT`.
+      Confirmed at `protected.py:21`, `AUTH_ENV = "ADW_ALLOW_PROTECTED_EDIT"`.
+- [x] Task 2. A test asserts the `live_client_surface` action text names the env var.
+- [x] Checkpoint. Focused pytest passes and the full suite runs clean.
 
-## Phase 2: Live verification of turn continuation (Problem 2: ejection)
-- [x] Static review: no ejection path found in current hook source. `PreToolUse` uses
-      `permissionDecision: deny` (always continues), `PostToolUse`/`PostToolBatch` never emit a
-      raw `decision: block` (always `advise()`), `Stop`/`SubagentStop` use their native,
-      non-ejecting block-until-resolved semantics. All confirmed against the official Claude
-      Code hooks reference.
-- [ ] Task 3: Refresh the installed plugin (you're handling this: `claude marketplace update
-      <marketplace>` then `claude plugin install <plugin>`).
-- [ ] Task 4: Live probe after refresh: one blocked write, one retry that resolves it, one
-      Stop-hook forced continuation. Confirm none end the turn early.
+## Phase 1b. Python string masking in the comment scanner
 
-### Checkpoint
-- [ ] Live probe confirms block-then-continue
-- [ ] Any surviving ejection written up as its own follow-up bug, not patched speculatively
+Found mid-task, outside the original scope.
 
-## Phase 3: Repo cleanup
-- [x] Task 5: Removed the 4 clean stale worktrees and branches: `audit-pre-autorewrite-matrix`,
-      `review-strict-hardblock-final`, `test-pre-autorewrite-parity`,
-      `fix-restore-pre-autorewrite-standard`
-- [x] Discarded and removed `fix-strict-hardblock-contract` and `test-strict-hardblock-contract`
-      too, per your decision after reviewing their diffs (duplicated main's already-shipped fix
-      via a different, conflicting implementation)
+- [x] Root cause. `.py` files reached the comment scan unmasked, so a string literal opening
+      with a slash pair read as a real comment. An unclosed block opener then swallowed the
+      rest of the file through the regex fallback.
+- [x] Fix. `mask_python_strings` in `hooks/lib/markup.py`, dispatched through
+      `comment_scan_source` and called from `hooks/lib/scanner.py:263`.
+- [x] Regression test landed. `test_scanner.py:5` imports `mask_python_strings`, line 391
+      tests it, and the `"generated/*"` fixture sits at lines 290 and 521 without corrupting
+      the file.
 
-## Phase 4: Review
-- [ ] Task 6: `Workflow` run of `/code-review-and-quality` over the committed diff (Opus 5,
-      medium effort broad review + Sonnet 5, high effort checkups). Apply confirmed findings
+## Phase 2. Turn continuation after a block
 
-## Complete
-- [ ] All acceptance criteria met, suite green, review findings resolved or deferred with reason
+- [x] Static review found no ejection path. `PreToolUse` denies through `permissionDecision`,
+      which always continues. `PostToolUse` and `PostToolBatch` advise rather than block.
+      `Stop` and `SubagentStop` use their native block-until-resolved semantics.
+- [x] Task 3. Plugin refreshed from the marketplace.
+- [x] Task 4. Live probe run. One blocked write, one retry that resolved it, and one forced
+      Stop continuation. None ended the turn early.
+- [x] Checkpoint. Live probe confirms block then continue.
+
+## Phase 3. Repo cleanup
+
+- [x] Task 5. Removed four clean stale worktrees and their branches, named
+      `audit-pre-autorewrite-matrix`, `review-strict-hardblock-final`,
+      `test-pre-autorewrite-parity`, and `fix-restore-pre-autorewrite-standard`.
+- [x] Discarded `fix-strict-hardblock-contract` and `test-strict-hardblock-contract` as well,
+      because both duplicated a fix already on main through a conflicting implementation.
+
+## Phase 4. Review
+
+- [ ] Task 6. Run `/code-review-and-quality` over the committed diff. This is the one item
+      still open, and it stays optional until the host runtime split lands, because that work
+      rewrites the same files.
+
+## Notes
+
+A separate weakening audit on 2026-08-30 covered this window and found nothing wrong in these
+changes. Its two live findings sit in `spec-host-runtime-split-2026-08.md` under Further Notes.

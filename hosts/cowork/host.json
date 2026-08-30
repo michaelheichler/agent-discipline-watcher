@@ -1,0 +1,13 @@
+{
+  "name": "cowork",
+  "title": "Claude Cowork",
+  "summary": "Ships prepped rather than verified, because nobody has confirmed what runs inside its VM.",
+  "adapters": [],
+  "entry_scripts": [],
+  "installer": null,
+  "extra_paths": [],
+  "installer_note": "Plugins sync from the claude.ai account, so no local installer applies.",
+  "writes": [
+    "nothing on this machine"
+  ]
+}

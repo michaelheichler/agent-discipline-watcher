@@ -1,9 +1,8 @@
-"""Decides one named pattern per sentence, because the candidate stage answers what is near and only a reader answers what is true."""
+"""One reader per sentence, because the candidate stage answers what is near, not what is true."""
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
@@ -13,18 +12,22 @@ except ImportError:
     from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
 
 try:
-    from .judge import JUDGE_TIMEOUT_SECONDS, _environment, available
+    from . import judge_provider
+    from .judge import JUDGE_TIMEOUT_SECONDS, available
+    from .judge_model import DEFAULT_JUDGE_MODEL
 except ImportError:
-    from judge import JUDGE_TIMEOUT_SECONDS, _environment, available
+    import judge_provider
+    from judge import JUDGE_TIMEOUT_SECONDS, available
+    from judge_model import DEFAULT_JUDGE_MODEL
 
 VIOLATING = "violating"
 CLEAN = "clean"
 BATCH_SIZE = 20
-# WHY: A rule at the judged gate reports on its reader alone, so it is worth a stronger one than the batched sentence pass.
-JUDGED_GATE_MODEL = "claude-sonnet-5"
+# Haiku only, because a stronger agent must never run.
+JUDGED_GATE_MODEL = DEFAULT_JUDGE_MODEL
 JUDGE_WORKERS = 8
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
-# WHY: A stable system prompt keeps the prefix in the one hour cache, which is the difference between a cent and a fraction of one.
+# Stable to keep the hour cache, a cent down to a fraction.
 SYSTEM_PROMPT = (
     "You decide whether one sentence instantiates one named writing pattern.\n"
     "You are given the pattern name, the fix the pattern asks for, and real examples of both sides.\n"
@@ -62,30 +65,12 @@ def build_prompt(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) ->
     return build_judge_prompt(request_for(rule, candidates))
 
 
-def _command(model: str) -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--tools", "",
-        "--system-prompt", SYSTEM_PROMPT,
-    ]
+def _provider(model: str) -> judge_provider.Provider:
+    return judge_provider.Provider(model, SYSTEM_PROMPT, JUDGE_TIMEOUT_SECONDS)
 
 
 def _run(prompt: str, model: str) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(model), prompt],
-            capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return finished.stdout if finished.returncode == 0 else None
+    return judge_provider.complete(prompt, _provider(model)).text
 
 
 def parse_verdicts(raw: str, size: int) -> tuple[bool, ...]:
@@ -117,10 +102,8 @@ def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...], mode
     return parse_verdicts(raw, len(batch)) if raw is not None else (False,) * len(batch)
 
 
-def confirm(
-    rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: str
-) -> tuple[PatternCandidate, ...]:
-    """An absent judge confirms nothing, because a candidate stage alone was measured at 0.62 precision on one rule."""
+def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: str) -> tuple[PatternCandidate, ...]:
+    """Nothing survives an absent judge, because the candidate stage alone measured 0.62."""
     if not candidates or not available():
         return ()
     kept: list[PatternCandidate] = []
@@ -130,9 +113,7 @@ def confirm(
     return tuple(kept)
 
 
-def confirm_all(
-    work: tuple[tuple[PatternRule, tuple[PatternCandidate, ...]], ...], model: str
-) -> dict[str, tuple[PatternCandidate, ...]]:
+def confirm_all(work: tuple[tuple[PatternRule, tuple[PatternCandidate, ...]], ...], model: str) -> dict[str, tuple[PatternCandidate, ...]]:
     """Judged in parallel because one call per rule ran 27 times in series and cost a file scan 228 seconds."""
     pending = tuple((rule, candidates) for rule, candidates in work if candidates)
     if not pending or not available():

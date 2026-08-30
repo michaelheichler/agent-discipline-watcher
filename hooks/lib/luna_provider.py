@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from .judge_contracts import JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload
-from .codex_runtime import require_runtime
+from .luna_runtime import require_runtime
 from .luna_storage import LunaProviderFailure, SecureJudgeStorage
 
 

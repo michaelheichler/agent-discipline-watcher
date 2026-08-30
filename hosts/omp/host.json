@@ -1,0 +1,14 @@
+{
+  "name": "omp",
+  "title": "OMP (oh-my-pi)",
+  "summary": "The TypeScript extension, judging in process on the model the user picked.",
+  "adapters": [],
+  "entry_scripts": [],
+  "installer": "install.sh",
+  "extra_paths": ["pi"],
+  "installer_note": "Delegates to pi/install.sh, which owns the extension surface.",
+  "writes": [
+    "the OMP agent extension directory",
+    "~/.adw/omp"
+  ]
+}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lib import codex_luna, payloads, session_state
+from lib import payloads, session_state, turn_retry
 from lib.config import effective_hook_config
 from lib.hookio import read_payload, write_payload
 
@@ -19,7 +19,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
         session_state.release_session_lease(session_id, state_root)
     except Exception:
         pass
-    codex_luna.clear_retry_identity(session_id, state_root)
+    turn_retry.clear_retry_identity(session_id, state_root)
     return {}
 
 

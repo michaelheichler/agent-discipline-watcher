@@ -8,20 +8,21 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import claude_journal, payloads, session_state
-from .claude_luna import _comment_feedback, _document_feedback
+from . import journal, payloads, session_state
+from .luna_feedback import comment_feedback as _comment_feedback
+from .luna_feedback import document_feedback as _document_feedback
 from .config import effective_hook_config
 from .document_review import request_for as document_request
 from .hookio import stop_block
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
+from .turn_retry import RETRY_KEY, clear_retry_identity, retry_turn_id
 
 
 STATE_KEY = "codex_luna_reviewed_turns"
 IN_FLIGHT_KEY = "codex_luna_inflight_reviews"
 FAILED_KEY = "codex_luna_failed_reviews"
-RETRY_KEY = "codex_luna_retry_turn"
 MAX_REVIEWED_TURNS = 64
 MAX_FAILURE_ATTEMPTS = 3
 RESERVATION_TTL_SECONDS = JUDGE_TIMEOUT_SECONDS
@@ -49,24 +50,6 @@ def _bounded(value: object) -> str:
 
 def _turn_key(turn_id: str) -> str:
     return turn_id if isinstance(turn_id, str) and turn_id else "<initial>"
-
-
-def retry_turn_id(session_id: str, state_root: str | Path | None) -> str:
-    try:
-        value = session_state.read_state(session_id, state_root).get(RETRY_KEY)
-    except (OSError, ValueError, TypeError):
-        return ""
-    return value if isinstance(value, str) and value else ""
-
-
-def clear_retry_identity(session_id: str, state_root: str | Path | None) -> None:
-    def update(state: dict) -> dict:
-        return {key: value for key, value in state.items() if key != RETRY_KEY}
-
-    try:
-        session_state.update_state(session_id, update, state_root)
-    except (OSError, ValueError, TypeError):
-        pass
 
 
 def _active_token(row: object, now: float) -> bool:
@@ -262,7 +245,7 @@ def _journal_rows(
     if not session_id:
         return []
     try:
-        rows = claude_journal.read(session_id, state_root=state_root)
+        rows = journal.read(session_id, state_root=state_root)
     except (OSError, ValueError, TypeError) as exc:
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
     matching = [

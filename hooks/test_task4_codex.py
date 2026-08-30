@@ -11,7 +11,7 @@ import session_end
 import session_start
 import stop
 import subagent_start
-from lib import claude_journal, codex_luna, reporting, session_state
+from lib import journal, codex_luna, reporting, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_storage import LunaProviderFailure
 
@@ -95,7 +95,7 @@ def test_codex_stop_judges_current_session_journal_once_and_session_end_releases
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = Provider(_result(ReviewKind.DOCUMENT))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
@@ -106,7 +106,7 @@ def test_codex_stop_judges_current_session_journal_once_and_session_end_releases
     assert len(provider.calls) == 1
     assert provider.calls[0].review_kind is ReviewKind.DOCUMENT
     source.write_text("A second document.\n", encoding="utf-8")
-    claude_journal.record_edit("s1", "turn-2", "tool-2", source, state_root=state_root)
+    journal.record_edit("s1", "turn-2", "tool-2", source, state_root=state_root)
     third = stop.run(
         {"session_id": "s1", "turn_id": "turn-2", "stop_hook_active": False, "cwd": str(tmp_path)},
         config,
@@ -125,7 +125,7 @@ def test_codex_stop_provider_failure_is_one_bounded_actionable_block(tmp_path: P
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = Provider(error=LunaProviderFailure("subscription unavailable", category="authentication"))
 
     response = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
@@ -143,7 +143,7 @@ def test_codex_stop_journal_failure_blocks_and_active_retry_does_not_silently_al
     state_root = tmp_path / "state"
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
-    monkeypatch.setattr(codex_luna.claude_journal, "read", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal unavailable")))
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal unavailable")))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))
     retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))
@@ -160,7 +160,7 @@ def test_codex_stop_provider_failure_rolls_back_reservation_for_retry(tmp_path: 
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = FlakyProvider(LunaProviderFailure("subscription unavailable", category="authentication"), _result(ReviewKind.DOCUMENT))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
@@ -178,7 +178,7 @@ def test_codex_stop_failure_retry_without_turn_id_reuses_same_turn_and_clears_id
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     session_state.write_state("s1", {"turn_count": 1, "turn_id": "turn-1"}, state_root)
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = FlakyProvider(LunaProviderFailure("subscription unavailable", category="authentication"), _result(ReviewKind.DOCUMENT))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
@@ -209,7 +209,7 @@ def test_codex_stop_active_inflight_reservation_blocks_until_expiry(tmp_path: Pa
         },
         state_root,
     )
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = Provider(_result(ReviewKind.DOCUMENT))
 
     with pytest.MonkeyPatch.context() as monkeypatch:
@@ -237,7 +237,7 @@ def test_codex_stop_reclaims_stale_inflight_reservation_and_reviews(tmp_path: Pa
         },
         state_root,
     )
-    claude_journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
+    journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = Provider(_result(ReviewKind.DOCUMENT))
 
     with pytest.MonkeyPatch.context() as monkeypatch:

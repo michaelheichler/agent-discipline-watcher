@@ -1,0 +1,19 @@
+{
+  "name": "claude",
+  "title": "Claude Code",
+  "summary": "Preset CLI and legacy cleanup. Hook wiring arrives with the plugin, not this script.",
+  "adapters": ["claude_cache", "claude_luna", "claude_native", "claude_quarantine"],
+  "entry_scripts": [
+    "claude_luna.py", "merge-claude-settings.py", "read_claude_journal.py",
+    "claude_cache_nuke.py"
+  ],
+  "installer": "install.sh",
+  "extra_paths": [],
+  "installer_note": "Writes the adw-judge preset CLI only. The plugin carries every hook.",
+  "writes": [
+    "~/.local/bin/adw-judge",
+    "~/.claude/settings.json, to remove legacy watcher hooks only",
+    "~/.zshrc and ~/.bashrc, one fenced PATH block",
+    "~/.claude/plugins/cache/agent-discipline-watcher, cleared then reinstalled"
+  ]
+}

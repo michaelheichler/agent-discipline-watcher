@@ -1,24 +1,26 @@
-"""Runs on the Claude Code session login rather than an API key, because a hook must not spend a key the user did not choose to spend here."""
+"""One judge call on the session login, because a hook must not spend a key nobody chose."""
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
 from typing import NamedTuple
 
 try:
+    from . import judge_provider
     from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from .judge_model import DEFAULT_JUDGE_MODEL, judge_model
 except ImportError:
+    import judge_provider
     from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from judge_model import DEFAULT_JUDGE_MODEL, judge_model
 
-JUDGE_MODEL = "claude-haiku-4-5"
+JUDGE_MODEL = DEFAULT_JUDGE_MODEL
 JUDGE_TIMEOUT_SECONDS = 120
-RECURSION_GUARD = "ADW_JUDGE_ACTIVE"
-# WHY: A named verdict rather than a boolean, because the model inverted a "narrates" flag while its own reason named the narration.
+RECURSION_GUARD = judge_provider.RECURSION_GUARD
+# Named because the model inverted its own boolean.
 DESCRIBES_CODE = "describes_code"
 STATES_WHY = "states_why"
-# WHY: A stable system prompt keeps the 15k prefix in the one hour cache, which is the difference between 0.034 and 0.006 per call.
+# Stable to keep the hour cache, 0.034 down to 0.006 a call.
 JUDGE_SYSTEM_PROMPT = (
     "You judge one Python comment or docstring line at a time against a single rule.\n"
     "A line may state why the code is the way it is. A line may not describe what the code does.\n"
@@ -50,14 +52,13 @@ class Verdict(NamedTuple):
 
 
 def available() -> bool:
-    return not os.environ.get(RECURSION_GUARD, "").strip()
+    """Ask the provider because host policy decides this, not a raw environment read."""
+    return judge_provider.available()
 
 
 def _environment() -> dict[str, str]:
-    """Drops the API key because the session login is the account the user already pays for, and keeps the guard so a nested hook cannot recurse."""
-    env = {key: value for key, value in os.environ.items() if key != "ANTHROPIC_API_KEY"}
-    env[RECURSION_GUARD] = "1"
-    return env
+    """Kept as the name three callers already import, because the provider owns the real build."""
+    return judge_provider.child_environment()
 
 
 def request_for(candidates: tuple[Candidate, ...]) -> JudgeRequest:
@@ -71,30 +72,12 @@ def build_prompt(candidates: tuple[Candidate, ...]) -> str:
     return build_judge_prompt(request_for(candidates))
 
 
-def _command(model: str = JUDGE_MODEL) -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--tools", "",
-        "--system-prompt", JUDGE_SYSTEM_PROMPT,
-    ]
+def _provider(model: str = JUDGE_MODEL) -> judge_provider.Provider:
+    return judge_provider.Provider(model, JUDGE_SYSTEM_PROMPT, JUDGE_TIMEOUT_SECONDS)
 
 
 def _run(prompt: str, model: str = JUDGE_MODEL) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(model), prompt],
-            capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return finished.stdout if finished.returncode == 0 else None
+    return judge_provider.complete(prompt, _provider(model)).text
 
 
 def _result_text(raw: str) -> str:
@@ -130,12 +113,12 @@ def parse_verdicts(text: str, candidates: tuple[Candidate, ...]) -> tuple[Verdic
 
 
 def judge(candidates: tuple[Candidate, ...], model: str | None = None) -> tuple[Verdict, ...] | None:
-    """Judge candidates with the selected OMP model or the safe default."""
+    """Screen the selection first because only a haiku agent may reach the provider."""
     if not candidates:
         return ()
     if not available():
         return None
-    selected = model.strip() if isinstance(model, str) and model.strip() else JUDGE_MODEL
+    selected = judge_model(model)
     raw = _run(build_prompt(candidates), selected)
     if raw is None:
         return None

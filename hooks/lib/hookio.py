@@ -6,6 +6,11 @@ import operator
 import sys
 from collections.abc import Callable
 
+try:
+    from . import host
+except ImportError:
+    import host
+
 
 CONTRACT_MAX_CHARS = 4000
 MAX_RESPONSE_BYTES = 4096
@@ -60,7 +65,7 @@ def _clip_utf8(value: object, limit: int) -> str:
 
 
 def _safe_text(value: str) -> str:
-    """Remove terminal and bidi controls while preserving deliberate line breaks."""
+    """Stripped because a terminal or bidi control in a hook message can rewrite what the reader sees."""
     return "".join(
         character
         if character == "\n" or (
@@ -175,7 +180,7 @@ def system_message(message: str) -> dict:
 
 def advise(message: str, event: str) -> dict:
     """Put observed findings in model context because a user-only system message cannot make the agent consider them."""
-    if os.environ.get("ADW_CODEX_HOOK") == "1":
+    if host.is_codex_host():
         return context(message, event)
     return {
         "systemMessage": message,

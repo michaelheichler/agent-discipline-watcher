@@ -8,12 +8,15 @@ from pathlib import Path
 import stat
 from typing import Any
 
-from . import claude_journal, claude_native, payloads
+from . import journal, claude_native, payloads
 from .config import effective_hook_config
 from .document_review import request_for as document_request
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from .luna_feedback import bounded as _bounded
+from .luna_feedback import comment_feedback as _comment_feedback
+from .luna_feedback import document_feedback as _document_feedback
 from .luna_storage import LunaProviderFailure
 from .narration_candidates import candidates
 
@@ -21,16 +24,12 @@ from .narration_candidates import candidates
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "Bash"})
 MAX_FEEDBACK_CHARS = 900
 MAX_DOCUMENT_CHARS = 24_000
-MAX_LIVE_CANDIDATES = claude_journal.MAX_ROWS
+MAX_LIVE_CANDIDATES = journal.MAX_ROWS
 MAX_LIVE_PATHS = 32
 MAX_LIVE_PATH_CHARS = 4096
 MAX_LIVE_FILE_BYTES = 128 * 1024
 MAX_LIVE_SCAN_BYTES = 512 * 1024
 MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
-
-
-def _bounded(value: object) -> str:
-    return " ".join(str(value).split())[:MAX_FEEDBACK_CHARS]
 
 
 def _bounded_file_text(path: Path, limit: int) -> tuple[str, int] | None:
@@ -189,7 +188,7 @@ def _read_candidates(payload: object) -> tuple[Candidate, ...]:
         text, read_bytes = bounded
         scanned += read_bytes
         for candidate in candidates(str(path), text):
-            found.append(Candidate(candidate.path, candidate.line, candidate.text[:claude_journal.MAX_CANDIDATE_CHARS]))
+            found.append(Candidate(candidate.path, candidate.line, candidate.text[:journal.MAX_CANDIDATE_CHARS]))
             if len(found) >= MAX_LIVE_CANDIDATES:
                 return tuple(found)
     return tuple(found)
@@ -209,7 +208,7 @@ def _stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str,
     if not session_id:
         return []
     try:
-        return claude_journal.read_for_stop(session_id, state_root=state_root)
+        return journal.read_for_stop(session_id, state_root=state_root)
     except (OSError, RuntimeError, TypeError, ValueError):
         return []
 
@@ -227,36 +226,6 @@ def stop_request(payload: object, state_root: str | Path | None) -> tuple[JudgeR
     if not source.strip():
         return None
     return document_request("ADW current-session journal", source), rows
-
-
-def _comment_feedback(result: JudgeResult, found: tuple[Candidate, ...]) -> str:
-    rows = result.payload.get("items")
-    if not isinstance(rows, list):
-        return ""
-    feedback = []
-    for row in rows:
-        if not isinstance(row, dict) or row.get("verdict") != "describes_code":
-            continue
-        index = row.get("index")
-        if type(index) is not int or not 0 <= index < len(found):
-            continue
-        feedback.append(f"{found[index].path}:{found[index].line}: {_bounded(row.get('reason', 'Rewrite this comment.'))}")
-    return _bounded("ADW Luna comment review: " + " | ".join(feedback)) if feedback else ""
-
-
-def _document_feedback(result: JudgeResult, rows: list[dict[str, Any]]) -> str:
-    notes = result.payload.get("notes")
-    if not isinstance(notes, list):
-        return ""
-    feedback = []
-    for row in notes:
-        if not isinstance(row, dict) or not row.get("problem"):
-            continue
-        quote = _bounded(row.get("quote", ""))
-        problem = _bounded(row.get("problem", ""))
-        fix = _bounded(row.get("fix", "Fix the named document issue."))
-        feedback.append(f"{quote}: {problem} Fix: {fix}")
-    return _bounded("ADW Luna document review: " + " | ".join(feedback)) if feedback else ""
 
 
 def _state_root(payload: object, explicit: str | Path | None) -> str | Path | None:

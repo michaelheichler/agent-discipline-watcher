@@ -157,6 +157,49 @@ def test_english_hides_code_tag_with_space_before_closing_bracket() -> None:
     assert "wordiness" not in {rule for rule, _line in _rows("doc.md", source)}
 
 
+FRONTMATTER_DOC = (
+    "---\n"
+    "name: agent-discipline-watcher\n"
+    "description: Use when an agent writes files and needs a check.\n"
+    "---\n"
+    "\n"
+    "The rule is this: a colon inside a sentence still blocks.\n"
+)
+
+
+def _colon_lines(path: str, source: str) -> set[int]:
+    return {row["line"] for row in scan_all(path, source, {"english": False, "clean_code": False}) if row["rule"] == "prose_colon"}
+
+
+@pytest.mark.parametrize("path", ("skill.md", "guide.markdown", "page.mdx"))
+def test_markdown_frontmatter_masks_its_keys_but_keeps_body_colons(path: str) -> None:
+    assert _colon_lines(path, FRONTMATTER_DOC) == {6}
+
+
+def test_markdown_frontmatter_closes_on_the_yaml_document_end_marker() -> None:
+    source = "---\nname: agent-discipline-watcher\n...\nPlain body prose.\n"
+
+    assert _colon_lines("skill.md", source) == set()
+
+
+def test_unclosed_leading_delimiter_is_not_markdown_frontmatter() -> None:
+    source = "---\nname: agent-discipline-watcher\n\nPlain body prose.\n"
+
+    assert _colon_lines("skill.md", source) == {2}
+
+
+def test_markdown_frontmatter_must_open_on_the_first_line() -> None:
+    source = "Title line.\n---\nname: agent-discipline-watcher\n---\n"
+
+    assert _colon_lines("skill.md", source) == {3}
+
+
+def test_frontmatter_masking_leaves_the_asciidoc_block_rule_alone() -> None:
+    source = "----\nin order to\n----\n"
+
+    assert "wordiness" not in {rule for rule, _line in _rows("guide.adoc", source)}
+
+
 def test_oversized_list_counts_items_with_indented_continuation_text() -> None:
     items = "".join(f"- item {number}\n  continuation text for item {number}\n" for number in range(9))
 

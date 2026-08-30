@@ -277,9 +277,21 @@ def _blank_token_span(lines: list[str], span: TokenSpan) -> None:
     lines[span.end_row - 1] = " " * span.end_col + last[span.end_col:]
 
 
+MARKDOWN_EXTS = frozenset({".md", ".markdown", ".mdx"})
+FRONTMATTER_RE = re.compile(r"\A-{3}[ \t]*\n.*?^(?:-{3}|\.{3})[ \t]*$", re.DOTALL | re.MULTILINE)
+
+
+def _mask_frontmatter(suffix: str, text: str) -> str:
+    """Frontmatter is YAML metadata, so its key colons are not sentence punctuation. Only a closed leading block counts, because a lone opening delimiter is a horizontal rule or a setext underline."""
+    if suffix not in MARKDOWN_EXTS:
+        return text
+    return FRONTMATTER_RE.sub(_blank_keep_newlines, text, count=1)
+
+
 def _mask_markup(path: str, text: str) -> str:
     """Mask non-prose syntax because its tokens are not sentences."""
     suffix = PurePath(path.lower()).suffix
+    text = _mask_frontmatter(suffix, text)
     if suffix == ".tex":
         text = re.sub(
             r"\\begin\{(verbatim|lstlisting|equation\*?|align\*)\}.*?\\end\{\1\}",

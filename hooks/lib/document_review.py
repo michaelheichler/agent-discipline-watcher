@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 from typing import NamedTuple
 
 try:
@@ -13,23 +12,28 @@ except ImportError:
     from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
 
 try:
-    from .judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
+    from . import judge_provider
+    from .judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, available
 except ImportError:
-    from judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, _environment, available
+    import judge_provider
+    from judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, available
 
 try:
     from .reporting import _safe_text
+    from .judge_model import DEFAULT_JUDGE_MODEL, judge_model
 except ImportError:
     from reporting import _safe_text
+    from judge_model import DEFAULT_JUDGE_MODEL, judge_model
 
-REVIEW_MODEL = "claude-sonnet-5"
+# Haiku only, because a stronger agent must never run.
+REVIEW_MODEL = DEFAULT_JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
 MAX_NOTES = 6
 MAX_REVIEW_ROUNDS = 2
 STATE_KEY = "document_review"
 BLOCKER_KEY_PREFIX = "<document-review>:"
 WHITESPACE_RE = re.compile(r"\s+")
-# WHY: A stable prompt keeps the prefix cached, and naming the two axes stops the model from grading the subject matter.
+# Two named axes to prevent the model grading subject matter.
 SYSTEM_PROMPT = (
     "You review one finished document for coherence and style.\n"
     "Name only problems a reader can check against the text you were given.\n"
@@ -52,33 +56,16 @@ class Note(NamedTuple):
     fix: str
 
 
-def _command(model: str = REVIEW_MODEL) -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--tools", "",
-        "--system-prompt", SYSTEM_PROMPT,
-    ]
+def _provider(model: str = REVIEW_MODEL) -> judge_provider.Provider:
+    return judge_provider.Provider(model, SYSTEM_PROMPT, JUDGE_TIMEOUT_SECONDS)
 
 
 def _run(prompt: str, model: str = REVIEW_MODEL) -> str | None:
-    try:
-        finished = subprocess.run(
-            [*_command(model), prompt], capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return finished.stdout if finished.returncode == 0 else None
+    return judge_provider.complete(prompt, _provider(model)).text
 
 
 def _line_of(text: str, quote: str) -> int:
-    """A quote is anchored by search rather than by index because the model rewrites whitespace when it copies a sentence."""
+    """Search rather than index, because the model rewrites whitespace when it copies a sentence."""
     needle = WHITESPACE_RE.sub(" ", quote).strip()
     if not needle:
         return 0
@@ -114,7 +101,7 @@ def build_prompt(path: str, text: str) -> str:
     return build_judge_prompt(request_for(path, text))
 
 def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]:
-    """Skip model review when the project data boundary does not permit source egress."""
+    """No model review without a data boundary, because source text would leave the machine."""
     if config is None:
         return ()
     boundary = config.get("data_boundary")
@@ -122,8 +109,7 @@ def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]
         return ()
     if not text.strip() or not available():
         return ()
-    selected_model = config.get("adw_model")
-    model = selected_model.strip() if isinstance(selected_model, str) and selected_model.strip() else REVIEW_MODEL
+    model = judge_model(config.get("adw_model"))
     raw = _run(build_prompt(path, text), model)
     if raw is None:
         return ()

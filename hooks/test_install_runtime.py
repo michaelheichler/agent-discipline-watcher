@@ -188,7 +188,7 @@ def test_combined_install_removes_obsolete_command_links(tmp_path: Path) -> None
     obsolete.symlink_to(home / "Development/skill-repos/agent-discipline-watcher/bin/agent-discipline")
 
     result = subprocess.run(
-        [str(INSTALL), "--no-claude", "--no-codex", "--omp", "-y"],
+        [str(INSTALL), "--omp"],
         env={**os.environ, "HOME": str(home)},
         capture_output=True,
         text=True,

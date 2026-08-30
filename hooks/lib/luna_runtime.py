@@ -1,4 +1,4 @@
-"""Resolve the persistent ADW-owned Python runtime used by Luna."""
+"""Pinned because a silent interpreter fallback would run the judge on the wrong Python."""
 from __future__ import annotations
 
 import os
@@ -13,14 +13,14 @@ VENV_DIRNAME = "venv"
 
 
 def runtime_root(root: str | os.PathLike[str] | None = None) -> Path:
-    """Keep the install runtime under the retention-exempt ADW runtime root."""
+    """Exempt from retention because a swept runtime would break every later judge call."""
     if root is not None:
         return Path(root)
     return Path.home() / ".adw" / "runtime" / RUNTIME_DIRNAME
 
 
 def runtime_python(root: str | os.PathLike[str] | None = None) -> Path:
-    """Return the pinned runtime interpreter, without falling back silently."""
+    """Named because a silent fallback would run the judge on an unpinned interpreter."""
     return runtime_root(root) / VENV_DIRNAME / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
@@ -40,7 +40,7 @@ def require_runtime(root: str | os.PathLike[str] | None = None) -> Path:
 
 
 def test_runtime_or_current(root: str | os.PathLike[str] | None = None) -> Path:
-    """Use explicit test roots without requiring a network-installed SDK."""
+    """Explicit roots because a test must not need a network-installed SDK."""
     if root is not None and not installed(root):
         return Path(sys.executable)
     return require_runtime(root)

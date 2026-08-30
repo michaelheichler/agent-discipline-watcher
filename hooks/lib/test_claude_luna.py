@@ -10,7 +10,7 @@ import threading
 
 import pytest
 
-from lib import claude_journal, claude_luna, claude_native
+from lib import journal, claude_luna, claude_native
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_provider import LunaJudge
 from lib.luna_storage import LunaProviderFailure
@@ -136,8 +136,8 @@ def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judgin
 
     assert provider.requests
     request = provider.requests[0]
-    assert len(request.candidates) <= claude_journal.MAX_ROWS
-    assert request.candidates == tuple(item[:claude_journal.MAX_CANDIDATE_CHARS] for item in request.candidates)
+    assert len(request.candidates) <= journal.MAX_ROWS
+    assert request.candidates == tuple(item[:journal.MAX_CANDIDATE_CHARS] for item in request.candidates)
     assert any("Counts the retries" in item for item in request.candidates)
     assert any("Tracks the cache" in item for item in request.candidates)
 
@@ -404,11 +404,11 @@ def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_documen
     document = tmp_path / "doc.md"
     state_root = tmp_path / "state"
     document.write_text("A paragraph that was journalled.\n", encoding="utf-8")
-    assert claude_journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    assert journal.record_edit("session", "turn", "tool", document, state_root=state_root)
     document.unlink()
 
-    assert claude_journal.record_edit("session", "turn-2", "tool-2", document, state_root=state_root) == []
-    assert claude_journal.read("session", state_root=state_root) == []
+    assert journal.record_edit("session", "turn-2", "tool-2", document, state_root=state_root) == []
+    assert journal.read("session", state_root=state_root) == []
     assert claude_luna.stop_request(
         {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False}, state_root,
     ) is None
@@ -533,7 +533,7 @@ def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_pat
     document = tmp_path / "doc.md"
     document.write_text("Only the current session document.\n", encoding="utf-8")
     state_root = tmp_path / ".adw" / "state"
-    claude_journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    journal.record_edit("session", "turn", "tool", document, state_root=state_root)
     reader = Path(__file__).parents[1] / "read_claude_journal.sh"
     result = subprocess.run(
         [str(reader), "session"], env={**os.environ, "HOME": str(tmp_path)},
@@ -564,8 +564,8 @@ def test_stop_handler_reads_only_bounded_current_session_journal(tmp_path: Path)
     unrelated = tmp_path / "unrelated.md"
     unrelated.write_text("Never read this unrelated document.\n", encoding="utf-8")
     state_root = tmp_path / "state"
-    claude_journal.record_edit("session", "turn", "tool", document, state_root=state_root)
-    claude_journal.record_edit("other-session", "turn", "tool", unrelated, state_root=state_root)
+    journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    journal.record_edit("other-session", "turn", "tool", unrelated, state_root=state_root)
     provider = Provider(lambda request: _result(request, {
         "notes": [{"quote": "A paragraph with enough text to inspect.", "problem": "weak bridge", "fix": "Name the transition."}],
     }))
@@ -624,7 +624,7 @@ def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
     document = tmp_path / "doc.md"
     document.write_text("A paragraph with enough text to inspect.\n", encoding="utf-8")
     state_root = tmp_path / "state"
-    claude_journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    journal.record_edit("session", "turn", "tool", document, state_root=state_root)
     failure = Provider(error=LunaProviderFailure("subscription unavailable", category="authentication"))
 
     response = claude_luna.run(

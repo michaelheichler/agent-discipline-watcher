@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import configure
-from lib import config
+from lib import config, configure_capability
 
 
 def _digest(path: Path) -> str:
@@ -24,7 +24,7 @@ def _digest(path: Path) -> str:
 
 def _capability(tmp_path: Path, monkeypatch) -> None:
     """Install one owner-only capability file and its matching child environment."""
-    monkeypatch.setattr(configure, "_omp_parent_is_trusted", lambda: True)
+    monkeypatch.setattr(configure_capability, "omp_parent_is_trusted", lambda: True)
     token = "omp-save-token"
     path = tmp_path / ".omp-capability"
     path.write_text(token, encoding="utf-8")
@@ -45,7 +45,7 @@ def _request(cwd: Path, values: dict[str, object], digest: str | None) -> dict[s
 
 def test_bun_omp_parent_is_trusted(monkeypatch) -> None:
     """Accept Bun only when it launched the installed OMP command."""
-    launcher = str(Path(configure.pwd.getpwuid(os.getuid()).pw_dir) / ".bun/bin/omp")
+    launcher = str(Path(configure_capability.pwd.getpwuid(os.getuid()).pw_dir) / ".bun/bin/omp")
     monkeypatch.setenv("HOME", str(Path("/tmp") / "attacker-home"))
     responses = iter(
         (
@@ -59,9 +59,36 @@ def test_bun_omp_parent_is_trusted(monkeypatch) -> None:
         assert command[:3] == ["/bin/ps", "-p", str(os.getppid())]
         return next(responses)
 
-    monkeypatch.setattr(configure.subprocess, "run", fake_run)
+    monkeypatch.setattr(configure_capability.subprocess, "run", fake_run)
 
-    assert configure._omp_parent_is_trusted() is True
+    assert configure_capability.omp_parent_is_trusted() is True
+
+
+def test_bun_resolved_launcher_target_is_trusted(monkeypatch, tmp_path) -> None:
+    """Match the resolved target because bun argv names cli.js, not the omp symlink."""
+    launcher_root = tmp_path / ".bun" / "bin"
+    launcher_root.mkdir(parents=True)
+    target = tmp_path / "install" / "cli.js"
+    target.parent.mkdir(parents=True)
+    target.write_text("", encoding="utf-8")
+    (launcher_root / "omp").symlink_to(target)
+    responses = iter(
+        (
+            SimpleNamespace(returncode=0, stdout="bun\n"),
+            SimpleNamespace(returncode=0, stdout=f"bun {target}\n"),
+        )
+    )
+
+    def fake_pwuid(_uid):
+        return SimpleNamespace(pw_dir=str(tmp_path))
+
+    def fake_run(_command, **_kwargs):
+        return next(responses)
+
+    monkeypatch.setattr(configure_capability.pwd, "getpwuid", fake_pwuid)
+    monkeypatch.setattr(configure_capability.subprocess, "run", fake_run)
+
+    assert configure_capability.omp_parent_is_trusted() is True
 
 
 def test_arbitrary_bun_parent_is_not_trusted(monkeypatch) -> None:
@@ -73,20 +100,29 @@ def test_arbitrary_bun_parent_is_not_trusted(monkeypatch) -> None:
         )
     )
 
-    monkeypatch.setattr(configure.subprocess, "run", lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr(configure_capability.subprocess, "run", lambda *_args, **_kwargs: next(responses))
 
-    assert configure._omp_parent_is_trusted() is False
+    assert configure_capability.omp_parent_is_trusted() is False
 
 
 def test_validate_returns_checked_policy_values() -> None:
     """Validate returns accepted policy values without touching project files."""
-    result = configure.run({"operation": "validate", "values": {"adw_model": "claude-sonnet-5", "max_rows": 12}})
+    result = configure.run({"operation": "validate", "values": {"adw_model": "claude-haiku-4-5", "max_rows": 12}})
 
     assert result == {
         "ok": True,
         "operation": "validate",
-        "values": {"adw_model": "claude-sonnet-5", "max_rows": 12},
+        "values": {"adw_model": "claude-haiku-4-5", "max_rows": 12},
     }
+
+
+def test_validate_refuses_a_model_stronger_than_haiku() -> None:
+    """Reject a stronger name because only haiku may run the judge."""
+    for name in ("claude-sonnet-5", "claude-opus-4-1", "gpt-5.6"):
+        result = configure.run({"operation": "validate", "values": {"adw_model": name}})
+
+        assert result["ok"] is False
+        assert result["error"]["code"] == "invalid_value"
 
 
 def test_describe_exposes_metadata_and_redacts_runtime(monkeypatch) -> None:
@@ -107,11 +143,7 @@ def test_describe_exposes_metadata_and_redacts_runtime(monkeypatch) -> None:
     assert "ADW_ALLOW_PROTECTED_EDIT" not in json.dumps(result)
 
 
-def test_read_resolves_upward_and_excludes_unknown_keys(tmp_path: Path) -> None:
-    """Read uses the hook resolver and keeps opaque project fields off the response."""
-    root = tmp_path / "project"
-    child = root / "nested"
-    child.mkdir(parents=True)
+def _write_opaque_project(root: Path) -> Path:
     target = root / config.CONFIG_NAME
     target.write_text(
         json.dumps(
@@ -123,6 +155,15 @@ def test_read_resolves_upward_and_excludes_unknown_keys(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    return target
+
+
+def test_read_resolves_upward_and_excludes_unknown_keys(tmp_path: Path) -> None:
+    """Resolve upward because a nested directory must obey the policy at the project root."""
+    root = tmp_path / "project"
+    child = root / "nested"
+    child.mkdir(parents=True)
+    target = _write_opaque_project(root)
 
     result = configure.run({"operation": "read", "cwd": str(child)})
 
@@ -196,25 +237,26 @@ def test_direct_shell_route_rejects_forged_environment(tmp_path: Path) -> None:
     assert json.loads(target.read_text(encoding="utf-8"))["english"] is True
 
 
-def test_direct_shell_route_ignores_forged_ps(tmp_path: Path) -> None:
-    """A PATH-provided ps cannot impersonate OMP for a shell caller."""
-    target = tmp_path / config.CONFIG_NAME
-    target.write_text(json.dumps({"english": True}), encoding="utf-8")
-    capability = tmp_path / "forged-capability"
-    capability.write_text("forged-token", encoding="utf-8")
+def _forged_ps_bin(tmp_path: Path) -> Path:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_ps = fake_bin / "ps"
     fake_ps.write_text("#!/bin/sh\nprintf 'omp\n'\n", encoding="utf-8")
     fake_ps.chmod(0o755)
+    return fake_bin
+
+
+def _shell_environment(capability: Path, path_prefix: Path) -> dict[str, str]:
     environment = os.environ.copy()
     environment[configure.CAPABILITY_ENV] = "forged-token"
     environment[configure.CAPABILITY_FILE_ENV] = str(capability)
     environment["ADW_PYTHON"] = sys.executable
-    environment["PATH"] = f"{fake_bin}:{environment.get('PATH', '')}"
-    request = _request(tmp_path, {"english": False}, _digest(target))
+    environment["PATH"] = f"{path_prefix}:{environment.get('PATH', '')}"
+    return environment
 
-    completed = subprocess.run(
+
+def _run_shell_route(request: dict, environment: dict[str, str]):
+    return subprocess.run(
         [str(Path(__file__).with_name("run.sh")), configure.CONFIGURE_EVENT],
         input=json.dumps(request),
         text=True,
@@ -223,12 +265,25 @@ def test_direct_shell_route_ignores_forged_ps(tmp_path: Path) -> None:
         check=False,
     )
 
+
+def test_direct_shell_route_ignores_forged_ps(tmp_path: Path) -> None:
+    """Pin the ps path because a PATH shim would let any process claim to be OMP."""
+    target = tmp_path / config.CONFIG_NAME
+    target.write_text(json.dumps({"english": True}), encoding="utf-8")
+    capability = tmp_path / "forged-capability"
+    capability.write_text("forged-token", encoding="utf-8")
+    environment = _shell_environment(capability, _forged_ps_bin(tmp_path))
+    request = _request(tmp_path, {"english": False}, _digest(target))
+
+    completed = _run_shell_route(request, environment)
+
     assert completed.returncode == 0
     assert json.loads(completed.stdout)["error"]["code"] == "capability_required"
     assert json.loads(target.read_text(encoding="utf-8"))["english"] is True
 
+
 def test_direct_shell_route_rejects_forged_complete_capability(tmp_path: Path) -> None:
-    """A shell-created owner-only token file cannot impersonate the OMP save boundary."""
+    """Reject a shell-made token because ownership alone does not prove OMP ran the save."""
     target = tmp_path / config.CONFIG_NAME
     target.write_text(json.dumps({"english": True}), encoding="utf-8")
     capability = tmp_path / "forged-capability"

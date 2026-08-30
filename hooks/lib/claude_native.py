@@ -8,13 +8,17 @@ from contextlib import contextmanager
 import fcntl
 import hashlib
 import os
-import re
 import secrets
 import shlex
 import stat
 import threading
 from pathlib import Path
 from typing import Any, Iterator, Mapping
+
+try:
+    from .claude_quarantine import reclaim_quarantines
+except ImportError:
+    from claude_quarantine import reclaim_quarantines
 
 
 PRESETS = ("mixed", "luna", "haiku", "sonnet")
@@ -264,12 +268,18 @@ def _quarantine_transaction(path: Path) -> None:
     except OSError:
         return
     try:
-        _reclaim_quarantines(parent_fd, prefix)
+        reclaim_quarantines(
+            parent_fd, prefix, CORRUPT_SUFFIX,
+            MAX_CORRUPT_QUARANTINES, MAX_CORRUPT_QUARANTINE_BYTES,
+        )
         for _attempt in range(32):
             quarantine = f"{prefix}{CORRUPT_SUFFIX}{secrets.token_hex(8)}"
             try:
                 os.rename(transaction.name, quarantine, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-                _reclaim_quarantines(parent_fd, prefix)
+                reclaim_quarantines(
+                    parent_fd, prefix, CORRUPT_SUFFIX,
+                    MAX_CORRUPT_QUARANTINES, MAX_CORRUPT_QUARANTINE_BYTES,
+                )
                 return
             except FileNotFoundError:
                 return
@@ -280,43 +290,6 @@ def _quarantine_transaction(path: Path) -> None:
     finally:
         if parent_fd >= 0:
             os.close(parent_fd)
-
-
-def _owned_quarantine_name(name: str, prefix: str) -> bool:
-    token = name[len(prefix + CORRUPT_SUFFIX):] if name.startswith(prefix + CORRUPT_SUFFIX) else ""
-    return len(token) == 16 and re.fullmatch(r"[0-9a-f]{16}", token) is not None
-
-
-def _reclaim_quarantines(parent_fd: int, prefix: str) -> None:
-    """Bound only ADW's exact quarantine leaves; never glob or recurse."""
-    try:
-        names = [name for name in os.listdir(parent_fd) if _owned_quarantine_name(name, prefix)]
-    except OSError:
-        return
-    entries: list[tuple[int, str, int, int]] = []
-    for name in names:
-        try:
-            metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            continue
-        except OSError:
-            continue
-        entries.append((metadata.st_mtime_ns, name, metadata.st_size, metadata.st_mode))
-    total = sum(size for _mtime, _name, size, _mode in entries)
-    for _mtime, name, size, mode in sorted(entries):
-        if len(entries) <= MAX_CORRUPT_QUARANTINES and total <= MAX_CORRUPT_QUARANTINE_BYTES:
-            break
-        try:
-            if stat.S_ISDIR(mode):
-                os.rmdir(name, dir_fd=parent_fd)
-            elif stat.S_ISREG(mode) or stat.S_ISLNK(mode):
-                os.unlink(name, dir_fd=parent_fd)
-            else:
-                continue
-        except OSError:
-            continue
-        entries = [entry for entry in entries if entry[1] != name]
-        total -= size
 
 
 def _transaction_payload(path: Path) -> dict[str, Any] | None:
@@ -571,7 +544,7 @@ def _default_preset_unlocked(env: Mapping[str, str], target_preset: Path) -> str
     stored = _read_preset_unlocked(target_preset)
     if stored is not None:
         return stored
-    return "haiku" if env.get(REMOTE_ENV) == "true" else "mixed"
+    return "haiku"
 
 
 def default_preset(

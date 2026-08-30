@@ -1,10 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.20.11 (2026-08-30)
+
+### Added
+
+- ADW now builds four host runtimes from one shared core. Each `hosts/<name>/host.json`
+  declares that host's adapters, entry scripts, installer, and write surface. `lib/vendor.py`
+  writes a runtime and `hooks/build_runtime.py` runs the build. A runtime passes its own tests
+  with the other three deleted, and all four produce byte-identical findings on one fixture.
+- `install.sh` became a router. It draws an interactive picker, then calls the installer for
+  each chosen host. Arrows move, space toggles, Enter installs, and a mouse click selects a
+  row. A flag path skips the picker for agents and CI, and `--dry-run` reports without writing.
+  Choosing nothing leaves the disk untouched.
+- Each host owns its installer under `hosts/<name>/install.sh`. Claude writes the `adw-judge`
+  preset CLI, Codex writes its config fence and pinned runtime, and OMP writes its extension.
+  A host you do not pick leaves nothing behind.
+- The `commands/update.md` runbook clears the Claude plugin cache and reinstalls from a clean
+  one. `hooks/claude_cache_nuke.py` performs the wipe. It refuses a symlinked cache, refuses
+  any path outside the config root, and never touches `~/.adw`.
+- A Claude install now clears the stale plugin cache and reinstalls by default. Set
+  `ADW_SKIP_PLUGIN=1` to opt out.
+
+### Fixed
+
+- YAML frontmatter in Markdown no longer trips the punctuation rules. A leading delimited
+  block masks out, a colon in the body still blocks, and line numbers stay exact. This
+  unblocks every `SKILL.md`, memory file, and static-site page carrying frontmatter.
+
+### Changed
+
+- The shared core no longer names a host. `stop.py` and `session_end.py` imported `codex_luna`
+  directly, which made Codex mandatory for every other host. `lib/turn_retry.py` now holds the
+  session-state helpers, and `lib/turn_adapter.py` is the single declared seam. A test parses
+  every module and refuses a second one.
+- Luna keeps its SDK path on both Claude and Codex. Codex hooks parse an `agent` handler and
+  then skip it, so the agent-hook shape the other presets use cannot work there.
 
 ### Changed
 
 - Installers now copy ADW into `~/.adw/install/agent-discipline-watcher` and point OMP, Codex, Claude legacy wiring, and command links at that isolated copy instead of the development checkout. Foreign install directories and symlinks are preserved rather than overwritten.
+- Every judge that reaches the Claude CLI now pins Haiku. `pattern_judge` and `document_review` previously selected Sonnet, and the Claude native presets emitted Sonnet for Stop reviews. A new `hooks/lib/judge_model.py` screens the name, the configure bridge rejects a stronger model, and the OMP picker offers Haiku only. The `luna` preset sits outside that path, since it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers recorded for the meaning layer came from a Sonnet reader and need re-measuring.
+- OMP no longer spawns the Claude CLI. `hooks/lib/host.py` reads the `OMPCODE` marker, and the judge availability gate refuses the CLI under OMP so judging can move to OMP's own models.
 
 ## 0.20.0 (2026-08-30)
 

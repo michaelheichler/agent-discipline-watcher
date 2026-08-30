@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, and **OMP** (`oh-my-pi`). Current release: **0.20.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.11**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -24,7 +24,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The judge behind both the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary sentences as `ai_closer` on two of four runs over one technical document, and Sonnet cleared the same document four times out of four. A judge that decides a hard block justifies the stronger model. The document reader runs on Sonnet for the same reason.
+The judge behind the meaning layer and the judged gate is Haiku. Every judge that reaches the Claude CLI pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `luna` preset sits outside that path, since it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer` where Sonnet cleared the same document four times out of four.
 
 ## What the rules were measured against
 
@@ -128,13 +128,13 @@ separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
 A Unix shell and the Python named in `.python-version`, which is the one place the floor is declared. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor, so a system `python3` too old to import this codebase is skipped rather than trusted. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that silently stops enforcing is worse than one that refuses to start.
 
-Claude native presets are selected with `/agent-discipline-watcher:adw-judge
-mixed|luna|haiku|sonnet|status`. `mixed` uses Haiku for comments and Sonnet
-for prose and document Stop reviews. `luna` uses the subscription-backed
-Codex runtime and switches to `mixed` only after Luna is unavailable. Remote
-Claude sessions select Haiku by default. Desktop and Cowork have no reliable
-hook marker, so set `ADW_CLAUDE_HAIKU_ONLY=1` when an explicit Haiku-only
-preset is required.
+Select a Claude native preset with `/agent-discipline-watcher:adw-judge
+mixed|luna|haiku|sonnet|status`. Every preset that emits a native Claude agent
+now pins Haiku, because only a Haiku agent may reach the Claude CLI. The preset
+names stay for the command contract. `luna` emits no native agent. It uses a
+command handler on the subscription-backed Codex runtime and switches to
+`mixed` only after Luna is unavailable. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
+install needs the explicit Haiku-only environment.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
 Missing runtime, subscription login, model availability, or provider

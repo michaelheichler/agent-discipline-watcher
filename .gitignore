@@ -52,3 +52,10 @@ CLAUDE.md
 /bin/
 /hooks/test_adw_cli.py
 /hooks/lib/test_config_cli.py
+
+# Local OMP advisor roster. It names models and tool grants for one workstation,
+# so it never belonged in a shared checkout.
+WATCHDOG.yml
+
+# Coverage output, regenerated on demand.
+.coverage

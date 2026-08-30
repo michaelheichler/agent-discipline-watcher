@@ -95,7 +95,7 @@ test("OMP model selection reaches the guarded Save request", async () => {
   const commandContext = {
     cwd: TEST_CWD,
     hasUI: true,
-    models: { list: () => [{ provider: "anthropic", id: "claude-sonnet-5" }, { provider: "openai-codex", id: "gpt-5.6" }] },
+    models: { list: () => [{ provider: "anthropic", id: "claude-haiku-4-5" }, { provider: "anthropic", id: "claude-sonnet-5" }, { provider: "openai-codex", id: "gpt-5.6" }] },
     ui: {
       notify() {},
       async custom(factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: string) => void) => { handleInput?(data: string): void }) {
@@ -118,7 +118,55 @@ test("OMP model selection reaches the guarded Save request", async () => {
 
   await command.handler("configure", commandContext);
 
-  expect(saved?.adw_model).toBe("claude-sonnet-5");
+  expect(saved?.adw_model).toBe("claude-haiku-4-5");
+});
+
+describe("judge availability warning", () => {
+  function configureContext(notices: Array<{ message: string; type?: string }>) {
+    return {
+      cwd: TEST_CWD,
+      hasUI: true,
+      models: { list: () => [] },
+      ui: {
+        notify(message: string, type?: string) {
+          notices.push({ message, type });
+        },
+        async custom() {
+          return "cancelled";
+        },
+      },
+    };
+  }
+
+  test("warns that model judges stay inactive while the data boundary is off", async () => {
+    const notices: Array<{ message: string; type?: string }> = [];
+    const bridge: AdwBridgeRunner = request => bridgeState({}, request.operation);
+    const { commands } = createHarness(() => ({}), bridge);
+    const command = commands.get("adw");
+    if (!command) throw new Error("ADW command was not registered");
+
+    await command.handler("configure", configureContext(notices));
+
+    expect(notices).toContainEqual({
+      message: "Data boundary is off, so every model judge stays inactive and only the regex rules run.",
+      type: "warning",
+    });
+  });
+
+  test("stays quiet about judges once the data boundary is on", async () => {
+    const notices: Array<{ message: string; type?: string }> = [];
+    const bridge: AdwBridgeRunner = request => ({
+      ...bridgeState({}, request.operation),
+      effective: { adw_model: "", data_boundary: { enabled: true } },
+    });
+    const { commands } = createHarness(() => ({}), bridge);
+    const command = commands.get("adw");
+    if (!command) throw new Error("ADW command was not registered");
+
+    await command.handler("configure", configureContext(notices));
+
+    expect(notices.some(notice => notice.message.includes("model judge"))).toBe(false);
+  });
 });
 
 describe("watcher helpers", () => {
@@ -127,6 +175,7 @@ describe("watcher helpers", () => {
     expect(hookToolName("bash")).toBe("Bash");
     expect(hookToolName("mcp__pi-agent_advise")).toBe("mcp__pi-agent_advise");
   });
+
 
   test("registers separate ADW commands without touching the advisor command", () => {
     const { commands } = createHarness(() => ({}));
@@ -348,7 +397,7 @@ describe("omp event mapping", () => {
       }],
     });
   });
-  test.each(["write", "edit", "multiedit", "notebookedit", "apply_patch", "bash"])(
+  test.each(["write", "edit", "multiedit", "notebookedit", "apply_patch"])(
     "advises when %s has no trusted post-tool target",
     async (toolName) => {
       let calls = 0;
@@ -373,6 +422,72 @@ describe("omp event mapping", () => {
       });
     },
   );
+
+  test("leaves a bash result alone when it names no write target", async () => {
+    let calls = 0;
+    const { handlers } = createHarness(() => {
+      calls += 1;
+      return {};
+    });
+    const result = await handlers.get("tool_result")!(
+      {
+        toolName: "bash",
+        input: { command: "ls" },
+        content: [{ type: "text", text: "ok" }],
+      },
+      ctx,
+    );
+    expect(calls).toBe(0);
+    expect(result).toBeUndefined();
+  });
+
+  test("keeps Stop open after a bash result with no write target", async () => {
+    const { handlers } = createHarness(() => ({}));
+    await handlers.get("tool_result")!(
+      {
+        toolName: "bash",
+        input: { command: "git status" },
+        content: [{ type: "text", text: "clean" }],
+      },
+      ctx,
+    );
+    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  });
+
+  test("keeps Stop open after a failed bash result", async () => {
+    const { handlers } = createHarness(() => ({}));
+    await handlers.get("tool_result")!(
+      {
+        toolName: "bash",
+        input: { command: "false" },
+        content: [{ type: "text", text: "exit 1" }],
+        isError: true,
+      },
+      ctx,
+    );
+    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  });
+
+  test("still scans a bash result that names a hashline target", async () => {
+    const events: string[] = [];
+    const { handlers } = createHarness((event, payload) => {
+      const filePath = (payload as { tool_input?: { file_path?: string } }).tool_input?.file_path ?? "";
+      events.push(`${event}:${filePath}`);
+      return {};
+    });
+    await handlers.get("tool_result")!(
+      {
+        toolName: "bash",
+        input: { command: "[src/a.ts#A1B2]" },
+        content: [{ type: "text", text: "saved" }],
+      },
+      ctx,
+    );
+    expect(events).toEqual([
+      `PostToolUse:${TEST_CWD}/src/a.ts`,
+      `JudgeReview:${TEST_CWD}/src/a.ts`,
+    ]);
+  });
 
   test("blocks Stop after an unresolved mutating result", async () => {
     const { handlers } = createHarness(() => ({}));
