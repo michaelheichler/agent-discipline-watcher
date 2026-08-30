@@ -57,6 +57,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: oven-sh/setup-bun@v2
+    - name: Installing the packages the extension imports at runtime
+      run: |
+        cd pi && bun install
     - name: Running the extension test suite
       run: |
         cd pi && bun test
