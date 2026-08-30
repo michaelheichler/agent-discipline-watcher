@@ -116,9 +116,19 @@ def test_validate_returns_checked_policy_values() -> None:
     }
 
 
-def test_validate_refuses_a_model_stronger_than_haiku() -> None:
-    """Reject a stronger name because only haiku may run the judge."""
+def test_validate_accepts_any_model_the_host_catalogue_offers() -> None:
+    """Accept the name because OMP picks from its own catalogue and a haiku-only rule refused every entry."""
     for name in ("claude-sonnet-5", "claude-opus-4-1", "gpt-5.6"):
+        result = configure.run({"operation": "validate", "values": {"adw_model": name}})
+
+        assert result["ok"] is True
+        assert result["values"]["adw_model"] == name
+
+
+def test_validate_still_refuses_a_malformed_model_name() -> None:
+    """Keep the format check because a control character reaches the terminal that renders the report."""
+    control = "claude" + chr(127) + "haiku"
+    for name in ("a" * 257, control, "claude" + chr(10) + "haiku"):
         result = configure.run({"operation": "validate", "values": {"adw_model": name}})
 
         assert result["ok"] is False

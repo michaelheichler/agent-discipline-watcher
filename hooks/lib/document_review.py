@@ -20,13 +20,12 @@ except ImportError:
 
 try:
     from .reporting import _safe_text
-    from .judge_model import DEFAULT_JUDGE_MODEL, judge_model
+    from .judge import JUDGE_MODEL
 except ImportError:
     from reporting import _safe_text
-    from judge_model import DEFAULT_JUDGE_MODEL, judge_model
+    from judge import JUDGE_MODEL
 
-# Haiku only, because a stronger agent must never run.
-REVIEW_MODEL = DEFAULT_JUDGE_MODEL
+REVIEW_MODEL = JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
 MAX_NOTES = 6
 MAX_REVIEW_ROUNDS = 2

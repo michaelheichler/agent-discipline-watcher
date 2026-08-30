@@ -5,12 +5,10 @@ from typing import NamedTuple
 
 try:
     from .config import JUDGED_STATE, effective_config, rule_state
-    from .judge_model import judge_model
     from .pattern_judge import PatternCandidate, confirm_all
     from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 except ImportError:
     from config import JUDGED_STATE, effective_config, rule_state
-    from judge_model import judge_model
     from pattern_judge import PatternCandidate, confirm_all
     from pattern_semantic import load_exemplars, load_manifest, rule_prompt
 

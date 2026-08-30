@@ -8,13 +8,11 @@ from typing import NamedTuple
 try:
     from . import judge_provider
     from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
-    from .judge_model import DEFAULT_JUDGE_MODEL, judge_model
 except ImportError:
     import judge_provider
     from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
-    from judge_model import DEFAULT_JUDGE_MODEL, judge_model
 
-JUDGE_MODEL = DEFAULT_JUDGE_MODEL
+JUDGE_MODEL = "claude-haiku-4-5"
 JUDGE_TIMEOUT_SECONDS = 120
 RECURSION_GUARD = judge_provider.RECURSION_GUARD
 # Named because the model inverted its own boolean.

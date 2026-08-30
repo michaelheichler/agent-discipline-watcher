@@ -5,10 +5,8 @@ import copy
 
 try:
     from . import config
-    from .judge_model import is_haiku
 except ImportError:
     import config
-    from judge_model import is_haiku
 
 MAX_CWD_CHARS = 4096
 MAX_VALUE_STRING_CHARS = 4096
@@ -110,8 +108,6 @@ def _judge_model(fields: dict[str, object]) -> None:
     model = fields["adw_model"]
     if type(model) is not str or len(model) > 256 or any(ord(char) < 32 or ord(char) == 127 for char in model):
         raise ConfigureError("invalid_value", "values.adw_model has an invalid value")
-    if model.strip() and not is_haiku(model):
-        raise ConfigureError("invalid_value", "values.adw_model must name a haiku model")
 
 
 def _editable_keys(fields: dict[str, object]) -> None:

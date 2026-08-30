@@ -11,7 +11,6 @@ try:
     from .embedding_client import Vector, embed
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from .judge_model import judge_model
     from .pattern_judge import PatternCandidate, PatternRule, confirm_all
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
@@ -19,7 +18,6 @@ except ImportError:
     from embedding_client import Vector, embed
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from judge_model import judge_model
     from pattern_judge import PatternCandidate, PatternRule, confirm_all
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
