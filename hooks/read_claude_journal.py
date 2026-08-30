@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib.claude_journal import read_for_stop  # noqa: E402
+from lib.claude_journal import read_for_stop  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 def main(argv: list[str] | None = None) -> int:

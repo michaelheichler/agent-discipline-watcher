@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
+import stat
 import sys
 import time
-from hashlib import sha256
 from dataclasses import dataclass
 from collections.abc import Callable
 from pathlib import Path
@@ -23,7 +24,7 @@ from lib.reporting import (
     run_with_ledger,
     verdict_message,
 )
-from lib.scanner import read_scannable, scan_all
+from lib.scanner import scan_all
 
 UNDECIDABLE_KEY = "<record-error>"
 UNDECIDABLE = (
@@ -99,22 +100,90 @@ def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) 
     return stamped
 
 
+
+
+_MAX_OPEN_SCAN_BYTES = 1_000_000
+
+def _approved_path(raw_path: object, cwd: Path) -> tuple[Path, tuple[int, int]] | None:
+    """Resolve a candidate under cwd and capture its device and inode before opening it."""
+    if not isinstance(raw_path, str):
+        return None
+    candidate_text = raw_path.strip()
+    if not candidate_text or any(ord(char) < 0x20 or ord(char) == 0x7F for char in candidate_text):
+        return None
+    try:
+        root = cwd.expanduser().resolve(strict=True)
+        path = payloads.resolved_path(candidate_text, cwd).resolve(strict=True)
+        path.relative_to(root)
+        metadata = path.stat()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        return None
+    return path, (metadata.st_dev, metadata.st_ino)
+
+def _held_fallback(descriptor: int, path: Path) -> list[dict]:
+    """Build a fallback finding from the approved descriptor without reopening the pathname."""
+    try:
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            result = scan_input._count_open_file_lines(stream)
+    except (OSError, ValueError):
+        result = None
+    if result is None:
+        return scan_input.fallback_findings_from_count(path, 0, capped=False)
+    count, capped = result
+    return scan_input.fallback_findings_from_count(path, count, capped)
+
+def _scan_open_file(
+    path: Path, identity: tuple[int, int], cfg: dict
+) -> tuple[list[dict], list[dict]] | None:
+    """Read and scan bytes from the descriptor whose inode was approved."""
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        if (metadata.st_dev, metadata.st_ino) != identity or not stat.S_ISREG(metadata.st_mode):
+            return None
+        limit = min(
+            _MAX_OPEN_SCAN_BYTES,
+            max(0, scan_input.int_setting(cfg, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", _MAX_OPEN_SCAN_BYTES)),
+        )
+        raw = os.read(descriptor, limit + 1)
+        if len(raw) > limit or b"\0" in raw[:8192]:
+            return _held_fallback(descriptor, path), []
+        text = raw.decode("utf-8", errors="replace")
+        return split_committed(path, scan_all(str(path), text, cfg), cfg)
+    except (OSError, ValueError):
+        return None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Scan each edited path and return the owned and inherited findings apart, since only the first may block."""
+    """Scan only regular files inside cwd from an inode-checked descriptor."""
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:
-        path = payloads.resolved_path(raw_path, cwd)
-        if not path.exists() or not path.is_file():
+        approved = _approved_path(raw_path, cwd)
+        if approved is None:
+            owned_rows.extend(scan_input.fallback_findings_from_count(Path(raw_path), 0, capped=False))
             continue
-        text = read_scannable(path, cfg)
-        if text is None:
-            owned_rows.extend(_stamped(scan_input.fallback_findings(path), path))
+        path, identity = approved
+        scanned = _scan_open_file(path, identity, cfg)
+        if scanned is None:
+            owned_rows.extend(scan_input.fallback_findings_from_count(path, 0, capped=False))
             continue
-        digest = sha256(text.encode("utf-8")).hexdigest()
-        owned, inherited = split_committed(path, scan_all(str(path), text, cfg), cfg)
-        owned_rows.extend(_stamped(owned, path, digest))
-        inherited_rows.extend(_stamped(inherited, path, digest))
+        owned, inherited = scanned
+        owned_rows.extend(_stamped(owned, path))
+        inherited_rows.extend(_stamped(inherited, path))
     return owned_rows, inherited_rows
 
 
@@ -231,8 +300,10 @@ def _gate_context_for(
     cfg: dict,
     state_root: str | Path | None,
     ledger_root: str | Path | None,
-) -> _RecordGateContext:
-    cwd = Path(projected["cwd"] or ".")
+)-> _RecordGateContext:
+    if not projected["cwd"]:
+        raise ValueError("PostToolUse payload requires a trusted cwd")
+    cwd = Path(projected["cwd"])
     paths = list(payloads.edited_paths(payload))
     return _RecordGateContext(
         journal=_EditJournal(projected, paths, ledger_root, state_root),

@@ -10,6 +10,7 @@ from collections.abc import Callable
 CONTRACT_MAX_CHARS = 4000
 MAX_RESPONSE_BYTES = 4096
 MAX_MESSAGE_BYTES = 900
+MAX_INPUT_CHARS = 1_000_000
 STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
 UNDECIDABLE_PREFIX = "agent-discipline-watcher could not evaluate this "
 UNDECIDABLE_SUFFIX = " and blocked it rather than letting it through. Repair the gate config and retry. Cause: "
@@ -33,7 +34,10 @@ PARSE_FAILURE = {"_parse_failure": True}
 
 
 def read_payload() -> dict:
-    raw = sys.stdin.read()
+    raw = sys.stdin.read(MAX_INPUT_CHARS + 1)
+    if len(raw) > MAX_INPUT_CHARS:
+        sys.stderr.write("agent-discipline-watcher: hook payload exceeds the input limit\n")
+        return PARSE_FAILURE
     if not raw.strip():
         return {}
     try:
@@ -55,45 +59,68 @@ def _clip_utf8(value: object, limit: int) -> str:
     return encoded[: max(limit - 3, 0)].decode("utf-8", errors="ignore") + "..."
 
 
+def _safe_text(value: str) -> str:
+    """Remove terminal and bidi controls while preserving deliberate line breaks."""
+    return "".join(
+        character
+        if character == "\n" or (
+            ord(character) >= 32
+            and ord(character) != 127
+            and not 0x80 <= ord(character) <= 0x9F
+            and not 0x202A <= ord(character) <= 0x202E
+            and not 0x2066 <= ord(character) <= 0x2069
+        )
+        else " "
+        for character in value
+    )
+
+
 def _compact_specific(specific: object) -> dict | None:
     if not isinstance(specific, dict):
         return None
-    compact = {
-        key: value
-        for key, value in specific.items()
-        if key in {"hookEventName", "permissionDecision"}
-    }
+    compact: dict[str, object] = {}
+    for key, limit in (("hookEventName", 128), ("permissionDecision", 32)):
+        value = specific.get(key)
+        if isinstance(value, str):
+            compact[key] = _clip_utf8(_safe_text(value), limit)
     context = specific.get("additionalContext")
     if isinstance(context, str):
-        compact["additionalContext"] = _clip_utf8(context, 900)
+        compact["additionalContext"] = _clip_utf8(_safe_text(context), 900)
     permission_reason = specific.get("permissionDecisionReason")
     if isinstance(permission_reason, str):
-        compact["permissionDecisionReason"] = _clip_utf8(permission_reason, 900)
+        compact["permissionDecisionReason"] = _clip_utf8(_safe_text(permission_reason), 900)
     return compact
 
 
 def _bounded_payload(payload: dict) -> dict:
-    bounded = dict(payload)
+    safe_payload = dict(payload)
     for key in ("reason", "systemMessage"):
-        if isinstance(bounded.get(key), str):
-            bounded[key] = _clip_utf8(bounded[key], MAX_MESSAGE_BYTES)
-    specific = bounded.get("hookSpecificOutput")
+        value = safe_payload.get(key)
+        if isinstance(value, str):
+            safe_payload[key] = _safe_text(value)
+    specific = safe_payload.get("hookSpecificOutput")
     if isinstance(specific, dict):
         bounded_specific = dict(specific)
-        for key in ("additionalContext", "permissionDecisionReason"):
-            if isinstance(bounded_specific.get(key), str):
-                bounded_specific[key] = _clip_utf8(bounded_specific[key], MAX_MESSAGE_BYTES)
-        bounded["hookSpecificOutput"] = bounded_specific
+        for key in ("hookEventName", "permissionDecision", "additionalContext", "permissionDecisionReason"):
+            value = bounded_specific.get(key)
+            if isinstance(value, str):
+                bounded_specific[key] = _safe_text(value)
+        safe_payload["hookSpecificOutput"] = bounded_specific
 
-    raw = json.dumps(bounded, ensure_ascii=True, separators=(",", ":"))
+    raw = json.dumps(safe_payload, ensure_ascii=True, separators=(",", ":"))
     if len(raw.encode("utf-8")) <= MAX_RESPONSE_BYTES:
-        return bounded
-    reason = _clip_utf8(bounded.get("reason", bounded.get("systemMessage", "")), MAX_MESSAGE_BYTES)
-    if "decision" in bounded:
-        compacted = {"decision": bounded["decision"], "reason": reason}
+        return safe_payload
+    reason = _clip_utf8(_safe_text(safe_payload.get("reason", safe_payload.get("systemMessage", ""))), MAX_MESSAGE_BYTES)
+    if "decision" in safe_payload:
+        compacted = {
+            "decision": _clip_utf8(safe_payload["decision"], 64),
+            "reason": reason,
+        }
     else:
         compacted = {"systemMessage": reason}
-    compact_specific = _compact_specific(bounded.get("hookSpecificOutput"))
+        if "reason" in safe_payload:
+            compacted["reason"] = _clip_utf8(safe_payload["reason"], MAX_MESSAGE_BYTES)
+    compact_specific = _compact_specific(safe_payload.get("hookSpecificOutput"))
     if compact_specific:
         compacted["hookSpecificOutput"] = compact_specific
     return compacted

@@ -1,5 +1,7 @@
 """Run ADW's Luna-backed Claude command handlers."""
 from __future__ import annotations
+# pylint: disable=too-many-return-statements,too-many-branches,unidiomatic-typecheck
+# The hook entrypoint keeps malformed payload handling and fallback responses together.
 
 import os
 from pathlib import Path

@@ -88,6 +88,7 @@ def test_record_decision_is_unaffected_by_the_force_key(tmp_path):
     def make_payload():
         return {
             "session_id": "s1",
+            "cwd": str(tmp_path),
             "tool_name": "Write",
             "tool_use_id": "toolu_1",
             "tool_input": {"file_path": str(target)},

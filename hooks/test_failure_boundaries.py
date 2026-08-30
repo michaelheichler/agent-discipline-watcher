@@ -28,7 +28,7 @@ class RecordContinuityTests(HookTestCase):
     def test_invalid_session_is_sessionless_for_persistence_but_not_scan(self):
         target = self._violating_file()
         sessionless = record.run(
-            {"tool_name": "Write", "tool_input": {"file_path": str(target)}},
+            {"cwd": str(self.root), "tool_name": "Write", "tool_input": {"file_path": str(target)}},
             self.cfg,
         )
         invalid_sessions: tuple[object, ...] = (
@@ -43,6 +43,7 @@ class RecordContinuityTests(HookTestCase):
             response = record.run(
                 {
                     "session_id": invalid,
+                    "cwd": str(self.root),
                     "tool_name": "Write",
                     "tool_input": {"file_path": str(target)},
                 },
@@ -78,7 +79,7 @@ class RecordContinuityTests(HookTestCase):
             advisory = response.get("reason", "")
             self.assertIsInstance(advisory, str)
             self.assertTrue(advisory.strip())
-            self.assertIn("deferred_work_comment", advisory)
+            self.assertIn("PostToolUse payload requires a trusted cwd", advisory)
             self.assertIsNone(effective.call_args.args[1])
 
     def test_project_config_cannot_redirect_any_persistence_root(self):

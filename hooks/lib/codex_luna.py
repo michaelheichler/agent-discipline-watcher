@@ -1,5 +1,7 @@
 """One Luna review for each completed Codex interaction."""
 from __future__ import annotations
+# pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,unidiomatic-typecheck
+# The Codex lifecycle adapter validates one complete interaction before recording it.
 
 import uuid
 import time

@@ -156,3 +156,43 @@ def test_an_absent_server_does_not_leave_a_lease_behind(tmp_path, monkeypatch) -
 
     assert embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid()) is None
     assert not list(tmp_path.glob("*.lease.json"))
+
+
+@pytest.mark.parametrize("variable", ["ADW_EMBEDDING_URL", "ADW_EMBEDDING_URLS"])
+def test_an_unapproved_embedding_url_never_receives_private_text(
+    server, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
+    monkeypatch.setenv(variable, "https://unapproved.example/v1/embeddings")
+
+    assert embedding_client.embed(("PRIVATE-SOURCE",)) is None
+    assert server.received == []
+
+def test_disabled_project_boundary_blocks_remote_source_egress(server, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A project boundary disabled for source egress blocks remote embeddings before network I/O."""
+    monkeypatch.setenv("ADW_EMBEDDING_LOCAL_ONLY", "0")
+    monkeypatch.setenv("ADW_EMBEDDING_APPROVED_HOSTS", "approved.example")
+    monkeypatch.setenv("ADW_EMBEDDING_URL", "https://approved.example/v1/embeddings")
+
+    assert embedding_client.embed(("PRIVATE-SOURCE",), {"data_boundary": {"enabled": False}}) is None
+    assert server.received == []
+
+
+def test_oversized_input_is_rejected_before_network_io(server) -> None:
+    with pytest.raises(ValueError):
+        embedding_client.embed(("x",) * (embedding_client.MAX_INPUTS + 1))
+
+    assert server.received == []
+
+
+def test_oversized_embedding_response_is_rejected(server) -> None:
+    server.responses.append(
+        (
+            200,
+            {"data": [{"embedding": [1.0]}] * (embedding_client.MAX_RESPONSE_ROWS + 1)},
+        )
+    )
+
+    with pytest.raises(ValueError):
+        embedding_client.embed(("alpha",))

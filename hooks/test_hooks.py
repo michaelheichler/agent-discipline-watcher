@@ -5,12 +5,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lib import hookio, protected
+from lib import protected
 from lib.config import CONFIG_NAME
 import pre_commit
 import pre_write
 import record
-import session_start
 from testing import run_git as _git
 
 
@@ -417,7 +416,7 @@ def test_pre_commit_scans_from_repo_subdirectory(tmp_path):
 def test_record_blocks_forced_post_write_without_mutating_file(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
-    post_response = record.run({"tool_input": {"file_path": str(target)}})
+    post_response = record.run({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}})
     _assert_style_row(post_response, target, 1, "deferred_work_comment")
     assert post_response["decision"] == "block"
     assert target.read_text(encoding="utf-8") == "# " + ("TO" + "DO") + " later\n"
@@ -429,20 +428,20 @@ def test_record_allows_clean_post_write(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("print(1)\n", encoding="utf-8")
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
+    assert record.run({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}}, cfg) == {}
 
 
 def test_record_ignores_uncertain_punctuation(tmp_path):
     target = tmp_path / "note.md"
     target.write_text("I came home, I went to bed.\n", encoding="utf-8")
     cfg = {"ledger_path": str(tmp_path / "agent-discipline-watcher-ledger.json")}
-    assert record.run({"tool_input": {"file_path": str(target)}}, cfg) == {}
+    assert record.run({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}}, cfg) == {}
 
 
 def test_run_sh_blocks_forced_posttooluse(tmp_path):
     target = tmp_path / "note.md"
     target.write_text("bad\u2014dash\n", encoding="utf-8")
-    payload = json.dumps({"tool_input": {"file_path": str(target)}})
+    payload = json.dumps({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}})
     result = subprocess.run(
         [str(Path(__file__).parent / "run.sh"), "PostToolUse"],
         input=payload,

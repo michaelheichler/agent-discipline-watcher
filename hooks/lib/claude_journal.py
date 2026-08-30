@@ -1,5 +1,7 @@
 """Bounded candidate data shared by Claude's post-write and Stop agents."""
 from __future__ import annotations
+# pylint: disable=too-few-public-methods,too-many-return-statements,too-many-branches,too-many-statements
+# The descriptor-backed journal keeps validation and cleanup in one bounded transaction.
 
 import hashlib
 import os

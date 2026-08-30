@@ -8,8 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import session_start
-import subagent_start
-from lib.hookio import CONTRACT
 
 
 class SessionStartLifecycleTests(unittest.TestCase):

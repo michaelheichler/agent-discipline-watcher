@@ -1,5 +1,7 @@
 """Provider-neutral contracts and prompts for ADW model review."""
 from __future__ import annotations
+# pylint: disable=too-many-branches
+# The schema validator handles the complete bounded provider wire shape in one pass.
 
 import hashlib
 import json

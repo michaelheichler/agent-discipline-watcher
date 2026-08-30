@@ -568,6 +568,23 @@ def test_format_row_status_prefix_is_optional() -> None:
     assert not untagged.startswith("[")
     assert untagged == "a.py:4 clean_code/what_comment: fix"
 
+def test_format_row_sanitizes_hostile_fields() -> None:
+    finding = {
+        "path": "safe.py\n\u001b[31m<secret>\u202e",
+        "family": "clean_code",
+        "rule": "rule",
+        "line": 1,
+        "action": "`click` <here>",
+    }
+
+    rendered = reporting.format_row(finding)
+
+    assert "\n" not in rendered
+    assert "\u001b" not in rendered
+    assert "\u202e" not in rendered
+    assert "<" not in rendered
+    assert "`" not in rendered
+
 
 def test_compact_block_deduplicates_path_line_and_rule() -> None:
     finding = {

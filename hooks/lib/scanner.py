@@ -11,6 +11,8 @@ try:
     from . import scan_input
     from .comment_rules import (
         COMMENT_RE,
+        DIRECTIVE_COMMENT_RE,
+        HEADER_COMMENT_RE,
         READABILITY_RULES,
         _clean_code_comment_findings,
         _comment_body_lines,
@@ -45,6 +47,8 @@ except ImportError:
     import scan_input
     from comment_rules import (
         COMMENT_RE,
+        DIRECTIVE_COMMENT_RE,
+        HEADER_COMMENT_RE,
         READABILITY_RULES,
         _clean_code_comment_findings,
         _comment_body_lines,
@@ -90,6 +94,7 @@ CONFIG_BASENAMES = frozenset({
 DASH_BREAK_RE = re.compile(r"\w-{2,} ?\w|\w -{2,} \w")
 SPACED_HYPHEN_RE = re.compile(r"\w +- +\w")
 PROSE_SEMICOLON_RE = re.compile(r";")
+PROSE_COLON_RE = re.compile(r"\w\s*:\s+\w")
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 PRONOUN_APOS_RE = re.compile(r"\b(your|their|her|our|its)'s\b", re.IGNORECASE)
 ITS_APOS_RE = re.compile(r"(?<![\w\"'])its" + chr(39) + r"(?!\w)", re.IGNORECASE)
@@ -308,6 +313,8 @@ PUNCTUATION_RULES = (
      "Spaced hyphen acts as a dash in ", "Use a comma, period, parentheses, or close up the hyphen."),
     ("semicolon", (PROSE_SEMICOLON_RE,), "prose_semicolon",
      "Semicolon appears in prose in ", "Use a comma, period, or parentheses."),
+    ("colon", (PROSE_COLON_RE,), "prose_colon",
+     "Colon appears inside a prose sentence in ", "Use a comma, period, or parentheses."),
     ("clean", (PRONOUN_APOS_RE, ITS_APOS_RE), "pronoun_apostrophe",
      "Possessive pronoun has an apostrophe in ", "Use the possessive pronoun without apostrophe."),
     ("clean", (DECADE_APOS_RE,), "decade_apostrophe",
@@ -319,7 +326,7 @@ def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> 
     clean = _strip_inline_code(scan_line)
     prose_part = _punctuation_prose_part(source_line.path, clean, prose)
     semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
-    texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon}
+    texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
     rows = [
         _finding(
             "punctuation", rule, source_line.number,
@@ -495,6 +502,10 @@ def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
         return "" if SHELL_IN_CONFIG_RE.search(line) else line
     if prose:
         return line
-    # Kept anchored to avoid misreading CSS colors and JS private fields as comments.
     leading = COMMENT_RE.match(line)
-    return leading.group(1) if leading else ""
+    if not leading:
+        return ""
+    body = leading.group(1)
+    if DIRECTIVE_COMMENT_RE.match(line.strip()) or HEADER_COMMENT_RE.search(body):
+        return ""
+    return body

@@ -53,6 +53,7 @@ def test_punctuation_rules_cover_diagnosed_marks():
     text = "\n".join([
         "left" + "--" + "right",
         "a thing" + chr(59) + " another thing",
+        "a thing: another thing",
         "your" + chr(39) + "s",
         "1990" + chr(39) + "s",
         "twenty - three",
@@ -60,7 +61,7 @@ def test_punctuation_rules_cover_diagnosed_marks():
     ])
     findings = scan_all("sample.md", text, {"english": False, "clean_code": False})
     rules = {item["rule"] for item in findings}
-    assert {"dash_break", "prose_semicolon", "pronoun_apostrophe", "decade_apostrophe", "spaced_hyphen"} <= rules
+    assert {"dash_break", "prose_semicolon", "prose_colon", "pronoun_apostrophe", "decade_apostrophe", "spaced_hyphen"} <= rules
     assert all(item["force"] is True for item in findings)
 
 

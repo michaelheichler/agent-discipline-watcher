@@ -17,6 +17,7 @@ FLOOR = VERSION_FILE.read_text(encoding="utf-8").strip()
 
 DISPATCH = {
     "SessionStart": "session_start.py",
+    "Configure": "configure.py",
     "UserPromptSubmit": "prompt_submit.py",
     "PreToolUse": "pre_tool.py",
     "PreCommit": "pre_tool.py",
@@ -27,6 +28,7 @@ DISPATCH = {
     "SubagentStop": "subagent_stop.py",
     "Stop": "stop.py",
     "SessionEnd": "session_end.py",
+    "JudgeReview": "judge_review.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)

@@ -1,10 +1,17 @@
-"""Centralized here because every hook and the CLI must agree on one gate-resolution order, or a rule could block in one surface and pass in another."""
+"""Shared ADW policy resolution and bounded project-config loading.
+
+Hook entry points and the configuration bridge use this module so they resolve
+the same project file, defaults, and gate precedence.
+"""
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import operator
 import os
 import re
+import stat
 import sys
 from functools import cache
 from dataclasses import dataclass
@@ -62,6 +69,7 @@ DEFAULTS = {
     "max_rows": 8,
     "sentence_word_cap": 40,
     "list_item_cap": 8,
+    "adw_model": "",
     "exempt_paths": [],
     # Path glob to family list, so that one surface drops one family instead of exempt_paths silencing them all.
     "exempt_families": {},
@@ -156,6 +164,8 @@ def slop_phrase_candidate(text: str) -> bool:
 
 
 CONFIG_NAME = ".agent-discipline.json"
+MAX_PROJECT_CONFIG_BYTES = 256 * 1024
+MAX_PROJECT_CONFIG_DEPTH = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +173,137 @@ class StorageRoots:
     state: str | os.PathLike[str] | None
     ledger: str | os.PathLike[str] | None
 
+
+@dataclass(frozen=True, slots=True)
+class ProjectConfig:
+    """Hold the parsed project document and its content digest for one read."""
+
+    path: Path
+    data: dict[str, object]
+    settings: dict[str, object]
+    digest: str | None
+    exists: bool
+
+
+class ConfigLoadError(ValueError):
+    """Report a project config that cannot be safely read or validated."""
+
+
+def _reject_json_constant(value: str) -> object:
+    """Reject NaN and Infinity so the bridge accepts JSON rather than Python extensions."""
+    raise ValueError(f"non-standard JSON constant {value}")
+
+
+def _reject_duplicate_keys(pairs: list[tuple[object, object]]) -> dict[object, object]:
+    """Reject duplicate object keys so a later value cannot hide an earlier policy value."""
+    result: dict[object, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _check_json_depth(raw: bytes) -> None:
+    """Reject deeply nested JSON before the standard decoder walks attacker data."""
+    stack: list[int] = []
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 92:
+                escaped = True
+            elif byte == 34:
+                in_string = False
+            continue
+        if byte == 34:
+            in_string = True
+        elif byte in (91, 123):
+            stack.append(byte)
+            if len(stack) > MAX_PROJECT_CONFIG_DEPTH:
+                raise ConfigLoadError("project config nesting exceeds the limit")
+        elif byte in (93, 125):
+            if not stack or (byte == 93 and stack[-1] != 91) or (byte == 125 and stack[-1] != 123):
+                raise ConfigLoadError("project config has mismatched delimiters")
+            stack.pop()
+
+
+def _read_project_bytes(path: Path) -> bytes | None:
+    """Read at most the configured project-file limit, including a race-safe second bound."""
+    descriptor = -1
+    try:
+        if path.stat().st_size > MAX_PROJECT_CONFIG_BYTES:
+            raise ConfigLoadError("project config exceeds the size limit")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ConfigLoadError("project config is not a regular file")
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = -1
+            raw = stream.read(MAX_PROJECT_CONFIG_BYTES + 1)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ConfigLoadError(f"project config is unreadable: {exc}") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(raw) > MAX_PROJECT_CONFIG_BYTES:
+        raise ConfigLoadError("project config exceeds the size limit")
+    return raw
+
+
+def _validate_legacy_family_values(fields: dict[str, object]) -> None:
+    """Require literal JSON booleans for legacy family switches in either namespace."""
+    namespaces = [fields]
+    checks = fields.get("checks")
+    if operator.is_(type(checks), dict):
+        namespaces.append(checks)
+    for namespace in namespaces:
+        for family in GATE_FAMILIES:
+            if family in namespace and not operator.is_(type(namespace[family]), bool):
+                raise ConfigLoadError(f"legacy family {family} must be a JSON boolean")
+
+
+def _parse_project_config(path: Path, raw: bytes) -> ProjectConfig:
+    """Decode one bounded project document and return its flattened policy settings."""
+    _check_json_depth(raw)
+    try:
+        text = raw.decode("utf-8")
+        data = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+        raise ConfigLoadError(f"project config is not valid JSON: {exc}") from exc
+    if not operator.is_(type(data), dict):
+        raise ConfigLoadError("project config must contain a JSON object")
+    fields = exact_string_dict(data)
+    _validate_legacy_family_values(fields)
+    return ProjectConfig(path, fields, flatten_settings(fields), hashlib.sha256(raw).hexdigest(), True)
+
+
+def load_project_config(path: str | os.PathLike[str]) -> ProjectConfig:
+    """Load a bounded project config, returning an empty record when the file is absent."""
+    target = Path(path)
+    raw = _read_project_bytes(target)
+    if raw is None:
+        return ProjectConfig(target, {}, {}, None, False)
+    return _parse_project_config(target, raw)
+
+
+def _safe_settings(data: object) -> dict[str, object]:
+    """Drop malformed legacy booleans from caller-provided settings so hooks fail closed."""
+    if data is not None and not operator.is_(type(data), dict):
+        raise ValueError("configuration must be a mapping")
+    settings = flatten_settings(data)
+    for family in GATE_FAMILIES:
+        if family in settings and not operator.is_(type(settings[family]), bool):
+            settings.pop(family)
+    return settings
 
 def flatten_settings(data: object) -> dict:
     """Flattened once here so that every caller checks one namespace instead of guessing whether a setting lives at the top level or under checks."""
@@ -173,11 +314,10 @@ def flatten_settings(data: object) -> dict:
 
 
 def _project_settings(cwd: str | os.PathLike[str]) -> dict:
+    """Return validated project settings while converting malformed files into a safe default."""
     path = _find_project_config(Path(cwd))
     try:
-        if not path.exists():
-            return {}
-        return flatten_settings(json.loads(path.read_text(encoding="utf-8")))
+        return load_project_config(path).settings
     except (OSError, ValueError, TypeError) as exc:
         # Named on stderr, because a config that silently fails closed still costs the user their exemptions and gates.
         sys.stderr.write(f"agent-discipline-watcher: could not read project config at {path}: {exc}\n")
@@ -189,8 +329,8 @@ def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | N
     merged = copy.deepcopy(DEFAULTS)
     if cwd is not None:
         merged.update(_project_settings(cwd))
-    if config:
-        merged.update(config)
+    if config is not None:
+        merged.update(_safe_settings(config))
     return merged
 
 

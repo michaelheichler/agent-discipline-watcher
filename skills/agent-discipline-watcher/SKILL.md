@@ -17,7 +17,11 @@ description: >-
 
 Apply this skill whenever you produce or revise agent output that may land in a
 file, commit, code review, user-facing prose, or final reply. It supports Claude
-Code and Codex.
+Code, Codex, and Oh My Pi.
+
+In Oh My Pi, use `/adw configure` or `/agent-discipline configure` for project
+policy changes. These commands edit `.agent-discipline.json`. OMP's
+`/advisor configure` edits `WATCHDOG.yml` and is a separate reviewer harness.
 
 ## Enforce These Rules
 

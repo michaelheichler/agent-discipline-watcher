@@ -1,5 +1,7 @@
 """Subscription-backed Luna judge behind an ADW-owned SDK boundary."""
 from __future__ import annotations
+# pylint: disable=too-few-public-methods,too-many-locals,too-many-boolean-expressions,too-many-branches,unidiomatic-typecheck
+# The provider boundary keeps SDK identity, descriptor lifetimes, and response validation together.
 
 import json
 import os
@@ -302,7 +304,8 @@ class LunaJudge:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(process.args, JUDGE_TIMEOUT_SECONDS)
-            stdout, _ = process.communicate(json.dumps(payload), timeout=remaining)
+            communication = process.communicate(json.dumps(payload), timeout=remaining)  # pylint: disable=assignment-from-no-return
+            stdout = next(iter(communication))
             row = json.loads(stdout)
             if not isinstance(row, dict):
                 raise ValueError("worker response must be an object")
@@ -325,8 +328,6 @@ class LunaJudge:
             return value
         except subprocess.TimeoutExpired as exc:
             raise LunaProviderFailure("Luna judge timed out", category="timeout") from exc
-        except LunaProviderFailure:
-            raise
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise LunaProviderFailure(
                 "Luna worker returned malformed output", category="worker_protocol",
@@ -548,7 +549,7 @@ def _run_sdk_once(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> Ju
 
 
 def _validate_luna(models: tuple[SdkModel, ...]) -> None:
-    luna = next((model for model in models if model.id == LUNA_MODEL or model.model == LUNA_MODEL), None)
+    luna = next((model for model in models if LUNA_MODEL in (model.id, model.model)), None)
     if luna is None or luna.hidden:
         raise LunaProviderFailure(
             "gpt-5.6-luna is unavailable to this Codex account", category="availability",

@@ -1,6 +1,6 @@
 from __future__ import annotations
+# pylint: disable=too-few-public-methods
 
-from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path

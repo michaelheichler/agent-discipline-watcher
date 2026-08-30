@@ -8,17 +8,12 @@ from pathlib import PurePath
 from statistics import fmean, pstdev
 
 try:
-    from .markup import MIXED_LANGUAGE_EXTS
-except ImportError:
-    from markup import MIXED_LANGUAGE_EXTS
-
-try:
     from .comment_rules import _finding
-    from .markup import _strip_english_hidden, _strip_inline_code
+    from .markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from .scan_input import int_setting as _int_setting
 except ImportError:
     from comment_rules import _finding
-    from markup import _strip_english_hidden, _strip_inline_code
+    from markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from scan_input import int_setting as _int_setting
 
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")

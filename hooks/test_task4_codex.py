@@ -1,8 +1,7 @@
 from __future__ import annotations
+# pylint: disable=too-few-public-methods
 
 import json
-import os
-import subprocess
 import tomllib
 from pathlib import Path
 

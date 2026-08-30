@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 
@@ -29,35 +30,64 @@ def test_comment_candidates_adapt_to_the_shared_judge_contract() -> None:
 
 
 def test_verdicts_bind_back_to_their_candidate() -> None:
-    answer = '[{"index": 1, "verdict": "states_why", "reason": "names a measured limit"}]'
+    answer = (
+        '[{"index": 1, "verdict": "states_why", "reason": "names a measured limit"},'
+        ' {"index": 0, "verdict": "states_why", "reason": "names a retry count"}]'
+    )
 
     verdicts = judge.parse_verdicts(answer, CANDIDATES)
 
-    assert len(verdicts) == 1
-    assert verdicts[0].candidate.line == 9
+    assert len(verdicts) == 2
+    assert verdicts[0].candidate.line == 2
+    assert verdicts[1].candidate.line == 9
     assert verdicts[0].narrates is False
 
 
-def test_an_out_of_range_index_is_dropped_rather_than_crashing() -> None:
+def test_an_out_of_range_index_is_rejected() -> None:
     answer = (
         '[{"index": 7, "verdict": "describes_code", "reason": "out of range"},'
         ' {"index": 0, "verdict": "describes_code", "reason": "opens on a behaviour verb"}]'
     )
 
-    verdicts = judge.parse_verdicts(answer, CANDIDATES)
+    with pytest.raises(ValueError):
+        judge.parse_verdicts(answer, CANDIDATES)
 
-    assert [item.candidate.line for item in verdicts] == [2]
 
+def test_an_unknown_verdict_word_is_rejected() -> None:
+    answer = '[{"index": 0, "verdict": "maybe", "reason": "unsure"}, {"index": 1, "verdict": "states_why"}]'
 
-def test_an_unknown_verdict_word_is_dropped() -> None:
-    answer = '[{"index": 0, "verdict": "maybe", "reason": "unsure"}]'
+    with pytest.raises(ValueError):
+        judge.parse_verdicts(answer, CANDIDATES)
 
-    assert judge.parse_verdicts(answer, CANDIDATES) == ()
+def test_a_boolean_index_is_rejected() -> None:
+    answer = '[{"index": true, "verdict": "describes_code"}, {"index": 1, "verdict": "states_why"}]'
+
+    with pytest.raises(ValueError):
+        judge.parse_verdicts(answer, CANDIDATES)
 
 
 def test_an_answer_without_an_array_raises() -> None:
     with pytest.raises(ValueError):
         judge.parse_verdicts("I could not decide.", CANDIDATES)
+
+def test_selected_model_reaches_the_comment_judge(monkeypatch) -> None:
+    selected: list[str] = []
+    monkeypatch.setattr(judge, "available", lambda: True)
+    monkeypatch.setattr(
+        judge,
+        "_run",
+        lambda _prompt, model: selected.append(model) or json.dumps({
+            "is_error": False,
+            "result": json.dumps([
+                {"index": 0, "verdict": "states_why"},
+                {"index": 1, "verdict": "states_why"},
+            ]),
+        }),
+    )
+
+    judge.judge(CANDIDATES, "claude-sonnet-5")
+
+    assert selected == ["claude-sonnet-5"]
 
 
 def test_an_errored_run_raises_rather_than_reporting_a_clean_file() -> None:
