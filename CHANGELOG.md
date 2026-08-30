@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Installers now copy ADW into `~/.adw/install/agent-discipline-watcher` and point OMP, Codex, Claude legacy wiring, and command links at that isolated copy instead of the development checkout. Foreign install directories and symlinks are preserved rather than overwritten.
+
 ## 0.20.0 (2026-08-30)
 
 ### Added

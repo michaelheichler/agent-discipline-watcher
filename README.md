@@ -78,10 +78,11 @@ These rules carry no measurement yet. The prose rules have 60000 human sentences
 
 ### Codex
 
-`install.sh` wires Codex from this checkout, preserves any existing
-`~/.codex/hooks.json`, and provisions an ADW-owned virtual environment with
-the pinned `openai-codex==0.147.0` runtime. Luna reviews use the Codex
-ChatGPT subscription only. Log in through Codex's browser or device-code
+`install.sh` wires Codex from this checkout, copies the watcher into
+`~/.adw/install/agent-discipline-watcher`, and provisions an ADW-owned virtual
+environment with the pinned `openai-codex==0.147.0` runtime. Client hooks point
+to the installed copy, not the development checkout. Luna reviews use the
+Codex ChatGPT subscription only. Log in through Codex's browser or device-code
 flow before using model review. There is no API-key fallback.
 
 ```bash
@@ -91,8 +92,22 @@ flow before using model review. There is no API-key fallback.
 ```
 
 ### OMP (`oh-my-pi`)
+`pi/install.sh` copies the checkout into
+`~/.adw/install/agent-discipline-watcher`, symlinks the extension into
+`~/.omp/agent/extensions/agent-discipline-watcher`, and registers the
+installed `index.ts` in `~/.omp/agent/settings.json`. The stable runner link
+under `~/.agents/skills` also points to that installed copy. Nothing in the
+installed client configuration points into the development checkout.
 
-`pi/install.sh` symlinks the extension into `~/.omp/agent/extensions/agent-discipline-watcher` and registers `pi/extensions/agent-discipline-watcher/index.ts` in `~/.omp/agent/settings.json`.
+```text
+~/.adw/install/agent-discipline-watcher  installed code
+~/.adw/state                             session state
+~/.adw/ledger                            finding ledger
+~/.adw/reports                           finding reports
+~/.adw/cache                             judge and embedding caches
+~/.adw/runtime                           provider runtimes
+<project>/.agent-discipline.json         project policy
+```
 
 ```bash
 ./install.sh                      # Claude + Codex + OMP
@@ -101,8 +116,13 @@ flow before using model review. There is no API-key fallback.
 ./pi/install.sh --remove -y       # uninstall OMP extension
 ```
 
-Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Restart OMP after install, or pass `--extension` to load immediately.
-In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy screen. They edit the project `.agent-discipline.json` policy used by the same Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
+Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Set
+`ADW_INSTALL_DIR` to choose a different isolated install root. Restart OMP
+after install, or pass `--extension` to load it immediately.
+In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
+screen. They edit the project `.agent-discipline.json` policy used by the same
+Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is
+separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
 ## Requirements
 

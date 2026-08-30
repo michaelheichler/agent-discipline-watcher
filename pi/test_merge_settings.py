@@ -139,7 +139,8 @@ class InstallOmpScriptTests(unittest.TestCase):
             )
             link = omp_agent / "extensions" / "agent-discipline-watcher"
             self.assertTrue(link.is_symlink())
-            self.assertEqual(link.resolve(), (ROOT / "pi/extensions/agent-discipline-watcher").resolve())
+            expected = home / ".adw" / "install" / "agent-discipline-watcher" / "pi/extensions/agent-discipline-watcher"
+            self.assertEqual(link.resolve(), expected.resolve())
             merged = json.loads((omp_agent / "settings.json").read_text())
             self.assertEqual(len(merged["extensions"]), 1)
 

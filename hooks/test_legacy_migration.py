@@ -193,7 +193,7 @@ class InstallScriptTests(unittest.TestCase):
             settings = Path(home) / ".omp" / "agent" / "settings.json"
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             once = json.loads(settings.read_text(encoding="utf-8"))
-            extension_path = str(ROOT / "pi" / "extensions" / "agent-discipline-watcher" / "index.ts")
+            extension_path = str((Path(home) / ".adw" / "install" / "agent-discipline-watcher" / "pi" / "extensions" / "agent-discipline-watcher" / "index.ts").resolve())
             self.assertEqual(once["extensions"], [extension_path])
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             twice = json.loads(settings.read_text(encoding="utf-8"))

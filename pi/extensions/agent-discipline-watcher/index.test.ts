@@ -245,7 +245,10 @@ describe("watcher helpers", () => {
     expect(isPreGateTool("edit")).toBe(true);
   });
 
-  test("resolves the shared skill checkout runner", () => {
+  test("resolves the stable installed runner link", () => {
+    expect(resolveRunner({}, "/home/tester")).toBe(
+      "/home/tester/.agents/skills/agent-discipline-watcher/hooks/run.sh",
+    );
     expect(resolveRunner({ AGENT_DISCIPLINE_WATCHER_HOME: "/override" })).toEndWith("/override/hooks/run.sh");
   });
 
