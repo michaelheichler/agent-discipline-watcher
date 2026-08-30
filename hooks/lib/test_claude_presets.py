@@ -16,6 +16,16 @@ def test_a_sonnet_everywhere_preset_is_refused() -> None:
         claude_presets.validate_preset("sonnet")
 
 
+def test_a_stored_sonnet_preset_reads_as_the_preset_that_replaced_it(tmp_path) -> None:
+    """Map it because a dropped name reads as no preset, and status would then report haiku while Sonnet still runs."""
+    from lib import claude_native
+
+    stored = tmp_path / "preset"
+    stored.write_text("sonnet\n", encoding="utf-8")
+
+    assert claude_native._read_preset_unlocked(stored) == "mixed"
+
+
 def test_mixed_spends_the_cheaper_model_on_the_more_frequent_role() -> None:
     """Split the roles because a comment check runs per write while a document check runs per turn."""
     assert claude_presets.model_for("mixed", "comment") == "haiku"

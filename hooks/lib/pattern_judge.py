@@ -23,7 +23,6 @@ except ImportError:
 VIOLATING = "violating"
 CLEAN = "clean"
 BATCH_SIZE = 20
-# Haiku only, because a stronger agent must never run.
 JUDGED_GATE_MODEL = JUDGE_MODEL
 JUDGE_WORKERS = 8
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)

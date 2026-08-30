@@ -33,6 +33,31 @@ def test_a_missing_manifest_reports_zero_rather_than_raising(tmp_path: Path) -> 
     assert judge_status.plugin_reviewers(tmp_path / "absent.json") == 0
 
 
+def test_a_machine_with_no_install_reports_zero(tmp_path: Path, monkeypatch) -> None:
+    """Read the install because this checkout carries two reviewers whether or not anyone installed it."""
+    monkeypatch.delenv(judge_status.PLUGIN_ROOT_ENV, raising=False)
+    monkeypatch.setenv(judge_status.CONFIG_ENV, str(tmp_path / "empty-config"))
+
+    assert judge_status.plugin_reviewers() == 0
+
+
+def test_the_pinned_plugin_root_wins_over_the_cache_scan(tmp_path: Path, monkeypatch) -> None:
+    """Prefer the pinned root because that is the copy whose hooks the running session loaded."""
+    root = tmp_path / "pinned"
+    (root / "hooks").mkdir(parents=True)
+    _manifest(root / "hooks" / "hooks.json", {"hooks": [AGENT]})
+    monkeypatch.setenv(judge_status.PLUGIN_ROOT_ENV, str(root))
+
+    assert judge_status.plugin_reviewers() == 1
+
+
+def test_a_pinned_root_without_a_manifest_reports_zero(tmp_path: Path, monkeypatch) -> None:
+    """Answer zero because a wiped cache leaves the variable pointing at a directory that is gone."""
+    monkeypatch.setenv(judge_status.PLUGIN_ROOT_ENV, str(tmp_path / "gone"))
+
+    assert judge_status.plugin_reviewers() == 0
+
+
 def test_a_corrupt_manifest_reports_zero_rather_than_raising(tmp_path: Path) -> None:
     """Survive bad JSON because a half-written settings file must not take the status command with it."""
     broken = tmp_path / "hooks.json"

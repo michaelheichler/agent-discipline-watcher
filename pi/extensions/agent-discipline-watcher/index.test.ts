@@ -294,14 +294,21 @@ describe("watcher helpers", () => {
     expect(isPreGateTool("edit")).toBe(true);
   });
 
-  test("prefers the runner inside the state directory", () => {
-    expect(resolveRunner({}, "/home/tester", () => true)).toBe(
+  test("prefers the runner beside itself, so a custom install root still resolves", () => {
+    expect(resolveRunner({}, "/home/tester", () => true, "/opt/adw/pi/extensions/adw")).toBe(
+      "/opt/adw/hooks/run.sh",
+    );
+  });
+
+  test("falls back to the state directory when nothing sits beside it", () => {
+    const onlyStateDir = (path: string) => path.startsWith("/home/tester/.adw");
+    expect(resolveRunner({}, "/home/tester", onlyStateDir, "/nowhere/pi/extensions/adw")).toBe(
       "/home/tester/.adw/install/agent-discipline-watcher/hooks/run.sh",
     );
   });
 
-  test("falls back to the legacy link when the state directory has no runner", () => {
-    expect(resolveRunner({}, "/home/tester", () => false)).toBe(
+  test("falls back to the legacy link when neither exists", () => {
+    expect(resolveRunner({}, "/home/tester", () => false, "/nowhere/pi/extensions/adw")).toBe(
       "/home/tester/.agents/skills/agent-discipline-watcher/hooks/run.sh",
     );
   });

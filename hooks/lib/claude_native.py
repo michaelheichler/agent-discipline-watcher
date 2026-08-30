@@ -25,6 +25,8 @@ except ImportError:
 
 PRESETS = claude_presets.PRESETS
 LUNA_NATIVE_MODEL = claude_presets.LUNA_NATIVE_MODEL
+# Mapped, because a dropped name reads as no preset.
+RETIRED_PRESETS = {"sonnet": "mixed"}
 REMOTE_ENV = "CLAUDE_CODE_REMOTE"
 HAIKU_ONLY_ENV = "ADW_CLAUDE_HAIKU_ONLY"
 PRESET_ENV = "ADW_CLAUDE_PRESET"
@@ -181,7 +183,9 @@ def _read_preset_unlocked(path: Path) -> str | None:
     if text is None:
         return None
     value = text.strip()
-    return value if value in PRESETS else None
+    if value in PRESETS:
+        return value
+    return RETIRED_PRESETS.get(value)
 
 
 def _read_regular_data(path: Path, *, allow_final_symlink: bool = False) -> tuple[str, tuple[int, int, int, int, int, int]] | None:

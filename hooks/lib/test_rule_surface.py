@@ -46,6 +46,26 @@ def test_a_surface_map_with_no_catch_all_leaves_other_surfaces_to_the_family() -
     assert resolve_outcome(_finding("prose"), cfg) is Outcome.BLOCK
 
 
+def test_turning_a_rule_off_for_prose_reaches_an_untagged_finding() -> None:
+    """Treat untagged as prose, because only the commit path tags and a prose rule set to off must obey."""
+    cfg = _config({"prose": "off"})
+
+    assert resolve_outcome(_finding(), cfg) is Outcome.RELEASE
+    assert resolve_outcome(_finding("prose"), cfg) is Outcome.RELEASE
+
+
+def test_a_surface_the_scanner_never_tags_is_refused_at_configure_time() -> None:
+    """Refuse it because accepting a surface nothing produces lets a user configure nothing and see no error."""
+    from lib.configure_policy import ConfigureError, _rule_gate_value
+
+    try:
+        _rule_gate_value(RULE, {"comment": "off"})
+    except ConfigureError as error:
+        assert "prose, commit, or all" in str(error)
+    else:
+        raise AssertionError("an unproduced surface must not validate")
+
+
 def test_a_malformed_surface_value_is_ignored_rather_than_obeyed() -> None:
     """Ignore it because a typo must never read as a request to stop enforcing."""
     cfg = _config({"commit": "sometimes"})

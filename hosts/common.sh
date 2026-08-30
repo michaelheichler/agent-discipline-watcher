@@ -47,6 +47,10 @@ adw_strip_rc_block() {
   local rc_file="$1"
   [ -f "$rc_file" ] || return 0
   grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" 2>/dev/null || return 0
+  grep -qF '# <<< agent-discipline-watcher <<<' "$rc_file" 2>/dev/null || {
+    echo "warning: $rc_file opens an agent-discipline-watcher block it never closes; leaving it alone" >&2
+    return 0
+  }
   adw_backup_file "$rc_file"
   local stripped
   stripped="$(mktemp)"

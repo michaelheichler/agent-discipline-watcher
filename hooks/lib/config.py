@@ -57,9 +57,8 @@ ALWAYS_BLOCKING_RULES = (
 GATE_STATES = ("off", "observe", "enforce")
 JUDGED_STATE = "judged"
 SURFACE_PROSE = "prose"
-SURFACE_COMMENT = "comment"
 SURFACE_COMMIT = "commit"
-SURFACES = (SURFACE_PROSE, SURFACE_COMMENT, SURFACE_COMMIT)
+SURFACES = (SURFACE_PROSE, SURFACE_COMMIT)
 SURFACE_ALL = "all"
 # WHY: A family carries no exemplars, so only a single rule can be sent to a reader instead of blocking on its own.
 RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
@@ -385,8 +384,8 @@ def gate_state(family: str, config: dict | None = None) -> str:
 
 
 def _surface_state(gate: dict, surface: str | None) -> str | None:
-    """Left to the family when unnamed, because nobody configured that surface rather than configured it off."""
-    chosen = gate.get(surface) if surface else None
+    """Untagged counts as prose, because a prose rule set to off would otherwise keep blocking."""
+    chosen = gate.get(surface or SURFACE_PROSE)
     if chosen is None:
         chosen = gate.get(SURFACE_ALL)
     return chosen if chosen in RULE_GATE_STATES else None

@@ -11,14 +11,14 @@ try:
     from .embedding_client import Vector, embed
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from .pattern_judge import PatternCandidate, PatternRule, confirm_all
+    from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
     from embedding_client import Vector, embed
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from pattern_judge import PatternCandidate, PatternRule, confirm_all
+    from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
 
@@ -185,7 +185,7 @@ def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...
         for rule in measured_rules(manifest)
     )
     blocking = blocking_rules(manifest)
-    model = str((config.get("adw_model") if isinstance(config, dict) else None) or "")
+    model = str((config.get("adw_model") if isinstance(config, dict) else None) or JUDGED_GATE_MODEL)
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
         for rule, kept in sorted(confirm_all(work, model).kept.items())

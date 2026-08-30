@@ -353,14 +353,18 @@ export function normalizeArgs(args: Record<string, unknown> | undefined): Record
 }
 
 const LEGACY_RUNNER_ROOT = [".agents", "skills", "agent-discipline-watcher"];
+const SIBLING_RUNNER = ["..", "..", "..", "hooks", "run.sh"];
 
 export function resolveRunner(
   environment: Record<string, string | undefined> = process.env,
   home: string = homedir(),
   exists: (path: string) => boolean = existsSync,
+  self: string = import.meta.dir,
 ): string {
   const override = environment.AGENT_DISCIPLINE_WATCHER_HOME;
   if (override) return join(override, "hooks", "run.sh");
+  const beside = resolve(self, ...SIBLING_RUNNER);
+  if (exists(beside)) return beside;
   const installed = join(home, ".adw", "install", "agent-discipline-watcher", "hooks", "run.sh");
   if (exists(installed)) return installed;
   return join(home, ...LEGACY_RUNNER_ROOT, "hooks", "run.sh");

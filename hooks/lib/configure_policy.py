@@ -185,7 +185,7 @@ def _rule_gate_value(rule: str, value: object) -> None:
     allowed = set(config.SURFACES) | {config.SURFACE_ALL}
     for surface, state in value.items():
         if type(surface) is not str or surface not in allowed:
-            raise ConfigureError("invalid_value", "rule gate surfaces are prose, comment, commit, or all")
+            raise ConfigureError("invalid_value", "rule gate surfaces are prose, commit, or all")
         _rule_gate_state(rule, state)
 
 

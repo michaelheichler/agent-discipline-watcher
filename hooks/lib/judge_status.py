@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-PLUGIN_MANIFEST = PLUGIN_ROOT / "hooks" / "hooks.json"
+PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
+CONFIG_ENV = "CLAUDE_CONFIG_DIR"
+CACHE_PARTS = ("plugins", "cache", "agent-discipline-watcher", "agent-discipline-watcher")
 
 
 def _load(path: Path) -> dict:
@@ -33,9 +35,33 @@ def _count(document: dict, matches: Callable[[dict], bool]) -> int:
 
 
 def plugin_reviewers(manifest_path: Path | None = None) -> int:
-    """Read from the shipped manifest, because installing the plugin is the whole setup for a default user."""
-    document = _load(PLUGIN_MANIFEST if manifest_path is None else manifest_path)
-    return _count(document, lambda entry: entry.get("type") == "agent")
+    """Read from the loaded plugin rather than this checkout, because a checkout answers yes on a machine with no install."""
+    target = _installed_manifest() if manifest_path is None else manifest_path
+    if target is None:
+        return 0
+    return _count(_load(target), lambda entry: entry.get("type") == "agent")
+
+
+def _installed_manifest() -> Path | None:
+    """Prefer the root Claude Code pinned, because that is the copy whose hooks actually run."""
+    root = os.environ.get(PLUGIN_ROOT_ENV, "").strip()
+    if root:
+        candidate = Path(root) / "hooks" / "hooks.json"
+        return candidate if candidate.is_file() else None
+    newest: Path | None = None
+    for cache in _cache_roots():
+        for revision in sorted(cache.iterdir()) if cache.is_dir() else []:
+            manifest = revision / "hooks" / "hooks.json"
+            if manifest.is_file():
+                newest = manifest
+    return newest
+
+
+def _cache_roots() -> tuple[Path, ...]:
+    home = Path.home()
+    override = os.environ.get(CONFIG_ENV, "").strip()
+    roots = [Path(override)] if override else [home / ".config" / "claude-code", home / ".claude"]
+    return tuple(root.joinpath(*CACHE_PARTS) for root in roots)
 
 
 def settings_reviewers(settings_path: Path, is_managed: Callable[[object], bool]) -> int:

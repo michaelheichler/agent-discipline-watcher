@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.20.2 (2026-08-31)
+
+### Changed
+
+- The plugin carries its own semantic reviewer again. `hooks/hooks.json` registers an agent
+  handler on PostToolUse and on Stop, so a plain install judges with no preset step. It stays
+  off PreToolUse, because a non-conforming reply there reads as a hook error and denies the
+  tool call. Commit `d606abc` had removed the last agent handler on 2026-08-13, and two tests
+  then asserted its absence, which made the removal read as design.
+- The preset roster is `haiku`, `mixed`, `luna`, and `luna-native`. **The `sonnet` preset is
+  gone.** A stored `sonnet` preset now reads as `mixed` rather than as no preset at all.
+  `luna-native` names the Luna model on a native agent handler. That suits a harness which
+  injects Luna into the Claude model list.
+- `adw-judge status` counts the reviewers a session carries instead of echoing the stored
+  preference, so an unwired gate says so. It reads the installed plugin rather than the
+  checkout, because a checkout answers yes on a machine with no install at all.
+- **ADW no longer ships a haiku-only model policy.** This release deletes
+  `hooks/lib/judge_model.py`. It existed to stop a nested CLI spending the user's Anthropic
+  account, and that CLI no longer exists. The same screen sat in config validation, where it
+  rejected every model OMP's own catalogue offers, so the Python and TypeScript sides of
+  `adw_model` disagreed. The OMP model picker had the matching filter and lost it too.
+- **The Claude launcher moved from `~/.local/bin/adw-judge` to `~/.adw/bin/adw-judge`**, and the
+  installer no longer appends a PATH block to `.zshrc` or `.bashrc`. It prints the line instead.
+  The OMP extension resolves its runner from its own install rather than `~/.agents/skills`.
+  Each installer reclaims what an earlier version of itself left behind, and only when the file
+  still points at an ADW copy.
+
+### Added
+
+- Rule gates accept a `{surface: state}` map, and findings carry the surface they came from.
+  No shipped default changes, so a commit body with a banned adverb still blocks. An untagged
+  finding counts as prose, so a rule turned off for prose is off.
+- CI runs the floor from `.python-version` plus 3.12 and 3.13 ahead of it, a job for the Bun
+  suite that never ran before, and a pylint score assertion. Pylint exits zero on a warning, so
+  the previous job called a 9.98 a pass.
+
+### Fixed
+
+- **`claude -p` is gone.** Two spawn sites existed. `judge_provider.complete` served three
+  library callers, and `evals/measure_judge_stage.py` carried its own copy. A source-level test
+  now fails if either the import or the literal command returns. The route that reached it ran
+  from 2026-08-27 to 2026-08-28, so the billing window was about a day, but the code sat one
+  manifest line from billing again.
+- `pattern_judge.confirm_all` answered an empty mapping both when the judge cleared every
+  candidate and when no judge existed, so a judged rule could stop firing with nothing said. It
+  now reports which rules went unread and why.
+- Nothing ever wrote the candidate journal. A parameter named `journal` shadowed the module it
+  came from, so every append raised into a swallowed `except`. The Stop reviewer reads only that
+  journal, so it saw an empty candidate list on every turn.
+
 ## 0.20.11 (2026-08-30)
 
 ### Added
