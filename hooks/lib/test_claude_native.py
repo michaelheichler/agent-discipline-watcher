@@ -36,7 +36,7 @@ def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> No
         assert claude_native.MANAGED_MARKER in handler["command"]
 
 
-@pytest.mark.parametrize("preset", ("mixed", "luna", "haiku", "sonnet"))
+@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna", "luna-native"))
 def test_preset_switch_is_idempotent_and_preserves_unrelated_settings(tmp_path: Path, preset: str) -> None:
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({
@@ -476,11 +476,11 @@ def test_settings_update_retries_after_external_regular_target_mutation(
         original(parent_fd, name, leaf, text, **kwargs)
 
     monkeypatch.setattr(claude_native, "_atomic_write_regular_open", mutate_before_replace)
-    claude_native.set_preset("sonnet", settings_path=settings, preset_path=preset)
+    claude_native.set_preset("luna-native", settings_path=settings, preset_path=preset)
 
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert configured["external_setting"] == "keep me"
-    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == "sonnet"
+    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == claude_native.LUNA_NATIVE_MODEL
 
 
 def test_descriptor_open_failure_does_not_leak_parent_fd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

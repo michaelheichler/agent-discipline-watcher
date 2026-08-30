@@ -59,3 +59,6 @@ WATCHDOG.yml
 
 # Coverage output, regenerated on demand.
 .coverage
+
+# Restored by bun install from the committed lockfile.
+node_modules/

@@ -33,13 +33,14 @@ class FindingDict(_RequiredFindingDict, total=False):
     force: bool
     path: str
     severity: str
+    surface: str
     _tool_use_id: str
     content_hash: str
 
 
 _FINDING_KEYS = frozenset({
     "family", "rule", "line", "detail", "force", "snippet", "action",
-    "path", "severity", "_tool_use_id",
+    "path", "severity", "surface", "_tool_use_id",
     "content_hash",
 })
 
@@ -69,6 +70,7 @@ class Finding:
     severity: str | None
     tool_use_id: str | None
     content_hash: str | None = None
+    surface: str | None = None
 
     def __post_init__(self) -> None:
         if not self.family:
@@ -101,6 +103,7 @@ class Finding:
                 severity=row.get("severity"),
                 tool_use_id=row.get("_tool_use_id"),
                 content_hash=row.get("content_hash"),
+                surface=row.get("surface"),
             )
         except KeyError as error:
             raise ValueError(f"finding is missing required key: {error.args[0]}") from error
@@ -132,6 +135,8 @@ class Finding:
             row["path"] = self.path
         if self.severity is not None:
             row["severity"] = self.severity
+        if self.surface is not None:
+            row["surface"] = self.surface
         if self.tool_use_id is not None:
             row["_tool_use_id"] = self.tool_use_id
         if self.content_hash is not None:

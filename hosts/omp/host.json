@@ -8,7 +8,10 @@
   "extra_paths": ["pi"],
   "installer_note": "Delegates to pi/install.sh, which owns the extension surface.",
   "writes": [
-    "the OMP agent extension directory",
+    "the OMP agent extension directory, which is how OMP loads an extension",
     "~/.adw/omp"
+  ],
+  "reclaims": [
+    "~/.agents/skills/agent-discipline-watcher, only when it still points at an ADW copy"
   ]
 }

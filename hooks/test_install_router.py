@@ -103,6 +103,27 @@ def test_claude_writes_only_the_paths_its_manifest_declares(tmp_path: Path) -> N
     assert finished.returncode == 0, finished.stderr
     written = {str(path) for path in _touched(tmp_path) if not str(path).startswith(".adw/install")}
 
-    assert ".local/bin/adw-judge" in written
+    assert ".adw/bin/adw-judge" in written
     assert not [path for path in written if path.startswith(".codex")]
     assert not [path for path in written if path.startswith(".agents")]
+
+
+def test_the_claude_install_keeps_its_launcher_inside_the_state_directory(tmp_path: Path) -> None:
+    """Own the launcher because ~/.local/bin belongs to the user and every tool competes for that name."""
+    finished = _run(["--claude"], tmp_path)
+    assert finished.returncode == 0, finished.stderr
+    written = {str(path) for path in _touched(tmp_path)}
+
+    assert not [path for path in written if path.startswith(".local/bin")]
+
+
+def test_the_claude_install_never_edits_a_shell_startup_file(tmp_path: Path) -> None:
+    """Leave the rc alone because a PATH line the user did not write is a change they cannot see."""
+    for name in (".zshrc", ".bashrc"):
+        (tmp_path / name).write_text("# user content\n", encoding="utf-8")
+
+    finished = _run(["--claude"], tmp_path)
+    assert finished.returncode == 0, finished.stderr
+
+    for name in (".zshrc", ".bashrc"):
+        assert (tmp_path / name).read_text(encoding="utf-8") == "# user content\n"

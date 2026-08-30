@@ -8,7 +8,7 @@ from lib import judge
 from lib.judge_contracts import ReviewKind
 from lib.judge import Candidate
 
-# Held apart from the examples in the system prompt, because a candidate copied from the prompt would test recall of the prompt.
+# Kept out of the prompt, because a copied line tests recall.
 CANDIDATES = (
     Candidate("a.py", 2, "Counts the retries because the report header needs a total before the body renders."),
     Candidate("a.py", 9, "Capped at 300 because a longer request times out on the slower of the two hosts."),
@@ -70,7 +70,7 @@ def test_an_answer_without_an_array_raises() -> None:
     with pytest.raises(ValueError):
         judge.parse_verdicts("I could not decide.", CANDIDATES)
 
-def test_selected_model_reaches_the_comment_judge(monkeypatch) -> None:
+def test_the_selection_reaches_the_judge_without_a_silent_downgrade(monkeypatch) -> None:
     selected: list[str] = []
     monkeypatch.setattr(judge, "available", lambda: True)
     monkeypatch.setattr(
@@ -87,11 +87,11 @@ def test_selected_model_reaches_the_comment_judge(monkeypatch) -> None:
 
     judge.judge(CANDIDATES, "claude-3-5-haiku-20241022")
     judge.judge(CANDIDATES, "claude-sonnet-5")
-    judge.judge(CANDIDATES, "claude-opus-4-1")
+    judge.judge(CANDIDATES, None)
 
     assert selected == [
         "claude-3-5-haiku-20241022",
-        judge.JUDGE_MODEL,
+        "claude-sonnet-5",
         judge.JUDGE_MODEL,
     ]
     assert judge.JUDGE_MODEL == "claude-haiku-4-5"

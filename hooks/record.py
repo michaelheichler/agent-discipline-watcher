@@ -60,32 +60,32 @@ def edited_paths(payload: object) -> list[str]:
     return list(payloads.edited_paths(payload))
 
 
-def _journal_edits(journal: _EditJournal, turn_id: str = "") -> None:
+def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
     stamp = now_iso()
-    for path in journal.paths:
+    for path in edits.paths:
         append_row(
             {
                 "ts": stamp,
-                "session_id": journal.payload["session_id"],
+                "session_id": edits.payload["session_id"],
                 "hook": "record",
                 "event": "edit",
                 "family": "",
                 "rule": "",
                 "path": path,
-                "tool": journal.payload["tool_name"],
-                "tool_use_id": journal.payload["tool_use_id"],
+                "tool": edits.payload["tool_name"],
+                "tool_use_id": edits.payload["tool_use_id"],
                 "turn_id": turn_id,
                 "outcome": "",
             },
-            journal.root,
+            edits.root,
         )
-        if journal.payload["session_id"]:
+        if edits.payload["session_id"]:
             try:
                 journal.record_edit(
-                    journal.payload["session_id"], turn_id,
-                    journal.payload["tool_use_id"],
-                    payloads.resolved_path(path, Path(journal.payload["cwd"] or ".")),
-                    state_root=journal.state_root,
+                    edits.payload["session_id"], turn_id,
+                    edits.payload["tool_use_id"],
+                    payloads.resolved_path(path, Path(edits.payload["cwd"] or ".")),
+                    state_root=edits.state_root,
                 )
             except Exception as exc:
                 sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")

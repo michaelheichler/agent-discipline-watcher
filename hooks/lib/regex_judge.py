@@ -5,13 +5,11 @@ from typing import NamedTuple
 
 try:
     from .config import JUDGED_STATE, effective_config, rule_state
-    from .judge_model import judge_model
-    from .pattern_judge import PatternCandidate, confirm_all
+    from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, confirm_all
     from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 except ImportError:
     from config import JUDGED_STATE, effective_config, rule_state
-    from judge_model import judge_model
-    from pattern_judge import PatternCandidate, confirm_all
+    from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, confirm_all
     from pattern_semantic import load_exemplars, load_manifest, rule_prompt
 
 
@@ -49,7 +47,7 @@ def confirm(path: str, findings: list[dict], config: dict | None = None) -> tupl
         (rule_prompt(rule, exemplars, manifest), _candidates(path, findings, rule))
         for rule in named
     )
-    model = judge_model(effective_config(config).get("adw_model"))
+    model = str(effective_config(config).get("adw_model") or JUDGED_GATE_MODEL)
     return tuple(
         JudgedFinding(rule, candidate.line, candidate.text)
         for rule, kept in sorted(confirm_all(work, model).kept.items())

@@ -2,11 +2,11 @@
 set -eu
 
 [ "$#" -eq 1 ] || {
-  echo "usage: adw-judge mixed|luna|haiku|sonnet|status" >&2
+  echo "usage: adw-judge haiku|mixed|luna|luna-native|status" >&2
   exit 2
 }
 case "$1" in
-  mixed|luna|haiku|sonnet|status) ;;
+  haiku|mixed|luna|luna-native|status) ;;
   *)
     echo "adw-judge: invalid preset: $1" >&2
     exit 2

@@ -42,16 +42,21 @@ not, which it missed until the research corrected the count to four.
 - [x] `commands/update.md` gives the agent and the user one runbook
 - [x] A Claude install refreshes the plugin by default, `ADW_SKIP_PLUGIN=1` opts out
 
-## Phase 4. Model providers, next
+## Phase 4. Model providers
 - [ ] 10. OMP internal model provider, split into wire contract plus two provider shapes
-- [ ] 11. Claude agent hook provider at haiku, nested CLI removed
-- [ ] 12. Open the OMP model picker to every authenticated model
-- [ ] 12b. Restore the Luna worker deadline test that `a7ee111` deleted
+- [x] 11. Claude agent hook provider at haiku, nested CLI removed, `8bb4ba3` and `7bf4397`
+- [x] 12. Open the OMP model picker to every authenticated model. `selectableModels` filtered to
+      Anthropic Haiku, so the native catalogue could offer a model the picker then hid and the
+      config layer then refused. Both filters are gone and only sanitising and a 256 cap remain.
+- [x] 12b. The Luna worker deadline test is back, without the marker file it used to race. Five
+      consecutive runs pass. The deadline assertion never flaked, only the marker did.
 
 ## Checkpoint
-- [ ] No host spawns a nested Claude CLI
+- [x] No host spawns a nested Claude CLI. Two spawn sites went, not one. The second one lived in
+      `evals/measure_judge_stage.py`, and a source-level test fails if either returns.
 - [ ] A local OMP model returns real judge verdicts
-- [ ] `judge_model.py` has no callers left once the CLI path goes
+- [x] `judge_model.py` has no callers left once the CLI path goes. That module is gone, and the
+      haiku-only config rule went with it, because it refused every model OMP offers.
 
 ## Phase 5. Surface verification
 - [ ] 13. Verify one Claude runtime gates terminal, Desktop, and web
@@ -61,16 +66,19 @@ not, which it missed until the research corrected the count to four.
 - [ ] All four runtimes produce identical rule output on one fixture
 
 ## Blocked on a decision
-- [ ] Close `plan-install-isolation-2026-08.md` as superseded, or finish it first
-- [ ] Choose direct HTTP in the OMP provider, or an upstream request for a host-side inference API
+- [x] `plan-install-isolation-2026-08.md` finished rather than superseded. Both it and its todo
+      sit in `tasks/done/` with no open item left.
+- [x] The OMP transport question has an answer and was never open. OMP runs pure native through
+      the model catalogue. No SDK, no CLI, no direct HTTP.
 
 ## Settled since this file opened
 - [x] The shared core ships vendored per host, written by `hooks/build_runtime.py`
 
 ## Phase 6. Optional cleanup
-- [ ] 14a. Move the rendering and managed hook clusters out of `claude_native.py`, 173 measured
-      lines from ranges 567 to 709 and 333 to 362. Lands near 819 lines. Pure functions, and a
-      missed caller fails loudly.
+- [x] 14a. The rendering cluster moved to `claude_presets.py`, and the status reading moved to
+      `judge_status.py`. 997 lines down to 929, with 25 tests on the two new modules. The gate
+      forced this. The file crossed `file_too_long` mid-change and refused every further edit
+      until the split landed.
 - [ ] 14b. Move the transaction cluster only, 84 measured lines from range 249 to 332. Lands near
       735 lines and clears the 750 threshold.
 - [ ] 14b needs a three-layer boundary first, because a plain import either way cycles. Layer zero

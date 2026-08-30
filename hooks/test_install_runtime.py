@@ -98,7 +98,7 @@ def test_omp_custom_install_root_is_runtime_target(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert (home / ".agents" / "skills" / "agent-discipline-watcher").resolve() == install_dir.resolve()
+    assert not (home / ".agents" / "skills" / "agent-discipline-watcher").exists()
     assert (agent_dir / "extensions" / "agent-discipline-watcher").resolve() == (
         install_dir / "pi/extensions/agent-discipline-watcher"
     ).resolve()
@@ -120,7 +120,7 @@ def test_omp_uninstall_removes_installed_links(tmp_path: Path) -> None:
     )
     assert installed.returncode == 0, installed.stderr
     install_dir = home / ".adw" / "install" / "agent-discipline-watcher"
-    assert (home / ".agents" / "skills" / "agent-discipline-watcher").is_symlink()
+    assert not (home / ".agents" / "skills" / "agent-discipline-watcher").exists()
     assert (agent_dir / "extensions" / "agent-discipline-watcher").is_symlink()
 
     removed = subprocess.run(

@@ -234,7 +234,24 @@ class PythonFloorTests(unittest.TestCase):
     def test_ci_reads_the_floor_from_the_version_file(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("python-version-file: .python-version", workflow)
-        self.assertNotRegex(workflow, r"python-version:\s*\S", "CI must not pin a version beside the version file")
+
+    def test_ci_never_restates_the_floor_as_a_literal(self):
+        """One declaration only, because a second copy drifts and CI then tests a version nobody supports."""
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertNotIn(f'"{FLOOR}"', workflow)
+
+    def test_ci_also_runs_a_version_ahead_of_the_floor(self):
+        """Run ahead because a release that drops a deprecated call should fail here, not on a user's machine."""
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertRegex(workflow, r"matrix:\s*\n\s*ahead:")
+
+    def test_ci_fails_when_pylint_drops_below_a_clean_score(self):
+        """Assert the score because pylint exits zero on a warning and CI would call that a pass."""
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("rated at 10.00/10", workflow)
 
 
 if __name__ == "__main__":

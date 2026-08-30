@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lib.baseline import strip_against
-from lib.config import StorageRoots, effective_config
+from lib.config import SURFACE_COMMIT, StorageRoots, effective_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
@@ -177,7 +177,7 @@ def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
     if not text:
         return []
     return [
-        {**finding, "path": COMMIT_MESSAGE_PATH}
+        {**finding, "path": COMMIT_MESSAGE_PATH, "surface": SURFACE_COMMIT}
         for finding in scan_all(COMMIT_MESSAGE_PATH, text, cfg)
     ]
 

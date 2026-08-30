@@ -9,27 +9,36 @@ const ctx = {
   sessionManager: { getSessionId: () => "s1" },
 };
 
-describe("haiku only model selection", () => {
-  test("offers haiku models and drops every stronger one", () => {
+describe("model selection from the host catalogue", () => {
+  test("offers every model the catalogue returns, whatever the vendor", () => {
     const offered = selectableModels([
       { provider: "anthropic", id: "claude-haiku-4-5" },
-      { provider: "anthropic", id: "claude-3-5-haiku-20241022" },
       { provider: "anthropic", id: "claude-sonnet-5" },
-      { provider: "anthropic", id: "claude-opus-4-1" },
       { provider: "openai-codex", id: "gpt-5.6" },
+      { provider: "zai", id: "glm-5.3" },
     ]);
 
-    expect(offered).toEqual(["claude-haiku-4-5", "claude-3-5-haiku-20241022"]);
+    expect(offered).toEqual(["claude-haiku-4-5", "claude-sonnet-5", "gpt-5.6", "glm-5.3"]);
   });
 
-  test("drops a haiku lookalike from another vendor namespace", () => {
+  test("drops an id that would not survive display sanitising", () => {
+    const control = `claude${String.fromCharCode(7)}haiku`;
     const offered = selectableModels([
-      { provider: "anthropic", id: "haiku" },
-      { provider: "anthropic", id: "not-claude-haiku" },
-      { provider: "zai", id: "claude-haiku-4-5" },
+      { provider: "anthropic", id: control },
+      { provider: "anthropic", id: "claude-haiku-4-5" },
+      { provider: "anthropic", id: "a".repeat(300) },
     ]);
 
-    expect(offered).toEqual([]);
+    expect(offered).toEqual(["claude-haiku-4-5"]);
+  });
+
+  test("caps the list so a hostile catalogue cannot flood the picker", () => {
+    const many = Array.from({ length: 400 }, (_, index) => ({
+      provider: "anthropic",
+      id: `model-${index}`,
+    }));
+
+    expect(selectableModels(many)).toHaveLength(256);
   });
 });
 

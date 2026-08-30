@@ -13,20 +13,17 @@ except ImportError:
 
 try:
     from . import judge_provider
-    from .judge import JUDGE_TIMEOUT_SECONDS, available
-    from .judge_model import DEFAULT_JUDGE_MODEL
+    from .judge import JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, available
     from .judge_provider import unavailable_reason
 except ImportError:
     import judge_provider
-    from judge import JUDGE_TIMEOUT_SECONDS, available
-    from judge_model import DEFAULT_JUDGE_MODEL
+    from judge import JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, available
     from judge_provider import unavailable_reason
 
 VIOLATING = "violating"
 CLEAN = "clean"
 BATCH_SIZE = 20
-# Haiku only, because a stronger agent must never run.
-JUDGED_GATE_MODEL = DEFAULT_JUDGE_MODEL
+JUDGED_GATE_MODEL = JUDGE_MODEL
 JUDGE_WORKERS = 8
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
 # Stable to keep the hour cache, a cent down to a fraction.
