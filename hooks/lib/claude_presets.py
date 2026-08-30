@@ -1,6 +1,8 @@
 """Split from the settings writer, because rendering a preset and persisting one are separate concerns."""
 from __future__ import annotations
 
+import hashlib
+import json
 import shlex
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,83 @@ def stop_prompt(preset: str) -> str:
         "Use the session_id from this hook input to locate only its journal.\n"
         "Hook input: $ARGUMENTS"
     )
+
+
+def is_managed_hook(value: object) -> bool:
+    """Recognised by marker, because an agent hook carries a prompt where a command hook carries a command."""
+    if not isinstance(value, dict):
+        return False
+    if value.get("type") == "agent":
+        prompt = value.get("prompt")
+        return isinstance(prompt, str) and prompt.splitlines()[:1] == [MANAGED_MARKER]
+    if value.get("type") != "command":
+        return False
+    command = value.get("command")
+    if not isinstance(command, str):
+        return False
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    return (
+        len(parts) == 2
+        and parts[0] == f"ADW_CLAUDE_MANAGED={MANAGED_MARKER}"
+        and Path(parts[1]).is_absolute()
+    )
+
+
+def managed_hooks(settings: object) -> dict[str, list[object]]:
+    if not isinstance(settings, dict) or not isinstance(settings.get("hooks"), dict):
+        return {}
+    managed: dict[str, list[object]] = {}
+    for lifecycle, groups in settings["hooks"].items():
+        if not isinstance(lifecycle, str) or not isinstance(groups, list):
+            continue
+        entries = [
+            hook
+            for group in groups
+            if isinstance(group, dict) and isinstance(group.get("hooks"), list)
+            for hook in group["hooks"]
+            if is_managed_hook(hook)
+        ]
+        if entries:
+            managed[lifecycle] = entries
+    return managed
+
+
+def managed_hash(settings: object) -> str:
+    payload = json.dumps(managed_hooks(settings), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def preset_managed_hash(preset: str | None) -> str:
+    return managed_hash({"hooks": generated_hooks(preset) if preset in PRESETS else {}})
+
+
+def _kept_group(group: object) -> object | None:
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        return group
+    remaining = [hook for hook in group["hooks"] if not is_managed_hook(hook)]
+    if len(remaining) == len(group["hooks"]):
+        return group
+    return {**group, "hooks": remaining} if remaining else None
+
+
+def without_managed(settings: dict[str, Any]) -> dict[str, Any]:
+    """Only our own entries go, because a lifecycle the user filled is not ours to empty."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return settings
+    cleaned_hooks: dict[str, Any] = dict(hooks)
+    for lifecycle, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        kept = [group for group in (_kept_group(entry) for entry in groups) if group is not None]
+        if kept:
+            cleaned_hooks[lifecycle] = kept
+        else:
+            cleaned_hooks.pop(lifecycle, None)
+    return {**settings, "hooks": cleaned_hooks}
 
 
 def _agent(model: str, prompt: str) -> dict[str, Any]:

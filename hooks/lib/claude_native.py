@@ -16,14 +16,10 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 try:
-    from .claude_quarantine import reclaim_quarantines
-except ImportError:
-    from claude_quarantine import reclaim_quarantines
-
-try:
-    from . import claude_presets, judge_status
+    from . import claude_presets, claude_transaction, judge_status
 except ImportError:
     import claude_presets
+    import claude_transaction
     import judge_status
 
 
@@ -263,105 +259,26 @@ def _unlink_transaction(path: Path) -> None:
 
 
 def _quarantine_transaction(path: Path) -> None:
-    """Move only the exact bad transaction leaf aside, without following it."""
-    transaction = _transaction_path(path)
-    prefix = transaction.name[:64] or "adw.txn"
-    parent_fd = -1
-    try:
-        parent_fd = _open_parent(transaction, create=False)
-    except OSError:
-        return
-    try:
-        reclaim_quarantines(
-            parent_fd, prefix, CORRUPT_SUFFIX,
-            MAX_CORRUPT_QUARANTINES, MAX_CORRUPT_QUARANTINE_BYTES,
-        )
-        for _attempt in range(32):
-            quarantine = f"{prefix}{CORRUPT_SUFFIX}{secrets.token_hex(8)}"
-            try:
-                os.rename(transaction.name, quarantine, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-                reclaim_quarantines(
-                    parent_fd, prefix, CORRUPT_SUFFIX,
-                    MAX_CORRUPT_QUARANTINES, MAX_CORRUPT_QUARANTINE_BYTES,
-                )
-                return
-            except FileNotFoundError:
-                return
-            except FileExistsError:
-                continue
-            except OSError:
-                return
-    finally:
-        if parent_fd >= 0:
-            os.close(parent_fd)
+    """Only the exact bad leaf moves aside, because following it would take the settings with it."""
+    claude_transaction.quarantine(
+        _transaction_path(path),
+        lambda target: _open_parent(target, create=False),
+        CORRUPT_SUFFIX,
+        MAX_CORRUPT_QUARANTINES,
+        MAX_CORRUPT_QUARANTINE_BYTES,
+    )
 
 
 def _transaction_payload(path: Path) -> dict[str, Any] | None:
-    transaction = _transaction_path(path)
-    text = _read_regular_text(transaction)
+    text = _read_regular_text(_transaction_path(path))
     if text is None:
         return None
-    try:
-        payload = json.loads(text)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"could not read preset transaction: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("preset transaction must be a JSON object")
-    expected = {"version", "preset", "base_preset", "base_settings_hash"}
-    allowed = expected | {"base_managed_hash", "base_settings_metadata"}
-    if not set(payload).issubset(allowed) or not expected.issubset(payload) or payload.get("version") != TRANSACTION_VERSION or payload.get("preset") not in PRESETS:
-        raise ValueError("invalid preset transaction")
-    if payload["base_preset"] is not None and payload["base_preset"] not in PRESETS:
-        raise ValueError("invalid base preset in transaction")
-    base_hash = payload["base_settings_hash"]
-    if base_hash is not None and (
-        not isinstance(base_hash, str) or len(base_hash) != 64
-        or any(character not in "0123456789abcdef" for character in base_hash)
-    ):
-        raise ValueError("invalid base settings hash in transaction")
-    managed_hash = payload.get("base_managed_hash")
-    if managed_hash is not None and (
-        not isinstance(managed_hash, str) or len(managed_hash) != 64
-        or any(character not in "0123456789abcdef" for character in managed_hash)
-    ):
-        raise ValueError("invalid base managed hash in transaction")
-    metadata = payload.get("base_settings_metadata")
-    if metadata is not None and (
-        not isinstance(metadata, list) or len(metadata) != 6
-        or any(type(value) is not int or value < 0 for value in metadata)
-    ):
-        raise ValueError("invalid base settings metadata in transaction")
-    return payload
+    return claude_transaction.validate_payload(text, PRESETS, TRANSACTION_VERSION)
 
 
-def _managed_hooks(settings: object) -> dict[str, list[object]]:
-    if not isinstance(settings, dict):
-        return {}
-    hooks = settings.get("hooks")
-    if not isinstance(hooks, dict):
-        return {}
-    managed: dict[str, list[object]] = {}
-    for lifecycle, groups in hooks.items():
-        if not isinstance(lifecycle, str) or not isinstance(groups, list):
-            continue
-        entries: list[object] = []
-        for group in groups:
-            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-                continue
-            entries.extend(hook for hook in group["hooks"] if _is_managed_hook(hook))
-        if entries:
-            managed[lifecycle] = entries
-    return managed
-
-
-def _managed_hash(settings: object) -> str:
-    payload = json.dumps(_managed_hooks(settings), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _preset_managed_hash(preset: str | None) -> str:
-    hooks = generated_hooks(preset) if preset in PRESETS else {}
-    return _managed_hash({"hooks": hooks})
+_managed_hooks = claude_presets.managed_hooks
+_managed_hash = claude_presets.managed_hash
+_preset_managed_hash = claude_presets.preset_managed_hash
 
 
 def _settings_snapshot(path: Path) -> tuple[str | None, dict[str, Any], tuple[int, int, int, int, int, int] | None]:
@@ -575,53 +492,8 @@ stop_prompt = claude_presets.stop_prompt
 generated_hooks = claude_presets.generated_hooks
 
 
-def _is_managed_hook(value: object) -> bool:
-    if not isinstance(value, dict):
-        return False
-    if value.get("type") == "agent":
-        prompt = value.get("prompt")
-        return isinstance(prompt, str) and prompt.splitlines()[:1] == [MANAGED_MARKER]
-    if value.get("type") == "command":
-        command = value.get("command")
-        if not isinstance(command, str):
-            return False
-        try:
-            parts = shlex.split(command)
-        except ValueError:
-            return False
-        return (
-            len(parts) == 2
-            and parts[0] == f"ADW_CLAUDE_MANAGED={MANAGED_MARKER}"
-            and Path(parts[1]).is_absolute()
-        )
-    return False
-
-
-def _without_managed(settings: dict[str, Any]) -> dict[str, Any]:
-    hooks = settings.get("hooks")
-    if not isinstance(hooks, dict):
-        return settings
-    cleaned: dict[str, Any] = dict(settings)
-    cleaned_hooks: dict[str, Any] = dict(hooks)
-    for lifecycle, groups in hooks.items():
-        if not isinstance(groups, list):
-            continue
-        next_groups: list[Any] = []
-        for group in groups:
-            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-                next_groups.append(group)
-                continue
-            remaining = [hook for hook in group["hooks"] if not _is_managed_hook(hook)]
-            if len(remaining) == len(group["hooks"]):
-                next_groups.append(group)
-            elif remaining:
-                next_groups.append({**group, "hooks": remaining})
-        if next_groups:
-            cleaned_hooks[lifecycle] = next_groups
-        else:
-            cleaned_hooks.pop(lifecycle, None)
-    cleaned["hooks"] = cleaned_hooks
-    return cleaned
+_is_managed_hook = claude_presets.is_managed_hook
+_without_managed = claude_presets.without_managed
 
 
 def settings_for_preset(settings: object, preset: str) -> dict[str, Any]:

@@ -2,7 +2,10 @@
   "name": "claude",
   "title": "Claude Code",
   "summary": "Preset CLI and legacy cleanup. Hook wiring arrives with the plugin, not this script.",
-  "adapters": ["claude_cache", "claude_luna", "claude_native", "claude_presets", "claude_quarantine"],
+  "adapters": [
+    "claude_cache", "claude_luna", "claude_native", "claude_presets", "claude_quarantine",
+    "claude_transaction"
+  ],
   "entry_scripts": [
     "claude_luna.py", "merge-claude-settings.py", "read_claude_journal.py",
     "claude_cache_nuke.py"

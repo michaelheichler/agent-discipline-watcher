@@ -66,7 +66,8 @@ not, which it missed until the research corrected the count to four.
 - [ ] All four runtimes produce identical rule output on one fixture
 
 ## Blocked on a decision
-- [ ] Close `plan-install-isolation-2026-08.md` as superseded, or finish it first
+- [x] `plan-install-isolation-2026-08.md` finished rather than superseded. Both it and its todo
+      sit in `tasks/done/` with no open item left.
 - [x] The OMP transport question has an answer and was never open. OMP runs pure native through
       the model catalogue. No SDK, no CLI, no direct HTTP.
 
