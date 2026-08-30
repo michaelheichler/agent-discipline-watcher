@@ -140,8 +140,23 @@ def test_a_cache_the_session_never_loaded_reports_no_collision(tmp_path: Path) -
     assert claude_cache.pins_live_session(cache, elsewhere) is False
 
 
-def test_an_unset_plugin_root_reports_no_collision(tmp_path: Path) -> None:
-    """Answer false because an installer run outside a hook has no session to silence."""
+def test_no_session_marker_at_all_reports_no_collision(tmp_path: Path) -> None:
+    """Answer false because an installer run from a plain terminal has no session to silence."""
     cache = _seed_cache(tmp_path, "aaaa1111")
 
     assert claude_cache.pins_live_session(cache, {}) is False
+
+
+def test_a_live_session_collides_even_without_the_exact_root(tmp_path: Path) -> None:
+    """Warn on the marker alone because CLAUDE_PLUGIN_ROOT reaches a hook process but never a tool shell."""
+    cache = _seed_cache(tmp_path, "aaaa1111")
+
+    assert claude_cache.pins_live_session(cache, {claude_cache.SESSION_ENV: "1"}) is True
+
+
+def test_a_live_session_does_not_warn_about_the_command_directory(tmp_path: Path) -> None:
+    """Limit the fallback to the cache because removing stale commands silences no running hook."""
+    commands = _config(tmp_path).joinpath(*claude_cache.COMMAND_PARTS)
+    commands.mkdir(parents=True)
+
+    assert claude_cache.pins_live_session(commands, {claude_cache.SESSION_ENV: "1"}) is False
