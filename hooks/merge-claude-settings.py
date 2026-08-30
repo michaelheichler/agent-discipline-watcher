@@ -19,6 +19,7 @@ LEGACY = (
 DROP = object()
 
 # Shape-based, because a skill dir is not guaranteed to spell out the package name.
+MANAGED_MARKER = "adw-managed-hook-v1"
 _WATCHER_HOOK_COMMAND_RE = re.compile(r'/hooks/run\.sh"?\s+[A-Za-z]+\Z')
 
 
@@ -33,12 +34,20 @@ def is_watcher_hook_command(value) -> bool:
     return isinstance(command, str) and bool(_WATCHER_HOOK_COMMAND_RE.search(command))
 
 
+def is_watcher_agent_hook(value) -> bool:
+    """Matched on the marker because an agent hook carries a prompt rather than a command to recognise."""
+    if not isinstance(value, dict) or value.get("type") != "agent":
+        return False
+    prompt = value.get("prompt")
+    return isinstance(prompt, str) and prompt.splitlines()[:1] == [MANAGED_MARKER]
+
+
 def is_legacy_command(value) -> bool:
     if not isinstance(value, dict):
         return False
     command = value.get("command")
     is_named_legacy = isinstance(command, str) and any(name in command for name in LEGACY)
-    return is_named_legacy or is_watcher_hook_command(value)
+    return is_named_legacy or is_watcher_hook_command(value) or is_watcher_agent_hook(value)
 
 
 def _prune_list(value: list) -> list:

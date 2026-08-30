@@ -75,9 +75,12 @@ class PluginManifestTests(unittest.TestCase):
         commands = [entry["command"] for event, entry in hook_commands(config) if event == "SessionEnd"]
         self.assertEqual(commands, ['"${CLAUDE_PLUGIN_ROOT}"/hooks/run.sh SessionEnd'])
 
-    def test_hook_description_matches_deterministic_runtime(self):
+    def test_hook_description_names_both_gate_tiers(self):
+        """Named in the description because a reader choosing a plugin never opens the hook file."""
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        self.assertNotIn("semantic", config["description"].lower())
+        lowered = config["description"].lower()
+        self.assertIn("deterministic", lowered)
+        self.assertIn("semantic", lowered)
 
     def test_manifest_does_not_redeclare_the_auto_discovered_hooks_file(self):
         manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
@@ -241,8 +244,26 @@ class PostToolUseWiringTests(unittest.TestCase):
         self.assertIn("PostToolUse", command_routes)
         self.assertEqual(dispatch["PostToolUse"], "record.py")
 
-    def test_no_unconditional_agent_handler_is_registered_on_post_tool_use(self):
-        self.assertEqual(self._agent_entries(), [])
+    def test_the_post_tool_use_agent_reviewer_is_registered(self):
+        """Carried by the plugin because a preset write into settings.json is a step nobody runs."""
+        entries = self._agent_entries()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["model"], "haiku")
+
+    def test_the_agent_reviewer_enumerates_its_output_space(self):
+        """Enumerated in the prompt because a chatty reply fails the hook and gates nothing."""
+        prompt = self._agent_entries()[0]["prompt"]
+        self.assertIn('{"ok": true}', prompt)
+        self.assertIn('"reason"', prompt)
+        self.assertIn("no prose", prompt.lower())
+
+    def test_no_agent_handler_runs_on_pre_tool_use(self):
+        """Kept off PreToolUse because a non-conforming reply there denies the tool call, reproduced in f9da7d5."""
+        entries = [
+            entry for event, entry in all_hooks(self.config)
+            if event == "PreToolUse" and entry.get("type") == "agent"
+        ]
+        self.assertEqual(entries, [])
 
     def test_plugin_and_claude_merge_scan_bash_post_tool_use(self):
         merged = {"hooks": merged_watcher_hooks("/tmp/skill-dir")}

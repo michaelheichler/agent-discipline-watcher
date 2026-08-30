@@ -1,5 +1,5 @@
 {
-  "description": "Agent Discipline Watcher: deterministic hard-block gates for Claude Code.",
+  "description": "Agent Discipline Watcher: deterministic hard-block gates plus bounded semantic review for Claude Code.",
   "hooks": {
     "SessionStart": [
       {
@@ -43,6 +43,17 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh PostToolUse",
             "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "agent",
+            "model": "haiku",
+            "timeout": 30,
+            "prompt": "adw-managed-hook-v1\nReview one completed write for reader-facing English and comment discipline.\n\nSCOPE. Inspect only the path named in the hook input. Read only. Never edit a file, never change a setting, never undo the write that already landed.\n\nSTEPS, in order.\n1. Read the named path.\n2. Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent behind a comment. Text a question puts to the user counts as reader-facing English.\n3. Choose one output shape below.\n\nOUTPUT SPACE. Emit one JSON object and nothing else. Exactly one of these two shapes.\n{\"ok\": true}\n{\"ok\": false, \"reason\": \"one remediation instruction under 200 characters\"}\n\nFAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. A reply that opens with wording such as \"The answer is\" fails this hook and denies nothing, so it wastes the call. When the input is empty, malformed, unrelated to a write, or carries no candidate, emit {\"ok\": true}. When uncertain, emit {\"ok\": true}.\n\nHook input: $ARGUMENTS\n\nJSON:"
           }
         ]
       }
@@ -98,6 +109,16 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh Stop",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "model": "haiku",
+            "timeout": 60,
+            "prompt": "adw-managed-hook-v1\nReview one finished turn for reader-facing English across every candidate it produced.\n\nSCOPE. Read only what the journal helper names. Never open a state file directly, never read a path the helper output does not list, never edit anything.\n\nSTEPS, in order.\n1. Read stop_hook_active in the hook input. When it is true, skip every remaining step and emit {\"ok\": true}.\n2. Run this exact helper with the session_id from the hook input as its only argument: \"${CLAUDE_PLUGIN_ROOT}\"/hooks/read_claude_journal.sh\n3. Judge every prose and document candidate the helper returns, as one batch rather than one call each.\n4. Choose one output shape below.\n\nOUTPUT SPACE. Emit one JSON object and nothing else. Exactly one of these two shapes.\n{\"ok\": true}\n{\"ok\": false, \"reason\": \"one remediation instruction under 200 characters\"}\n\nFAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. When the helper returns nothing, when the input is malformed, or when uncertain, emit {\"ok\": true}.\n\nHook input: $ARGUMENTS\n\nJSON:"
           }
         ]
       }
