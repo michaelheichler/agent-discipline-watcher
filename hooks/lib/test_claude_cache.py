@@ -122,3 +122,26 @@ def test_a_target_outside_the_config_root_is_refused(tmp_path: Path) -> None:
     """Check containment because one wrong variable moves the whole target out of the config tree."""
     with pytest.raises(claude_cache.NukeRefusal, match="not the ADW cache"):
         claude_cache._guard(tmp_path / "somewhere", tmp_path, claude_cache.CACHE_PARTS)
+
+
+def test_removing_the_pinned_root_is_reported_rather_than_done_in_silence(tmp_path: Path) -> None:
+    """Warn the caller because Claude Code resolves the plugin root once and a wipe silences every hook."""
+    cache = _seed_cache(tmp_path, "aaaa1111")
+    live = {claude_cache.PLUGIN_ROOT_ENV: str(cache / "aaaa1111")}
+
+    assert claude_cache.pins_live_session(cache, live) is True
+
+
+def test_a_cache_the_session_never_loaded_reports_no_collision(tmp_path: Path) -> None:
+    """Stay quiet because a warning on every run teaches the reader to skip the one that matters."""
+    cache = _seed_cache(tmp_path, "aaaa1111")
+    elsewhere = {claude_cache.PLUGIN_ROOT_ENV: str(tmp_path / "other-plugin" / "bbbb2222")}
+
+    assert claude_cache.pins_live_session(cache, elsewhere) is False
+
+
+def test_an_unset_plugin_root_reports_no_collision(tmp_path: Path) -> None:
+    """Answer false because an installer run outside a hook has no session to silence."""
+    cache = _seed_cache(tmp_path, "aaaa1111")
+
+    assert claude_cache.pins_live_session(cache, {}) is False

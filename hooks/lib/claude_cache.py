@@ -11,6 +11,7 @@ from typing import Iterator, NamedTuple
 MARKETPLACE = "agent-discipline-watcher"
 PLUGIN = "agent-discipline-watcher"
 CONFIG_ENV = "CLAUDE_CONFIG_DIR"
+PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
 CACHE_PARTS = ("plugins", "cache", MARKETPLACE, PLUGIN)
 COMMAND_PARTS = ("commands", "adw")
 INSTALLED_LEAF = ("plugins", "installed_plugins.json")
@@ -90,6 +91,16 @@ def recorded_revision(environment: dict[str, str] | None = None, home: Path | No
                 if isinstance(revision, str) and revision:
                     return revision
     return ""
+
+
+def pins_live_session(path: Path, environment: dict[str, str] | None = None) -> bool:
+    """Answered before the wipe, because Claude Code pins the plugin root at session start and never re-resolves it."""
+    env = os.environ if environment is None else environment
+    raw = env.get(PLUGIN_ROOT_ENV, "").strip()
+    if not raw:
+        return False
+    root = Path(raw)
+    return root == path or path in root.parents
 
 
 def nuke(environment: dict[str, str] | None = None, home: Path | None = None) -> Iterator[Path]:

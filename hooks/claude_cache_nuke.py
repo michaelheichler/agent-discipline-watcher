@@ -26,8 +26,12 @@ def main(argv: list[str] | None = None) -> int:
             for target in targets:
                 print(target.path)
             return 0
+        pinned = [target.path for target in targets if claude_cache.pins_live_session(target.path)]
         for path in claude_cache.nuke():
             print(f"removed {path}")
+        for path in pinned:
+            print(f"adw-cache-nuke: {path} backed this session, so run /reload-plugins before trusting the gate",
+                  file=sys.stderr)
     except claude_cache.NukeRefusal as exc:
         print(f"adw-cache-nuke: {exc}", file=sys.stderr)
         return 2
