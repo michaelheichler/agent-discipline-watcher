@@ -36,4 +36,7 @@ disable =
 # so their attribute count is fixed by the wire shape rather than by design choice.
     too-many-instance-attributes,
     too-many-public-methods,
-    invalid-name
+    invalid-name,
+# Disabled because payload and config values cross a trust boundary, where isinstance consults
+# __instancecheck__ on an attacker-chosen class and an exact type check does not.
+    unidiomatic-typecheck

@@ -17,7 +17,7 @@ from .hookio import stop_block
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
-from .turn_retry import RETRY_KEY, clear_retry_identity, retry_turn_id
+from .turn_retry import RETRY_KEY
 
 
 STATE_KEY = "codex_luna_reviewed_turns"

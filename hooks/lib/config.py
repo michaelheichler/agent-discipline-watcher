@@ -56,6 +56,11 @@ ALWAYS_BLOCKING_RULES = (
 
 GATE_STATES = ("off", "observe", "enforce")
 JUDGED_STATE = "judged"
+SURFACE_PROSE = "prose"
+SURFACE_COMMENT = "comment"
+SURFACE_COMMIT = "commit"
+SURFACES = (SURFACE_PROSE, SURFACE_COMMENT, SURFACE_COMMIT)
+SURFACE_ALL = "all"
 # WHY: A family carries no exemplars, so only a single rule can be sent to a reader instead of blocking on its own.
 RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
 
@@ -379,16 +384,26 @@ def gate_state(family: str, config: dict | None = None) -> str:
     return _gate_state_from(effective_config(config), family)
 
 
-def _rule_state_from(cfg: dict, rule: str) -> str | None:
+def _surface_state(gate: dict, surface: str | None) -> str | None:
+    """Left to the family when unnamed, because nobody configured that surface rather than configured it off."""
+    chosen = gate.get(surface) if surface else None
+    if chosen is None:
+        chosen = gate.get(SURFACE_ALL)
+    return chosen if chosen in RULE_GATE_STATES else None
+
+
+def _rule_state_from(cfg: dict, rule: str, surface: str | None = None) -> str | None:
     if not rule:
         return None
-    state = gate_map(cfg, "rule_gates").get(rule)
-    return state if state in RULE_GATE_STATES else None
+    gate = gate_map(cfg, "rule_gates").get(rule)
+    if isinstance(gate, dict):
+        return _surface_state(exact_string_dict(gate), surface)
+    return gate if gate in RULE_GATE_STATES else None
 
 
-def rule_state(rule: str, config: dict | None = None) -> str | None:
+def rule_state(rule: str, config: dict | None = None, surface: str | None = None) -> str | None:
     """Merge DEFAULTS here, because a standalone caller has no already-merged cfg the way resolve_outcome does."""
-    return _rule_state_from(effective_config(config), rule)
+    return _rule_state_from(effective_config(config), rule, surface)
 
 
 def calibration_detail(rule: str) -> str | None:
@@ -425,7 +440,8 @@ def resolve_outcome(finding: dict, config: dict | None = None) -> Outcome:
         return Outcome.WOULD_BLOCK
     # Merged once here because gate_state and rule_state each re-merging DEFAULTS doubled the cost of every finding.
     cfg = effective_config(config)
-    own = _rule_state_from(cfg, rule)
+    surface = finding.get("surface") if isinstance(finding, dict) else None
+    own = _rule_state_from(cfg, rule, surface if isinstance(surface, str) else None)
     if own is not None:
         return _outcome_for(own)
     family = finding.get("family", "") if isinstance(finding, dict) else ""

@@ -164,11 +164,29 @@ def _rule_gates(fields: dict[str, object]) -> None:
     if set(rule_gates) - KNOWN_RULES:
         raise ConfigureError("unknown_field", "values.rule_gates contains an unknown rule")
     for rule, state in rule_gates.items():
-        if rule in config.ALWAYS_BLOCKING_RULES and state != "enforce":
-            raise ConfigureError("protected_rule", f"{rule} is always blocking")
-        if type(state) is not str or state not in config.RULE_GATE_STATES:
-            raise ConfigureError("invalid_value", "rule gates use off, observe, enforce, or judged")
+        _rule_gate_value(rule, state)
     fields["rule_gates"] = rule_gates
+
+
+def _rule_gate_state(rule: str, state: object) -> None:
+    if rule in config.ALWAYS_BLOCKING_RULES and state != "enforce":
+        raise ConfigureError("protected_rule", f"{rule} is always blocking")
+    if type(state) is not str or state not in config.RULE_GATE_STATES:
+        raise ConfigureError("invalid_value", "rule gates use off, observe, enforce, or judged")
+
+
+def _rule_gate_value(rule: str, value: object) -> None:
+    """Checked key by key, because one bad surface would otherwise pass under a good one."""
+    if type(value) is not dict:
+        _rule_gate_state(rule, value)
+        return
+    if not value:
+        raise ConfigureError("invalid_value", "a rule gate map names at least one surface")
+    allowed = set(config.SURFACES) | {config.SURFACE_ALL}
+    for surface, state in value.items():
+        if type(surface) is not str or surface not in allowed:
+            raise ConfigureError("invalid_value", "rule gate surfaces are prose, comment, commit, or all")
+        _rule_gate_state(rule, state)
 
 
 def _exempt_families(fields: dict[str, object]) -> None:

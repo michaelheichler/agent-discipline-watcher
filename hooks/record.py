@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from failure import _config_roots, normalize_payload, record_success
-from lib import blocker_state, journal, payloads, scan_input
+from lib import blocker_state, payloads, scan_input
 from lib.config import effective_config, effective_hook_config
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
