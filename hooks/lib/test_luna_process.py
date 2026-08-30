@@ -103,6 +103,24 @@ def test_worker_spawn_time_consumes_the_single_parent_deadline(tmp_path: Path, m
         judge.judge(_request())
 
 
+@pytest.mark.parametrize("stage", ("startup", "sdk-run", "close"))
+def test_the_parent_deadline_covers_a_worker_stalled_at_any_stage(
+    tmp_path: Path, monkeypatch, stage: str,
+) -> None:
+    """Bounded at the parent, because a stall after the read would pin the model forever."""
+    reads_stdin = "sys.stdin.read()" if stage != "startup" else ""
+    judge = _judge(tmp_path, monkeypatch, f"""
+        import sys
+        import time
+        {reads_stdin}
+        time.sleep(30)
+    """)
+    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.5)
+
+    with pytest.raises(LunaProviderFailure, match="timed out"):
+        judge.judge(_request())
+
+
 def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, monkeypatch) -> None:
     marker = tmp_path / "pid"
     judge = _judge(tmp_path, monkeypatch, f"""

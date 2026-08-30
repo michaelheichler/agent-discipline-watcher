@@ -82,9 +82,6 @@ const UNDECODABLE_EDIT =
 const UNRESOLVED_EDIT_TARGET =
   "agent-discipline-watcher could not resolve an edit target inside the session directory, so nothing was scanned.";
 
-// Haiku only, because a stronger agent must never run.
-const HAIKU_MODEL_RE = /^claude-[\w.-]*haiku/i;
-
 function appendNotice(
   content: Array<{ type: string; text?: string }>,
   message: string,
@@ -194,7 +191,6 @@ function judgesAreActive(state: AdwPolicyState): boolean {
 
 export function selectableModels(models: Array<{ provider: string; id: string }>): string[] {
   return models
-    .filter(model => model.provider === "anthropic" && HAIKU_MODEL_RE.test(model.id))
     .map(model => model.id)
     .filter(model => sanitizeDisplay(model, 256) === model)
     .slice(0, 256);
