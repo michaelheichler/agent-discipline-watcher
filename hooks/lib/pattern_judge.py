@@ -15,10 +15,12 @@ try:
     from . import judge_provider
     from .judge import JUDGE_TIMEOUT_SECONDS, available
     from .judge_model import DEFAULT_JUDGE_MODEL
+    from .judge_provider import unavailable_reason
 except ImportError:
     import judge_provider
     from judge import JUDGE_TIMEOUT_SECONDS, available
     from judge_model import DEFAULT_JUDGE_MODEL
+    from judge_provider import unavailable_reason
 
 VIOLATING = "violating"
 CLEAN = "clean"
@@ -48,6 +50,14 @@ class PatternRule(NamedTuple):
     action: str
     violating_examples: tuple[str, ...]
     clean_examples: tuple[str, ...]
+
+
+class JudgedOutcome(NamedTuple):
+    """Split out, because one empty mapping meant both an unread rule and a cleared one."""
+
+    kept: dict[str, tuple[PatternCandidate, ...]]
+    unjudged: tuple[str, ...]
+    reason: str
 
 
 def request_for(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> JudgeRequest:
@@ -113,11 +123,15 @@ def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: 
     return tuple(kept)
 
 
-def confirm_all(work: tuple[tuple[PatternRule, tuple[PatternCandidate, ...]], ...], model: str) -> dict[str, tuple[PatternCandidate, ...]]:
+def confirm_all(work: tuple[tuple[PatternRule, tuple[PatternCandidate, ...]], ...], model: str) -> JudgedOutcome:
     """Judged in parallel because one call per rule ran 27 times in series and cost a file scan 228 seconds."""
     pending = tuple((rule, candidates) for rule, candidates in work if candidates)
-    if not pending or not available():
-        return {}
+    if not pending:
+        return JudgedOutcome({}, (), "")
+    reason = unavailable_reason()
+    if reason:
+        return JudgedOutcome({}, tuple(rule.name for rule, _candidates in pending), reason)
     with ThreadPoolExecutor(max_workers=min(JUDGE_WORKERS, len(pending))) as pool:
         answered = pool.map(lambda entry: confirm(entry[0], entry[1], model), pending)
-    return {rule.name: kept for (rule, _candidates), kept in zip(pending, answered) if kept}
+    kept = {rule.name: found for (rule, _candidates), found in zip(pending, answered) if found}
+    return JudgedOutcome(kept, (), "")

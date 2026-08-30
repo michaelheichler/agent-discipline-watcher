@@ -38,7 +38,7 @@ def _candidates(path: str, findings: list[dict], rule: str) -> tuple[PatternCand
 
 
 def confirm(path: str, findings: list[dict], config: dict | None = None) -> tuple[JudgedFinding, ...]:
-    """An unavailable judge confirms nothing, because an unread hit on this gate would report ordinary prose as slop."""
+    """Kept silent without a judge, because an unread hit on this gate would report ordinary prose as slop."""
     rules = judged_rules(config) & {str(finding.get("rule")) for finding in findings}
     if not rules:
         return ()
@@ -52,6 +52,6 @@ def confirm(path: str, findings: list[dict], config: dict | None = None) -> tupl
     model = judge_model(effective_config(config).get("adw_model"))
     return tuple(
         JudgedFinding(rule, candidate.line, candidate.text)
-        for rule, kept in sorted(confirm_all(work, model).items())
+        for rule, kept in sorted(confirm_all(work, model).kept.items())
         for candidate in kept
     )

@@ -1,8 +1,7 @@
-"""One seam for every judge call, because three copies of a nested CLI spawn is three places to miss one."""
+"""One seam for every judge call, because three copies of a spawn is three places to miss one."""
 from __future__ import annotations
 
 import os
-import subprocess
 from collections.abc import Mapping
 from typing import NamedTuple
 
@@ -13,7 +12,10 @@ except ImportError:
 
 RECURSION_GUARD = "ADW_JUDGE_ACTIVE"
 DEFAULT_TIMEOUT_SECONDS = 120
-NO_CLI_HOSTS = (OMP,)
+SELF_JUDGING_HOSTS = (OMP,)
+NO_PYTHON_PROVIDER = (
+    "python holds no judge provider, because the host agent hook judges instead"
+)
 
 
 class Completion(NamedTuple):
@@ -46,13 +48,13 @@ def _host_name(environment: Mapping[str, str] | None) -> str | None:
 
 
 def unavailable_reason(environment: Mapping[str, str] | None = None) -> str:
-    """Name the blocker because a caller that cannot judge must say which host refused."""
+    """Name the blocker because a caller that cannot judge must say why rather than report a clean file."""
     if os.environ.get(RECURSION_GUARD, "").strip():
         return "a judge already runs in this process tree"
     name = _host_name(environment)
-    if name in NO_CLI_HOSTS:
+    if name in SELF_JUDGING_HOSTS:
         return f"the {name} runtime judges with its own models"
-    return ""
+    return NO_PYTHON_PROVIDER
 
 
 def available(environment: Mapping[str, str] | None = None) -> bool:
@@ -60,33 +62,6 @@ def available(environment: Mapping[str, str] | None = None) -> bool:
     return not unavailable_reason(environment)
 
 
-def _command(model: str, system_prompt: str) -> list[str]:
-    return [
-        "claude", "-p",
-        "--model", model,
-        "--output-format", "json",
-        "--setting-sources", "",
-        "--strict-mcp-config",
-        "--disable-slash-commands",
-        "--no-session-persistence",
-        "--tools", "",
-        "--system-prompt", system_prompt,
-    ]
-
-
-def complete(prompt: str, provider: Provider) -> Completion:
-    """Route every judge call here because no caller may reach a nested CLI on its own."""
-    reason = unavailable_reason()
-    if reason:
-        return Completion(None, reason)
-    try:
-        finished = subprocess.run(
-            [*_command(provider.model, provider.system_prompt), prompt],
-            capture_output=True, text=True, check=False,
-            timeout=provider.timeout, env=child_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return Completion(None, f"the judge process failed with {type(exc).__name__}")
-    if finished.returncode != 0:
-        return Completion(None, f"the judge exited with status {finished.returncode}")
-    return Completion(finished.stdout, "")
+def complete(_prompt: str, _provider: Provider) -> Completion:
+    """Kept as the one seam three callers already import, because a spawn added anywhere else bills the user's account."""
+    return Completion(None, unavailable_reason())

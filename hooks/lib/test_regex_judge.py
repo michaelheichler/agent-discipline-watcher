@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from lib import prose_structure, regex_judge
+from lib.pattern_judge import JudgedOutcome
 from lib.config import JUDGED_STATE
 from lib.scanner import scan_all
 
@@ -32,7 +33,8 @@ def test_a_judged_rule_speaks_only_through_the_reader(monkeypatch) -> None:
     findings = [{"rule": "three_item_list", "line": 3, "snippet": THREE_ITEMS}]
     monkeypatch.setattr(
         regex_judge, "confirm_all",
-        lambda work, _model: {rule.name: candidates for rule, candidates in work if candidates},
+        lambda work, _model: JudgedOutcome(
+            {rule.name: candidates for rule, candidates in work if candidates}, (), ""),
     )
 
     confirmed = regex_judge.confirm("sample.md", findings, {})
@@ -42,7 +44,7 @@ def test_a_judged_rule_speaks_only_through_the_reader(monkeypatch) -> None:
 
 def test_a_reader_that_confirms_nothing_reports_nothing(monkeypatch) -> None:
     findings = [{"rule": "three_item_list", "line": 3, "snippet": THREE_ITEMS}]
-    monkeypatch.setattr(regex_judge, "confirm_all", lambda _work, _model: {})
+    monkeypatch.setattr(regex_judge, "confirm_all", lambda _work, _model: JudgedOutcome({}, (), ""))
 
     assert regex_judge.confirm("sample.md", findings, {}) == ()
 

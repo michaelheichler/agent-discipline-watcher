@@ -60,21 +60,21 @@ def test_the_supported_names_stay_a_closed_set() -> None:
     assert host.SUPPORTED == (host.CLAUDE, host.CODEX, host.OMP, host.COWORK)
 
 
-def test_the_claude_cli_judge_is_refused_under_omp(monkeypatch) -> None:
-    """Refuse the CLI because OMP must judge with its own models."""
+def test_omp_names_itself_rather_than_the_generic_refusal(monkeypatch) -> None:
+    """Keep the host in the message because a maintainer reads it to find which runtime refused."""
     monkeypatch.delenv(judge.RECURSION_GUARD, raising=False)
-    monkeypatch.delenv(host.OMP_ENV, raising=False)
-    assert judge.available() is True
-
     monkeypatch.setenv(host.OMP_ENV, "1")
+
     assert judge.available() is False
+    assert host.OMP in judge_provider.unavailable_reason()
 
 
-def test_the_judge_availability_gate_reads_host_identity(monkeypatch) -> None:
-    """Derive the gate from identity because a raw env read let two hosts claim one session."""
+def test_no_host_reaches_a_python_judge_provider(monkeypatch) -> None:
+    """Answer false everywhere because judging moved to the host agent hook and python spawns nothing."""
     monkeypatch.delenv(judge_provider.RECURSION_GUARD, raising=False)
     monkeypatch.delenv(host.OMP_ENV, raising=False)
-    assert judge_provider.available() is True
+
+    assert judge_provider.available() is False
 
     monkeypatch.setenv(host.OMP_ENV, "1")
     assert judge_provider.available() is False

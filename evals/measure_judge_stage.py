@@ -2,9 +2,7 @@
 """Measures the judge behind the candidate stage, because recall without a second opinion only moves the false positives downstream."""
 import json
 import re
-import subprocess
 import sys
-import time
 from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
@@ -13,8 +11,6 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
 
 # pylint: disable=wrong-import-position
-from lib.judge import JUDGE_TIMEOUT_SECONDS, _environment
-from lib.pattern_judge import JUDGED_GATE_MODEL as JUDGE_MODEL
 from lib.scanner import ENGLISH_RULES
 
 sys.path.insert(0, str(REPOSITORY_ROOT / "evals"))
@@ -28,7 +24,6 @@ BATCH_SIZE = 20
 RULES_MEASURED = 5
 # WHY: Every flagged row is judged, because truncating the list drops true positives out of the recall denominator.
 MAX_CANDIDATES = 400
-RETRY_DELAYS = (5.0, 20.0, 60.0)
 VIOLATING = "violating"
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
 SYSTEM_PROMPT = (
@@ -71,34 +66,12 @@ def build_prompt(rule: str, rows: list[dict], batch: list[dict]) -> str:
     )
 
 
-def _once(prompt: str) -> tuple[str | None, str]:
-    command = [
-        "claude", "-p", "--model", JUDGE_MODEL, "--output-format", "json",
-        "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
-        "--no-session-persistence", "--system-prompt", SYSTEM_PROMPT, prompt,
-    ]
-    try:
-        finished = subprocess.run(
-            command, capture_output=True, text=True, check=False,
-            timeout=JUDGE_TIMEOUT_SECONDS, env=_environment(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return None, str(error)
-    if finished.returncode != 0:
-        return None, f"exit {finished.returncode}: {finished.stderr.strip()[:200]}"
-    return finished.stdout, ""
-
-
-def _run(prompt: str) -> str:
-    """Retries because the session login rate limits a burst, and names the last error rather than scoring a silent gap as clean."""
-    failure = ""
-    for delay in RETRY_DELAYS:
-        answered, failure = _once(prompt)
-        if answered is not None:
-            return answered
-        print(f"  judge retry after {failure}", flush=True)
-        time.sleep(delay)
-    raise ValueError(f"the judge never answered: {failure}")
+def _run(_prompt: str) -> str:
+    """Stopped rather than spawned, because one measurement batch billed a nested session per call."""
+    raise SystemExit(
+        "measure_judge_stage needs a judge provider and has none.\n"
+        "Wire this to lib.judge_provider.complete once that seam reaches a model again."
+    )
 
 
 def _verdicts(raw: str, size: int) -> list[str]:

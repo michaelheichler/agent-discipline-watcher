@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from lib import pattern_semantic
+from lib.pattern_judge import JudgedOutcome
 from lib.pattern_semantic import Exemplar, Sentence
 
 EXEMPLARS = (
@@ -119,7 +120,8 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
     monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
     monkeypatch.setattr(
         pattern_semantic, "confirm_all",
-        lambda work, _model: {rule.name: candidates[:1] for rule, candidates in work if candidates},
+        lambda work, _model: JudgedOutcome(
+            {rule.name: candidates[:1] for rule, candidates in work if candidates}, (), ""),
     )
 
     findings = pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n")
@@ -136,6 +138,6 @@ def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     )
     monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda _exemplars: VECTORS)
     monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
-    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work, _model: {})
+    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work, _model: JudgedOutcome({}, (), ""))
 
     assert pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n") == ()

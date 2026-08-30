@@ -190,6 +190,6 @@ def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...
     model = judge_model(config.get("adw_model") if isinstance(config, dict) else None)
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
-        for rule, kept in sorted(confirm_all(work, model).items())
+        for rule, kept in sorted(confirm_all(work, model).kept.items())
         for candidate in kept
     )
