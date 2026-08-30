@@ -74,15 +74,38 @@ Suite moved 1817 to 1959 passing. Build output is 202, 196, 201, and 191 files.
 Claude gained an installer, which D4 said it would not carry. The reason is in the decisions
 file under D7. Suite moved 1959 to 2003 passing.
 
+## The updater, done 2026-08-30
+
+Not in the original plan. It came from the user's VBW `update` command, and D8 records the
+reasoning.
+
+- [x] `hooks/claude_cache_nuke.py` and `lib/claude_cache.py` clear the Claude plugin cache.
+      They refuse a symlink, refuse a path outside the config root, and never touch `~/.adw`.
+- [x] `commands/update.md` gives the agent and the user one runbook for a clean reinstall.
+- [x] A Claude install performs the refresh by default, with `ADW_SKIP_PLUGIN=1` to opt out.
+
+Verified against the real cache. Two stale revisions became one current revision, the state
+tree survived, and the three parked memory files then wrote on the first try.
+
+## Released as 0.20.11 on 2026-08-30
+
+Commit `53fed2c` on `main`, tagged `v0.20.11`. 104 files, 6519 insertions. Suite at 2018
+passing and 18 skipped, plus 60 passing Bun tests.
+
+The version lives in `README.md` and `CHANGELOG.md` alone. `plugin.json` keeps no version
+field, because `test_manifest_uses_commit_sha_updates` pins ADW to commit-based updates.
+
 ## Phase 4. Model providers
 
 - [ ] Task 10. OMP internal model provider, split into a wire contract plus two provider shapes
 - [ ] Task 11. Claude agent hook provider at haiku, nested CLI removed
 - [ ] Task 12. Open the OMP model picker to every authenticated model
+- [ ] Task 12b. Settle the judge model question the spec left open
 
 ### Checkpoint
 - [ ] No host spawns a nested Claude CLI
 - [ ] A local OMP model returns real judge verdicts
+- [ ] The recorded precision numbers match the model that actually reads
 
 ## Phase 5. Surface verification
 
@@ -174,6 +197,38 @@ from the manifests, so it duplicates no wording.
 - `hooks/test_install_runtime.py`
 
 **Estimated scope:** Medium
+
+## Task 12b. Settle the judge model question
+
+**Description:** Two weakenings outlived Phases 1 to 3 and belong here, because this phase
+moves every judge onto its host's models anyway.
+
+`document_review.py` and `pattern_judge.py` moved the judge from `claude-sonnet-5` to Haiku.
+The README previously recorded that Haiku wrongly blocked two ordinary sentences on two of
+four runs, while Sonnet cleared the same document four times of four. The precision numbers
+behind `ENFORCE_PRECISION = 0.85` still cite a Sonnet reader.
+
+Commit `a7ee111` deleted a Luna worker-deadline test as flaky, with no replacement and no fix.
+
+**Acceptance criteria:**
+- [ ] The recorded precision numbers come from the model that actually reads, or Sonnet
+      returns for prose and document reviews
+- [ ] A named measurement backs whichever model stays, rather than a preference
+- [ ] The Luna worker-deadline coverage returns, with the flake fixed rather than skipped
+
+**Verification:**
+- [ ] Tests pass, `cd hooks && uv run --with pytest python -m pytest lib/test_document_review.py lib/test_pattern_judge.py -q`
+- [ ] The measurement run and its counts appear in the decisions file
+
+**Dependencies:** Tasks 10 and 11
+
+**Files likely touched:**
+- `hooks/lib/document_review.py`
+- `hooks/lib/pattern_judge.py`
+- `hooks/lib/config.py`
+- `hooks/lib/test_luna_process.py`
+
+**Estimated scope:** Medium, and it needs a measurement before any edit
 
 ## Task 14. Split `claude_native.py` further, rendering first
 

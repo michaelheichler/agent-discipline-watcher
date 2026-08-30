@@ -285,6 +285,49 @@ shipped no `install.sh`, so it could not install itself. And `host_manifest.load
 all four manifests, which crashed inside a vendored runtime that by design carries one. The
 reader now skips an absent manifest and still raises on a malformed one.
 
+## D8. The plugin cache gets a nuclear refresh, and the state tree never does
+
+Ported from the user's VBW `update` command on 2026-08-30. The need was concrete rather than
+theoretical. The cache held two revisions, `75f7111e0b54` and `c61ca234d605`, and Claude Code
+loaded the older one.
+
+**The boundary.** The wipe touches
+`~/.claude/plugins/cache/agent-discipline-watcher/agent-discipline-watcher` and
+`~/.claude/commands/adw`. It never touches `~/.adw`, which holds the settings, the ledger, the
+reports, the session leases, and the pinned Codex runtime. A test seeds a config file there
+and asserts it survives.
+
+**The guards.** `lib/claude_cache.py` checks the path tail rather than trusting the join,
+because one wrong variable moves the whole target. It refuses a path outside the config root
+and refuses a symlink rather than following it.
+
+**Three differences from VBW, each forced by ADW.** ADW ships no version file, so the check
+compares `git ls-remote` against the recorded `gitCommitSha`. ADW has no statusline, so that
+step drops. And `plugin.json` keeps no version field, because
+`test_manifest_uses_commit_sha_updates` pins ADW to commit-based updates. Adding one broke
+that test, and the test won.
+
+**Carried over unchanged.** Every `claude plugin` call needs `unset CLAUDECODE` first, and the
+marketplace refreshes before the install so a stale checkout cannot re-cache old code.
+
+A Claude install now performs this by default. `ADW_SKIP_PLUGIN=1` opts out, which the test
+suite uses so it never reaches the plugin system.
+
+## The deployment gap this exposed
+
+Task 4b fixed the frontmatter mask in the checkout, and the live gate kept blocking every
+`name:` line for hours afterwards. Claude Code runs the plugin cache, not the working tree.
+
+That made ADW unable to write a Claude Code command file for itself, because a command needs
+frontmatter and frontmatter tripped `prose_colon`. `commands/update.md` shipped without
+frontmatter for exactly that reason.
+
+The loop closed after the push. Cache went from two revisions to `53fed2c982d5`, and the three
+parked memory files wrote cleanly on the first try.
+
+**The lesson worth keeping.** A fix that is green in the checkout is not a fix the gate
+applies. Deployment is a separate step, and now it has a command.
+
 ## Known debt in the three files this touched
 
 `claude_luna.py`, `codex_luna.py`, and `journal.py` carry pre-existing findings and twelve
@@ -296,15 +339,10 @@ split. It earns its own pass rather than a drive-by.
 - What the shared core delivery looks like, waiting on the Cowork VM runtime facts.
 - What parity level the OMP contract demands, waiting on the Pi subagent event facts.
 
-## Parked memory facts
+## Memory facts, written on 2026-08-30
 
-Still parked on 2026-08-30, and the reason changed. The mask now exists in the checkout and
-passes its tests, but Claude Code runs the plugin from
-`~/.claude/plugins/cache/agent-discipline-watcher/agent-discipline-watcher/c61ca234d605`,
-pinned at commit `75f7111e0b54`. That copy carries no `_mask_frontmatter`, so the live gate
-still blocks a `name:` line. A plugin reinstall from the checkout unparks all three.
-
-Each one is user feedback worth keeping.
+All three landed once the plugin cache carried the frontmatter mask. They live under the
+project memory directory and appear in `MEMORY.md`.
 
 1. `questions-must-carry-suggestions`. Every question put to the user carries concrete
    options and a named recommendation. Finding facts and framing choices is my job.

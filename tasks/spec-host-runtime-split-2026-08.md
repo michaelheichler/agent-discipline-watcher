@@ -1,8 +1,9 @@
 # Spec for the per-host runtime split
 
-Supersedes `plan-host-runtime-split-2026-08.md`, which states three runtimes and one wrong
-fact about OMP inference. Decisions and their evidence live in
-`decisions-host-split-2026-08.md`.
+Holds the requirements. `plan-host-runtime-split-2026-08.md` carries the task list and
+`decisions-host-split-2026-08.md` carries the settled decisions with their evidence. That plan
+was rewritten on 2026-08-30, so it no longer claims three runtimes or a missing OMP inference
+call.
 
 ## Problem Statement
 
@@ -305,7 +306,7 @@ tracks it, though the file sits at 995 lines against a 1000-line hard block.
 
 ## Further Notes
 
-### Two weakenings still stand in the working tree
+### Two weakenings still stand, now in the released tree
 
 `document_review.py` and `pattern_judge.py` moved the judge from `claude-sonnet-5` to Haiku.
 The README previously recorded that Haiku wrongly blocked two ordinary sentences on two of
@@ -316,14 +317,29 @@ or restore Sonnet before this spec starts.
 Commit `a7ee111` deleted a Luna worker-deadline test as flaky with no replacement and no fix.
 That coverage needs restoring.
 
+Both items outlived Phases 1 to 3 untouched. They belong to Phase 4, which is the phase that
+moves the judges onto their host models and therefore has to settle the model question anyway.
+
 ### Landed already
 
+Phases 1, 2, and 3 all shipped on 2026-08-30 in commit `53fed2c`, tagged `v0.20.11`. Suite
+sits at 2018 passing and 18 skipped, up from 1780 when this spec opened.
+
 `lib/catalog.py` and its 11 tests. `configure.py` split into `configure_policy`,
-`configure_store`, and `configure_capability`, down from 700 lines to 277, with all eight
-oversized functions and every ADW finding cleared. Suite sits at 1780 passing.
+`configure_store`, and `configure_capability`, down from 700 lines to 277.
 
-### Three memory facts wait on the frontmatter mask
+`lib/host.py`, `lib/collector.py`, `lib/config_roots.py`, and `lib/judge_provider.py` carry
+the Phase 1 contract. `lib/vendor.py`, `hooks/build_runtime.py`, and the four
+`hosts/<name>/host.json` manifests carry Phase 2. `install.sh`, `hooks/host_picker.py`,
+`lib/picker_state.py`, and the three `hosts/<name>/install.sh` scripts carry Phase 3.
 
-The mask unblocks writing `questions-must-carry-suggestions`,
-`global-claude-md-is-binding`, and `research-agents-use-deepseek-or-sonnet`. Their content
-sits in the decisions file.
+### The frontmatter mask shipped, and the three memory facts followed
+
+`markup._mask_frontmatter` masks a leading delimited block for `.md`, `.markdown`, and `.mdx`.
+The three parked memory files now exist, because the deployed plugin carries the mask.
+
+That deployment step turned out to matter more than the fix. The mask sat green in the
+checkout for hours while the live gate still blocked every `name:` line, because Claude Code
+runs the plugin cache rather than the working tree. `commands/update.md` and
+`hooks/claude_cache_nuke.py` exist so that gap closes on demand rather than on the next
+release.

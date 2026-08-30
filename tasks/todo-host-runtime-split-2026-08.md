@@ -1,10 +1,14 @@
 # Todo for the Per-Host Runtime Split
 
-**Superseded on 2026-08-30 by `spec-host-runtime-split-2026-08.md`.** Only Phase 6 below stays
-live. Research overturned the three-runtime count, so a fresh breakdown follows the spec.
+**Live tracker.** `spec-host-runtime-split-2026-08.md` holds the requirements,
+`plan-host-runtime-split-2026-08.md` holds the task detail, and
+`decisions-host-split-2026-08.md` holds the settled decisions with their evidence.
 
-Desktop does share the Claude runtime, which this file got right. Cowork does not, which it
-missed.
+Phases 1 to 3 shipped on 2026-08-30 in commit `53fed2c`, tagged `v0.20.11`. Suite at 2018
+passing and 18 skipped, plus 60 passing Bun tests.
+
+Desktop does share the Claude runtime, which this file got right from the start. Cowork does
+not, which it missed until the research corrected the count to four.
 
 ## Phase 1. Contract, done 2026-08-30
 - [x] 1. Runtime manifest and host identity, four hosts in `lib/host.py`
@@ -33,26 +37,35 @@ missed.
 - [x] A moved checkout does not break an installed runtime
 - [x] Choosing nothing touches no file
 
-## Phase 4. Model providers
+## The updater, done 2026-08-30
+- [x] `hooks/claude_cache_nuke.py` clears the Claude plugin cache and never `~/.adw`
+- [x] `commands/update.md` gives the agent and the user one runbook
+- [x] A Claude install refreshes the plugin by default, `ADW_SKIP_PLUGIN=1` opts out
+
+## Phase 4. Model providers, next
 - [ ] 10. OMP internal model provider, split into wire contract plus two provider shapes
 - [ ] 11. Claude agent hook provider at haiku, nested CLI removed
 - [ ] 12. Open the OMP model picker to every authenticated model
+- [ ] 12b. Settle the judge model question, and restore the deleted worker-deadline test
 
 ## Checkpoint
 - [ ] No host spawns a nested Claude CLI
 - [ ] A local OMP model returns real judge verdicts
+- [ ] The recorded precision numbers match the model that actually reads
 
 ## Phase 5. Surface verification
 - [ ] 13. Verify one Claude runtime gates terminal, Desktop, and web
 
 ## Checkpoint
 - [ ] Every runtime runs standalone from `~/.adw`
-- [ ] All three runtimes produce identical rule output on one fixture
+- [ ] All four runtimes produce identical rule output on one fixture
 
 ## Blocked on a decision
 - [ ] Close `plan-install-isolation-2026-08.md` as superseded, or finish it first
-- [ ] Choose whether the shared core ships per host install or once for all hosts
 - [ ] Choose direct HTTP in the OMP provider, or an upstream request for a host-side inference API
+
+## Settled since this file opened
+- [x] The shared core ships vendored per host, written by `hooks/build_runtime.py`
 
 ## Phase 6. Optional cleanup
 - [ ] 14a. Move the rendering and managed hook clusters out of `claude_native.py`, 173 measured
