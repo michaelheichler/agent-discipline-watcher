@@ -9,11 +9,14 @@
   ],
   "installer": "install.sh",
   "extra_paths": [],
-  "installer_note": "Writes the adw-judge preset CLI only. The plugin carries every hook.",
+  "installer_note": "Writes the adw-judge preset CLI under the state directory. The plugin carries every hook.",
   "writes": [
-    "~/.local/bin/adw-judge",
+    "~/.adw/bin/adw-judge",
     "~/.claude/settings.json, to remove legacy watcher hooks only",
-    "~/.zshrc and ~/.bashrc, one fenced PATH block",
-    "~/.claude/plugins/cache/agent-discipline-watcher, cleared then reinstalled"
+    "~/.claude/plugins/cache/agent-discipline-watcher, cleared then reinstalled by the claude CLI"
+  ],
+  "reclaims": [
+    "~/.local/bin/adw-judge, only when it still points into this checkout",
+    "~/.zshrc and ~/.bashrc, only the fenced PATH block an earlier install appended"
   ]
 }

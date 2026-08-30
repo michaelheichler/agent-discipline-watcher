@@ -294,11 +294,21 @@ describe("watcher helpers", () => {
     expect(isPreGateTool("edit")).toBe(true);
   });
 
-  test("resolves the stable installed runner link", () => {
-    expect(resolveRunner({}, "/home/tester")).toBe(
+  test("prefers the runner inside the state directory", () => {
+    expect(resolveRunner({}, "/home/tester", () => true)).toBe(
+      "/home/tester/.adw/install/agent-discipline-watcher/hooks/run.sh",
+    );
+  });
+
+  test("falls back to the legacy link when the state directory has no runner", () => {
+    expect(resolveRunner({}, "/home/tester", () => false)).toBe(
       "/home/tester/.agents/skills/agent-discipline-watcher/hooks/run.sh",
     );
-    expect(resolveRunner({ AGENT_DISCIPLINE_WATCHER_HOME: "/override" })).toEndWith("/override/hooks/run.sh");
+  });
+
+  test("an explicit override wins over both locations", () => {
+    expect(resolveRunner({ AGENT_DISCIPLINE_WATCHER_HOME: "/override" }, "/home/tester", () => true))
+      .toBe("/override/hooks/run.sh");
   });
 
   test("fails closed when the runner exits non-zero", () => {

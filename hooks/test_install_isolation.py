@@ -56,7 +56,7 @@ def test_a_moved_checkout_does_not_break_an_installed_runtime(tmp_path: Path) ->
     assert _install(checkout, home, "--claude").returncode == 0
     shutil.move(str(checkout), str(tmp_path / "checkout-after"))
 
-    launcher = home / ".local" / "bin" / "adw-judge"
+    launcher = home / ".adw" / "bin" / "adw-judge"
     assert launcher.is_symlink()
     assert launcher.resolve().is_file(), "the launcher points at the moved checkout"
 
@@ -77,7 +77,7 @@ def test_the_installed_copy_never_points_back_at_the_checkout(tmp_path: Path) ->
     vendor.vendor(host.CLAUDE, REPO_ROOT, checkout)
     _install(checkout, home, "--claude")
 
-    links = [path for path in (home / ".local" / "bin").iterdir() if path.is_symlink()]
+    links = [path for path in (home / ".adw" / "bin").iterdir() if path.is_symlink()]
 
     assert links
     for link in links:

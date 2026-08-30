@@ -32,12 +32,31 @@ adw_replace_link() {
   ln -s "$target" "$link_path"
 }
 
-adw_append_rc_block() {
+adw_remove_own_link() {
+  # Matched on target because another tool may own the name.
+  local link_path="$1"
+  local pattern="$2"
+  [ -L "$link_path" ] || return 0
+  case "$(readlink "$link_path")" in
+    $pattern) rm -f "$link_path" ;;
+  esac
+}
+
+adw_strip_rc_block() {
+  # Reclaimed because older installs appended a PATH line.
   local rc_file="$1"
-  local block="$2"
-  grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" 2>/dev/null && return 0
+  [ -f "$rc_file" ] || return 0
+  grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" 2>/dev/null || return 0
   adw_backup_file "$rc_file"
-  printf '%b' "$block" >> "$rc_file"
+  local stripped
+  stripped="$(mktemp)"
+  awk '
+    /# >>> agent-discipline-watcher >>>/ { skip = 1; next }
+    /# <<< agent-discipline-watcher <<</ { skip = 0; next }
+    skip != 1 { print }
+  ' "$rc_file" > "$stripped"
+  cat "$stripped" > "$rc_file"
+  rm -f "$stripped"
 }
 
 adw_remove_obsolete_links() {

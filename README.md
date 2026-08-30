@@ -36,7 +36,7 @@ Every AI-tell rule fires on 1 sentence in 20000 or fewer. `passive_voice` is not
 
 **88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire zero times on human prose, so without this side they have no violating class and no measurement can reach them.
 
-**9256 documents that still carry their paragraph breaks**, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, 4256 assistant from the same two chat sets. Both sentence corpora flatten a document to one line, so no paragraph-shaped rule had anything to stand on until this one existed. It is what `uniform_paragraph_endings` measures against, and it is also why that rule stays at observe: the shape it names runs commoner in human literature than in model prose.
+**9256 documents that still carry their paragraph breaks**, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, 4256 assistant from the same two chat sets. Both sentence corpora flatten a document to one line, so no paragraph-shaped rule had anything to stand on until this one existed. It is what `uniform_paragraph_endings` measures against, and it is also why that rule stays at observe. The shape it names runs commoner in human literature than in model prose.
 
 All three corpora rebuild byte for byte. See `evals/README.md`.
 
@@ -44,7 +44,7 @@ All three corpora rebuild byte for byte. See `evals/README.md`.
 
 Every tool call goes through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
-Claude Code calls a hook twice around a tool: PreToolUse before the call runs, PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
+Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
 
 The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
 
@@ -95,9 +95,11 @@ flow before using model review. There is no API-key fallback.
 `pi/install.sh` copies the checkout into
 `~/.adw/install/agent-discipline-watcher`, symlinks the extension into
 `~/.omp/agent/extensions/agent-discipline-watcher`, and registers the
-installed `index.ts` in `~/.omp/agent/settings.json`. The stable runner link
-under `~/.agents/skills` also points to that installed copy. Nothing in the
-installed client configuration points into the development checkout.
+installed `index.ts` in `~/.omp/agent/settings.json`. The extension resolves
+its runner from the installed copy under `~/.adw`, so it needs no link outside
+the state directory. An earlier install put one under `~/.agents/skills`, and
+the installer removes that link when it still points at an ADW copy. Nothing in
+the installed client configuration points into the development checkout.
 
 ```text
 ~/.adw/install/agent-discipline-watcher  installed code
@@ -126,14 +128,21 @@ separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
 ## Requirements
 
-A Unix shell and the Python named in `.python-version`, which is the one place the floor is declared. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor, so a system `python3` too old to import this codebase is skipped rather than trusted. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that silently stops enforcing is worse than one that refuses to start.
+A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that stops enforcing without a word is worse than one that refuses to start.
 
-Select a Claude native preset with `/agent-discipline-watcher:adw-judge
-mixed|luna|haiku|sonnet|status`. Every preset that emits a native Claude agent
-now pins Haiku, because only a Haiku agent may reach the Claude CLI. The preset
-names stay for the command contract. `luna` emits no native agent. It uses a
+The plugin ships its own reviewer, so a plain install already judges on Haiku
+and needs no preset step. Select a different one with
+`/agent-discipline-watcher:adw-judge haiku|mixed|luna|luna-native|status`.
+
+`haiku` runs one model for both roles. `mixed` spends Haiku on the per-write
+comment check and Sonnet on the per-turn document check. `luna-native` names
+the Luna model directly. It works where a harness such as LeverFrame injects
+Luna into the Claude model list. `luna` emits no native agent at all. It uses a
 command handler on the subscription-backed Codex runtime and switches to
-`mixed` only after Luna is unavailable. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
+`mixed` only after Luna is unavailable.
+
+`status` counts the reviewers a session carries rather than echoing the stored
+preset, so an unwired gate says so. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
 install needs the explicit Haiku-only environment.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
@@ -227,7 +236,7 @@ It does not police file access in general. The host's own permission settings ow
 
 `config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that would weaken the gates. That means a self-authorization key, a downgraded always-blocking rule, a redirected state or ledger root, or anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
 
-Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through: `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, or `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc, and treats it like a Write or Edit call rather than blocking it.
+Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through, such as `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, or `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc, and treats it like a Write or Edit call rather than blocking it.
 
 ## Active integrations
 

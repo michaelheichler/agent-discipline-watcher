@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -352,13 +352,18 @@ export function normalizeArgs(args: Record<string, unknown> | undefined): Record
   return normalized;
 }
 
+const LEGACY_RUNNER_ROOT = [".agents", "skills", "agent-discipline-watcher"];
+
 export function resolveRunner(
   environment: Record<string, string | undefined> = process.env,
   home: string = homedir(),
+  exists: (path: string) => boolean = existsSync,
 ): string {
   const override = environment.AGENT_DISCIPLINE_WATCHER_HOME;
-  const root = override || join(home, ".agents", "skills", "agent-discipline-watcher");
-  return join(root, "hooks", "run.sh");
+  if (override) return join(override, "hooks", "run.sh");
+  const installed = join(home, ".adw", "install", "agent-discipline-watcher", "hooks", "run.sh");
+  if (exists(installed)) return installed;
+  return join(home, ...LEGACY_RUNNER_ROOT, "hooks", "run.sh");
 }
 
 function validatedToolInput(

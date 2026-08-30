@@ -6,7 +6,7 @@ host_dir="$(cd "$(dirname "$0")" && pwd)"
 adw_host_prelude
 
 claude_home="$HOME/.claude"
-rc_block='\n# >>> agent-discipline-watcher >>>\nexport PATH="$HOME/.local/bin:$PATH"\n# <<< agent-discipline-watcher <<<\n'
+adw_bin="$HOME/.adw/bin"
 
 adw_backup_file "$claude_home/settings.json"
 
@@ -30,12 +30,17 @@ else
   fi
 fi
 
-mkdir -p "$HOME/.local/bin"
-adw_replace_link "$HOME/.local/bin/adw-judge" "$ADW_SKILL_DIR/bin/adw-judge"
-
+mkdir -p "$adw_bin"
+adw_replace_link "$adw_bin/adw-judge" "$ADW_SKILL_DIR/bin/adw-judge"
+adw_remove_own_link "$HOME/.local/bin/adw-judge" "*/agent-discipline-watcher/bin/adw-judge"
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
-  adw_append_rc_block "$rc_file" "$rc_block"
+  adw_strip_rc_block "$rc_file"
 done
+
+case ":$PATH:" in
+  *":$adw_bin:"*) ;;
+  *) printf 'Add this to your shell startup file to run adw-judge by name:\n\n  export PATH="%s:$PATH"\n\n' "$adw_bin" ;;
+esac
 
 [ "${ADW_CLAUDE_LEGACY:-0}" = "1" ] && exit 0
 

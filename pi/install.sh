@@ -154,9 +154,14 @@ if [ "$remove" -eq 1 ]; then
 fi
 
 mkdir -p "$omp_agent_dir/extensions"
-mkdir -p "$HOME/.agents/skills"
 mkdir -p "$(dirname "$extension_link")"
-replace_link "$runtime_link" "$skill_dir" "$legacy_install_dir"
+if [ -L "$runtime_link" ] && {
+  [ "$(readlink "$runtime_link")" = "$skill_dir" ] ||
+  [ "$(readlink "$runtime_link")" = "$install_dir" ] ||
+  [ "$(readlink "$runtime_link")" = "$legacy_install_dir" ];
+}; then
+  rm -f "$runtime_link"
+fi
 replace_link "$extension_link" "$extension_src" "$legacy_install_dir/pi/extensions/$extension_name"
 backup_file "$omp_agent_dir/settings.json"
 installer_python="$(resolve_installer_python)"
