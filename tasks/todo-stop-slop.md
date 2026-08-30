@@ -24,12 +24,13 @@ original boxes, which recorded nothing done.
       records `low_sentence_variance` as unmeasurable with precision 0.0.
 
 ## Phase 4. Surfaces and gating
-- [ ] 7. Per-surface `rule_gates`. **Missing.** `config._rule_state_from` accepts a flat state
-      string, so a `{surface: state}` value falls through to the family gate.
-      `protected._gated_off_everywhere` carries no per-surface escape check either.
-- [ ] 8. Commit message scanning. **Partial and wrong today.** `pre_commit._message_findings`
-      scans the body as prose, and `banned_adverb`, `lazy_extreme`, and `passive_voice` all sit
-      at `enforce`, so word-level rules block commit bodies. Task 7 is the prerequisite.
+- [x] 7. Per-surface `rule_gates`, done in `d291d44`. A gate value may be a `{surface: state}`
+      map, findings carry a `surface`, and `pre_commit` tags its own as `commit`. An unnamed
+      surface falls to the family rather than to off, and always-blocking rules ignore the map.
+- [ ] 8. Commit message scanning. **Mechanism ready, default deliberately unchanged.** Task 7
+      supplies the knob. Downgrading `banned_adverb`, `lazy_extreme`, and `passive_voice` on the
+      commit surface would weaken the shipped gate, which this repo does not do without a
+      measurement. It waits on task 11 and therefore on task 1.
 - [ ] 9. Comment and docstring surface. **Missing.** `scanner._scan_line_families` runs the
       english family only when `context.prose` holds, so no slop rule reaches a comment.
 
@@ -39,13 +40,20 @@ original boxes, which recorded nothing done.
 ## Phase 6. Calibration
 - [ ] 11. Measured precision per rule per surface. **Partial.** Structure rules sit hard-coded
       at `enforce` with no recorded precision, which the plan forbids. Blocked behind task 1.
-- [ ] 12. Self-scan and multi-version CI. **Partial.** `pylint.yml` runs on 3.11 alone, with no
-      3.12 or 3.13 matrix and no pylint 10.00 assertion.
+- [x] 12. Self-scan and multi-version CI, done in `d291d44`. The floor job reads
+      `.python-version` and a forward matrix runs 3.12 and 3.13. A third job runs the Bun suite,
+      which CI never ran. Pylint now asserts 10.00 rather than trusting an exit code that stays
+      zero on a warning. The suite passes on 3.11, 3.12, 3.13, and 3.14.
 - [ ] 13. German markers in observe. **Missing.** `WEIGHTED_MARKERS` holds English only.
 
 ## Decision needed before Phase 6 starts
-- [ ] Rebuild the corpora from new sources, or drop every calibration task. Tasks 2, 5, 6,
+- [ ] Rebuild the corpora from new sources, or drop every calibration task. Tasks 2, 5, 6, 8,
       and 11 all wait on that answer.
+
+Verified on 2026-08-31. `evals/corpus_slop_sentence.jsonl` and `corpus_slop_document.jsonl` are
+absent, and `~/Downloads` holds none of the four CSV sources `build_slop_corpora.py` names. Only
+the user can supply those files, so tasks 1, 2, 5, 6, and 11 stay blocked on data rather than on
+work. Tasks 9, 10, and 13 need no corpus and remain open.
 
 ## Ordering note
 Task 8 blocks commit messages today, so it earns priority over the rest of this plan. It
