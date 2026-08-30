@@ -12,7 +12,9 @@ import fcntl
 import hmac
 import json
 import os
+import pwd
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -440,20 +442,60 @@ def _expected_digest(request: dict[str, object]) -> str | None:
     return expected
 
 
-def _omp_parent_is_trusted() -> bool:
-    """Require the capability to arrive from the OMP executable rather than a shell caller."""
+def _read_parent_process(parent_pid: str, output_format: str) -> str | None:
+    """Read one parent process field through the fixed system ps binary."""
     try:
         result = subprocess.run(
-            ["ps", "-p", str(os.getppid()), "-o", "comm="],
+            ["/bin/ps", "-p", parent_pid, "-o", output_format],
             capture_output=True,
             text=True,
             check=False,
             timeout=1,
         )
     except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+def _omp_parent_is_trusted() -> bool:
+    """Require OMP identity, including the Bun launcher, before accepting a write token."""
+    parent_pid = str(os.getppid())
+    executable_text = _read_parent_process(parent_pid, "comm=")
+    if executable_text is None:
         return False
-    executable = Path(result.stdout.strip()).name.lower()
-    return result.returncode == 0 and executable in {"omp", "pi"}
+    executable = Path(executable_text).name.lower()
+    if executable in {"omp", "pi"}:
+        return True
+    if executable != "bun":
+        return False
+    command_line = _read_parent_process(parent_pid, "command=") or ""
+    try:
+        arguments = shlex.split(command_line)
+    except ValueError:
+        return False
+    try:
+        account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except (KeyError, OSError):
+        account_home = None
+    expected_launchers = (
+        {
+            (account_home / ".bun/bin/omp").resolve(),
+            (account_home / ".bun/bin/pi").resolve(),
+        }
+        if account_home is not None
+        else set()
+    )
+    for argument in arguments[1:]:
+        candidate = Path(argument)
+        if not candidate.is_absolute() or candidate.name.lower() not in {"omp", "pi"}:
+            continue
+        try:
+            if candidate.resolve() in expected_launchers:
+                return True
+        except (OSError, RuntimeError):
+            continue
+    return False
 
 def _consume_capability() -> None:  # pylint: disable=too-many-boolean-expressions
     """Consume an owner-only one-shot token file before allowing a policy write."""

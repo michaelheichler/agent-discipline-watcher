@@ -9,7 +9,9 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import configure
 from lib import config
@@ -39,6 +41,41 @@ def _request(cwd: Path, values: dict[str, object], digest: str | None) -> dict[s
         "expected_digest": digest,
         "values": values,
     }
+
+
+def test_bun_omp_parent_is_trusted(monkeypatch) -> None:
+    """Accept Bun only when it launched the installed OMP command."""
+    launcher = str(Path(configure.pwd.getpwuid(os.getuid()).pw_dir) / ".bun/bin/omp")
+    monkeypatch.setenv("HOME", str(Path("/tmp") / "attacker-home"))
+    responses = iter(
+        (
+            SimpleNamespace(returncode=0, stdout="bun\n"),
+            SimpleNamespace(returncode=0, stdout=f"bun {launcher} --no-session\n"),
+        )
+    )
+
+    def fake_run(command, **_kwargs):
+        """Return the process identity fields requested by the trust check."""
+        assert command[:3] == ["/bin/ps", "-p", str(os.getppid())]
+        return next(responses)
+
+    monkeypatch.setattr(configure.subprocess, "run", fake_run)
+
+    assert configure._omp_parent_is_trusted() is True
+
+
+def test_arbitrary_bun_parent_is_not_trusted(monkeypatch) -> None:
+    """Reject Bun when its command line does not identify OMP."""
+    responses = iter(
+        (
+            SimpleNamespace(returncode=0, stdout="bun\n"),
+            SimpleNamespace(returncode=0, stdout="bun /tmp/worker.js\n"),
+        )
+    )
+
+    monkeypatch.setattr(configure.subprocess, "run", lambda *_args, **_kwargs: next(responses))
+
+    assert configure._omp_parent_is_trusted() is False
 
 
 def test_validate_returns_checked_policy_values() -> None:
@@ -143,6 +180,38 @@ def test_direct_shell_route_rejects_forged_environment(tmp_path: Path) -> None:
     environment = os.environ.copy()
     environment[configure.CAPABILITY_ENV] = "forged-token"
     environment.pop(configure.CAPABILITY_FILE_ENV, None)
+    request = _request(tmp_path, {"english": False}, _digest(target))
+
+    completed = subprocess.run(
+        [str(Path(__file__).with_name("run.sh")), configure.CONFIGURE_EVENT],
+        input=json.dumps(request),
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["error"]["code"] == "capability_required"
+    assert json.loads(target.read_text(encoding="utf-8"))["english"] is True
+
+
+def test_direct_shell_route_ignores_forged_ps(tmp_path: Path) -> None:
+    """A PATH-provided ps cannot impersonate OMP for a shell caller."""
+    target = tmp_path / config.CONFIG_NAME
+    target.write_text(json.dumps({"english": True}), encoding="utf-8")
+    capability = tmp_path / "forged-capability"
+    capability.write_text("forged-token", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_ps = fake_bin / "ps"
+    fake_ps.write_text("#!/bin/sh\nprintf 'omp\n'\n", encoding="utf-8")
+    fake_ps.chmod(0o755)
+    environment = os.environ.copy()
+    environment[configure.CAPABILITY_ENV] = "forged-token"
+    environment[configure.CAPABILITY_FILE_ENV] = str(capability)
+    environment["ADW_PYTHON"] = sys.executable
+    environment["PATH"] = f"{fake_bin}:{environment.get('PATH', '')}"
     request = _request(tmp_path, {"english": False}, _digest(target))
 
     completed = subprocess.run(
