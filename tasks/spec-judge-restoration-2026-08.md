@@ -206,17 +206,24 @@ irregular participles feed `passive_voice`. Those patterns surface through the 5
 catalog exposes, which split into 33 configurable and 23 always-blocking. Both numbers are
 correct and neither is a contradiction.
 
-**`claude -p` has exactly three call sites and one seam.** `judge.py` line 80,
-`document_review.py` line 64, and `pattern_judge.py` line 73 all call
-`judge_provider.complete`, which builds the command. Killing the seam kills all three.
+**`claude -p` is gone.** Commit `7bf4397` removed it.
 
-The cost is worse than one call per write. `pattern_judge.confirm_all` maps its batches across
-a thread pool, so one scan can spawn several nested Claude sessions at once. That is the money
-the user is spending.
+The earlier note counted one seam and three call sites. It missed a second, independent copy.
+`judge_provider.complete` served `judge.py`, `document_review.py`, and `pattern_judge.py`,
+while `evals/measure_judge_stage.py` built its own command. Both are gone now, and a
+source-level test fails if either `subprocess` or the literal command returns to the seam.
 
-The care needed is one line. `pattern_judge.py` line 107 returns early when `available()` is
-false. Removing the provider without a replacement turns every judged rule into a silent pass.
-`three_item_list` sits at the judged state today and would stop firing.
+One correction to the cost claim. The spawn was reachable only through the `JudgeReview` route.
+`1ceecb3` registered that route on 2026-08-27 and `4499399` unregistered it on 2026-08-28.
+After that only the pi extension called it, and OMP already refused the CLI. So the billing
+window ran about one day rather than the whole period. The code still sat one `hooks.json` line
+away from billing again, which is why it had to go rather than sit unused.
+
+The fail-open was real, and `confirm_all` now fixes it. That function answered an empty mapping
+both when the judge cleared every candidate and when no judge existed, so a judged rule could
+stop firing with nothing said. It now returns a `JudgedOutcome` carrying the kept candidates,
+the rules nobody read, and the reason. `three_item_list` is the one rule the default config
+puts at the judged state.
 
 ### How the judge disappeared
 
@@ -238,6 +245,19 @@ travels on every call, because the default can resolve to Haiku without saying s
 
 ### Measurement still owed for Luna
 
-`evals/measure_judge_stage.py` hard-codes the CLI and cannot call Luna. The corpora it needs
-are absent, and the four source files it reads are recoverable from the user. Making that
-script provider-pluggable is the same seam the judge removal needs, so one change serves both.
+`evals/measure_judge_stage.py` no longer spawns anything. It stops with a message naming the
+missing provider, so nobody burns a measurement run against a judge that cannot answer. Wiring
+it to a real provider stays owed, and the corpora it needs are still absent.
+
+### What remains after the removal
+
+`judge_model.py` still screens for haiku, and five modules still call it to pick a model that
+never reaches anything. That screen outlived its purpose and should go with the preset rework.
+
+The preset roster still reads `("mixed", "luna", "haiku", "sonnet")` in `claude_native.py`. The
+user rejected a sonnet-everywhere preset, and `luna-native` is not there yet.
+
+`adw-judge status` still reports the stored preference rather than the wiring a user received.
+
+The config-folder pass has not started. The installers write a shell rc block, a launcher link,
+a Codex config fence, and an OMP agent directory, all outside the state directory.
