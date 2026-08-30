@@ -179,3 +179,21 @@ def test_install_refuses_unowned_destination(tmp_path: Path) -> None:
         install(checkout, destination)
 
     assert (destination / "user-file").read_text(encoding="utf-8") == "keep"
+
+def test_combined_install_removes_obsolete_command_links(tmp_path: Path) -> None:
+    """Installation removes command links from the retired ADW CLI layout."""
+    home = tmp_path / "home"
+    obsolete = home / ".local" / "bin" / "agent-discipline"
+    obsolete.parent.mkdir(parents=True)
+    obsolete.symlink_to(home / "Development/skill-repos/agent-discipline-watcher/bin/agent-discipline")
+
+    result = subprocess.run(
+        [str(INSTALL), "--no-claude", "--no-codex", "--omp", "-y"],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not obsolete.exists()

@@ -98,6 +98,17 @@ replace_link() {
   ln -s "$target" "$link_path"
 }
 
+remove_obsolete_command_link() {
+  local link_path="$1"
+  if [ -L "$link_path" ]; then
+    case "$(readlink "$link_path")" in
+      */agent-discipline-watcher/bin/agent-discipline|*/agent-discipline-watcher/bin/adw-cli)
+        rm -f "$link_path"
+        ;;
+    esac
+  fi
+}
+
 . "$skill_dir/hooks/resolve-python.sh"
 read -r installer_floor < "$skill_dir/.python-version"
 installer_python="$(adw_resolve_python "$installer_floor")"
@@ -191,6 +202,9 @@ if [ -x "$skill_dir/bin/adw-judge" ]; then
   mkdir -p "$HOME/.local/bin"
   replace_link "$HOME/.local/bin/adw-judge" "$skill_dir/bin/adw-judge" "$checkout_dir/bin/adw-judge"
 fi
+
+remove_obsolete_command_link "$HOME/.local/bin/agent-discipline"
+remove_obsolete_command_link "$HOME/.local/bin/adw-cli"
 
 rc_block='\n# >>> agent-discipline-watcher >>>\nexport PATH="$HOME/.local/bin:$PATH"\n[ -f "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash" ] && . "$HOME/.agents/skills/agent-discipline-watcher/scripts/adw-completion.bash"\n# <<< agent-discipline-watcher <<<\n'
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
