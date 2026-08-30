@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.20.0 (2026-08-30)
+
+### Added
+
+- OMP now has an ADW configuration screen through `/adw configure` and `/agent-discipline configure`. Both commands edit the shared `.agent-discipline.json` policy. OMP's `/advisor configure` remains separate and edits `WATCHDOG.yml`.
+- The OMP editor now exposes family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, data-boundary settings, runtime status, and the selected ADW model. Always-blocking rules stay locked.
+- The configuration bridge now exposes bounded `describe`, `read`, `validate`, and guarded `write` operations. Writes preserve unknown keys, use compare-and-swap digests, reject protected weakening, and replace files atomically.
+
+### Changed
+
+- OMP now pre-gates every supported mutating file tool and Bash, rescans trusted post-tool targets, and runs the configured review path without forwarding raw file content.
+- Model-backed review reads are confined to the project boundary. They use descriptor-based no-follow reads, inode checks, bounded input, and an explicit enabled data boundary.
+- Hook response text is sanitized and bounded without truncating a complete contract that already fits. Python support remains 3.11 and newer.
+
+### Fixed
+
+- Unresolved mutating OMP results remain blocking even after a later valid result. A new session clears only its own marker.
+- SessionStart block reasons now reach the user-visible OMP diagnostic path.
+- Structured code comments such as SPDX headers, coding markers, and linter directives no longer trigger the prose-colon rule.
+- OMP model selection now reaches the guarded Save request and the review runner.
+- The merged branch now passes the project test suite, Bun tests, shell checks, and full Pylint.
+
+### Since 0.18
+
+- Deterministic punctuation, prose, clean-code, slop, and structural gates now cover the main agent output failure modes.
+- Semantic and judged routes add model confirmation only where measured precision supports it. Document review adds bounded whole-document coherence checks.
+- Claude Code has native judging presets. Codex has synchronized lifecycle hooks, subscription-backed Luna reviews, active-session leases, retention cleanup, and crash-safe retry state.
+- Bash workarounds, protected-file edits, path aliases, symlink escapes, malformed payloads, oversized responses, and untrusted review text now have explicit blocking or bounded failure behavior.
 ## 0.19.1 (2026-08-29)
 ### Fixed
 
