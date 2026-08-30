@@ -60,7 +60,8 @@ def test_no_core_module_imports_a_host_module(path: Path) -> None:
 
 
 KNOWN_ADAPTERS = frozenset({
-    "claude_cache", "claude_luna", "claude_native", "claude_quarantine", "codex_luna",
+    "claude_cache", "claude_luna", "claude_native", "claude_presets", "claude_quarantine",
+    "codex_luna",
 })
 
 

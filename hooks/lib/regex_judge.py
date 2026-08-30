@@ -49,7 +49,7 @@ def confirm(path: str, findings: list[dict], config: dict | None = None) -> tupl
         (rule_prompt(rule, exemplars, manifest), _candidates(path, findings, rule))
         for rule in named
     )
-    model = judge_model(effective_config(config).get("adw_model"))
+    model = str(effective_config(config).get("adw_model") or "")
     return tuple(
         JudgedFinding(rule, candidate.line, candidate.text)
         for rule, kept in sorted(confirm_all(work, model).kept.items())

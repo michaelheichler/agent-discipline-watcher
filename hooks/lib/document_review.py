@@ -109,7 +109,7 @@ def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]
         return ()
     if not text.strip() or not available():
         return ()
-    model = judge_model(config.get("adw_model"))
+    model = str(config.get("adw_model") or REVIEW_MODEL)
     raw = _run(build_prompt(path, text), model)
     if raw is None:
         return ()

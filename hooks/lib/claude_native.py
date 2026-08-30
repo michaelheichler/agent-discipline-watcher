@@ -20,8 +20,15 @@ try:
 except ImportError:
     from claude_quarantine import reclaim_quarantines
 
+try:
+    from . import claude_presets, judge_status
+except ImportError:
+    import claude_presets
+    import judge_status
 
-PRESETS = ("mixed", "luna", "haiku", "sonnet")
+
+PRESETS = claude_presets.PRESETS
+LUNA_NATIVE_MODEL = claude_presets.LUNA_NATIVE_MODEL
 REMOTE_ENV = "CLAUDE_CODE_REMOTE"
 HAIKU_ONLY_ENV = "ADW_CLAUDE_HAIKU_ONLY"
 PRESET_ENV = "ADW_CLAUDE_PRESET"
@@ -58,10 +65,7 @@ _LUNA_RESERVATIONS: dict[Path, _LunaReservation] = {}
 _LUNA_RESERVATIONS_LOCK = threading.Lock()
 
 
-def _validate_preset(value: str) -> str:
-    if value not in PRESETS:
-        raise ValueError("preset must be exactly mixed, luna, haiku, or sonnet")
-    return value
+_validate_preset = claude_presets.validate_preset
 
 
 def preset_path(environment: Mapping[str, str] | None = None) -> Path:
@@ -564,87 +568,11 @@ def default_preset(
         return _default_preset_unlocked(env, target_preset)
 
 
-def _model_for(preset: str, role: str) -> str:
-    if preset == "mixed":
-        return "haiku" if role == "comment" else "sonnet"
-    if preset == "haiku":
-        return "haiku"
-    if preset == "sonnet":
-        return "sonnet"
-    raise ValueError("luna uses command handlers, not a native model")
-
-
-def _luna_command() -> str:
-    return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(LUNA_HANDLER_PATH))}"
-
-
-def comment_prompt(preset: str) -> str:
-    _validate_preset(preset)
-    return (
-        f"{MANAGED_MARKER}\n"
-        "You are ADW's post-write comment verifier.\n"
-        "Matching hooks run in parallel. Inspect only the just-written eligible file named by this raw host event; "
-        "do not expect another hook to have prepared context and do not duplicate the raw event content. "
-        "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
-        "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
-        "or has no ADW candidate, return exactly {\"ok\": true}.\n"
-        "A successful check returns exactly {\"ok\": true}. A failed check returns {\"ok\": false, "
-        "\"reason\": \"one bounded remediation instruction\"}.\n"
-        "Do not deny or undo the completed write.\n"
-        "Hook input: $ARGUMENTS"
-    )
-
-
-def stop_prompt(preset: str) -> str:
-    _validate_preset(preset)
-    return (
-        f"{MANAGED_MARKER}\n"
-        "You are ADW's Stop verifier.\n"
-        "Check stop_hook_active before doing any work. If it is true, return exactly {\"ok\": true}. "
-        f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
-        "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
-        "unrelated files, or read files not named by the helper output. "
-        "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
-        "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
-        "returns exactly {\"ok\": true}. A clean review returns exactly {\"ok\": true}. A failed review "
-        "returns {\"ok\": false, \"reason\": \"one bounded remediation instruction\"}.\n"
-        "Use the session_id from this hook input to locate only its journal.\n"
-        "Hook input: $ARGUMENTS"
-    )
-
-
-def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    selected = _validate_preset(preset)
-    if selected == "luna":
-        command = _luna_command()
-        return {
-            "PostToolUse": [{
-                "matcher": WRITE_MATCHER,
-                "hooks": [{"type": "command", "command": command, "timeout": 120}],
-            }],
-            "Stop": [{
-                "hooks": [{"type": "command", "command": command, "timeout": 120}],
-            }],
-        }
-    return {
-        "PostToolUse": [{
-            "matcher": WRITE_MATCHER,
-            "hooks": [{
-                "type": "agent",
-                "model": _model_for(selected, "comment"),
-                "timeout": 120,
-                "prompt": comment_prompt(selected),
-            }],
-        }],
-        "Stop": [{
-            "hooks": [{
-                "type": "agent",
-                "model": _model_for(selected, "document"),
-                "timeout": 120,
-                "prompt": stop_prompt(selected),
-            }],
-        }],
-    }
+_model_for = claude_presets.model_for
+_luna_command = claude_presets.luna_command
+comment_prompt = claude_presets.comment_prompt
+stop_prompt = claude_presets.stop_prompt
+generated_hooks = claude_presets.generated_hooks
 
 
 def _is_managed_hook(value: object) -> bool:
@@ -927,9 +855,15 @@ def status(*, settings_path: str | Path | None = None, preset_path: str | Path |
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         selected = _read_preset_unlocked(target_preset)
+        stored = selected is not None
         if selected is None:
             selected = _default_preset_unlocked(env, target_preset)
-    return {"preset": selected, "settings": str(settings_path or globals()["settings_path"]()), "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates"}
+    seen = judge_status.plugin_reviewers() + judge_status.settings_reviewers(target_settings, _is_managed_hook)
+    return {
+        **judge_status.describe(selected, stored, seen),
+        "settings": str(settings_path or globals()["settings_path"]()),
+        "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates",
+    }
 
 
 def _fallback_after_luna_failure_unlocked(

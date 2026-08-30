@@ -187,7 +187,7 @@ def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...
         for rule in measured_rules(manifest)
     )
     blocking = blocking_rules(manifest)
-    model = judge_model(config.get("adw_model") if isinstance(config, dict) else None)
+    model = str((config.get("adw_model") if isinstance(config, dict) else None) or "")
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
         for rule, kept in sorted(confirm_all(work, model).kept.items())

@@ -118,7 +118,7 @@ def judge(candidates: tuple[Candidate, ...], model: str | None = None) -> tuple[
         return ()
     if not available():
         return None
-    selected = judge_model(model)
+    selected = str(model or JUDGE_MODEL)
     raw = _run(build_prompt(candidates), selected)
     if raw is None:
         return None
