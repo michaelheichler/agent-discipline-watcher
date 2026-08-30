@@ -20,6 +20,9 @@ Three claims in the original plan turned out wrong. Each cost work, so each stay
 3. "The Claude runtime uses agent hooks and never spawns a nested CLI." True for `haiku`,
    `mixed`, and `sonnet`. The `luna` preset cannot, because a Claude agent hook carries no
    OpenAI model. D6 records why the SDK path stays.
+4. "The Haiku pinning is a weakening that needs re-measuring." The preset selector already
+   answers it. Task 11 deletes the CLI path that pinning lives on, and `judge_model.py` goes
+   with it.
 
 ## Phase 1. Contract, done 2026-08-30
 
@@ -100,12 +103,11 @@ field, because `test_manifest_uses_commit_sha_updates` pins ADW to commit-based 
 - [ ] Task 10. OMP internal model provider, split into a wire contract plus two provider shapes
 - [ ] Task 11. Claude agent hook provider at haiku, nested CLI removed
 - [ ] Task 12. Open the OMP model picker to every authenticated model
-- [ ] Task 12b. Settle the judge model question the spec left open
+- [ ] Task 12b. Restore the Luna worker deadline test
 
 ### Checkpoint
 - [ ] No host spawns a nested Claude CLI
-- [ ] A local OMP model returns real judge verdicts
-- [ ] The recorded precision numbers match the model that actually reads
+- [ ] `judge_model.py` has no callers left once the CLI path goes
 
 ## Phase 5. Surface verification
 
@@ -198,37 +200,26 @@ from the manifests, so it duplicates no wording.
 
 **Estimated scope:** Medium
 
-## Task 12b. Settle the judge model question
+## Task 12b. Restore the Luna worker deadline test
 
-**Description:** Two weakenings outlived Phases 1 to 3 and belong here, because this phase
-moves every judge onto its host's models anyway.
-
-`document_review.py` and `pattern_judge.py` moved the judge from `claude-sonnet-5` to Haiku.
-The README previously recorded that Haiku wrongly blocked two ordinary sentences on two of
-four runs, while Sonnet cleared the same document four times of four. The precision numbers
-behind `ENFORCE_PRECISION = 0.85` still cite a Sonnet reader.
-
-Commit `a7ee111` deleted a Luna worker-deadline test as flaky, with no replacement and no fix.
+**Description:** Commit `a7ee111` deleted a Luna worker deadline test as flaky, with no
+replacement and no fix. That is coverage loss under D0, and it is unrelated to which model
+judges.
 
 **Acceptance criteria:**
-- [ ] The recorded precision numbers come from the model that actually reads, or Sonnet
-      returns for prose and document reviews
-- [ ] A named measurement backs whichever model stays, rather than a preference
-- [ ] The Luna worker-deadline coverage returns, with the flake fixed rather than skipped
+- [ ] The deadline coverage returns, with the flake fixed rather than skipped
+- [ ] The test asserts the parent deadline covers spawn time as well as the request
 
 **Verification:**
-- [ ] Tests pass, `cd hooks && uv run --with pytest python -m pytest lib/test_document_review.py lib/test_pattern_judge.py -q`
-- [ ] The measurement run and its counts appear in the decisions file
+- [ ] Tests pass, `cd hooks && uv run --with pytest python -m pytest lib/test_luna_process.py -q`
+- [ ] The test runs green twenty times in a row
 
-**Dependencies:** Tasks 10 and 11
+**Dependencies:** None
 
 **Files likely touched:**
-- `hooks/lib/document_review.py`
-- `hooks/lib/pattern_judge.py`
-- `hooks/lib/config.py`
 - `hooks/lib/test_luna_process.py`
 
-**Estimated scope:** Medium, and it needs a measurement before any edit
+**Estimated scope:** Small
 
 ## Task 14. Split `claude_native.py` further, rendering first
 

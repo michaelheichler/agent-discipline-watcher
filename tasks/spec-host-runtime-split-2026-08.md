@@ -306,19 +306,27 @@ tracks it, though the file sits at 995 lines against a 1000-line hard block.
 
 ## Further Notes
 
-### Two weakenings still stand, now in the released tree
+### The model choice belongs to the preset, not to a measurement
 
-`document_review.py` and `pattern_judge.py` moved the judge from `claude-sonnet-5` to Haiku.
-The README previously recorded that Haiku wrongly blocked two ordinary sentences on two of
-four runs while Sonnet cleared the same document four times of four. The precision numbers
-behind `ENFORCE_PRECISION = 0.85` still cite a Sonnet reader. Either re-measure against Haiku
-or restore Sonnet before this spec starts.
+An earlier draft called the Haiku pinning in `document_review.py` and `pattern_judge.py` a
+weakening that needed re-measuring. That reading was wrong, and this section corrects it.
 
-Commit `a7ee111` deleted a Luna worker-deadline test as flaky with no replacement and no fix.
-That coverage needs restoring.
+The user picks the model through the Claude preset. `claude_native._model_for` returns Haiku
+for `haiku`, Haiku for comments with Sonnet for documents under `mixed`, and Sonnet for
+`sonnet`. The `luna` preset reaches GPT-5.6 Luna through the SDK. Measurements for Haiku and
+for the Haiku plus Sonnet mix already exist.
 
-Both items outlived Phases 1 to 3 untouched. They belong to Phase 4, which is the phase that
-moves the judges onto their host models and therefore has to settle the model question anyway.
+The Haiku pinning in those two modules lives on the nested CLI path, through
+`judge_provider.complete` and `judge_model.judge_model`. Task 11 deletes that path. Once it
+goes, `judge_model.py` has no callers and the preset governs every judge call.
+
+So there is no model question to settle. There is one deletion to finish.
+
+### One real weakening still stands
+
+Commit `a7ee111` deleted a Luna worker-deadline test as flaky, with no replacement and no fix.
+That is coverage loss under D0, it has nothing to do with model choice, and Task 12b restores
+it.
 
 ### Landed already
 

@@ -46,12 +46,12 @@ not, which it missed until the research corrected the count to four.
 - [ ] 10. OMP internal model provider, split into wire contract plus two provider shapes
 - [ ] 11. Claude agent hook provider at haiku, nested CLI removed
 - [ ] 12. Open the OMP model picker to every authenticated model
-- [ ] 12b. Settle the judge model question, and restore the deleted worker-deadline test
+- [ ] 12b. Restore the Luna worker deadline test that `a7ee111` deleted
 
 ## Checkpoint
 - [ ] No host spawns a nested Claude CLI
 - [ ] A local OMP model returns real judge verdicts
-- [ ] The recorded precision numbers match the model that actually reads
+- [ ] `judge_model.py` has no callers left once the CLI path goes
 
 ## Phase 5. Surface verification
 - [ ] 13. Verify one Claude runtime gates terminal, Desktop, and web
