@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.11**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.12**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -24,7 +24,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The judge behind the meaning layer and the judged gate is Haiku. Every judge that reaches the Claude CLI pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `luna` preset sits outside that path, since it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer` where Sonnet cleared the same document four times out of four.
+The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset uses Haiku for comment checks and Sonnet for prose and document reviews. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
 
 ## What the rules were measured against
 
@@ -32,7 +32,7 @@ The rules used to have no false-positive denominator. They have one now.
 
 **60000 human sentences** from news, encyclopedia articles, and books published mostly before 1930. No model wrote any of it. A rule that fires there is either doing its job or costing you an edit, and `evals/human_hit_rate.json` records the hit rate per genre.
 
-Every AI-tell rule fires on 1 sentence in 20000 or fewer. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
+Among the AI-tell rules, the raw regex candidate rate is at most 1 in 20000 human sentences. Structural rules such as `three_item_list` are outside that rate. Its raw regex fires on 278 of 60000 human sentences before the judge decides which candidates count. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
 
 **88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire zero times on human prose, so without this side they have no violating class and no measurement can reach them.
 
@@ -240,7 +240,7 @@ Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payloa
 
 ## Active integrations
 
-Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-config.snippet.toml` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer merges those routes into `~/.codex/config.toml` without replacing unrelated settings or deleting legacy `~/.codex/hooks.json`. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
+Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-hooks.json` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer removes the old watcher entries from `~/.codex/config.toml`, then merges them into `~/.codex/hooks.json` without replacing unrelated settings or hooks. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
 
 OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks cover every OMP mutating file tool and Bash, then return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
 

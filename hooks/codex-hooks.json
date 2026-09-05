@@ -1,0 +1,72 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SessionStart",
+            "statusMessage": "Loading agent discipline watcher"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PostToolUse",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" Stop",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SessionEnd",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

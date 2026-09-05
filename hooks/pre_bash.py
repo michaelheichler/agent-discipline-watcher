@@ -33,7 +33,7 @@ OVERSIZE_WRITE = (
     "Use the Write or Edit tool for file content."
 )
 INSTALLER_NAMES = frozenset({
-    "install.sh", "merge-claude-settings.py", "merge-codex-config.py",
+    "install.sh", "merge-claude-settings.py", "merge-codex-config.py", "merge-codex-hooks.py",
 })
 CAP_VARS = frozenset({
     "CLEANCODER_FUNC_BLOCK_LINES", "CLEANCODER_FILE_BLOCK_LINES",

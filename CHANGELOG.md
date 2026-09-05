@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.12 (2026-09-05)
+
+### Changed
+
+- Codex hooks now install in `~/.codex/hooks.json`. The installer removes ADW's old inline hook block from `config.toml` and preserves unrelated hook entries.
+- Codex hook merging is idempotent and removes stale watcher entries before reinstalling the current routes.
+
 ## 0.20.2 (2026-08-31)
 
 ### Changed

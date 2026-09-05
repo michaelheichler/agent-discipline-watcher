@@ -234,13 +234,16 @@ def atomic_write(path: Path, text: str) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-def merge(config_path: Path, skill_dir: Path) -> None:
+def merge(config_path: Path, skill_dir: Path, install_hooks: bool = True) -> None:
     current = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     current = strip_empty_hook_headers(strip_stale_inline_hook_arrays(strip_legacy_tables(strip_fences(current))))
-    block = FENCE_START + "\n" + read_snippet(skill_dir).rstrip() + "\n" + FENCE_END + "\n"
-    if current and not current.endswith("\n"):
-        current += "\n"
-    merged = re.sub(r"\n{3,}", "\n\n", current.rstrip() + "\n\n" + block)
+    if install_hooks:
+        block = FENCE_START + "\n" + read_snippet(skill_dir).rstrip() + "\n" + FENCE_END + "\n"
+        if current and not current.endswith("\n"):
+            current += "\n"
+        merged = re.sub(r"\n{3,}", "\n\n", current.rstrip() + "\n\n" + block)
+    else:
+        merged = current
     validate_toml(merged)
     validate_preserved_sections(current, merged)
     atomic_write(config_path, merged)
@@ -250,8 +253,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--skill-dir", required=True)
+    parser.add_argument("--strip-only", action="store_true")
     args = parser.parse_args()
-    merge(Path(args.config).expanduser(), Path(args.skill_dir).expanduser())
+    merge(
+        Path(args.config).expanduser(),
+        Path(args.skill_dir).expanduser(),
+        install_hooks=not args.strip_only,
+    )
 
 
 if __name__ == "__main__":

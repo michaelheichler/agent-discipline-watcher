@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import sys
 import tempfile
@@ -49,9 +50,10 @@ def test_installer_uses_newest_compatible_python_instead_of_stale_python3() -> N
 
         assert result.returncode == 0, result.stderr
         config = (root / "home" / ".codex" / "config.toml").read_text(encoding="utf-8")
+        hooks = json.loads((root / "home" / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         installed_root = root / "home" / ".adw" / "install" / "agent-discipline-watcher"
         assert str(ROOT) not in config
-        assert str(installed_root / "hooks" / "run.sh") in config
+        assert str(installed_root / "hooks" / "run.sh") in json.dumps(hooks)
 
 
 def test_omp_installer_uses_newest_compatible_python_instead_of_stale_python3() -> None:

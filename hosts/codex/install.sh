@@ -36,6 +36,11 @@ fi
 
 "$ADW_PYTHON" "$ADW_SKILL_DIR/hooks/merge-codex-config.py" \
   --config "$codex_home/config.toml" \
+  --skill-dir "$ADW_SKILL_DIR" \
+  --strip-only
+
+"$ADW_PYTHON" "$ADW_SKILL_DIR/hooks/merge-codex-hooks.py" \
+  --hooks-json "$codex_home/hooks.json" \
   --skill-dir "$ADW_SKILL_DIR"
 
 echo "Codex hooks installed. Run /hooks in Codex to review and trust new or changed hooks."
