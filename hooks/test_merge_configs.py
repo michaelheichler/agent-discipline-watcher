@@ -373,7 +373,6 @@ CODEX_ROUTES = ("SessionStart", "PreToolUse", "PostToolUse", "Stop", "SessionEnd
 
 
 def _route_pattern(route: str) -> re.Pattern[str]:
-    # Tolerates an escaped closing quote because the merged command quotes the whole run.sh path.
     return re.compile(r'run\.sh\\?"?\s*' + re.escape(route) + r'\b')
 
 
