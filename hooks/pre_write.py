@@ -11,6 +11,7 @@ from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
 from lib.protected import path_findings
+from lib.patch_content import projected_content
 from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
 )
@@ -209,7 +210,6 @@ def _edit_findings(decoded: PendingWrite, resolved_path: Path, cfg: dict) -> lis
 
 
 def _protected_edit_text(decoded: PendingWrite, resolved_path: Path) -> str:
-    """The whole result is compared, because a fragment carries none of the wiring the file already holds and every edit read as a removal."""
     applied = _apply_edits(decoded, str(resolved_path))
     return applied[1] if applied is not None else _pending_edit_text(decoded)
 
@@ -225,15 +225,24 @@ def _edit_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> list[di
 
 def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
     whole_file = "content" in decoded.tool_input
+    patch = decoded.tool_input.get("patch") or decoded.tool_input.get("command") or decoded.tool_input.get("input") or ""
+    if isinstance(patch, list):
+        patch = "\n".join(str(part) for part in patch)
+    projected = projected_content(patch, cwd) if isinstance(patch, str) else {}
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
+    for path, content in projected.items():
+        resolved_path = _resolved_path(path, cwd)
+        owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
     for path, text in pending_writes(decoded):
-        owned_rows.extend(_stamped(path_findings(path, cfg, content=text), path))
+        resolved_path = _resolved_path(path, cwd)
+        if path not in projected:
+            content = text if whole_file else None
+            owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
         scanned = _stamped(scan_all(path, text, cfg), path)
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue
-        resolved_path = _resolved_path(path, cwd)
         owned, inherited = split_committed(resolved_path, scanned, cfg)
         owned_rows.extend(owned)
         inherited_rows.extend(inherited)
