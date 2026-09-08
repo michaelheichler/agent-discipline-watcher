@@ -57,9 +57,9 @@ def projected_content(patch: str, cwd: Path) -> dict[str, str | None]:
     for operation, name, body in sections:
         path = Path(name).expanduser()
         path = path if path.is_absolute() else cwd / path
-        destination = body[0][13:].strip() if body and body[0].startswith("*** Move to: ") else None
+        destination = body[0][13:].strip().strip('"') if body and body[0].startswith("*** Move to: ") else None
         content = _file_content(operation, path, body[1:] if destination else body)
         result[name] = None if destination or name in result else content
         if destination:
-            result[destination] = content
+            result[destination] = None if destination in result else content
     return result

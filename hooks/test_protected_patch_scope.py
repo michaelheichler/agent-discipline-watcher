@@ -76,12 +76,25 @@ def test_patch_moving_wired_config_is_blocked(wired_config, listed):
     assert "watcher_wiring_removal" in patch_findings(wired_config, patch, listed)
 
 
-def test_patch_overwriting_wired_destination_is_blocked(wired_config):
+@pytest.mark.parametrize("quoted", [False, True])
+def test_patch_overwriting_wired_destination_is_blocked(wired_config, quoted):
     source = wired_config.parent / "other.toml"
     source.write_text('model = "gpt-6-astra"\n', encoding="utf-8")
+    destination = f'"{wired_config}"' if quoted else str(wired_config)
     patch = (
         f"*** Begin Patch\n*** Update File: {source}\n"
-        f"*** Move to: {wired_config}\n@@\n"
+        f"*** Move to: {destination}\n@@\n"
+        '-model = "gpt-6-astra"\n+model = "gpt-6-sol"\n*** End Patch\n'
+    )
+    assert "watcher_wiring_removal" in patch_findings(wired_config, patch)
+
+
+def test_repeated_move_destination_keeps_protection(wired_config):
+    source = wired_config.parent / "other.toml"
+    source.write_text(wired_config.read_text(), encoding="utf-8")
+    patch = (
+        f"*** Begin Patch\n*** Delete File: {wired_config}\n"
+        f"*** Update File: {source}\n*** Move to: {wired_config}\n@@\n"
         '-model = "gpt-6-astra"\n+model = "gpt-6-sol"\n*** End Patch\n'
     )
     assert "watcher_wiring_removal" in patch_findings(wired_config, patch)
