@@ -86,7 +86,7 @@ class Picker(NamedTuple):
         if not self.rows:
             return self
         target = min(max(self.cursor + delta, 0), len(self.rows) - 1)
-        return self._replace(cursor=target)
+        return Picker(self.rows, target, self.selected)
 
     def toggle(self, index: int | None = None) -> Picker:
         """Ignore an unselectable row because a plugin install is not something this script performs."""
@@ -95,7 +95,7 @@ class Picker(NamedTuple):
             return self
         name = self.rows[target].manifest.name
         chosen = set(self.selected) ^ {name}
-        return self._replace(cursor=target, selected=frozenset(chosen))
+        return Picker(self.rows, target, frozenset(chosen))
 
     def apply(self, event: Event) -> Picker:
         if event.action is Action.MOVE_UP:

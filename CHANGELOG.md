@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.13 (2026-09-08)
+
+### Fixed
+
+- Partial apply_patch updates now check the resulting file for watcher wiring. Unrelated edits and trust-entry deletions preserve existing hooks.
+- Relative patch paths resolve against the tool's working directory, so wiring removal cannot evade the protected-path check.
+
 ## 0.20.12 (2026-09-05)
 
 ### Changed

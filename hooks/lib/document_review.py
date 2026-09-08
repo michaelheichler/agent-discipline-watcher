@@ -13,17 +13,15 @@ except ImportError:
 
 try:
     from . import judge_provider
-    from .judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, available
+    from .judge import JSON_ARRAY_RE, JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, available
 except ImportError:
     import judge_provider
-    from judge import JSON_ARRAY_RE, JUDGE_TIMEOUT_SECONDS, available
+    from judge import JSON_ARRAY_RE, JUDGE_MODEL, JUDGE_TIMEOUT_SECONDS, available
 
 try:
     from .reporting import _safe_text
-    from .judge import JUDGE_MODEL
 except ImportError:
     from reporting import _safe_text
-    from judge import JUDGE_MODEL
 
 REVIEW_MODEL = JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
