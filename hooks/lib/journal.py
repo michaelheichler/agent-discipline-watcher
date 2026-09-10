@@ -170,23 +170,25 @@ def _path_status(identity: str) -> str:
     return "available" if stat.S_ISREG(metadata.st_mode) else "missing"
 
 
-def _row_key(row: dict[str, Any]) -> tuple[str, str, str]:
-    return str(row.get("role", "")), _row_identity(row), str(row.get("content_hash", ""))
+def candidate_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(row.get("role", "")), _row_identity(row), str(row.get("content_hash", "")),
+        str(row.get("line", "")), str(row.get("text", "")),
+    )
 
 
 def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_id: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    if path.suffix.lower() == ".py":
-        rows.extend({
-            "role": "comment",
-            "path": candidate.path,
-            "path_identity": str(path),
-            "line": candidate.line,
-            "text": candidate.text[:MAX_CANDIDATE_CHARS],
-            "content_hash": digest,
-            "turn_id": turn_id,
-            "tool_use_id": tool_use_id,
-        } for candidate in candidates(str(path), text))
+    rows.extend({
+        "role": "comment",
+        "path": candidate.path,
+        "path_identity": str(path),
+        "line": candidate.line,
+        "text": candidate.text[:MAX_CANDIDATE_CHARS],
+        "content_hash": digest,
+        "turn_id": turn_id,
+        "tool_use_id": tool_use_id,
+    } for candidate in candidates(str(path), text))
     if path.suffix.lower() in PROSE_EXTS:
         rows.append({
             "role": "document",
@@ -225,13 +227,13 @@ def _superseded(row: object, target: str, digest: str) -> bool:
 
 def _merged(rows: list, fresh: list, added: list) -> list:
     """Skip a duplicate key because one edit must not report the same candidate twice."""
-    keys = {_row_key(row) for row in rows if isinstance(row, dict)}
+    keys = {candidate_key(row) for row in rows if isinstance(row, dict)}
     for row in fresh:
-        if _row_key(row) in keys:
+        if candidate_key(row) in keys:
             continue
         rows.append(row)
         added.append(row)
-        keys.add(_row_key(row))
+        keys.add(candidate_key(row))
     return rows[-MAX_ROWS:]
 
 

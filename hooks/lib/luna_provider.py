@@ -1,22 +1,27 @@
-"""Subscription-backed Luna judge behind an ADW-owned SDK boundary."""
 from __future__ import annotations
-# pylint: disable=too-few-public-methods,too-many-locals,too-many-boolean-expressions,too-many-branches,unidiomatic-typecheck
-# The provider boundary keeps SDK identity, descriptor lifetimes, and response validation together.
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
 from hashlib import sha256
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from types import SimpleNamespace
+from typing import Any, Callable, Protocol, cast
 
 from .judge_contracts import JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload
 from .luna_runtime import require_runtime
+from .luna_process import child_environment as _child_environment
+from .luna_process import sdk_environment as _sdk_environment
+from .luna_process import terminate_process_group as _terminate_process_group
+from .luna_sdk import enum_value as _enum_value
+from .luna_sdk import item_type as _item_type
+from .luna_sdk import usage_dict as _usage_dict
 from .luna_storage import LunaProviderFailure, SecureJudgeStorage
+from .luna_validation import validate_candidate_indexes, validate_worker_result
+from .luna_worker_protocol import request_payload, response_result
 
 
 LUNA_MODEL = "gpt-5.6-luna"
@@ -24,7 +29,6 @@ LUNA_EFFORT = "high"
 PROVIDER_NAME = "openai-codex"
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 JUDGE_TIMEOUT_SECONDS = 120
-WORKER_TERMINATE_GRACE_SECONDS = 0.2
 MAX_OVERLOAD_ATTEMPTS = 3
 CONFIG_OVERRIDES = (
     "features.apps=false",
@@ -47,12 +51,8 @@ SAFE_ITEM_TYPES = frozenset({
 })
 
 
-class Sandbox:
-    READ_ONLY = "read_only"
-
-
-class ApprovalMode:
-    DENY_ALL = "deny_all"
+Sandbox = SimpleNamespace(READ_ONLY="read_only")
+ApprovalMode = SimpleNamespace(DENY_ALL="deny_all")
 
 
 @dataclass(frozen=True)
@@ -116,6 +116,7 @@ class SdkTurn:
 
 class SdkThread(Protocol):
     def run(self, turn: SdkTurn) -> SdkRunResult: ...
+    def close(self) -> None: ...
 
 
 class SdkSession(Protocol):
@@ -147,6 +148,11 @@ class _OpenAICodexThread:
             items=tuple(SdkItem(_item_type(item)) for item in result.items),
             usage=_usage_dict(result.usage),
         )
+
+    def close(self) -> None:
+        close = getattr(self._thread, "close", None)
+        if callable(close):
+            close()
 
 
 class _OpenAICodexSession:
@@ -189,8 +195,6 @@ class _OpenAICodexSession:
 
 
 class OpenAICodexSdk:
-    """The sole production import point for the official openai-codex SDK."""
-
     def open(self, launch: SdkLaunch) -> SdkSession:
         try:
             from openai_codex import ApprovalMode as CodexApprovalMode
@@ -202,9 +206,6 @@ class OpenAICodexSdk:
             ) from exc
         codex = Codex(CodexConfig(
             config_overrides=launch.config_overrides,
-            # A descriptor-bound worker has already fchdir'ed to its owned cwd.
-            # Passing None lets the SDK child inherit that directory without a
-            # second path lookup between the worker and app-server spawns.
             cwd=(None if launch.cwd_fd is not None else str(launch.cwd)),
             env=_sdk_environment(launch.codex_home),
         ))
@@ -226,6 +227,7 @@ class LunaJudge:
         runtime_root: str | os.PathLike[str] | None = None,
         cache_root: str | os.PathLike[str] | None = None,
         auth_source: str | os.PathLike[str] | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self._sdk = sdk or OpenAICodexSdk()
         if (runtime_root is None) != (cache_root is None):
@@ -234,6 +236,17 @@ class LunaJudge:
         self._runtime_root = Path(runtime_root) if runtime_root is not None else Path.home() / ".adw" / "runtime"
         self._cache_root = Path(cache_root) if cache_root is not None else Path.home() / ".adw" / "cache" / "judges"
         self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
+        if timeout_seconds is not None and (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be positive")
+        self._timeout_seconds = float(timeout_seconds) if timeout_seconds is not None else None
+
+    @property
+    def timeout_seconds(self) -> float | None:
+        return self._timeout_seconds
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
         key = self._cache_key(request)
@@ -263,31 +276,17 @@ class LunaJudge:
             return result
 
     def _run_worker(self, request: JudgeRequest, launch: SdkLaunch) -> JudgeResult:
-        if (
-            launch.call_fd is None or launch.codex_home_fd is None or launch.cwd_fd is None
-            or launch.call_identity is None or launch.codex_home_identity is None
-            or launch.cwd_identity is None
-        ):
+        if not _launch_is_pinned(launch):
             raise LunaProviderFailure(
                 "Luna worker requires descriptor-pinned runtime paths", category="configuration",
             )
-        deadline = time.monotonic() + JUDGE_TIMEOUT_SECONDS
+        timeout_seconds = self._timeout_seconds or JUDGE_TIMEOUT_SECONDS
+        deadline = time.monotonic() + timeout_seconds
         try:
             worker_python = require_runtime() if self._default_storage else Path(sys.executable)
         except RuntimeError as exc:
             raise LunaProviderFailure(str(exc), category="configuration") from exc
-        payload = {
-            "review_kind": request.review_kind.value, "candidates": request.candidates,
-            "source_context": request.source_context, "rule_name": request.rule_name,
-            "rule_action": request.rule_action, "violating_examples": request.violating_examples,
-            "clean_examples": request.clean_examples, "rubric_version": request.rubric_version,
-            "call_fd": launch.call_fd, "codex_home_fd": launch.codex_home_fd,
-            "cwd_fd": launch.cwd_fd,
-            "call_identity": launch.call_identity,
-            "codex_home_identity": launch.codex_home_identity,
-            "cwd_identity": launch.cwd_identity,
-            "config_overrides": launch.config_overrides,
-        }
+        payload = request_payload(request, launch)
         process: subprocess.Popen[str] | None = None
         successful = False
         try:
@@ -297,32 +296,15 @@ class LunaJudge:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
-                env=_child_environment(Path("../home")),
+                env=_child_environment(Path("../home"), Path(__file__).parents[1]),
                 start_new_session=True,
                 pass_fds=(launch.call_fd, launch.codex_home_fd, launch.cwd_fd),
             )
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise subprocess.TimeoutExpired(process.args, JUDGE_TIMEOUT_SECONDS)
-            communication = process.communicate(json.dumps(payload), timeout=remaining)  # pylint: disable=assignment-from-no-return
-            stdout = next(iter(communication))
-            row = json.loads(stdout)
-            if not isinstance(row, dict):
-                raise ValueError("worker response must be an object")
-            if process.returncode != 0 or row.get("ok") is not True:
-                error = row.get("error")
-                if not isinstance(error, dict):
-                    raise ValueError("worker response omitted a typed error")
-                category = error.get("category")
-                message = error.get("message")
-                if not isinstance(category, str) or not category or len(category) > 64:
-                    raise ValueError("worker error category is invalid")
-                if not isinstance(message, str) or not message or len(message) > 256:
-                    raise ValueError("worker error message is invalid")
-                raise LunaProviderFailure(message, category=category)
-            result = row.get("result")
-            if not isinstance(result, dict):
-                raise ValueError("worker response omitted a result")
+                raise subprocess.TimeoutExpired(process.args, timeout_seconds)
+            communication = cast(tuple[str | None, str | None], process.communicate(json.dumps(payload), timeout=remaining))
+            result = response_result(process.returncode, next(iter(communication)))
             value = self._validate_worker_result(request, result)
             successful = True
             return value
@@ -338,54 +320,11 @@ class LunaJudge:
 
     @staticmethod
     def _validate_candidate_indexes(request: JudgeRequest, payload: dict[str, Any]) -> None:
-        _validate_candidate_indexes(request, payload)
+        validate_candidate_indexes(request, payload)
 
     @staticmethod
     def _validate_worker_result(request: JudgeRequest, result: object) -> JudgeResult:
-        """Validate the worker's success payload before callers or cache storage trust it."""
-        try:
-            if isinstance(result, JudgeResult):
-                result = result.__dict__
-            if type(result) is not dict:
-                raise ValueError("worker result must be an object")
-            expected_fields = {
-                "payload", "provider", "model", "effort", "rubric_version", "usage", "cached",
-            }
-            if set(result) != expected_fields:
-                raise ValueError("worker result fields are invalid")
-            if result["provider"] != PROVIDER_NAME:
-                raise ValueError("worker result provider identity is invalid")
-            if result["model"] != LUNA_MODEL:
-                raise ValueError("worker result model identity is invalid")
-            if result["effort"] != LUNA_EFFORT:
-                raise ValueError("worker result effort identity is invalid")
-            if result["rubric_version"] != request.rubric_version:
-                raise ValueError("worker result rubric identity is invalid")
-            for field in ("provider", "model", "effort", "rubric_version"):
-                if type(result[field]) is not str:
-                    raise ValueError(f"worker result {field} type is invalid")
-            if type(result["cached"]) is not bool or result["cached"] is not False:
-                raise ValueError("worker result cached flag is invalid")
-            if type(result["payload"]) is not dict:
-                raise ValueError("worker result payload type is invalid")
-            if type(result["usage"]) is not dict:
-                raise ValueError("worker result usage type is invalid")
-            payload = validate_payload(result["payload"], output_schema(request))
-            _validate_candidate_indexes(request, payload)
-            return JudgeResult(
-                payload=payload,
-                provider=result["provider"],
-                model=result["model"],
-                effort=result["effort"],
-                rubric_version=result["rubric_version"],
-                usage=result["usage"],
-                cached=result["cached"],
-            )
-        except (KeyError, TypeError, ValueError) as exc:
-            raise LunaProviderFailure(
-                "Luna worker returned a semantically invalid success result",
-                category="worker_protocol",
-            ) from exc
+        return validate_worker_result(request, result, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT)
 
     def _cache_key(self, request: JudgeRequest) -> str:
         identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT, request.rubric_version))
@@ -422,84 +361,6 @@ class LunaJudge:
             {**result.__dict__, "cached": False}, ensure_ascii=True, sort_keys=True,
         )
         storage.write_cache(f"{key}.json", text)
-
-
-def _enum_value(value: object) -> str:
-    return str(getattr(value, "value", value))
-
-
-def _item_type(item: object) -> str:
-    root = getattr(item, "root", item)
-    return str(getattr(root, "type", ""))
-
-
-def _usage_dict(usage: object) -> dict[str, Any]:
-    if usage is None:
-        return {}
-    if isinstance(usage, dict):
-        return usage
-    dumped = getattr(usage, "model_dump", None)
-    return dumped(mode="json") if callable(dumped) else {}
-
-
-_ENVIRONMENT_ALLOWLIST = frozenset({
-    "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TEMP", "TMP",
-    "SSL_CERT_FILE", "SSL_CERT_DIR", "SYSTEMROOT", "WINDIR",
-})
-
-
-def _sdk_environment(codex_home: Path) -> dict[str, str]:
-    environment = {
-        key: value for key, value in os.environ.items() if key.upper() in _ENVIRONMENT_ALLOWLIST
-    }
-    environment["CODEX_HOME"] = str(codex_home)
-    return environment
-
-
-def _child_environment(codex_home: Path) -> dict[str, str]:
-    """Launch the Python worker with only runtime essentials and ADW's module path."""
-    environment = _sdk_environment(codex_home)
-    environment["PYTHONPATH"] = str(Path(__file__).parents[1])
-    return environment
-
-
-def _terminate_process_group(process: subprocess.Popen[str]) -> None:
-    """Terminate the private worker group and always reap its leader."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    grace_deadline = time.monotonic() + WORKER_TERMINATE_GRACE_SECONDS
-    if process.returncode is None:
-        try:
-            process.wait(timeout=WORKER_TERMINATE_GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            pass
-    while _process_group_exists(process.pid) and time.monotonic() < grace_deadline:
-        time.sleep(0.01)
-    if _process_group_exists(process.pid):
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    if process.returncode is None:
-        process.wait()
-    for pipe in (process.stdin, process.stdout, process.stderr):
-        if pipe is not None:
-            try:
-                pipe.close()
-            except OSError:
-                pass
-
-
-def _process_group_exists(process_group: int) -> bool:
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def run_sdk_request(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> JudgeResult:
@@ -566,8 +427,12 @@ def _reject_tool_items(items: tuple[SdkItem, ...]) -> None:
 
 
 def _validate_candidate_indexes(request: JudgeRequest, payload: dict[str, Any]) -> None:
-    rows = payload.get("items")
-    if not isinstance(rows, list):
-        return
-    if [row["index"] for row in rows] != list(range(len(request.candidates))):
-        raise ValueError("response indexes must cover local candidates in order")
+    validate_candidate_indexes(request, payload)
+
+
+def _launch_is_pinned(launch: SdkLaunch) -> bool:
+    descriptors = (
+        launch.call_fd, launch.codex_home_fd, launch.cwd_fd,
+        launch.call_identity, launch.codex_home_identity, launch.cwd_identity,
+    )
+    return all(value is not None for value in descriptors)

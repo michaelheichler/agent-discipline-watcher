@@ -1,7 +1,4 @@
-"""One Luna review for each completed Codex interaction."""
 from __future__ import annotations
-# pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,unidiomatic-typecheck
-# The Codex lifecycle adapter validates one complete interaction before recording it.
 
 import uuid
 import time
@@ -11,7 +8,6 @@ from typing import Any
 from . import journal, payloads, session_state
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
-from .config import effective_hook_config
 from .document_review import request_for as document_request
 from .hookio import stop_block
 from .judge import Candidate, request_for as comment_request
@@ -29,6 +25,9 @@ RESERVATION_TTL_SECONDS = JUDGE_TIMEOUT_SECONDS
 MAX_SOURCE_CHARS = 24_000
 MAX_COMMENT_ROWS = 120
 MAX_MESSAGE_CHARS = 900
+MAX_REVIEW_REQUESTS = 8
+REVIEW_DEADLINE_SECONDS = max(1.0, JUDGE_TIMEOUT_SECONDS - 5)
+DOCUMENT_LABEL = "ADW current-session journal"
 
 RESERVED = "reserved"
 ALREADY_RESERVED = "already_reserved"
@@ -37,7 +36,7 @@ RESERVATION_FAILED = "reservation_failed"
 
 
 class LunaReviewFailure(RuntimeError):
-    """A current-turn review dependency failed and must remain visible to Stop."""
+    pass
 
 
 def _bounded(value: object) -> str:
@@ -128,10 +127,6 @@ def _reserve_status(
     except (OSError, ValueError, TypeError):
         return RESERVATION_FAILED, None
     return status, token if status == RESERVED else None
-
-
-def _reserve(session_id: str, turn_id: str, state_root: str | Path | None) -> bool:
-    return _reserve_status(session_id, turn_id, state_root)[0] == RESERVED
 
 
 def _finish_success(
@@ -254,30 +249,76 @@ def _journal_rows(
         and row.get("role") in {"comment", "document"}
     ]
     unique: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str, str]] = set()
     for row in matching:
-        key = (
-            str(row.get("role", "")),
-            str(row.get("path_identity", row.get("path", ""))),
-            str(row.get("content_hash", "")),
-        )
+        key = journal.candidate_key(row)
         if key in seen:
             continue
         seen.add(key)
         unique.append(row)
-    return unique[-MAX_COMMENT_ROWS:]
+    if len(unique) > MAX_COMMENT_ROWS:
+        raise LunaReviewFailure(
+            f"the current-session journal has {len(unique)} candidates, above the limit of {MAX_COMMENT_ROWS}; split the turn"
+        )
+    return unique
 
 
-def request_for_rows(rows: list[dict[str, Any]]) -> tuple[JudgeRequest, list[Any]] | None:
-    documents = [
-        f"Path: {str(row.get('path', ''))[:512]}\n\n{str(row.get('source_context', ''))[:MAX_SOURCE_CHARS]}"
-        for row in rows
-        if row.get("role") == "document" and row.get("path") and row.get("source_context")
-    ]
-    if documents:
-        source = "\n\n".join(documents)[:MAX_SOURCE_CHARS]
-        if source.strip():
-            return document_request("ADW current-session journal", source), rows
+def _document_entries(rows: list[dict[str, Any]], content_limit: int) -> list[str]:
+    entries: list[str] = []
+    for row in rows:
+        if row.get("role") != "document" or not row.get("path") or not row.get("source_context"):
+            continue
+        path = str(row.get("path", ""))[:512]
+        source = str(row.get("source_context", ""))
+        if not source.strip():
+            continue
+        prefix = f"Path: {path}\n\n"[: max(0, content_limit - 1)]
+        body_limit = max(1, content_limit - len(prefix))
+        for offset in range(0, len(source), body_limit):
+            body = source[offset:offset + body_limit]
+            context = prefix + body
+            if context.strip():
+                entries.append(context)
+    return entries
+
+
+def _pack_document_entries(entries: list[str], content_limit: int) -> list[str]:
+    packed: list[str] = []
+    current = ""
+    for entry in entries:
+        if current and len(current) + 2 + len(entry) > content_limit:
+            packed.append(current)
+            current = ""
+        current = entry if not current else f"{current}\n\n{entry}"
+    if current:
+        packed.append(current)
+    return packed
+
+
+def _document_contexts(rows: list[dict[str, Any]]) -> tuple[list[str], bool]:
+    limit = max(1, MAX_SOURCE_CHARS)
+    label = f"Document: {DOCUMENT_LABEL}\n\n"
+    use_document_request = len(label) < limit
+    content_limit = limit - len(label) if use_document_request else limit
+    entries = _document_entries(rows, content_limit)
+    return _pack_document_entries(entries, content_limit), use_document_request
+
+
+def _document_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:
+    contexts, use_document_request = _document_contexts(rows)
+    work: list[tuple[JudgeRequest, list[Any]]] = []
+    for context in contexts:
+        request = (
+            document_request(DOCUMENT_LABEL, context)
+            if use_document_request
+            else JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=context)
+        )
+        work.append((request, []))
+    return work
+
+
+def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, list[Any]], ...] | None:
+    work = _document_work(rows)
     comments = [
         Candidate(
             str(row.get("path", ""))[:512],
@@ -288,8 +329,134 @@ def request_for_rows(rows: list[dict[str, Any]]) -> tuple[JudgeRequest, list[Any
         if row.get("role") == "comment" and row.get("text")
     ]
     if comments:
-        return comment_request(tuple(comments)), comments
-    return None
+        work.append((comment_request(tuple(comments)), comments))
+    if len(work) > MAX_REVIEW_REQUESTS:
+        raise LunaReviewFailure(
+            f"the current-turn Luna review needs {len(work)} requests, above the limit of {MAX_REVIEW_REQUESTS}; split the turn"
+        )
+    return tuple(work) or None
+
+
+def _review_work(
+    payload: object,
+    turn_id: str,
+    state_root: str | Path | None,
+) -> tuple[tuple[tuple[JudgeRequest, list[Any]], ...] | None, str]:
+    rows = _journal_rows(payload, turn_id, state_root)
+    if not rows:
+        return None, "the current-session journal is empty"
+    for row in rows:
+        role = row.get("role")
+        if role == "document" and (
+            not isinstance(row.get("path"), str)
+            or not row["path"].strip()
+            or not isinstance(row.get("source_context"), str)
+            or not row["source_context"].strip()
+        ):
+            raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
+        if role == "comment" and (
+            not isinstance(row.get("path"), str)
+            or not row["path"].strip()
+            or not isinstance(row.get("text"), str)
+            or not row["text"].strip()
+        ):
+            raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
+    built = request_for_rows(rows)
+    if built is None:
+        return None, "the current-session journal has no reviewable candidates"
+    return tuple(built), ""
+
+
+def _reserve_review(
+    session_id: str,
+    turn_id: str,
+    state_root: str | Path | None,
+    previous_failure: dict[str, Any] | None,
+    attempts: int,
+) -> tuple[str | None, dict | None]:
+    status, token = _reserve_status(session_id, turn_id, state_root)
+    if status == IN_PROGRESS:
+        return None, _failure_block("a Luna review is already in progress for this turn; wait for its timeout or retry")
+    if status == ALREADY_RESERVED:
+        reason = previous_failure.get("reason", "a prior review reservation is unresolved") if previous_failure else "a prior review reservation is unresolved"
+        return None, _failure_block(reason, attempts) if previous_failure else {}
+    if status == RESERVED and token is not None:
+        return token, None
+    reason = "the current-turn Luna review reservation could not be acquired"
+    _record_failure(session_id, turn_id, reason, state_root)
+    return None, _failure_block(reason, attempts + 1)
+
+
+def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> str:
+    feedback_rows: list[str] = []
+    deadline = time.monotonic() + REVIEW_DEADLINE_SECONDS
+    for request, candidates_or_rows in work:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LunaReviewFailure("the Luna review deadline expired before all candidates were reviewed")
+        judge = provider if provider is not None else LunaJudge(timeout_seconds=remaining)
+        result = judge.judge(request)
+        if not isinstance(result, JudgeResult):
+            raise ValueError("Luna provider returned an invalid result")
+        if request.review_kind is ReviewKind.COMMENT:
+            feedback = _comment_feedback(result, tuple(candidates_or_rows))
+        else:
+            feedback = _document_feedback(result, candidates_or_rows)
+        if feedback:
+            feedback_rows.append(feedback)
+    return "\n\n".join(feedback_rows)
+
+
+def _preflight(
+    payload: object,
+    session_id: str,
+    turn_id: str,
+    state_root: str | Path | None,
+) -> tuple[dict[str, Any] | None, int, bool, dict | None]:
+    try:
+        previous_failure = _failure_entry(session_id, turn_id, state_root)
+    except LunaReviewFailure as exc:
+        return None, 0, False, _failure_block(exc)
+    attempts = previous_failure.get("attempts", 0) if previous_failure else 0
+    attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else 0
+    if attempts >= MAX_FAILURE_ATTEMPTS:
+        reason = previous_failure.get("reason", "repeated provider failure") if previous_failure else "repeated provider failure"
+        return previous_failure, attempts, False, _failure_block(reason, attempts)
+    reservation_state, reclaimed = _probe_reservation(session_id, turn_id, state_root)
+    if reservation_state == IN_PROGRESS:
+        return previous_failure, attempts, reclaimed, _failure_block(
+            "a Luna review is already in progress for this turn; wait for its timeout or retry"
+        )
+    if payloads.stop_hook_active(payload) and not previous_failure and not reclaimed:
+        return previous_failure, attempts, reclaimed, {}
+    return previous_failure, attempts, reclaimed, None
+
+
+def _perform_review(
+    session_id: str,
+    turn_id: str,
+    state_root: str | Path | None,
+    previous_failure: dict[str, Any] | None,
+    attempts: int,
+    work: tuple[tuple[JudgeRequest, list[Any]], ...],
+    provider: object | None,
+) -> dict:
+    token, reservation_error = _reserve_review(
+        session_id, turn_id, state_root, previous_failure, attempts,
+    )
+    if reservation_error is not None or token is None:
+        return reservation_error or _failure_block("the Luna review reservation could not be acquired", attempts + 1)
+    try:
+        feedback = _judge_work(provider, work)
+    except BaseException:
+        _rollback(session_id, turn_id, token, state_root)
+        raise
+    if _finish_success(session_id, turn_id, token, state_root):
+        return stop_block(_bounded(feedback)) if feedback else {}
+    _rollback(session_id, turn_id, token, state_root)
+    reason = "the successful Luna review could not be committed"
+    _record_failure(session_id, turn_id, reason, state_root)
+    return _failure_block(reason, attempts + 1)
 
 
 def review(
@@ -303,65 +470,22 @@ def review(
     if not session_id:
         return {}
 
+    attempts = 0
     try:
-        previous_failure = _failure_entry(session_id, turn_id, state_root)
-    except LunaReviewFailure as exc:
-        return _failure_block(exc)
-    attempts = previous_failure.get("attempts", 0) if previous_failure else 0
-    attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else 0
-    if attempts >= MAX_FAILURE_ATTEMPTS:
-        return _failure_block(previous_failure.get("reason", "repeated provider failure"), attempts)
-
-    try:
-        reservation_state, reclaimed = _probe_reservation(session_id, turn_id, state_root)
-        if reservation_state == IN_PROGRESS:
-            return _failure_block("a Luna review is already in progress for this turn; wait for its timeout or retry")
-        if payloads.stop_hook_active(payload) and not previous_failure and not reclaimed:
-            return {}
-        rows = _journal_rows(payload, turn_id, state_root)
-        if not rows:
-            return _failure_block(previous_failure.get("reason", "the current-session journal is empty"), attempts) if previous_failure else {}
-        built = request_for_rows(rows)
-        if built is None:
-            return _failure_block(previous_failure.get("reason", "the current-session journal has no reviewable candidates"), attempts) if previous_failure else {}
-        request, candidates_or_rows = built
-        status, token = _reserve_status(session_id, turn_id, state_root)
-        if status == IN_PROGRESS:
-            return _failure_block("a Luna review is already in progress for this turn; wait for its timeout or retry")
-        if status == ALREADY_RESERVED:
-            return _failure_block(previous_failure.get("reason", "a prior review reservation is unresolved"), attempts) if previous_failure else {}
-        if status != RESERVED or token is None:
-            reason = "the current-turn Luna review reservation could not be acquired"
-            _record_failure(session_id, turn_id, reason, state_root)
-            return _failure_block(reason, attempts + 1)
-        judge = provider or LunaJudge()
-        result = judge.judge(request)
-        if not isinstance(result, JudgeResult):
-            raise ValueError("Luna provider returned an invalid result")
-        if request.review_kind is ReviewKind.COMMENT:
-            feedback = _comment_feedback(result, tuple(candidates_or_rows))
-        else:
-            feedback = _document_feedback(result, rows)
-        if not _finish_success(session_id, turn_id, token, state_root):
-            _rollback(session_id, turn_id, token, state_root)
-            reason = "the successful Luna review could not be committed"
-            _record_failure(session_id, turn_id, reason, state_root)
-            return _failure_block(reason, attempts + 1)
-        return stop_block(_bounded(feedback)) if feedback else {}
+        previous_failure, attempts, _reclaimed, preflight_response = _preflight(
+            payload, session_id, turn_id, state_root,
+        )
+        if preflight_response is not None:
+            return preflight_response
+        work, empty_reason = _review_work(payload, turn_id, state_root)
+        if work is None:
+            return _failure_block(previous_failure.get("reason", empty_reason), attempts) if previous_failure else {}
+        return _perform_review(
+            session_id, turn_id, state_root, previous_failure, attempts, work, provider,
+        )
     except LunaReviewFailure as exc:
         _record_failure(session_id, turn_id, str(exc), state_root)
         return _failure_block(exc, attempts + 1)
     except Exception as exc:
-        _rollback(session_id, turn_id, token if "token" in locals() and isinstance(token, str) else "", state_root)
         _record_failure(session_id, turn_id, str(exc), state_root)
         return _failure_block(exc, attempts + 1)
-
-
-def state_root_for(payload: object, explicit: str | Path | None = None) -> str | Path | None:
-    if explicit is not None:
-        return explicit
-    cwd = payloads.cwd(payload)
-    try:
-        return effective_hook_config({}, cwd or None).get("state_root")
-    except (OSError, ValueError, TypeError):
-        return None
