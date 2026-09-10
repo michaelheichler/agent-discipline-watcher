@@ -278,6 +278,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       if (event.toolCallId) ledger.rejectTool(sessionId(ctx), event.toolCallId);
       return { block: true, reason: adapted.reason ?? UNKNOWN_OMP_WRITE };
     }
+    if (adapted.kind === "host-report") return undefined;
     const preGateMutation = ["write", "bash", "mcp", "notebook", "python"].includes(adapted.kind);
     if (!isPreGateTool(event.toolName) && !preGateMutation) return undefined;
     const session = sessionId(ctx);
@@ -336,6 +337,9 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       adapted = { kind: "unknown-write", hookToolName: event.toolName, input: event.input, requiresTarget: true, reason: UNKNOWN_OMP_WRITE };
     }
     const session = sessionId(ctx);
+    if (adapted.kind === "host-report" && !(event.toolCallId && ledger.acceptedTool(session, event.toolCallId))) {
+      return undefined;
+    }
     const acceptedMcpResult = event.toolName.toLowerCase().startsWith("mcp__") &&
       Boolean(event.toolCallId && ledger.acceptedTool(session, event.toolCallId));
     const scanMutation = isPostScanTool(event.toolName) || ["write", "bash", "mcp", "notebook", "python", "unknown-write"].includes(adapted.kind) || acceptedMcpResult;

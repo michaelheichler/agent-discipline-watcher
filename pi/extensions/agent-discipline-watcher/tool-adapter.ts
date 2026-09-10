@@ -63,7 +63,8 @@ const WRITE_OPERATIONS = new Set([
 const DELETE_OPERATIONS = new Set(["delete", "remove"]);
 const MCP_PATH_KEYS = ["path", "file_path", "relative_path", "source", "destination"] as const;
 const MCP_CONTENT_KEYS = ["content", "contents", "text", "data", "new_string", "new_source", "file_text"] as const;
-export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "unknown-write" | "other";
+const REPORT_PATH_ALIASES = ["file_path", "filePath", "notebook_path", "notebookPath"] as const;
+export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "host-report" | "unknown-write" | "other";
 
 export type OmpToolEvent = {
   toolName: string;
@@ -237,7 +238,15 @@ function mutationTargets(
   return { targets: unique(targets), deleted: unique(deleted) };
 }
 
+function isHostReportWrite(toolName: string, input: Record<string, unknown>): boolean {
+  return toolName === "write" &&
+    input.path === "xd://report_issue" &&
+    typeof input.content === "string" &&
+    REPORT_PATH_ALIASES.every(key => !Object.prototype.hasOwnProperty.call(input, key));
+}
+
 export function mutationKind(toolName: string, input: Record<string, unknown> = {}): MutationKind {
+  if (isHostReportWrite(toolName, input)) return "host-report";
   const lower = toolName.toLowerCase();
   if (READ_TOOLS.has(lower)) return "read";
   if (lower === "context_notes") return Object.prototype.hasOwnProperty.call(input, "text") ? "unknown-write" : "read";
@@ -278,6 +287,9 @@ export function adaptToolCall(event: OmpToolEvent, resolveTargets?: TargetResolv
     return pythonInput(stringValue(input.code) ?? "");
   }
   const hookToolName = DIRECT_TOOL_NAMES[event.toolName.toLowerCase()] ?? event.toolName;
+  if (kind === "host-report") {
+    return { kind, hookToolName, input: { ...input }, requiresTarget: false };
+  }
   if (kind === "unknown-write") {
     const language = stringValue(input.language)?.toLowerCase();
     const reason = event.toolName.toLowerCase() === "eval" && (language === "js" || language === "javascript")
