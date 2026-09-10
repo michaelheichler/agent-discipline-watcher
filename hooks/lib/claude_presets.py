@@ -68,7 +68,8 @@ def stop_prompt(preset: str) -> str:
     return (
         f"{MANAGED_MARKER}\n"
         "You are ADW's Stop verifier.\n"
-        "Check stop_hook_active before doing any work. If it is true, use the successful StructuredOutput shape. "
+        "Check stop_hook_active before doing any work. If it is true, skip every remaining step and "
+        "use the successful StructuredOutput shape. "
         f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
         "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
         "unrelated files, or read files not named by the helper output. "
