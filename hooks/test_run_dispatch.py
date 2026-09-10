@@ -54,7 +54,7 @@ class RunDispatchTests(unittest.TestCase):
         probe = f'printf "%s\\n" "{version}"; ' if meets_floor else ""
         stub.write_text(
             "#!/bin/sh\n"
-            f'if [ "$1" = "-c" ]\nthen\n  {probe}exit {0 if meets_floor else 1}\nfi\n'
+            f'if [ "$1" = "-I" ] && [ "$2" = "-S" ] && [ "$3" = "-c" ]\nthen\n  {probe}exit {0 if meets_floor else 1}\nfi\n'
             f'echo "{STUB_MARKER}:{name} $@"\n'
         )
         stub.chmod(0o755)
@@ -94,6 +94,7 @@ class RunDispatchTests(unittest.TestCase):
                 result = self._run(event)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertTrue(result.stdout.startswith(STUB_MARKER), result.stdout)
+                self.assertIn(" -E -S ", result.stdout)
                 self.assertTrue(result.stdout.strip().endswith(script), result.stdout)
 
     def test_every_dispatched_script_exists(self):

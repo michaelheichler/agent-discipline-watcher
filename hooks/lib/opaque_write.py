@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from lib.shell_parse import (
     HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
-    _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
+    _segments, _tokens, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
 from lib.python_payload import is_known_read_only_python
+from lib.python_shell import isolated_python, python_startup, startup_finding
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
@@ -96,7 +97,7 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
 
 def _payload_is_write_capable(interpreter: str, payload: str) -> bool:
     if PYTHON_INTERPRETER_RE.fullmatch(interpreter):
-        return not is_known_read_only_python(payload)
+        return not is_known_read_only_python(payload, isolated=True)
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
 
@@ -148,8 +149,15 @@ def _is_bare_interpreter_segment(segment: list[str]) -> bool:
 def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> list[dict]:
     findings = []
     for segment in _segments(command):
+        index = _payload_command_index(segment)
+        if index < len(segment) and PYTHON_INTERPRETER_RE.fullmatch(_basename(segment[index])) and python_startup(segment).unsupported_inline:
+            findings.append(startup_finding(make_finding, "inline_interpreter_write"))
+            continue
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter in SHELL_C_INTERPRETERS:
+            continue
+        if PYTHON_INTERPRETER_RE.fullmatch(invocation.interpreter) and not isolated_python(segment):
+            findings.append(startup_finding(make_finding, "inline_interpreter_write"))
             continue
         if (
             invocation.payload is None
@@ -178,6 +186,8 @@ def _heredoc_stdin_findings(event: HeredocEvent, make_finding: FindingFactory, r
         if event.dynamic:
             return [make_finding("interpreter_heredoc_write")]
         return recurse(event.body)
+    if PYTHON_INTERPRETER_RE.fullmatch(name) and not isolated_python(event.consumer_segment):
+        return [startup_finding(make_finding, "interpreter_heredoc_write")]
     if event.dynamic or _payload_is_write_capable(name, event.body):
         return [make_finding("interpreter_heredoc_write")]
     return []
@@ -210,6 +220,8 @@ def _stage_interpreter_findings(
     if _bare_interpreter_name(list(stage.consumer)) in SHELL_C_INTERPRETERS:
         return recurse(joined)
     name = _bare_interpreter_name(list(stage.consumer))
+    if name is not None and PYTHON_INTERPRETER_RE.fullmatch(name) and not isolated_python(stage.consumer):
+        return [startup_finding(make_finding, "interpreter_heredoc_write")]
     if name is not None and _payload_is_write_capable(name, joined):
         return [make_finding("interpreter_heredoc_write")]
     return []
@@ -368,9 +380,42 @@ def _line_is_mutating(line: str) -> bool:
     )
 
 
+def _has_python_source(segment: list[str], depth: int = 0) -> bool:
+    index = _payload_command_index(segment)
+    if index < len(segment) and PYTHON_INTERPRETER_RE.fullmatch(_basename(segment[index])):
+        return True
+    invocation = interpreter_invocation(segment)
+    if invocation is None or invocation.interpreter not in SHELL_C_INTERPRETERS:
+        return False
+    if depth >= 2 or invocation.payload is None:
+        return True
+    return any(_has_python_source(inner, depth + 1) for group in _output_pipeline_groups(invocation.payload) for inner in group)
+
+
+def _output_pipeline_groups(line: str) -> list[list[list[str]]]:
+    tokens: list[str] = []
+    depth = 0
+    for token in _tokens(line):
+        if token == "(" or (token == "{" and (not tokens or tokens[-1] in {";", "&&", "||", "|", "&"})):
+            depth += 1
+        elif token in {"}", ")"} and depth:
+            depth -= 1
+        else:
+            tokens.append("|" if depth and token in {";", "&&", "||", "&"} else token)
+    return _pipeline_groups(" ".join(tokens))
+
+
+def _python_output_write(line: str) -> bool:
+    return any(
+        any(_write_path_writes(segment) for segment in group)
+        and any(_has_python_source(segment) for segment in group)
+        for group in _output_pipeline_groups(line)
+    )
+
+
 def opaque_source_findings(command: str, make_finding: FindingFactory) -> list[dict]:
     findings = [make_finding("opaque_source_write") for segment in _segments(command) if _dd_file_output(segment)]
     for line, _, _ in _logical_lines(command):
-        if has_process_substitution(line) and _line_is_mutating(line):
+        if _python_output_write(line) or (has_process_substitution(line) and _line_is_mutating(line)):
             findings.append(make_finding("opaque_source_write"))
     return findings

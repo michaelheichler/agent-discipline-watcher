@@ -31,7 +31,7 @@ do
     [ -n "$FLOOR" ] || die "misconfigured install: $VERSION_FILE names no version"
     PYTHON="$(adw_resolve_python "$FLOOR")"
     [ -n "$PYTHON" ] || die "no Python $FLOOR or newer on PATH. Install one, or point ADW_PYTHON at it."
-    exec "$PYTHON" "$DIR/$script"
+    exec "$PYTHON" -E -S "$DIR/$script"
   fi
 done
 echo "$usage" >&2

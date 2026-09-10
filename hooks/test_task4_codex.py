@@ -423,7 +423,7 @@ def test_codex_does_not_mark_a_truncated_journal_as_reviewed(monkeypatch: pytest
     ]
     monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
 
-    with pytest.raises(codex_luna.LunaReviewFailure, match="split the turn"):
+    with pytest.raises(codex_luna.LunaReviewFailure, match="above the limit"):
         codex_luna._journal_rows({"session_id": "too-many"}, "turn-1", None)
 
 

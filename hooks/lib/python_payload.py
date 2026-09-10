@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import re
 
+from .python_imports import imports_are_trusted
+
 READ_ONLY_OPEN_MODE_CHARS = frozenset("rbtU")
 SAFE_IMPORTS = frozenset({"json"})
 PATH_IMPORT = ("pathlib", "Path")
@@ -65,12 +67,12 @@ ASSIGNABLE_KINDS = frozenset({"bytes", "file", "path", "text", "value"})
 SUSPICIOUS_BARE_LITERAL_RE = re.compile(r"(?:\b(?:write|exec|eval)\s*\(|__)")
 
 
-def is_known_read_only_python(source: str) -> bool:
+def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: bool = False) -> bool:
     try:
         tree = ast.parse(source, mode="exec")
     except (MemoryError, RecursionError, SyntaxError, TypeError, ValueError):
         return False
-    return _ReadOnlyChecker().statements(tree.body)
+    return _ReadOnlyChecker().statements(tree.body) and (isolated or imports_are_trusted(cwd))
 
 
 class _ReadOnlyChecker:

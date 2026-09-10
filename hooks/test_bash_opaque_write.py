@@ -93,26 +93,26 @@ def test_a_literal_shell_payload_reenters_the_full_gate():
 
 
 @pytest.mark.parametrize("command", [
-    """python3 -c 'open("x.txt").read()'""",
-    """python3 -c 'open("x.txt", "r").read()'""",
-    """python3 -c 'with open("x.txt", "rb") as f: f.read()'""",
-    """python3 -c 'import json; json.load(open("x.json"))'""",
-    """python3 -c 'from pathlib import Path; Path("x.txt").read_text(encoding="utf-8")'""",
-    """python3 -c 'from pathlib import Path; print(Path("x.bin").read_bytes())'""",
-    """python3 -c 'from pathlib import Path; assert Path("x.txt").exists()'""",
-    """python3 -c 'from pathlib import Path; p = Path("smoke.txt"); print(p.exists()); print(repr(p.read_text()))'""",
+    """python3 -I -S -c 'open("x.txt").read()'""",
+    """python3 -I -S -c 'open("x.txt", "r").read()'""",
+    """python3 -I -S -c 'with open("x.txt", "rb") as f: f.read()'""",
+    """python3 -I -S -c 'import json; json.load(open("x.json"))'""",
+    """python3 -I -S -c 'from pathlib import Path; Path("x.txt").read_text(encoding="utf-8")'""",
+    """python3 -I -S -c 'from pathlib import Path; print(Path("x.bin").read_bytes())'""",
+    """python3 -I -S -c 'from pathlib import Path; assert Path("x.txt").exists()'""",
+    """python3 -I -S -c 'from pathlib import Path; p = Path("smoke.txt"); print(p.exists()); print(repr(p.read_text()))'""",
 ])
 def test_a_read_only_open_call_is_allowed(command):
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
 
 
 def test_a_read_only_pathlib_heredoc_is_allowed():
-    command = "python3 <<'EOF'\nfrom pathlib import Path\nprint(Path('x.txt').read_text())\nEOF"
+    command = "python3 -I -S <<'EOF'\nfrom pathlib import Path\nprint(Path('x.txt').read_text())\nEOF"
     assert allowed(command) == {}
 
 
 def test_a_read_only_pathlib_pipe_is_allowed():
-    command = "printf \"from pathlib import Path; print(Path('x.txt').read_text())\" | python3"
+    command = "printf \"from pathlib import Path; print(Path('x.txt').read_text())\" | python3 -I -S"
     assert allowed(command) == {}
 
 
@@ -349,14 +349,14 @@ def test_a_config_key_releases_no_rule(command):
 
 
 @pytest.mark.parametrize("command", [
-    "python3 -c 'print(1)'",
-    "python3 -c '1 + 1'",
-    "env -i python3 -c 'print(1)'",
-    "python3.12 -c 'print(1)'",
-    "env -S 'python3 -c \"print(1)\"'",
-    "env --split-string 'python3 -c \"print(1)\"'",
-    "env -S'python3 -c \"print(1)\"'",
-    "env --split-string='python3 -c \"print(1)\"'",
+    "python3 -I -S -c 'print(1)'",
+    "python3 -I -S -c '1 + 1'",
+    "env -i python3 -I -S -c 'print(1)'",
+    "python3.12 -I -S -c 'print(1)'",
+    "env -S 'python3 -I -S -c \"print(1)\"'",
+    "env --split-string 'python3 -I -S -c \"print(1)\"'",
+    "env -S'python3 -I -S -c \"print(1)\"'",
+    "env --split-string='python3 -I -S -c \"print(1)\"'",
     "base64 -d blob.txt",
     "base64 -o out.bin blob.txt",
     "openssl enc -out out.bin",
@@ -375,7 +375,7 @@ def test_a_config_key_releases_no_rule(command):
     "echo 'reminder to run dd if=/dev/zero later'",
     """echo env -S 'python3 -c "import os"'""",
     "dd if=/dev/zero of=/dev/null",
-    "printf 'clean text' | python3 -c 'print(1)'",
+    "printf 'clean text' | python3 -I -S -c 'print(1)'",
     "awk '{print $1}' file.txt",
     "> out.log ls",
 ])

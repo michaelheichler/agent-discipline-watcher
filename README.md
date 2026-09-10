@@ -238,6 +238,11 @@ It does not police file access in general. The host's own permission settings ow
 
 Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through, such as `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, or `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc, and treats it like a Write or Edit call rather than blocking it.
 
+For read-only Python snippets in Bash, use isolated startup with `python3 -I -S`.
+For example, `python3 -I -S -c 'from pathlib import Path; print(Path("notes.md").read_text())'`
+reads a file without loading project startup modules. ADW rejects redirects that
+would write opaque Python output to a file. Use Write or Edit for content changes.
+
 ## Active integrations
 
 Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-hooks.json` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer removes the old watcher entries from `~/.codex/config.toml`, then merges them into `~/.codex/hooks.json` without replacing unrelated settings or hooks. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.

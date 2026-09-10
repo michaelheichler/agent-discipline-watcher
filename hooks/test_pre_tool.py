@@ -1,4 +1,3 @@
-"""Locks the single-handler boundary because parallel input mutations race."""
 import json
 import subprocess
 import sys
@@ -16,10 +15,13 @@ def test_read_only_tool_skips_the_hook_process_output() -> None:
 def test_python_tool_routes_through_the_python_gate() -> None:
     payload = {
         "tool_name": "Python",
-        "tool_input": {"code": "from pathlib import Path; Path('x.txt').read_text()"},
+        "tool_input": {"code": "from pathlib import Path; Path('x.txt').write_text('body')"},
     }
 
-    assert pre_tool.run(payload) == {}
+    response = pre_tool.run(payload)
+
+    assert response["decision"] == "block"
+    assert "Write or Edit" in response["reason"]
 
 
 def test_malformed_payload_blocks_before_tool_routing() -> None:
