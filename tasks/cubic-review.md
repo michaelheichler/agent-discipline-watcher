@@ -73,7 +73,7 @@
 
 ## Final review Python checks
 
-- [x] hooks/lib/opaque_write.py line 405, compound command output. Preserve sequential commands and check shared output redirects. A depth limit returns a finding instead of a recursion error.
+- [x] hooks/lib/shell_output.py line 114, compound command output. Preserve sequential commands and check shared output redirects. A depth limit returns a finding instead of a recursion error.
 - [x] hooks/lib/python_shell.py line 31, attached clustered payload. Parse the actual Python payload and reject unsafe code before a decoy flag. Node parsing keeps its existing behavior.
 - [x] hooks/test_python_import_boundary.py line 33, dead subprocess branch. Removed conditional execution from rejection tests.
 - [x] hooks/test_bash_opaque_write.py line 96, isolation regression. The import-boundary suite now asserts that a simple read without isolated startup blocks.
@@ -88,11 +88,32 @@
 
 ## Compound output review
 
-- [x] hooks/lib/opaque_write.py line 405, compact group closure. Split unquoted operators so adjacent closing parentheses preserve outer redirects.
-- [x] hooks/lib/opaque_write.py line 405, persistent redirect. Track bare exec file output across sequential commands in its shell scope.
-- [x] hooks/lib/opaque_write.py line 405, multiline scope. Parse compound output across logical lines while excluding heredoc bodies.
+- [x] hooks/lib/shell_operators.py line 13, compact group closure. Split unquoted operators so adjacent closing parentheses preserve outer redirects.
+- [x] hooks/lib/shell_output.py line 95, persistent redirect. Track bare exec file output across sequential commands in its shell scope.
+- [x] hooks/lib/shell_output.py line 49, multiline scope. Parse compound output across logical lines while excluding heredoc bodies.
 - [x] hooks/lib/shell_output.py line 103, descriptor restoration. Preserve possible persistent stdout redirects when a brace redirects another descriptor.
-- [x] hooks/lib/shell_syntax.py line 215, quoted payload boundary. Normalize punctuation runs before merging adjacent quoted fragments. Compact groups pass and quoted operators remain intact.
+- [x] hooks/lib/shell_syntax.py line 242, quoted payload boundary. Preserve attached quotes before merging adjacent fragments. The live OMP Luna probe printed the expected output and finished normally.
+
+## Redirect and option review
+
+- [x] hooks/lib/shell_output.py line 122, combined output redirects. Shared redirect parsing now recognizes Bash combined file destinations and preserves descriptor operations. All 578 focused tests pass.
+- [x] tool-adapter.ts line 137, operation noun. Inspect the operation position instead of nouns elsewhere in the name. All 156 Bun tests pass.
+- [x] hooks/lib/shell_syntax.py line 191, Python option value. Consume warning and runtime option values separately, and stop code-flag discovery at module execution. All 516 shared tests pass.
+- [x] lifecycle.integration.test.ts line 256, duplicated retention cap. Eviction tests now use the exported ledger limit.
+- [x] tasks/cubic-review.md line 76, stale locations. Point compound-output records to their extracted module and tokenizer.
+
+## Redirect comment repairs
+
+- [x] hooks/lib/shell_parse.py line 26, long_comment. Removed the flagged import-compatibility comment.
+- [x] hooks/lib/shell_parse.py line 47, long_comment. Removed the flagged descriptor comment.
+- [x] hooks/lib/shell_parse.py line 53, what_comment. Removed the flagged operand comment.
+- [x] hooks/lib/shell_parse.py line 53, long_comment. The same removal clears this separate finding.
+
+## Redirect docstring repairs
+
+- [x] hooks/lib/shell_parse.py line 59, what_docstring. Removed the flagged LiteralWrite description.
+- [x] hooks/lib/shell_parse.py line 66, what_docstring. Removed the flagged HeredocEvent description.
+- [x] hooks/lib/shell_parse.py line 84, what_docstring. Removed the flagged write_targets description.
 
 The document and retention checks, including external review routing, passed
 31 tests with one opt-in live test skipped. Pylint scored 10.00/10.
@@ -126,3 +147,7 @@ passed on Python 3.11 and 3.13, with pylint at 10.00/10.
 The next review round passed 148 Bun tests and 27 bridge tests. A full Python
 run passed 2305 tests with 18 existing skips and 274 subtests. The final
 descriptor and tokenizer fixes passed 486 focused tests, with pylint at 10.00/10.
+
+The combined-redirect review passed 2399 Python tests with 18 existing skips
+and 274 subtests. The final filename cases passed in the 578-test focused
+suite. OMP passed 156 Bun tests, and pylint scored 10.00/10.
