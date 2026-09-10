@@ -251,8 +251,9 @@ def _journal_rows(
         if not isinstance(marker_turn, str):
             raise LunaReviewFailure("current-session journal overflow state is malformed")
         if marker_turn in {"", turn_id}:
+            target = _bounded(marker.get("path_identity") or "an unknown file")
             raise LunaReviewFailure(
-                f"the current-session journal was truncated above {MAX_COMMENT_ROWS} candidates; split the turn"
+                f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the file with fewer candidates or start a new turn"
             )
     matching = [
         row for row in rows
@@ -366,7 +367,7 @@ def _review_work(
         ):
             raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
         if role == "document" and row.get("source_truncated") is True:
-            raise LunaReviewFailure("the current-session journal truncated a document source; split the turn")
+            raise LunaReviewFailure("the current-session journal truncated a document source; split the document before reviewing")
         if role == "comment" and (
             not isinstance(row.get("path"), str)
             or not row["path"].strip()
@@ -375,7 +376,7 @@ def _review_work(
         ):
             raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
         if role == "comment" and row.get("text_truncated") is True:
-            raise LunaReviewFailure("the current-session journal truncated a comment candidate; split the turn")
+            raise LunaReviewFailure("the current-session journal truncated a comment candidate; shorten the comment before reviewing")
     built = request_for_rows(rows)
     if built is None:
         return None, "the current-session journal has no reviewable candidates"
