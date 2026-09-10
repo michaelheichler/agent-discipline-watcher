@@ -77,13 +77,11 @@ def test_shell_payload_block_blocks(command):
     assert "Write or Edit" in reason
 
 
-# Pin this case because a write token in the first fragment must block even if the fragment join regresses.
 def test_adjacent_quoted_fragments_in_a_python_payload_still_block():
     reason = blocked("""python3 -c 'open("x'"t.txt"'","w").write("y")'""")
     assert "inline_interpreter_write" in reason
 
 
-# Pin the exact probe because only the joined word carries the write token, so this test holds the fragment join.
 def test_a_write_call_split_across_the_operand_boundary_still_blocks():
     reason = blocked("""python3 -c 'a=1'"; open('t.txt','w').write('y')\"""")
     assert "inline_interpreter_write" in reason
@@ -99,9 +97,33 @@ def test_a_literal_shell_payload_reenters_the_full_gate():
     """python3 -c 'open("x.txt", "r").read()'""",
     """python3 -c 'with open("x.txt", "rb") as f: f.read()'""",
     """python3 -c 'import json; json.load(open("x.json"))'""",
+    """python3 -c 'from pathlib import Path; Path("x.txt").read_text(encoding="utf-8")'""",
+    """python3 -c 'from pathlib import Path; print(Path("x.bin").read_bytes())'""",
+    """python3 -c 'from pathlib import Path; assert Path("x.txt").exists()'""",
+    """python3 -c 'from pathlib import Path; p = Path("smoke.txt"); print(p.exists()); print(repr(p.read_text()))'""",
 ])
 def test_a_read_only_open_call_is_allowed(command):
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+def test_a_read_only_pathlib_heredoc_is_allowed():
+    command = "python3 <<'EOF'\nfrom pathlib import Path\nprint(Path('x.txt').read_text())\nEOF"
+    assert allowed(command) == {}
+
+
+def test_a_read_only_pathlib_pipe_is_allowed():
+    command = "printf \"from pathlib import Path; print(Path('x.txt').read_text())\" | python3"
+    assert allowed(command) == {}
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c 'import json as j; print(j.load(open(\"x.json\")))'",
+    "python3 -c 'from pathlib import Path as P; print(P(\"x.txt\").read_text())'",
+    "python3 -c 'from pathlib import Path; reader = Path(\"x.txt\").read_text; reader()'",
+])
+def test_python_aliases_and_indirect_calls_block(command):
+    reason = blocked(command)
+    assert "inline_interpreter_write" in reason
 
 
 @pytest.mark.parametrize("command", [

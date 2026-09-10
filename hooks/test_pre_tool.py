@@ -13,6 +13,15 @@ def test_read_only_tool_skips_the_hook_process_output() -> None:
     assert pre_tool.run({"tool_name": "Read"}) == {}
 
 
+def test_python_tool_routes_through_the_python_gate() -> None:
+    payload = {
+        "tool_name": "Python",
+        "tool_input": {"code": "from pathlib import Path; Path('x.txt').read_text()"},
+    }
+
+    assert pre_tool.run(payload) == {}
+
+
 def test_malformed_payload_blocks_before_tool_routing() -> None:
     response = pre_tool.run(PARSE_FAILURE)
 

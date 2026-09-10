@@ -10,6 +10,7 @@ from lib.shell_parse import (
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
+from lib.python_payload import is_known_read_only_python
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
@@ -28,10 +29,9 @@ WRITE_CAPABLE_TOKEN_RE = re.compile(
     r"\bfs\.\w|\bFile\.\w|\bIO\.\w|decode\(|`|"
     r"\brequire\(|\bfile_put_contents\(|\bfopen\(|\bfwrite\("
 )
+PYTHON_INTERPRETER_RE = re.compile(r"python(?:2|3)?(?:\.\d+)?$")
 OPEN_CALL_RE = re.compile(r"\bopen\(")
-# Kept out of WRITE_CAPABLE_TOKEN_RE and judged by mode below, because open(path) defaults to read-only.
 READ_ONLY_MODE_CHARS = frozenset("rbtU")
-# A quoted string, a paren, a comma, or a run of anything else, because a comma or paren inside a quote must not end an argument.
 ARG_TOKEN_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|[()]|,|[^()',\"]+")
 
 
@@ -94,6 +94,12 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
     )
 
 
+def _payload_is_write_capable(interpreter: str, payload: str) -> bool:
+    if PYTHON_INTERPRETER_RE.fullmatch(interpreter):
+        return not is_known_read_only_python(payload)
+    return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
+
+
 DECODE_FLAGS: dict[str, frozenset[str]] = {
     "base64": frozenset({"-d", "--decode"}),
     "xxd": frozenset({"-r"}),
@@ -104,7 +110,6 @@ OPENSSL_DECODE_SUBCOMMANDS = frozenset({"enc", "base64"})
 OPENSSL_DECODE_FLAGS = frozenset({"-d", "-decrypt"})
 INPLACE_VERBS = frozenset({"sed", "perl", "ruby"})
 AWK_VERBS = frozenset({"awk", "gawk"})
-# Each verb gets its own consuming set because sed's -E takes no argument while perl and ruby's -e/-E/-I do.
 VALUE_CONSUMING_FLAGS: dict[str, frozenset[str]] = {
     "sed": frozenset({"e", "f"}),
     "perl": frozenset({"I", "e", "E"}),
@@ -141,7 +146,6 @@ def _is_bare_interpreter_segment(segment: list[str]) -> bool:
 
 
 def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    """Blocks the payload, because an interpreter's inline code can call write APIs the text scanner never inspects, and an unreadable payload cannot be judged safe."""
     findings = []
     for segment in _segments(command):
         invocation = interpreter_invocation(segment)
@@ -149,15 +153,13 @@ def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> l
             continue
         if (
             invocation.payload is None
-            or WRITE_CAPABLE_TOKEN_RE.search(invocation.payload)
-            or _inline_open_calls_write_capable(invocation.payload)
+            or _payload_is_write_capable(invocation.interpreter, invocation.payload)
         ):
             findings.append(make_finding("inline_interpreter_write"))
     return findings
 
 
 def interpreter_stdin_findings(command: str, make_finding: FindingFactory, recurse: RecurseFn) -> list[dict]:
-    """Blocks the body, because a heredoc or pipe feeding an interpreter's stdin reaches the same write APIs an inline payload does. A shell consumer's literal body is itself a shell command, so it re-enters the full gate one level deep instead of being judged by the interpreter token regex, the way a literal shell -c payload already is."""
     findings = []
     for event in heredoc_events(command):
         findings.extend(_heredoc_stdin_findings(event, make_finding, recurse))
@@ -176,7 +178,7 @@ def _heredoc_stdin_findings(event: HeredocEvent, make_finding: FindingFactory, r
         if event.dynamic:
             return [make_finding("interpreter_heredoc_write")]
         return recurse(event.body)
-    if event.dynamic or WRITE_CAPABLE_TOKEN_RE.search(event.body):
+    if event.dynamic or _payload_is_write_capable(name, event.body):
         return [make_finding("interpreter_heredoc_write")]
     return []
 
@@ -207,13 +209,13 @@ def _stage_interpreter_findings(
     joined = "\n".join(producer_texts)
     if _bare_interpreter_name(list(stage.consumer)) in SHELL_C_INTERPRETERS:
         return recurse(joined)
-    if WRITE_CAPABLE_TOKEN_RE.search(joined):
+    name = _bare_interpreter_name(list(stage.consumer))
+    if name is not None and _payload_is_write_capable(name, joined):
         return [make_finding("interpreter_heredoc_write")]
     return []
 
 
 def dynamic_heredoc_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    """Blocks the heredoc, because its dynamic or unterminated body cannot be read before it lands in the target file."""
     findings = []
     for event in heredoc_events(command):
         if _is_bare_interpreter_segment(event.consumer_segment):
@@ -288,7 +290,6 @@ def _decode_pipe_findings_for_line(line: str, make_finding: FindingFactory) -> l
 
 
 def decode_pipe_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    """Blocks the pipe, because the decoded bytes never pass through a stage the scanner can read before they reach the file."""
     findings: list[dict] = []
     for line, _, _ in _logical_lines(command):
         findings.extend(_decode_pipe_findings_for_line(line, make_finding))
@@ -345,7 +346,6 @@ def _has_inplace_flag(segment: list[str]) -> bool:
 
 
 def inplace_edit_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    """Blocks the invocation, because an in-place editor mutates its target file directly, bypassing the Edit tool."""
     return [make_finding("inplace_edit_write") for segment in _segments(command) if _has_inplace_flag(segment)]
 
 
@@ -369,7 +369,6 @@ def _line_is_mutating(line: str) -> bool:
 
 
 def opaque_source_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    """Blocks the source, because a dd file output or a process-substitution source hides its payload behind another process the scanner cannot read."""
     findings = [make_finding("opaque_source_write") for segment in _segments(command) if _dd_file_output(segment)]
     for line, _, _ in _logical_lines(command):
         if has_process_substitution(line) and _line_is_mutating(line):
