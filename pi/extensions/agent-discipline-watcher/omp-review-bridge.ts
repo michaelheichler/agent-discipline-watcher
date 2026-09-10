@@ -15,6 +15,19 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+export function validatedTargetPaths(value: unknown): string[] {
+  if (!record(value) || !Array.isArray(value.paths) || value.paths.length > 32) {
+    throw new Error("OMP target bridge returned invalid paths");
+  }
+  const paths = value.paths.map(path => {
+    if (typeof path !== "string" || !path.trim() || path.length > 4096 || /["'\\]/u.test(path)) {
+      throw new Error("OMP target bridge returned invalid paths");
+    }
+    return path;
+  });
+  return [...new Set(paths)];
+}
+
 export function prepareReview(value: unknown): PreparedReview {
   if (!record(value) || typeof value.enabled !== "boolean" || !Array.isArray(value.requests)) {
     throw new Error("OMP review bridge returned an invalid preparation");

@@ -4,12 +4,13 @@ type SessionState = {
   pending: Map<string, string>;
   acceptedTools: Map<string, Set<string>>;
   deletedTargets: Map<string, Set<string>>;
+  rejectedTools: Set<string>;
 };
 
 function stateFor(sessions: Map<string, SessionState>, session: string): SessionState {
   let state = sessions.get(session);
   if (!state) {
-    state = { pending: new Map(), acceptedTools: new Map(), deletedTargets: new Map() };
+    state = { pending: new Map(), acceptedTools: new Map(), deletedTargets: new Map(), rejectedTools: new Set() };
     sessions.set(session, state);
   }
   return state;
@@ -28,16 +29,17 @@ export class VerificationLedger {
   ): void {
     if (!session || !toolCallId) return;
     const state = stateFor(this.#sessions, session);
+    state.rejectedTools.delete(toolCallId);
     state.acceptedTools.set(toolCallId, new Set(targets.filter(Boolean)));
     state.deletedTargets.set(toolCallId, new Set(deletedTargets.filter(Boolean)));
   }
 
   rejectTool(session: string, toolCallId: string): void {
     if (!session || !toolCallId) return;
-    const state = this.#sessions.get(session);
-    if (!state) return;
+    const state = stateFor(this.#sessions, session);
     state.acceptedTools.delete(toolCallId);
     state.deletedTargets.delete(toolCallId);
+    state.rejectedTools.add(toolCallId);
     this.#dropEmpty(session, state);
   }
 
@@ -53,18 +55,26 @@ export class VerificationLedger {
     return [...(this.#sessions.get(session)?.deletedTargets.get(toolCallId) ?? [])];
   }
 
+  rejectedTool(session: string, toolCallId: string): boolean {
+    return Boolean(toolCallId && this.#sessions.get(session)?.rejectedTools.has(toolCallId));
+  }
+
   finishTool(session: string, toolCallId: string): void {
     if (!session || !toolCallId) return;
     const state = this.#sessions.get(session);
     if (!state) return;
     state.acceptedTools.delete(toolCallId);
     state.deletedTargets.delete(toolCallId);
+    state.rejectedTools.delete(toolCallId);
     this.#dropEmpty(session, state);
   }
 
   markPending(session: string, target: string, reason = ""): void {
     if (!session) return;
-    stateFor(this.#sessions, session).pending.set(target || UNKNOWN_TARGET, reason);
+    const state = stateFor(this.#sessions, session);
+    const key = target || UNKNOWN_TARGET;
+    const previous = state.pending.get(key) ?? "";
+    state.pending.set(key, reason || previous);
   }
 
   markUnknown(session: string): void {
@@ -96,7 +106,7 @@ export class VerificationLedger {
   }
 
   #dropEmpty(session: string, state: SessionState): void {
-    if (state.pending.size === 0 && state.acceptedTools.size === 0 && state.deletedTargets.size === 0) {
+    if (state.pending.size === 0 && state.acceptedTools.size === 0 && state.deletedTargets.size === 0 && state.rejectedTools.size === 0) {
       this.#sessions.delete(session);
     }
   }

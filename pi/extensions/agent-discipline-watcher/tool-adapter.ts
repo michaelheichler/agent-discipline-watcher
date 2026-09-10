@@ -12,6 +12,40 @@ const DIRECT_TOOL_NAMES: Record<string, string> = {
 };
 
 const READ_TOOLS = new Set(["read", "grep", "glob", "ls", "find"]);
+const SAFE_NON_MUTATING_TOOLS = new Set([
+  "ask",
+  "ast_grep",
+  "goal",
+  "think",
+  "yield",
+  "task",
+  "todo",
+  "web_search",
+  "security_scan",
+]);
+const DEBUG_READ_ACTIONS = new Set([
+  "output",
+  "threads",
+  "stack_trace",
+  "scopes",
+  "variables",
+  "disassemble",
+  "read_memory",
+  "loaded_sources",
+  "modules",
+  "sessions",
+]);
+const LSP_READ_ACTIONS = new Set([
+  "diagnostics",
+  "definition",
+  "type_definition",
+  "implementation",
+  "references",
+  "hover",
+  "symbols",
+  "status",
+  "capabilities",
+]);
 const NOTEBOOK_READ_OPERATIONS = new Set(["read", "inspect", "list", "show"]);
 const WRITE_OPERATIONS = new Set([
   "append",
@@ -25,7 +59,10 @@ const WRITE_OPERATIONS = new Set([
   "update",
   "write",
 ]);
-export type MutationKind = "read" | "write" | "bash" | "notebook" | "python" | "unknown-write" | "other";
+const DELETE_OPERATIONS = new Set(["delete", "remove"]);
+const MCP_PATH_KEYS = ["path", "file_path", "relative_path", "source", "destination"] as const;
+const MCP_CONTENT_KEYS = ["content", "contents", "text", "data", "new_string", "new_source", "file_text"] as const;
+export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "unknown-write" | "other";
 
 export type OmpToolEvent = {
   toolName: string;
@@ -43,8 +80,11 @@ export type AdaptedTool = {
   requiresTarget: boolean;
   targetPaths?: string[];
   deletedTargetPaths?: string[];
+  preGateInputs?: Record<string, unknown>[];
   reason?: string;
 };
+
+export type TargetResolver = (toolName: string, input: Record<string, unknown>) => readonly string[];
 
 const UNKNOWN_WRITE_REASON =
   "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
@@ -74,6 +114,31 @@ function unique(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+function stringList(value: unknown): string[] {
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+}
+
+function mcpTargetPaths(input: Record<string, unknown>): string[] {
+  const paths: string[] = [];
+  for (const key of MCP_PATH_KEYS) paths.push(...stringList(input[key]));
+  paths.push(...stringList(input.paths));
+  return unique(paths);
+}
+
+function mcpHasContent(input: Record<string, unknown>): boolean {
+  return MCP_CONTENT_KEYS.some(key => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+function mcpIsMutation(input: Record<string, unknown>): boolean {
+  const operation = operationValue(input);
+  return Boolean(
+    (operation && WRITE_OPERATIONS.has(operation)) ||
+    (mcpTargetPaths(input).length > 0 && mcpHasContent(input)),
+  );
+}
+
 function patchTargetPaths(source: unknown): { targets: string[]; deleted: string[] } {
   if (typeof source !== "string") return { targets: [], deleted: [] };
   const targets: string[] = [];
@@ -98,7 +163,28 @@ function patchTargetPaths(source: unknown): { targets: string[]; deleted: string
   return { targets: unique(targets), deleted: unique(deleted) };
 }
 
-function mutationTargets(toolName: string, input: Record<string, unknown>): { targets: string[]; deleted: string[] } {
+function editPreGateInputs(input: Record<string, unknown>): Record<string, unknown>[] | undefined {
+  if (!Array.isArray(input.edits)) return undefined;
+  const direct = stringValue(input.path) ?? stringValue(input.file_path);
+  const rows: Record<string, unknown>[] = [];
+  for (const edit of input.edits) {
+    if (!edit || typeof edit !== "object" || Array.isArray(edit)) continue;
+    const record = edit as Record<string, unknown>;
+    const path = stringValue(record.path) ?? direct;
+    if (!path) continue;
+    const text = ["new_string", "newString", "new_source", "newSource", "content"]
+      .map(key => record[key])
+      .find(value => typeof value === "string");
+    rows.push({ file_path: path, new_string: typeof text === "string" ? text : "" });
+  }
+  return rows.length > 0 ? rows : undefined;
+}
+
+function mutationTargets(
+  toolName: string,
+  input: Record<string, unknown>,
+  resolveTargets?: TargetResolver,
+): { targets: string[]; deleted: string[] } {
   const normalized = normalizeArgs(input);
   const targets: string[] = [];
   const deleted: string[] = [];
@@ -130,15 +216,12 @@ function mutationTargets(toolName: string, input: Record<string, unknown>): { ta
       }
     }
   }
+  if (lower === "bash" && resolveTargets) targets.push(...resolveTargets(toolName, normalized));
+  if (lower.startsWith("mcp__")) {
+    targets.push(...mcpTargetPaths(input));
+    if (DELETE_OPERATIONS.has(operationValue(input) ?? "")) deleted.push(...mcpTargetPaths(input));
+  }
   return { targets: unique(targets), deleted: unique(deleted) };
-}
-
-function declaresWrite(input: Record<string, unknown>): boolean {
-  const operation = operationValue(input);
-  if (operation && WRITE_OPERATIONS.has(operation)) return true;
-  const hasTarget = ["path", "file_path", "filePath", "notebook_path", "notebookPath"].some(key => key in input);
-  const hasBody = ["content", "new_string", "newString", "new_source", "newSource", "patch"].some(key => key in input);
-  return hasTarget && hasBody;
 }
 
 export function mutationKind(toolName: string, input: Record<string, unknown> = {}): MutationKind {
@@ -157,8 +240,14 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
     return "unknown-write";
   }
   if (lower === "python") return "python";
-  if (lower.startsWith("mcp__")) return "other";
-  return declaresWrite(input) ? "unknown-write" : "other";
+  if (lower === "debug") return DEBUG_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
+  if (lower === "lsp") return LSP_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
+  if (lower.startsWith("mcp__")) {
+    if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
+    return mcpIsMutation(input) ? "mcp" : "other";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
+  return SAFE_NON_MUTATING_TOOLS.has(lower) ? "other" : "unknown-write";
 }
 
 function directInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -169,7 +258,7 @@ export function adaptPythonEvent(event: { code: string; cwd?: string }): Adapted
   return pythonInput(event.code);
 }
 
-export function adaptToolCall(event: OmpToolEvent): AdaptedTool {
+export function adaptToolCall(event: OmpToolEvent, resolveTargets?: TargetResolver): AdaptedTool {
   const input = event.input ?? {};
   const kind = mutationKind(event.toolName, input);
   if (kind === "python" && ["eval", "python"].includes(event.toolName.toLowerCase())) {
@@ -180,21 +269,23 @@ export function adaptToolCall(event: OmpToolEvent): AdaptedTool {
     return { kind, hookToolName, input: { ...input }, requiresTarget: true, reason: UNKNOWN_WRITE_REASON };
   }
   const normalized = directInput(input);
-  const targets = mutationTargets(event.toolName, input);
+  const targets = mutationTargets(event.toolName, input, resolveTargets);
+  const preGateInputs = editPreGateInputs(input);
   return {
     kind,
     hookToolName,
     input: normalized,
-    requiresTarget: kind === "write" || kind === "notebook",
-    ...(kind === "write" || kind === "notebook"
+    requiresTarget: kind === "write" || kind === "notebook" || kind === "mcp",
+    ...(preGateInputs ? { preGateInputs } : {}),
+    ...(kind === "write" || kind === "notebook" || kind === "bash" || kind === "mcp"
       ? (targets.targets.length > 0 ? { targetPaths: targets.targets } : {})
       : {}),
-    ...(kind === "write" || kind === "notebook"
+    ...(kind === "write" || kind === "notebook" || kind === "mcp"
       ? (targets.deleted.length > 0 ? { deletedTargetPaths: targets.deleted } : {})
       : {}),
   };
 }
 
-export function adaptToolResult(event: OmpToolEvent): AdaptedTool {
-  return adaptToolCall(event);
+export function adaptToolResult(event: OmpToolEvent, resolveTargets?: TargetResolver): AdaptedTool {
+  return adaptToolCall(event, resolveTargets);
 }

@@ -107,6 +107,67 @@ test("uses the accepted pre-tool target when the result omits its path", async (
   ]);
 });
 
+test("scans an ordinary Bash write target resolved by the shared hook parser", async () => {
+  const events: string[] = [];
+  const scannedPaths: string[] = [];
+  const handlers = createHarness((event, payload) => {
+    events.push(event);
+    if (event === "PostToolUse") scannedPaths.push(String((payload.tool_input as { file_path?: unknown }).file_path));
+    return {};
+  });
+  const command = "printf body > lifecycle.ts";
+  expect(await handlers.get("tool_call")!(
+    { toolName: "bash", toolCallId: "bash-write", input: { command, cwd: import.meta.dir } },
+    ctx,
+  )).toBeUndefined();
+  await handlers.get("tool_result")!(
+    { toolName: "bash", toolCallId: "bash-write", input: {}, content: [{ type: "text", text: "written" }] },
+    ctx,
+  );
+
+  expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
+  expect(scannedPaths).toEqual([FIXTURE_A]);
+});
+
+test("blocks a relative Bash target after a working-directory change", async () => {
+  const events: string[] = [];
+  const handlers = createHarness(event => {
+    events.push(event);
+    return {};
+  });
+  const result = await handlers.get("tool_call")!(
+    { toolName: "bash", toolCallId: "bash-relative", input: { command: "cd sub && printf body > x.md" } },
+    ctx,
+  );
+
+  expect(result).toMatchObject({ block: true });
+  expect(events).toEqual([]);
+});
+
+test("post-scans an admitted MCP file mutation", async () => {
+  const events: string[] = [];
+  const handlers = createHarness(event => {
+    events.push(event);
+    return {};
+  });
+  expect(await handlers.get("tool_call")!(
+    {
+      toolName: "mcp__files__write",
+      toolCallId: "mcp-write",
+      input: { path: FIXTURE_A, content: "updated" },
+    },
+    ctx,
+  )).toBeUndefined();
+  await handlers.get("tool_result")!(
+    { toolName: "mcp__files__write", toolCallId: "mcp-write", input: {}, content: [{ type: "text", text: "written" }] },
+    ctx,
+  );
+
+  expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
+});
+
 test("blocks a target-required call before a pathless write can execute", async () => {
   const events: string[] = [];
   const handlers = createHarness(event => {
@@ -120,6 +181,24 @@ test("blocks a target-required call before a pathless write can execute", async 
 
   expect(result).toMatchObject({ block: true });
   expect(events).toEqual([]);
+});
+
+test("pre-gates native per-entry edits at each declared path", async () => {
+  const preToolPaths: string[] = [];
+  const handlers = createHarness((event, payload) => {
+    if (event === "PreToolUse") preToolPaths.push(String((payload.tool_input as { file_path?: unknown }).file_path));
+    return {};
+  });
+  expect(await handlers.get("tool_call")!(
+    {
+      toolName: "multiedit",
+      toolCallId: "multi-entry",
+      input: { edits: [{ path: FIXTURE_A, new_string: "a" }, { path: FIXTURE_B, new_string: "b" }] },
+    },
+    ctx,
+  )).toBeUndefined();
+
+  expect(preToolPaths).toEqual([FIXTURE_A, FIXTURE_B]);
 });
 
 test("keeps an orphan pathless result visible instead of silently releasing Stop", async () => {
@@ -159,29 +238,92 @@ test("does not retain a blocked pre-tool attempt when OMP reports its failure", 
   expect(events).toEqual(["PreToolUse", "PostToolUseFailure", "Stop"]);
 });
 
-test("does not latch an accepted tool result that reports an execution failure", async () => {
-  const events: string[] = [];
-  const handlers = createHarness(event => {
-    events.push(event);
-    return {};
-  });
-  expect(await handlers.get("tool_call")!(
-    { toolName: "write", toolCallId: "call-failed", input: { path: "a.md", content: "body" } },
-    ctx,
-  )).toBeUndefined();
-  await handlers.get("tool_result")!(
-    {
-      toolName: "write",
-      toolCallId: "call-failed",
-      input: {},
-      content: [{ type: "text", text: "write failed before side effects" }],
-      isError: true,
-    },
-    ctx,
-  );
+test("honors a Stop permission denial from hook-specific output", async () => {
+  const handlers = createHarness(event => event === "Stop"
+    ? { hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: "repair required" } }
+    : {});
 
-  expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
-  expect(events).toEqual(["PreToolUse", "PostToolUseFailure", "Stop"]);
+  expect(await handlers.get("session_stop")!({}, ctx)).toEqual({ decision: "block", reason: "repair required" });
+});
+
+test("rechecks an existing path from an orphan failed result", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "adw-orphan-failure-"));
+  const target = resolve(root, "partial.md");
+  writeFileSync(target, "partial\n", "utf8");
+  const events: string[] = [];
+  try {
+    const handlers = createHarness(event => {
+      events.push(event);
+      return {};
+    });
+    await handlers.get("tool_result")!(
+      { toolName: "write", toolCallId: "orphan-failure", input: { path: target, content: "partial" }, content: [{ type: "text", text: "failed" }], isError: true },
+      ctx,
+    );
+
+    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+    expect(events).toEqual(["PostToolUseFailure", "PostToolUse", "JudgeReview", "Stop"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("does not latch a failed result for a pre-denied call", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "adw-denied-failure-"));
+  const target = resolve(root, "denied.md");
+  writeFileSync(target, "unchanged\n", "utf8");
+  const events: string[] = [];
+  try {
+    const handlers = createHarness(event => {
+      events.push(event);
+      return event === "PreToolUse" ? { decision: "block", reason: "denied" } : {};
+    });
+    expect(await handlers.get("tool_call")!(
+      { toolName: "write", toolCallId: "denied-failure", input: { path: target, content: "body" } },
+      ctx,
+    )).toEqual({ block: true, reason: "denied" });
+    await handlers.get("tool_result")!(
+      { toolName: "write", toolCallId: "denied-failure", input: { path: target }, content: [{ type: "text", text: "denied" }], isError: true },
+      ctx,
+    );
+
+    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+    expect(events).toEqual(["PreToolUse", "PostToolUseFailure", "Stop"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("does not latch an accepted tool result that reports an execution failure", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "adw-failed-"));
+  const target = resolve(root, "not-created.md");
+  const events: string[] = [];
+  try {
+    const handlers = createHarness(event => {
+      events.push(event);
+      return {};
+    });
+    expect(existsSync(target)).toBe(false);
+    expect(await handlers.get("tool_call")!(
+      { toolName: "write", toolCallId: "call-failed", input: { path: target, content: "body" } },
+      ctx,
+    )).toBeUndefined();
+    await handlers.get("tool_result")!(
+      {
+        toolName: "write",
+        toolCallId: "call-failed",
+        input: {},
+        content: [{ type: "text", text: "write failed before side effects" }],
+        isError: true,
+      },
+      ctx,
+    );
+
+    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+    expect(events).toEqual(["PreToolUse", "PostToolUseFailure", "Stop"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("rechecks existing accepted targets after a partial multi-file failure", async () => {

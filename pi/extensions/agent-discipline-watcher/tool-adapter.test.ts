@@ -186,4 +186,59 @@ describe("OMP tool adapter", () => {
       reason: "agent-discipline-watcher could not classify this OMP tool as a safe mutation.",
     });
   });
+
+  test("fails closed for unknown command and mutation shapes", () => {
+    expect(mutationKind("custom_runner", { command: "printf body > a.md" })).toBe("unknown-write");
+    expect(mutationKind("custom_writer", { destination: "a.md", payload: "body" })).toBe("unknown-write");
+  });
+
+  test("allows only documented read-only LSP and debug actions", () => {
+    expect(mutationKind("lsp", { action: "hover" })).toBe("other");
+    expect(mutationKind("lsp", { action: "rename_file" })).toBe("unknown-write");
+    expect(mutationKind("debug", { action: "threads" })).toBe("other");
+    expect(mutationKind("debug", { action: "continue" })).toBe("unknown-write");
+  });
+
+  test("adapts MCP file writes and deletes for lifecycle scanning", () => {
+    expect(adaptToolCall({
+      toolName: "mcp__files__write",
+      toolCallId: "mcp-write",
+      input: { file_path: "a.md", content: "body" },
+    })).toMatchObject({
+      kind: "mcp",
+      requiresTarget: true,
+      targetPaths: ["a.md"],
+    });
+    expect(adaptToolCall({
+      toolName: "mcp__files__delete",
+      toolCallId: "mcp-delete",
+      input: { path: "a.md", operation: "delete" },
+    })).toMatchObject({
+      kind: "mcp",
+      deletedTargetPaths: ["a.md"],
+    });
+    expect(mutationKind("mcp__files__read", { path: "a.md", operation: "read" })).toBe("other");
+  });
+
+  test("uses the injected shared Bash resolver for normal file targets", () => {
+    const adapted = adaptToolCall(
+      { toolName: "bash", toolCallId: "bash-write", input: { command: "printf body > a.md" } },
+      (_toolName, input) => (input.command === "printf body > a.md" ? ["a.md"] : []),
+    );
+    expect(adapted).toMatchObject({ kind: "bash", targetPaths: ["a.md"] });
+  });
+
+  test("splits native per-entry edits into pre-gate payloads", () => {
+    expect(adaptToolCall({
+      toolName: "multiedit",
+      toolCallId: "multi-entry",
+      input: { edits: [{ path: "a.md", new_string: "a" }, { path: "b.md", newString: "b" }] },
+    })).toMatchObject({
+      targetPaths: ["a.md", "b.md"],
+      preGateInputs: [
+        { file_path: "a.md", new_string: "a" },
+        { file_path: "b.md", new_string: "b" },
+      ],
+    });
+  });
 });

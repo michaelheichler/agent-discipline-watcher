@@ -3,6 +3,9 @@ import json
 import pytest
 
 from lib import omp_review
+from lib.judge_contracts import JudgeRequest, ReviewKind
+from lib.omp_review_findings import validated_findings
+from lib.omp_review_requests import ReviewWork
 
 
 ENABLED = {"data_boundary": {"enabled": True}, "adw_model": "anthropic/claude-haiku"}
@@ -32,6 +35,79 @@ def test_disabled_boundary_does_not_read_source(tmp_path, monkeypatch):
     assert prepare(tmp_path / "missing.py", {"data_boundary": {"enabled": False}}) == {
         "enabled": False, "requests": [],
     }
+
+
+def test_targets_operation_uses_the_shared_bash_path_parser(tmp_path):
+    target = tmp_path / "written.md"
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": f"printf body > {target}"},
+    }
+
+    assert omp_review.run({"operation": "targets", "payload": payload}, {}) == {"paths": [str(target)]}
+
+
+def test_targets_operation_reaches_one_literal_bash_wrapper(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": "bash -c 'printf body > nested.md'"},
+    }
+
+    assert omp_review.run({"operation": "targets", "payload": payload}, {}) == {"paths": ["nested.md"]}
+
+
+def test_targets_operation_reaches_two_literal_bash_wrappers(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": "bash -c \"bash -c 'printf body > nested.md'\""},
+    }
+
+    assert omp_review.run({"operation": "targets", "payload": payload}, {}) == {"paths": ["nested.md"]}
+
+
+def test_targets_operation_rejects_an_ambiguous_third_literal_bash_wrapper(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": "bash -c \"bash -c 'bash -c \\\"printf body > nested.md\\\"'\""},
+    }
+
+    with pytest.raises(ValueError, match="invalid paths"):
+        omp_review.run({"operation": "targets", "payload": payload}, {})
+
+
+def test_targets_operation_rejects_relative_paths_after_directory_change(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": "  cd sub && printf body > nested.md"},
+    }
+
+    with pytest.raises(ValueError, match="working-directory change"):
+        omp_review.run({"operation": "targets", "payload": payload}, {})
+
+
+@pytest.mark.parametrize("command", [
+    "env -C sub bash -c 'printf body > nested.md'",
+    "sudo -D sub bash -c 'printf body > nested.md'",
+    "command cd sub && printf body > nested.md",
+])
+def test_targets_operation_rejects_wrapper_directory_changes(tmp_path, command):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": command},
+    }
+
+    with pytest.raises(ValueError, match="working-directory change"):
+        omp_review.run({"operation": "targets", "payload": payload}, {})
+
+
+def test_targets_operation_carries_directory_changes_across_nested_sources(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "session_id": "omp-test", "tool_name": "Bash",
+        "tool_input": {"command": "sh -c \"cd sub; sh -c 'printf body > nested.md'\""},
+    }
+
+    with pytest.raises(ValueError, match="working-directory change"):
+        omp_review.run({"operation": "targets", "payload": payload}, {})
 
 
 @pytest.mark.parametrize("suffix,prefix", [(".py", "#"), (".ts", "//")])
@@ -116,6 +192,17 @@ def test_document_finding_includes_the_reviewed_quote(tmp_path):
     prepared = prepare(path)
     result = validate(path, prepared, {"notes": [{"quote": "on Friday", "problem": "Unclear date.", "fix": "Give the date."}]})
     assert "Quote: on Friday" in result["reason"]
+
+
+def test_observed_finding_notice_reserves_room_for_policy_suffix(tmp_path, monkeypatch):
+    from lib import reporting
+
+    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
+    work = ReviewWork(JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context="Q"), "a.md", blocking=False)
+    result = validated_findings(work, json.dumps({"notes": [{"quote": "Q", "problem": "p" * 800, "fix": "F"}]}))
+    assert len(result["systemMessage"].encode("utf-8")) <= 900
+    report = next((tmp_path / "reports").glob("*.json"))
+    assert str(report) in result["systemMessage"]
 
 
 def test_changed_file_cannot_accept_a_stale_clean_result(tmp_path):

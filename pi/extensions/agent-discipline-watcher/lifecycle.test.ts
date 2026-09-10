@@ -40,5 +40,17 @@ describe("VerificationLedger", () => {
 
     expect(ledger.hasPending("session-1")).toBe(false);
     expect(ledger.acceptedTool("session-1", "call-1")).toBe(false);
+    expect(ledger.rejectedTool("session-1", "call-1")).toBe(true);
+    ledger.finishTool("session-1", "call-1");
+    expect(ledger.rejectedTool("session-1", "call-1")).toBe(false);
+  });
+
+  test("preserves a specific pending reason when a later scan has no reason", () => {
+    const ledger = new VerificationLedger();
+
+    ledger.markPending("session-1", "/tmp/one.md", "repair the source");
+    ledger.markPending("session-1", "/tmp/one.md");
+
+    expect(ledger.pendingReasons("session-1")).toEqual(["repair the source"]);
   });
 });

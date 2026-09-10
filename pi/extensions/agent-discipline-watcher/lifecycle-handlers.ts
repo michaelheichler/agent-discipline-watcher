@@ -1,10 +1,12 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { Buffer } from "node:buffer";
 import { lstatSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { sanitizeDisplay } from "./adw-config";
 import { hashlineEdits, hashlinePatchSource, type HashlineEdit } from "./hashline";
 import { VerificationLedger } from "./lifecycle";
 import type { OmpReviewContext, OmpReviewRun } from "./omp-review";
+import { runReviewBridge, validatedTargetPaths } from "./omp-review-bridge";
 import {
   adaptPythonEvent,
   adaptToolCall,
@@ -178,13 +180,33 @@ function isMissingPath(target: string): boolean {
   }
 }
 
+function bashWorkingDirectory(ctx: ExtensionContext, input: Record<string, unknown>): string {
+  const raw = input.cwd;
+  if (typeof raw !== "string" || !raw.trim() || raw.trim() === ".") return ctx.cwd;
+  if (resolve(ctx.cwd, raw) === resolve(ctx.cwd)) return ctx.cwd;
+  const target = canonicalPath(raw, ctx.cwd);
+  if (target === undefined) throw new Error("Bash cwd is not a valid path");
+  return target;
+}
+
+function adjustBashPayloadCwd(ctx: ExtensionContext, event: ToolCallEvent, payload: Record<string, unknown>): void {
+  if (event.toolName.toLowerCase() !== "bash") return;
+  payload.cwd = bashWorkingDirectory(ctx, event.input);
+}
+
 export function preGatePayloads(
   ctx: ExtensionContext,
   event: ToolCallEvent,
   sections: readonly HashlineEdit[],
+  perTargetInputs: readonly Record<string, unknown>[] = [],
 ): Array<Record<string, unknown>> {
   if (sections.length === 0) {
-    return [watcherPayload(ctx.cwd, sessionId(ctx), event.toolName, event.input, event.toolCallId)];
+    if (perTargetInputs.length > 0) {
+      return perTargetInputs.map(input => watcherPayload(ctx.cwd, sessionId(ctx), event.toolName, input, event.toolCallId));
+    }
+    const payload = watcherPayload(ctx.cwd, sessionId(ctx), event.toolName, event.input, event.toolCallId);
+    adjustBashPayloadCwd(ctx, event, payload);
+    return [payload];
   }
   return sections.map(section => {
     const target = canonicalPath(section.path, ctx.cwd);
@@ -201,6 +223,16 @@ export function preGatePayloads(
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, review: OmpReviewRun): void {
   const ledger = new VerificationLedger();
+  const resolveBashTargets = (ctx: ExtensionContext, event: ToolCallEvent | ToolResultEvent) =>
+    (toolName: string, input: Record<string, unknown>): readonly string[] => {
+      if (toolName.toLowerCase() !== "bash" || typeof input.command !== "string") return [];
+      const paths = validatedTargetPaths(runReviewBridge({
+        operation: "targets",
+        payload: watcherPayload(ctx.cwd, sessionId(ctx), "Bash", input, event.toolCallId),
+      }));
+      const cwd = bashWorkingDirectory(ctx, input);
+      return paths.map(path => isAbsolute(path) || path.startsWith("~") ? path : resolve(cwd, path));
+    };
 
   pi.on("session_start", async (_event, ctx: ExtensionContext) => {
     ledger.resetSession(sessionId(ctx));
@@ -234,26 +266,30 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
   pi.on("tool_call", async (event: ToolCallEvent, ctx: ExtensionContext) => {
     let adapted: AdaptedTool;
     try {
-      adapted = adaptToolCall(event);
+      adapted = adaptToolCall(event, resolveBashTargets(ctx, event));
     } catch (error) {
+      if (event.toolCallId) ledger.rejectTool(sessionId(ctx), event.toolCallId);
       return {
         block: true,
         reason: sanitizeDisplay(error instanceof Error ? error.message : "agent-discipline-watcher could not decode this OMP tool call", 16 * 1024),
       };
     }
-    if (adapted.kind === "unknown-write") return { block: true, reason: adapted.reason ?? UNKNOWN_OMP_WRITE };
-    const preGateMutation = ["write", "bash", "notebook", "python"].includes(adapted.kind);
+    if (adapted.kind === "unknown-write") {
+      if (event.toolCallId) ledger.rejectTool(sessionId(ctx), event.toolCallId);
+      return { block: true, reason: adapted.reason ?? UNKNOWN_OMP_WRITE };
+    }
+    const preGateMutation = ["write", "bash", "mcp", "notebook", "python"].includes(adapted.kind);
     if (!isPreGateTool(event.toolName) && !preGateMutation) return undefined;
     const session = sessionId(ctx);
-    const trackedMutation = ["write", "bash", "notebook", "python"].includes(adapted.kind);
+    const trackedMutation = ["write", "bash", "mcp", "notebook", "python"].includes(adapted.kind);
     try {
       const gateEvent = { ...event, toolName: adapted.hookToolName, input: adapted.input };
       const sections = hashlineEdits(hashlinePatchSource(gateEvent.input));
       if (sections === undefined) {
-        if (trackedMutation && event.toolCallId) ledger.rejectTool(session, event.toolCallId);
+        if (event.toolCallId) ledger.rejectTool(session, event.toolCallId);
         return { block: true, reason: UNDECODABLE_EDIT };
       }
-      const payloads = preGatePayloads(ctx, gateEvent, sections);
+      const payloads = preGatePayloads(ctx, gateEvent, sections, adapted.preGateInputs);
       const targets = [...payloadTargets(payloads), ...adaptedTargets(adapted, ctx.cwd)];
       if (adapted.requiresTarget && targets.length === 0) {
         if (event.toolCallId) ledger.rejectTool(session, event.toolCallId);
@@ -263,7 +299,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
         const result = run("PreToolUse", payload);
         const reason = blockReason(result);
         if (reason) {
-          if (trackedMutation && event.toolCallId) ledger.rejectTool(session, event.toolCallId);
+          if (event.toolCallId) ledger.rejectTool(session, event.toolCallId);
           return { block: true, reason: sanitizeDisplay(reason, 16 * 1024) };
         }
       }
@@ -272,7 +308,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       }
       return undefined;
     } catch (error) {
-      if (trackedMutation && event.toolCallId) ledger.rejectTool(session, event.toolCallId);
+      if (event.toolCallId) ledger.rejectTool(session, event.toolCallId);
       return {
         block: true,
         reason: sanitizeDisplay(error instanceof Error ? error.message : "agent-discipline-watcher PreToolUse failed", 16 * 1024),
@@ -295,13 +331,15 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
   pi.on("tool_result", async (event: ToolResultEvent, ctx: ExtensionContext) => {
     let adapted: AdaptedTool;
     try {
-      adapted = adaptToolResult(event);
+      adapted = adaptToolResult(event, resolveBashTargets(ctx, event));
     } catch {
       adapted = { kind: "unknown-write", hookToolName: event.toolName, input: event.input, requiresTarget: true, reason: UNKNOWN_OMP_WRITE };
     }
-    const scanMutation = isPostScanTool(event.toolName) || ["write", "bash", "notebook", "python", "unknown-write"].includes(adapted.kind);
-    if (!scanMutation) return undefined;
     const session = sessionId(ctx);
+    const acceptedMcpResult = event.toolName.toLowerCase().startsWith("mcp__") &&
+      Boolean(event.toolCallId && ledger.acceptedTool(session, event.toolCallId));
+    const scanMutation = isPostScanTool(event.toolName) || ["write", "bash", "mcp", "notebook", "python", "unknown-write"].includes(adapted.kind) || acceptedMcpResult;
+    if (!scanMutation) return undefined;
     const targetRequired = adapted.requiresTarget;
     const paths = new Set<string>();
     try {
@@ -326,8 +364,14 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       const messages: string[] = [];
       const message = feedbackMessage(result);
       if (message) messages.push(message);
-      if (event.toolCallId && ledger.acceptedTool(session, event.toolCallId)) {
-        for (const target of ledger.acceptedTargets(session, event.toolCallId)) {
+      const failedTargets = new Set(paths);
+      const accepted = event.toolCallId ? ledger.acceptedTool(session, event.toolCallId) : false;
+      const rejected = event.toolCallId ? ledger.rejectedTool(session, event.toolCallId) : false;
+      if (!rejected && accepted && event.toolCallId) {
+        for (const target of ledger.acceptedTargets(session, event.toolCallId)) failedTargets.add(target);
+      }
+      if (!rejected) {
+        for (const target of failedTargets) {
           if (mayContainWrittenContent(target)) ledger.markPending(session, target);
         }
       }
@@ -411,8 +455,9 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       const payload = watcherPayload(ctx.cwd, session);
       if (stopHookRetryActive(event)) payload.stop_hook_active = true;
       const result = run("Stop", payload);
-      if (result.decision === "block") {
-        return { decision: "block", reason: sanitizeDisplay(result.reason || "Fix the blocked findings before stopping", 16 * 1024) };
+      const stopReason = blockReason(result);
+      if (stopReason) {
+        return { decision: "block", reason: sanitizeDisplay(stopReason, 16 * 1024) };
       }
       const additionalContext = feedbackMessage(result);
       const context = [...new Set([...recoveryMessages, additionalContext].filter((message): message is string => Boolean(message)))].join("\n\n");

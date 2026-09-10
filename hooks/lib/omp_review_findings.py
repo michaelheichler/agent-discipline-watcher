@@ -48,13 +48,13 @@ def _document_findings(work: ReviewWork, payload: dict) -> list[str]:
     return findings
 
 
-def _finding_message(findings: list[str], config: dict | None) -> str:
+def _finding_message(findings: list[str], config: dict | None, limit: int) -> str:
     message = "agent-discipline-watcher OMP review:\n" + "\n".join(findings)
-    if len(message.encode("utf-8")) <= MAX_FEEDBACK_BYTES:
+    if len(message.encode("utf-8")) <= limit:
         return message
     report = reporting.write_full_report([{"message": row} for row in findings], config)
     message = f"agent-discipline-watcher OMP review found {len(findings)} findings. Read every row in the full report: {report}"
-    if len(message.encode("utf-8")) > MAX_FEEDBACK_BYTES:
+    if len(message.encode("utf-8")) > limit:
         raise ValueError("review report path exceeds the feedback limit")
     return message
 
@@ -66,7 +66,8 @@ def validated_findings(work: ReviewWork, output: object, config: dict | None = N
     findings = _document_findings(work, payload) if work.request.review_kind is ReviewKind.DOCUMENT else _candidate_findings(work, payload)
     if not findings:
         return {}
-    message = _finding_message(findings, config)
+    suffix = "" if work.blocking else "\nThese findings are observed under the current policy."
+    message = _finding_message(findings, config, MAX_FEEDBACK_BYTES - len(suffix.encode("utf-8")))
     if work.blocking:
         return {"decision": "block", "reason": message}
-    return {"systemMessage": message + "\nThese findings are observed under the current policy."}
+    return {"systemMessage": message + suffix}
