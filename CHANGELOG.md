@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.17 (2026-09-10)
+
+### Fixed
+
+- OMP code mode accepts literal JavaScript tool-dispatch calls, restoring ordinary commands such as `which -a omp` while preserving nested write checks.
+- Unsupported JavaScript eval calls explain the accepted dispatch format. Direct host access and internal bridge methods remain blocked.
+
 ## 0.20.16 (2026-09-10)
 
 ### Fixed
