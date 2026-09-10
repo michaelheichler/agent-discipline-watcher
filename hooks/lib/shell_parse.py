@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
+from .shell_operators import REDIRECT_HEAD_RE
 from .shell_syntax import (
     CLOBBER_HEAD_RE, DYNAMIC_RE, ENV_SPLIT_STRING_FLAGS,
     INTERPRETER_CODE_FLAGS, INTERPRETERS, LEADING_REDIRECT_RE,
@@ -22,7 +23,6 @@ from .shell_syntax import (
     has_process_substitution, interpreter_invocation,
 )
 
-# Names moved to shell_syntax stay importable from here, because callers across the gates already reach for them by this path.
 __all__ = [
     "CLOBBER_HEAD_RE", "DYNAMIC_RE", "ENV_SPLIT_STRING_FLAGS",
     "INTERPRETER_CODE_FLAGS", "INTERPRETERS", "LEADING_REDIRECT_RE",
@@ -43,27 +43,22 @@ __all__ = [
     "write_paths", "write_targets",
 ]
 
-# Matches only the exact descriptor 2, because a bare stderr redirect writes no target file.
 STDERR_DESCRIPTOR = "2"
-REDIRECT_HEAD_RE = re.compile(r"^(\d*)(>>?)")
 HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s()<>|&;'\"]+))")
 LITERAL_PRODUCERS = frozenset({"echo", "printf"})
 ECHO_FLAGS = frozenset({"-n", "-e", "-E", "-ne", "-en"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
-# Strips the of= and if= style operands used by dd, because the path hides behind the key.
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
 
 
 class LiteralWrite(NamedTuple):
-    """Carries the append flag next to the text, because downstream scanning treats an overwrite and an append as different shapes."""
     path: str
     text: str
     append: bool
 
 
 class HeredocEvent(NamedTuple):
-    """Carries the consumer segment and group write-target flag next to the body, because a shared line must not blur one heredoc's context into another's."""
     consumer_segment: list[str]
     body: str
     dynamic: bool
@@ -81,7 +76,6 @@ def write_paths(command: str) -> list[str]:
 
 
 def write_targets(command: str) -> list[tuple[str, str]]:
-    """Stays a path-and-text pair, because existing callers would break if the append flag were forced into their tuples."""
     return [(write.path, write.text) for write in literal_writes(command)]
 
 
@@ -173,7 +167,10 @@ def _redirect_writes(segment: list[str]) -> list[tuple[str, bool]]:
         rest = token[match.end():]
         if not rest and index + 1 < len(segment):
             rest = segment[index + 1]
-        writes.append((_bare(rest), match.group(2) == ">>"))
+        target = _bare(rest)
+        if match.group(2) == ">&" and (match.group(1) or re.fullmatch(r"(?:[0-9]+-?|-)", target)):
+            continue
+        writes.append((target, match.group(2) in {">>", "&>>"}))
     return writes
 
 
@@ -187,7 +184,7 @@ def _tee_writes(segment: list[str]) -> list[tuple[str, bool]]:
 
 
 def _is_file_target(path: str) -> bool:
-    return bool(path) and not path.startswith("&") and not path.startswith("/dev/")
+    return bool(path) and not path.startswith("/dev/")
 
 
 def _literal_contents(segments: list[list[str]]) -> list[str | None]:

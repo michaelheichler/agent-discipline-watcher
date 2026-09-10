@@ -5,9 +5,12 @@ import shlex
 from pathlib import PurePosixPath
 from typing import NamedTuple
 
+from .shell_operators import (
+    LEADING_REDIRECT_RE, PIPE_OPERATORS, SEPARATORS,
+    _merge_adjacent_fragments, _split_punctuation_runs,
+)
+
 DYNAMIC_RE = re.compile(r"[$`]")
-SEPARATORS = frozenset({"&&", "||", ";", "|", "|&", "&", "(", ")"})
-PIPE_OPERATORS = frozenset({"|", "|&"})
 INTERPRETERS = frozenset({
     "python", "python3", "sh", "bash", "zsh", "dash", "command", "env", "exec", "sudo", "time", "nohup",
 })
@@ -32,7 +35,6 @@ INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
     "sh": frozenset({"-c"}), "bash": frozenset({"-c"}), "zsh": frozenset({"-c"}), "dash": frozenset({"-c"}), "ksh": frozenset({"-c"}),
 }
 SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
-LEADING_REDIRECT_RE = re.compile(r"^(\d*)(>>?|>\||<<?)")
 VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
 PYTHON_VALUE_OPTION_RE = re.compile(r"^-[bBdEhIiOPqRsSuvVx]*([cmWX])")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
@@ -228,7 +230,7 @@ CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
 
 def _tokens(command: str) -> list[str]:
     try:
-        lexer = shlex.shlex(_separate_quoted_fragments(command), posix=False, punctuation_chars=";&|()")
+        lexer = shlex.shlex(_separate_quoted_fragments(command), posix=False, punctuation_chars=";&|()>")
         lexer.whitespace_split = True
         raw = list(lexer)
     except ValueError:
@@ -242,38 +244,6 @@ def _separate_quoted_fragments(command: str) -> str:
         lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
         command,
     )
-
-
-def _split_punctuation_runs(tokens: list[str]) -> list[str]:
-    parts: list[str] = []
-    for token in tokens:
-        if re.fullmatch(r"[;&|()]+", token):
-            parts.extend(re.findall(r"&&|\|\||\|&|[;&|()]", token))
-        else:
-            parts.append(token)
-    return parts
-
-
-def _merge_adjacent_fragments(command: str, tokens: list[str]) -> list[str]:
-    """Join fragments that touch with no whitespace between them into one token, because Bash concatenates a quoted span directly against a neighboring quoted or bare span into a single word, while shlex leaves each quoted span as its own token."""
-    merged: list[str] = []
-    search_from = 0
-    prev_end: int | None = None
-    prev_is_word = False
-    for token in tokens:
-        start = command.find(token, search_from)
-        if start == -1:
-            start = search_from
-        end = start + len(token)
-        is_word = token not in SEPARATORS
-        if is_word and prev_is_word and start == prev_end:
-            merged[-1] += token
-        else:
-            merged.append(token)
-        prev_end = end
-        prev_is_word = is_word
-        search_from = end
-    return merged
 
 
 def _is_unquoted_assignment(token: str) -> bool:
