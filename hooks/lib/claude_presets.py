@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
+CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
@@ -26,9 +28,9 @@ def validate_preset(value: str) -> str:
 def model_for(preset: str, role: str) -> str:
     """luna-native names a model the harness injects, because LeverFrame puts Luna in the Claude model list."""
     if preset == "mixed":
-        return "haiku" if role == "comment" else "sonnet"
+        return CLAUDE_HAIKU_MODEL if role == "comment" else CLAUDE_SONNET_MODEL
     if preset == "haiku":
-        return "haiku"
+        return CLAUDE_HAIKU_MODEL
     if preset == "luna-native":
         return LUNA_NATIVE_MODEL
     raise ValueError("luna uses command handlers, not a native model")
