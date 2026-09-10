@@ -65,6 +65,35 @@
 - [x] lifecycle.integration.test.ts line 1, file_length_warning. Keep this regression set together for review. Split future shell coverage into its own suite before reaching 750 lines.
 - [x] tasks/cubic-review.md line 1, oversized_list. The report scanned concatenated replacement lines. The complete file separates findings into groups of at most six rows.
 
+## Final review path checks
+
+- [x] hooks/lib/omp_review.py line 103, named home paths. Reject unresolved named homes before tracking Bash targets. Current-home paths still work after directory changes. All 27 bridge tests pass.
+- [x] tool-adapter.ts line 247, path-only MCP writes. Mutation names now trigger verification and preserve delete intent. All 148 Bun tests pass.
+- [x] lifecycle.ts line 42, rejected-call retention. Cap markers at 1024 per session. Late results still enter verification after eviction.
+
+## Final review Python checks
+
+- [x] hooks/lib/opaque_write.py line 405, compound command output. Preserve sequential commands and check shared output redirects. A depth limit returns a finding instead of a recursion error.
+- [x] hooks/lib/python_shell.py line 31, attached clustered payload. Parse the actual Python payload and reject unsafe code before a decoy flag. Node parsing keeps its existing behavior.
+- [x] hooks/test_python_import_boundary.py line 33, dead subprocess branch. Removed conditional execution from rejection tests.
+- [x] hooks/test_bash_opaque_write.py line 96, isolation regression. The import-boundary suite now asserts that a simple read without isolated startup blocks.
+
+## Parser comment repairs
+
+- [x] hooks/lib/shell_syntax.py line 11, long comment. Removed the flagged interpreter-position comment.
+- [x] hooks/lib/shell_syntax.py line 15, long comment. Removed the flagged wrapper comment.
+- [x] hooks/lib/shell_syntax.py line 17, long comment. Removed the flagged wrapper-value comment.
+- [x] hooks/lib/shell_syntax.py line 38, long comment. Removed the flagged redirect comment.
+- [x] hooks/lib/shell_syntax.py line 166, long docstring. Removed the flagged payload-matching docstring. The shared regression suite passes 464 tests.
+
+## Compound output review
+
+- [x] hooks/lib/opaque_write.py line 405, compact group closure. Split unquoted operators so adjacent closing parentheses preserve outer redirects.
+- [x] hooks/lib/opaque_write.py line 405, persistent redirect. Track bare exec file output across sequential commands in its shell scope.
+- [x] hooks/lib/opaque_write.py line 405, multiline scope. Parse compound output across logical lines while excluding heredoc bodies.
+- [x] hooks/lib/shell_output.py line 103, descriptor restoration. Preserve possible persistent stdout redirects when a brace redirects another descriptor.
+- [x] hooks/lib/shell_syntax.py line 215, quoted payload boundary. Normalize punctuation runs before merging adjacent quoted fragments. Compact groups pass and quoted operators remain intact.
+
 The document and retention checks, including external review routing, passed
 31 tests with one opt-in live test skipped. Pylint scored 10.00/10.
 
@@ -93,3 +122,7 @@ Pylint scored 10.00/10, and shell syntax checks passed.
 Python 3.13 CI exposed a path-resolution difference for looping symlinks.
 Strict report-root resolution fixed it. All 11 retention and startup tests then
 passed on Python 3.11 and 3.13, with pylint at 10.00/10.
+
+The next review round passed 148 Bun tests and 27 bridge tests. A full Python
+run passed 2305 tests with 18 existing skips and 274 subtests. The final
+descriptor and tokenizer fixes passed 486 focused tests, with pylint at 10.00/10.

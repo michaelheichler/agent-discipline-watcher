@@ -18,13 +18,16 @@ The existing inode-swap regression still blocks a replacement file.
 
 ## Machine preflight
 
-SSH to the designated remote host works. Remote Claude is 2.1.263, Codex is 0.153.4,
+The initial SSH preflight succeeded. Remote Claude is 2.1.263, Codex is 0.153.4,
 and OMP is 18.1.12. The remote noninteractive shell needs ~/.bun/bin and
 ~/.local/bin on PATH. Both machines have Claude subscription sessions.
 
 Claude Haiku completed a no-tool probe on both machines. On the Mac, removing
 the inherited ANTHROPIC_BASE_URL and ANTHROPIC_TARGET_API_URL for that process
 avoided the failing proxy. No persistent proxy setting changed.
+
+A later pre-release SSH check returned Network is unreachable. Deployment
+needs another connectivity check after publication.
 
 ## Complete review batches
 
