@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.16 (2026-09-10)
+
+### Fixed
+
+- Claude native reviewers submit decisions through StructuredOutput, preventing plain JSON responses from exhausting the hook's response attempts.
+- Generated Stop prompts preserve the retry exit and place output instructions after the review steps.
+
 ## 0.20.15 (2026-09-10)
 
 ### Fixed

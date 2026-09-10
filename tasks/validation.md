@@ -55,6 +55,10 @@ flagged vague fixture wording. The Stop result was clean.
 
 [x] structured-final-note.md line 1, native/comment review. Replaced the vague fixture sentence with its test purpose. The installed probe will review this wording again.
 
+PR 6 merged after Cubic reported zero findings. Final CI passed 2414 Python
+tests on each tested version and 156 Bun tests. Pylint scored 10.00/10 across
+the repository. The merged patch addresses both prompt-order findings.
+
 ## Native-model review findings
 
 [x] hooks/lib/test_claude_luna.py line 2, punctuation/prose_colon. Preserve the existing tool directive. Pylint accepts it.
