@@ -80,6 +80,17 @@ describe("OMP tool adapter", () => {
     expect(adaptToolResult({ toolName: "eval", input }).kind).toBe("other");
   });
 
+  test("keeps nested JavaScript eval subject to its own check", () => {
+    expect(adaptToolCall({
+      toolName: "eval",
+      input: { language: "js", code: "await tool.eval({language:'js',code:'process.exit()'});" },
+    }).kind).toBe("other");
+    expect(adaptToolCall({
+      toolName: "eval",
+      input: { language: "js", code: "process.exit()" },
+    }).kind).toBe("unknown-write");
+  });
+
   test("blocks every eval JavaScript call without a read-only proof", () => {
     expect(adaptToolCall({
       toolName: "eval",
