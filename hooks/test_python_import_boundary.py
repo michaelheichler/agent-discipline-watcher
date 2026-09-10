@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import pre_tool
+from lib.shell_syntax import _segments, interpreter_invocation
 
 
 CASES = [
@@ -30,8 +31,6 @@ def shadow_module(directory: Path, module: str) -> Path:
 def test_python_tool_rejects_project_module_execution(tmp_path, module, code):
     marker = shadow_module(tmp_path, module)
     result = pre_tool.run({"tool_name": "Python", "cwd": str(tmp_path), "tool_input": {"code": code}})
-    if result == {}:
-        subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, check=False)
 
     assert result.get("decision") == "block"
     assert not marker.exists()
@@ -42,8 +41,6 @@ def test_bash_gate_rejects_shadowed_imports_before_they_run(tmp_path, module, co
     marker = shadow_module(tmp_path, module)
     command = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
     result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
-    if result == {}:
-        subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, check=False)
 
     assert result.get("decision") == "block"
     assert "python3 -I -S" in result["reason"]
@@ -217,19 +214,28 @@ def test_read_only_python_output_cannot_write_unreviewed_content(tmp_path, comma
     "python3 -I -S -c 'print(1)' > /dev/null",
     "python3 -I -S -c 'print(1)'; printf 'The cache holds two rows.' > note.md",
     "python3 -ISc 'print(1)'",
+    "python3 -ISc'print(1)'",
 ])
 def test_python_reads_keep_safe_shell_output_routes(command):
     assert pre_tool.run({"tool_name": "Bash", "tool_input": {"command": command}}) == {}
 
 
+@pytest.mark.parametrize("code", ["print(1)", 'open("target.md","w").write("unreviewed")'])
+def test_clustered_python_flags_keep_the_attached_payload(code):
+    command = f"python3 -ISc{shlex.quote(code)} -c 'print(2)'"
+    invocation = interpreter_invocation(_segments(command)[0])
+
+    assert invocation is not None
+    assert invocation.payload == code
+
+
 @pytest.mark.parametrize("command", [
+    "python3 -c 'print(open(\"source.md\").read())'",
     "python3 -c 'print(\"-I -S\")'",
     "python3 -c 'print(1)' -I -S",
     "python3 -I -W '-S' -c 'print(1)'",
     "python3 -S -X '-I' -c 'print(1)'",
     "python3 -I -S $EXTRA -c 'print(1)'",
-    "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")' -c 'print(1)'",
-    "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")'",
     "python3 -I -S -ic 'print(1)' <<'EOF'\nopen('target.md', 'w').write('unreviewed')\nEOF",
 ])
 def test_isolation_flags_must_belong_to_the_python_startup_options(command):
@@ -241,6 +247,8 @@ def test_isolation_flags_must_belong_to_the_python_startup_options(command):
 
 @pytest.mark.parametrize("command", [
     "python3 -I -S -c 'open(\"target.md\", \"w\").write(\"unreviewed\")'",
+    "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")' -c 'print(1)'",
+    "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")'",
     "python3 -IS -c 'from pathlib import Path; Path(\"target.md\").write_text(\"unreviewed\")'",
     "python3 -I -S <<'EOF'\nopen('target.md', 'w').write('unreviewed')\nEOF",
     "printf \"open('target.md', 'w').write('unreviewed')\" | python3 -I -S",
