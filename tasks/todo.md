@@ -103,14 +103,16 @@ Depends on 8. Expected scope covers release metadata and changelog.
 Refresh all three harnesses locally and on the designated remote host.
 
 - [x] Archive old reports and preserve unrelated settings.
-- [ ] All six installations reference the released ADW copy.
+- [x] All three remote installations reference v0.20.16.
+- [ ] All three local installations reference the released ADW copy.
+- [x] Remote Haiku and Luna probes pass on the installed release.
 Verification uses allowed and blocked writes using Haiku or Luna.
 
 Depends on 9. Expected scope covers installed configuration and deployment evidence.
 
 ## Checkpoint after task 10
 
-- [ ] Run the relevant suites and record results before proceeding.
+- [x] Run the relevant suites and record results before proceeding.
 
 ## 11. Native Claude model identifiers
 
@@ -132,7 +134,7 @@ The installed v0.20.15 post-write probe exhausted its response attempts
 without calling StructuredOutput. The Stop review called that tool and passed.
 
 - [x] Native prompts submit their result through StructuredOutput.
-- [ ] A fresh installed Haiku probe completes both native hooks.
+- [x] A fresh installed Haiku probe completes both native hooks.
 
 Verification covers all generated native presets and the static plugin
 manifest. Review the patch through Cubic before release and remote refresh.

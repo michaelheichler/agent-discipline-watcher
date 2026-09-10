@@ -2,9 +2,13 @@
 
 ## Release and deployment
 
-PR 4 merged after Cubic reported zero new issues and every CI job passed.
-CI passed 2413 Python tests on each tested version and 156 Bun tests.
-The published v0.20.14 tag points to e54a2d7. README and CHANGELOG agree.
+PRs 4 through 6 merged after Cubic reported zero remaining findings and CI
+passed. The published v0.20.16 tag points to 787eebe. README and CHANGELOG
+agree. All three remote installations match that release's source trees.
+
+The final installed Claude Haiku probe returned structured success from both
+native reviewers with no missing-output or API error. Codex and OMP Luna
+probes also passed on v0.20.16. The remote fresh installation is complete.
 
 - [ ] install.sh line 1, self_protection/install_without_sandbox_home. Automatic review rejected the official local installer before execution. Installation requires an execution context that permits live-home maintenance.
 
@@ -53,7 +57,7 @@ The temporary-plugin Haiku probe submitted structured decisions from both
 native reviewers, with no missing-output or API error. The post-write result
 flagged vague fixture wording. The Stop result was clean.
 
-[x] structured-final-note.md line 1, native/comment review. Replaced the vague fixture sentence with its test purpose. The installed probe will review this wording again.
+[x] structured-final-note.md line 1, native/comment review. Replaced the vague fixture sentence with its test purpose. The final installed probe accepted the descriptive wording in release-verification.md.
 
 PR 6 merged after Cubic reported zero findings. Final CI passed 2414 Python
 tests on each tested version and 156 Bun tests. Pylint scored 10.00/10 across
