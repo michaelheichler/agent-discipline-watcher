@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.15 (2026-09-10)
+
+### Fixed
+
+- Claude native review hooks use supported API model identifiers, preventing HTTP 404 failures from short aliases.
+- The preset skill lists the supported Luna native option and removes the unsupported Sonnet preset.
+
 ## 0.20.14 (2026-09-10)
 
 ### Fixed

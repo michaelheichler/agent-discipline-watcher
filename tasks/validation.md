@@ -36,7 +36,9 @@ model-not-found error. Every observed API dispatch used the full Haiku ID.
 
 The focused native-model suite passed 109 tests with 32 subtests. Pylint
 scored 10.00/10 on the changed Python files. Bun passed all 156 tests.
-The full Python rerun is pending after correcting two fallback expectations.
+The full local Python rerun passed 2416 tests with 18 skips and 274 subtests.
+PR 5 merged after Cubic reported no findings. CI passed 2414 Python tests on
+each tested version, with repository-wide pylint at 10.00/10.
 
 ## Native-model review findings
 
