@@ -277,7 +277,7 @@ def _blank_token_span(lines: list[str], span: TokenSpan) -> None:
     lines[span.end_row - 1] = " " * span.end_col + last[span.end_col:]
 
 
-MARKDOWN_EXTS = frozenset({".md", ".markdown", ".mdx"})
+MARKDOWN_EXTS = frozenset({".md", ".markdown", ".mdx", ".mdc"})
 FRONTMATTER_RE = re.compile(r"\A-{3}[ \t]*\n.*?^(?:-{3}|\.{3})[ \t]*$", re.DOTALL | re.MULTILINE)
 
 

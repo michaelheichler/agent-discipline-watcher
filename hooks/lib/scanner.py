@@ -28,6 +28,7 @@ try:
     )
     from .config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
     from .markup import (
+        MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
         CommentSource,
         RegionKind,
@@ -64,6 +65,7 @@ except ImportError:
     )
     from config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
     from markup import (
+        MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
         CommentSource,
         RegionKind,
@@ -85,7 +87,7 @@ _int_setting = scan_input.int_setting
 
 
 BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212)) + "]")
-PROSE_EXTS = {".md", ".markdown", ".mdx", ".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
+PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
     ".pylintrc", ".editorconfig", ".npmrc", ".yarnrc", ".gitignore", ".gitattributes",
@@ -295,7 +297,6 @@ def _is_config(path: str) -> bool:
     lowered = path.lower()
     if any(lowered.endswith(ext) for ext in CONFIG_EXTS):
         return True
-    # Named one by one because an extensionless dotfile is as often a shell script, and .bashrc must keep being scanned as code.
     return PurePath(lowered).name in CONFIG_BASENAMES
 
 

@@ -7,6 +7,33 @@ import {
 } from "./tool-adapter";
 
 describe("OMP tool adapter", () => {
+  test("classifies the exact native report device without a filesystem target", () => {
+    const event = {
+      toolName: "write",
+      input: { path: "xd://report_issue", content: "write: report route was rejected" },
+    };
+    const expected = {
+      kind: "host-report",
+      hookToolName: "Write",
+      input: event.input,
+      requiresTarget: false,
+    };
+    expect(adaptToolCall(event)).toEqual(expected);
+    expect(adaptToolResult(event)).toEqual(expected);
+  });
+
+  test.each([
+    { path: "xd://report_issue", content: 1 },
+    { path: "xd://report_issue" },
+    { file_path: "xd://report_issue", content: "write: rejected" },
+    { path: "xd://report_issue", filePath: "xd://report_issue", content: "write: rejected" },
+    { path: "xd://report_issue/", content: "write: rejected" },
+    { path: "xd://report_issue?next=write", content: "write: rejected" },
+    { path: "xd://write", content: "{}" },
+  ])("keeps noncanonical report inputs under file validation: %j", input => {
+    expect(mutationKind("write", input)).toBe("write");
+  });
+
   test("maps eval Python calls to the shared Python hook contract", () => {
     expect(adaptToolCall({
       toolName: "eval",

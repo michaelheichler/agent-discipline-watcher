@@ -171,7 +171,7 @@ def _colon_lines(path: str, source: str) -> set[int]:
     return {row["line"] for row in scan_all(path, source, {"english": False, "clean_code": False}) if row["rule"] == "prose_colon"}
 
 
-@pytest.mark.parametrize("path", ("skill.md", "guide.markdown", "page.mdx"))
+@pytest.mark.parametrize("path", ("skill.md", "guide.markdown", "page.mdx", "rule.mdc", "rule.MDC"))
 def test_markdown_frontmatter_masks_its_keys_but_keeps_body_colons(path: str) -> None:
     assert _colon_lines(path, FRONTMATTER_DOC) == {6}
 
