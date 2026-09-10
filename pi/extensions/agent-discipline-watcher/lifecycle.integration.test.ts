@@ -145,7 +145,7 @@ test("blocks a relative Bash target after a working-directory change", async () 
   expect(events).toEqual([]);
 });
 
-test("post-scans an admitted MCP file mutation", async () => {
+test.each(["mcp__files__write", "mcp__fs__write_file"])("post-scans an admitted %s mutation", async toolName => {
   const events: string[] = [];
   const handlers = createHarness(event => {
     events.push(event);
@@ -153,14 +153,14 @@ test("post-scans an admitted MCP file mutation", async () => {
   });
   expect(await handlers.get("tool_call")!(
     {
-      toolName: "mcp__files__write",
+      toolName,
       toolCallId: "mcp-write",
-      input: { path: FIXTURE_A, content: "updated" },
+      input: toolName === "mcp__files__write" ? { path: FIXTURE_A, content: "updated" } : { path: FIXTURE_A },
     },
     ctx,
   )).toBeUndefined();
   await handlers.get("tool_result")!(
-    { toolName: "mcp__files__write", toolCallId: "mcp-write", input: {}, content: [{ type: "text", text: "written" }] },
+    { toolName, toolCallId: "mcp-write", input: {}, content: [{ type: "text", text: "written" }] },
     ctx,
   );
 
@@ -168,14 +168,14 @@ test("post-scans an admitted MCP file mutation", async () => {
   expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
 });
 
-test("blocks a target-required call before a pathless write can execute", async () => {
+test.each(["write", "mcp__fs__write_file"])("blocks %s before a pathless write can execute", async toolName => {
   const events: string[] = [];
   const handlers = createHarness(event => {
     events.push(event);
     return {};
   });
   const result = await handlers.get("tool_call")!(
-    { toolName: "write", toolCallId: "missing-target", input: { content: "body" } },
+    { toolName, toolCallId: "missing-target", input: { content: "body" } },
     ctx,
   );
 
@@ -246,26 +246,26 @@ test("honors a Stop permission denial from hook-specific output", async () => {
   expect(await handlers.get("session_stop")!({}, ctx)).toEqual({ decision: "block", reason: "repair required" });
 });
 
-test("rechecks an existing path from an orphan failed result", async () => {
-  const root = mkdtempSync(resolve(tmpdir(), "adw-orphan-failure-"));
-  const target = resolve(root, "partial.md");
-  writeFileSync(target, "partial\n", "utf8");
+test.each(["orphan", "evicted rejection"])("rechecks an existing path from an %s failed result", async status => {
   const events: string[] = [];
-  try {
-    const handlers = createHarness(event => {
-      events.push(event);
-      return {};
-    });
-    await handlers.get("tool_result")!(
-      { toolName: "write", toolCallId: "orphan-failure", input: { path: target, content: "partial" }, content: [{ type: "text", text: "failed" }], isError: true },
-      ctx,
-    );
-
-    expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
-    expect(events).toEqual(["PostToolUseFailure", "PostToolUse", "JudgeReview", "Stop"]);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+  const handlers = createHarness(event => {
+    events.push(event);
+    return event === "PreToolUse" ? { decision: "block", reason: "denied" } : {};
+  });
+  if (status === "evicted rejection") {
+    for (let index = 0; index <= 1024; index += 1) {
+      await handlers.get("tool_call")!(
+        { toolName: "write", toolCallId: `denied-${index}`, input: { path: FIXTURE_A, content: "body" } }, ctx,
+      );
+    }
+    events.length = 0;
   }
+  await handlers.get("tool_result")!(
+    { toolName: "write", toolCallId: "denied-0", input: { path: FIXTURE_A }, content: [{ type: "text", text: "failed" }], isError: true }, ctx,
+  );
+
+  expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  expect(events).toEqual(["PostToolUseFailure", "PostToolUse", "JudgeReview", "Stop"]);
 });
 
 test("does not latch a failed result for a pre-denied call", async () => {
@@ -361,7 +361,7 @@ test("rechecks existing accepted targets after a partial multi-file failure", as
   ]);
 });
 
-test("releases a successful native delete without scanning the missing file", async () => {
+test.each(["edit", "mcp__fs__delete_file", "mcp__fs__remove_file"])("releases a successful %s delete without scanning the missing file", async toolName => {
   const root = mkdtempSync(resolve(tmpdir(), "adw-delete-"));
   const target = resolve(root, "obsolete.md");
   writeFileSync(target, "clean\n", "utf8");
@@ -376,12 +376,12 @@ test("releases a successful native delete without scanning the missing file", as
       return {};
     });
     expect(await handlers.get("tool_call")!(
-      { toolName: "edit", toolCallId: "delete-file", input: { path: target, edits: [{ op: "delete" }] } },
+      { toolName, toolCallId: "delete-file", input: toolName === "edit" ? { path: target, edits: [{ op: "delete" }] } : { path: target } },
       ctx,
     )).toBeUndefined();
     rmSync(target);
     await handlers.get("tool_result")!(
-      { toolName: "edit", toolCallId: "delete-file", input: {}, content: [{ type: "text", text: "deleted" }] },
+      { toolName, toolCallId: "delete-file", input: {}, content: [{ type: "text", text: "deleted" }] },
       ctx,
     );
 
@@ -392,7 +392,7 @@ test("releases a successful native delete without scanning the missing file", as
   }
 });
 
-test("scans a declared delete target that still exists", async () => {
+test.each(["edit", "mcp__fs__delete_file"])("scans the %s delete target when it still exists", async toolName => {
   const root = mkdtempSync(resolve(tmpdir(), "adw-delete-kept-"));
   const target = resolve(root, "still-present.md");
   writeFileSync(target, "clean\n", "utf8");
@@ -403,11 +403,11 @@ test("scans a declared delete target that still exists", async () => {
       return {};
     });
     expect(await handlers.get("tool_call")!(
-      { toolName: "edit", toolCallId: "delete-kept", input: { path: target, edits: [{ op: "delete" }] } },
+      { toolName, toolCallId: "delete-kept", input: toolName === "edit" ? { path: target, edits: [{ op: "delete" }] } : { path: target } },
       ctx,
     )).toBeUndefined();
     await handlers.get("tool_result")!(
-      { toolName: "edit", toolCallId: "delete-kept", input: {}, content: [{ type: "text", text: "deleted" }] },
+      { toolName, toolCallId: "delete-kept", input: {}, content: [{ type: "text", text: "deleted" }] },
       ctx,
     );
 

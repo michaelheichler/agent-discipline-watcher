@@ -1,4 +1,5 @@
 const UNKNOWN_TARGET = "<unresolved-target>";
+const MAX_REJECTED_TOOLS = 1024;
 
 type SessionState = {
   pending: Map<string, string>;
@@ -39,7 +40,12 @@ export class VerificationLedger {
     const state = stateFor(this.#sessions, session);
     state.acceptedTools.delete(toolCallId);
     state.deletedTargets.delete(toolCallId);
+    state.rejectedTools.delete(toolCallId);
     state.rejectedTools.add(toolCallId);
+    if (state.rejectedTools.size > MAX_REJECTED_TOOLS) {
+      const oldest = state.rejectedTools.values().next().value;
+      if (oldest !== undefined) state.rejectedTools.delete(oldest);
+    }
     this.#dropEmpty(session, state);
   }
 

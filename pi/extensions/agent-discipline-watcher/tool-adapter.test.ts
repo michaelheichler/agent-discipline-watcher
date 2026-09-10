@@ -220,6 +220,27 @@ describe("OMP tool adapter", () => {
     expect(mutationKind("mcp__files__read", { path: "a.md", operation: "read" })).toBe("other");
   });
 
+  test.each([
+    "append_file", "create_file", "delete_file", "edit_file", "move_file", "patch_file",
+    "remove_file", "rename_file", "update_file", "write_file", "writeFile", "batch_write_files",
+  ])("tracks a path-only MCP %s mutation", name => {
+    expect(adaptToolCall({
+      toolName: `mcp__fs__${name}`,
+      input: { path: "a.md" },
+    })).toMatchObject({ kind: "mcp", requiresTarget: true, targetPaths: ["a.md"] });
+  });
+
+  test.each(["delete_file", "removeFile"])("retains delete intent from MCP %s without an operation field", name => {
+    expect(adaptToolCall({
+      toolName: `mcp__fs__${name}`,
+      input: { path: "a.md" },
+    }).deletedTargetPaths).toEqual(["a.md"]);
+  });
+
+  test("does not use the MCP server name as a mutation signal", () => {
+    expect(mutationKind("mcp__write_server__read_file", { path: "a.md" })).toBe("other");
+  });
+
   test("uses the injected shared Bash resolver for normal file targets", () => {
     const adapted = adaptToolCall(
       { toolName: "bash", toolCallId: "bash-write", input: { command: "printf body > a.md" } },

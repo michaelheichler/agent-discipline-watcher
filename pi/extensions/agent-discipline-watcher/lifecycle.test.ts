@@ -53,4 +53,35 @@ describe("VerificationLedger", () => {
 
     expect(ledger.pendingReasons("session-1")).toEqual(["repair the source"]);
   });
+
+  test("bounds rejected calls that never produce results without losing pending work", () => {
+    const ledger = new VerificationLedger();
+    ledger.markPending("session-1", "/tmp/pending.md", "repair the source");
+    ledger.acceptTool("session-1", "accepted", ["/tmp/accepted.md"]);
+    ledger.rejectTool("session-2", "isolated");
+
+    for (let index = 0; index <= 1024; index += 1) {
+      ledger.rejectTool("session-1", `call-${index}`);
+    }
+
+    expect(ledger.rejectedTool("session-1", "call-0")).toBe(false);
+    expect(ledger.rejectedTool("session-1", "call-1")).toBe(true);
+    expect(ledger.rejectedTool("session-1", "call-1024")).toBe(true);
+    expect(ledger.pendingTargets("session-1")).toEqual(["/tmp/pending.md"]);
+    expect(ledger.pendingReasons("session-1")).toEqual(["repair the source"]);
+    expect(ledger.acceptedTargets("session-1", "accepted")).toEqual(["/tmp/accepted.md"]);
+    expect(ledger.rejectedTool("session-2", "isolated")).toBe(true);
+  });
+
+  test("refreshes repeated rejection IDs before expiring older attempts", () => {
+    const ledger = new VerificationLedger();
+    for (let index = 0; index < 1024; index += 1) {
+      ledger.rejectTool("session-1", `call-${index}`);
+    }
+    ledger.rejectTool("session-1", "call-0");
+    ledger.rejectTool("session-1", "call-1024");
+
+    expect(ledger.rejectedTool("session-1", "call-0")).toBe(true);
+    expect(ledger.rejectedTool("session-1", "call-1")).toBe(false);
+  });
 });

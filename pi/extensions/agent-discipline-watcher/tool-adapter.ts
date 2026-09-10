@@ -131,9 +131,16 @@ function mcpHasContent(input: Record<string, unknown>): boolean {
   return MCP_CONTENT_KEYS.some(key => Object.prototype.hasOwnProperty.call(input, key));
 }
 
-function mcpIsMutation(input: Record<string, unknown>): boolean {
+function mcpNameHasOperation(toolName: string, operations: ReadonlySet<string>): boolean {
+  const name = toolName.split("__").slice(2).join("__");
+  return name.replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .toLowerCase().split(/[^a-z0-9]+/u).some(part => operations.has(part));
+}
+
+function mcpIsMutation(toolName: string, input: Record<string, unknown>): boolean {
   const operation = operationValue(input);
   return Boolean(
+    mcpNameHasOperation(toolName, WRITE_OPERATIONS) ||
     (operation && WRITE_OPERATIONS.has(operation)) ||
     (mcpTargetPaths(input).length > 0 && mcpHasContent(input)),
   );
@@ -219,7 +226,9 @@ function mutationTargets(
   if (lower === "bash" && resolveTargets) targets.push(...resolveTargets(toolName, normalized));
   if (lower.startsWith("mcp__")) {
     targets.push(...mcpTargetPaths(input));
-    if (DELETE_OPERATIONS.has(operationValue(input) ?? "")) deleted.push(...mcpTargetPaths(input));
+    if (DELETE_OPERATIONS.has(operationValue(input) ?? "") || mcpNameHasOperation(toolName, DELETE_OPERATIONS)) {
+      deleted.push(...mcpTargetPaths(input));
+    }
   }
   return { targets: unique(targets), deleted: unique(deleted) };
 }
@@ -244,7 +253,7 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
   if (lower === "lsp") return LSP_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
   if (lower.startsWith("mcp__")) {
     if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
-    return mcpIsMutation(input) ? "mcp" : "other";
+    return mcpIsMutation(toolName, input) ? "mcp" : "other";
   }
   if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
   return SAFE_NON_MUTATING_TOOLS.has(lower) ? "other" : "unknown-write";
