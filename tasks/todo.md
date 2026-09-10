@@ -24,22 +24,22 @@ Depends on none. Expected scope covers record.py, judge_review.py, and tests.
 
 Replace the session latch with pending targets that verification can clear.
 
-- [ ] Repaired scans and failed attempts can finish.
-- [ ] Unrelated scans cannot clear unresolved files.
+- [x] Repaired scans and failed attempts can finish.
+- [x] Unrelated scans cannot clear unresolved files.
 Verification uses Bun lifecycle tests.
 
 Depends on 1 and 2. Expected scope covers index.ts and lifecycle tests.
 
 ## Checkpoint after task 3
 
-- [ ] Run the relevant suites and record results before proceeding.
+- [x] Run the relevant suites and record results before proceeding.
 
 ## 4. OMP mutation adapters
 
 Map installed Python and notebook contracts into ADW checks.
 
-- [ ] ADW checks mutations and scans completed writes.
-- [ ] Read-only calls work and unknown writes fail explicitly.
+- [x] ADW checks mutations and scans completed writes.
+- [x] Read-only calls work and unknown writes fail explicitly.
 Verification uses adapter tests with real payload shapes.
 
 Depends on 3. Expected scope covers the adapter and watcher tests.
@@ -48,8 +48,8 @@ Depends on 3. Expected scope covers the adapter and watcher tests.
 
 Review every candidate type before recording a completed turn.
 
-- [ ] Document and comment findings both reach the user.
-- [ ] Provider failures remain retryable.
+- [x] Document and comment findings both reach the user.
+- [x] Provider failures remain retryable.
 Verification uses Codex review tests.
 
 Depends on none. Expected scope covers codex_luna.py and tests.
@@ -58,22 +58,22 @@ Depends on none. Expected scope covers codex_luna.py and tests.
 
 Connect ADW review requests to a working provider.
 
-- [ ] Enabled review returns model findings.
-- [ ] Disabled egress makes no calls and failures stay visible.
+- [x] Enabled review returns model findings.
+- [x] Disabled egress makes no calls and failures stay visible.
 Verification uses provider tests and one Luna live probe.
 
 Depends on 5 if sharing the review contract. Expected scope covers provider, adapter, extension, and tests.
 
 ## Checkpoint after task 6
 
-- [ ] Run the relevant suites and record results before proceeding.
+- [x] Run the relevant suites and record results before proceeding.
 
 ## 7. Read-only Python
 
 Distinguish known reads from opaque writes.
 
-- [ ] Path.read_text verification passes.
-- [ ] Dynamic writes and indirect execution still block.
+- [x] Path.read_text verification passes.
+- [x] Dynamic writes and indirect execution still block.
 Verification uses Bash opaque-write tests.
 
 Depends on none. Expected scope covers interpreter analysis and tests.
@@ -82,7 +82,7 @@ Depends on none. Expected scope covers interpreter analysis and tests.
 
 Publish tested changes for Cubic review.
 
-- [ ] Python, Bun, shell checks, and pylint pass.
+- [x] Python, Bun, shell checks, and pylint pass.
 - [ ] Resolve each Cubic finding with a fix or evidence.
 Verification uses PR checks and review threads.
 
