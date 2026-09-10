@@ -13,11 +13,15 @@ from .scanner import PROSE_EXTS
 
 
 STATE_KEY = "claude_candidate_journal"
+OVERFLOW_KEY = "claude_candidate_journal_overflow"
+OVERFLOW_SENTINEL = "<journal-overflow>"
 MAX_ROWS = 120
+MAX_OVERFLOW_MARKERS = max(1, MAX_ROWS)
 MAX_STOP_ROWS = 24
+MAX_STOP_DOCUMENT_CHARS = 24_000
 MAX_CANDIDATE_CHARS = 320
-MAX_DOCUMENT_CHARS = 24_000
 MAX_FILE_BYTES = 128 * 1024
+MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
 _LEAF_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
 
@@ -185,6 +189,7 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
         "path_identity": str(path),
         "line": candidate.line,
         "text": candidate.text[:MAX_CANDIDATE_CHARS],
+        "text_truncated": len(candidate.text) > MAX_CANDIDATE_CHARS,
         "content_hash": digest,
         "turn_id": turn_id,
         "tool_use_id": tool_use_id,
@@ -196,6 +201,7 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
             "path_identity": str(path),
             "content_hash": digest,
             "source_context": text[:MAX_DOCUMENT_CHARS],
+            "source_truncated": len(text) > MAX_DOCUMENT_CHARS,
             "turn_id": turn_id,
             "tool_use_id": tool_use_id,
         })
@@ -207,12 +213,37 @@ def _stored_rows(state: dict) -> list:
     return list(existing) if isinstance(existing, list) else []
 
 
+def _stored_overflow(state: dict) -> dict[str, dict[str, Any]]:
+    existing = state.get(OVERFLOW_KEY)
+    if existing is None:
+        return {}
+    if not isinstance(existing, dict):
+        raise ValueError("candidate journal overflow state is invalid")
+    markers: dict[str, dict[str, Any]] = {}
+    for path, marker in existing.items():
+        if not isinstance(path, str) or not isinstance(marker, dict):
+            raise ValueError("candidate journal overflow marker is invalid")
+        markers[path] = dict(marker)
+    return markers
+
+
+def _set_overflow(state: dict, markers: dict[str, dict[str, Any]]) -> dict:
+    updated = dict(state)
+    if markers:
+        updated[OVERFLOW_KEY] = markers
+    else:
+        updated.pop(OVERFLOW_KEY, None)
+    return updated
+
+
 def _drop_target(state: dict, target: str) -> dict:
     kept = [
         row for row in _stored_rows(state)
         if not (isinstance(row, dict) and _row_identity(row) == target)
     ]
-    return {**state, STATE_KEY: kept}
+    markers = _stored_overflow(state)
+    markers.pop(target, None)
+    return _set_overflow({**state, STATE_KEY: kept}, markers)
 
 
 def _superseded(row: object, target: str, digest: str) -> bool:
@@ -237,11 +268,107 @@ def _merged(rows: list, fresh: list, added: list) -> list:
     return rows[-MAX_ROWS:]
 
 
-def _refresher(target: str, digest: str, fresh: list, added: list):
+def _overflow_counts(rows: list) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:
+    all_counts: dict[str, int] = {}
+    digests: dict[str, str] = {}
+    turns: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        identity = _row_identity(row)
+        if not identity:
+            continue
+        all_counts[identity] = all_counts.get(identity, 0) + 1
+        digests.setdefault(identity, str(row.get("content_hash", "")))
+        turns.setdefault(identity, str(row.get("turn_id", "")))
+    return all_counts, digests, turns
+
+
+def _retained_counts(rows: list) -> dict[str, int]:
+    retained_counts: dict[str, int] = {}
+    for row in rows:
+        if isinstance(row, dict):
+            identity = _row_identity(row)
+            if identity:
+                retained_counts[identity] = retained_counts.get(identity, 0) + 1
+    return retained_counts
+
+
+def _remove_resolved_markers(markers: dict[str, dict[str, Any]], retained_counts: dict[str, int]) -> None:
+    for identity, marker in tuple(markers.items()):
+        if identity == OVERFLOW_SENTINEL:
+            continue
+        expected = marker.get("candidate_count")
+        retained = retained_counts.get(identity, 0)
+        if isinstance(expected, int) and not isinstance(expected, bool) and retained >= expected:
+            markers.pop(identity, None)
+
+
+def _add_overflow_marker(
+    markers: dict[str, dict[str, Any]], identity: str, marker: dict[str, Any],
+) -> None:
+    if identity in markers or len(markers) < MAX_OVERFLOW_MARKERS - 1:
+        markers[identity] = marker
+        return
+    markers[OVERFLOW_SENTINEL] = {
+        "path_identity": OVERFLOW_SENTINEL,
+        "content_hash": "",
+        "turn_id": "",
+        "candidate_count": marker["candidate_count"],
+        "omitted_count": marker["omitted_count"],
+    }
+
+
+def _overflow_marker(
+    identity: str,
+    target: str,
+    digest: str,
+    turn_id: str,
+    count: int,
+    retained: int,
+    digests: dict[str, str],
+    turns: dict[str, str],
+) -> dict[str, Any]:
+    marker_digest = digest if identity == target else digests[identity]
+    marker_turn = turn_id if identity == target else turns[identity]
+    return {
+        "path_identity": identity,
+        "content_hash": marker_digest,
+        "turn_id": marker_turn,
+        "candidate_count": count,
+        "omitted_count": count - retained,
+    }
+
+
+def _overflow_markers(
+    state: dict,
+    target: str,
+    digest: str,
+    turn_id: str,
+    all_rows: list,
+    retained_rows: list,
+) -> dict[str, dict[str, Any]]:
+    markers = _stored_overflow(state)
+    markers.pop(target, None)
+    all_counts, digests, turns = _overflow_counts(all_rows)
+    retained_counts = _retained_counts(retained_rows)
+    _remove_resolved_markers(markers, retained_counts)
+    for identity, count in all_counts.items():
+        retained = retained_counts.get(identity, 0)
+        if retained >= count:
+            continue
+        marker = _overflow_marker(identity, target, digest, turn_id, count, retained, digests, turns)
+        _add_overflow_marker(markers, identity, marker)
+    return markers
+
+
+def _refresher(target: str, digest: str, turn_id: str, fresh: list, added: list):
     """Close over the edit because update_state accepts a single-argument callable."""
     def update(state: dict) -> dict:
         kept = [row for row in _stored_rows(state) if not _superseded(row, target, digest)]
-        return {**state, STATE_KEY: _merged(kept, fresh, added)}
+        retained = _merged(kept, fresh, added)
+        markers = _overflow_markers(state, target, digest, turn_id, kept, retained)
+        return _set_overflow({**state, STATE_KEY: retained}, markers)
 
     return update
 
@@ -259,7 +386,7 @@ def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Pat
     digest, text = outcome.value
     fresh = _candidate_rows(target, digest, text, turn_id, tool_use_id)
     added: list[dict[str, Any]] = []
-    session_state.update_state(session_id, _refresher(str(target), digest, fresh, added), state_root)
+    session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, added), state_root)
     return added
 
 
@@ -269,6 +396,11 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     if not isinstance(rows, list):
         return []
     return [dict(row) for row in rows if isinstance(row, dict) and row.get("role") in {"comment", "document"}]
+
+
+def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+    state = session_state.read_state(session_id, state_root)
+    return list(_stored_overflow(state).values())
 
 
 def read_stop(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
@@ -282,7 +414,7 @@ def read_stop(session_id: str, *, state_root: str | Path | None = None) -> list[
             "role": "document",
             "path": str(row.get("path", ""))[:512],
             "content_hash": str(row.get("content_hash", ""))[:64],
-            "source_context": str(row.get("source_context", ""))[:MAX_DOCUMENT_CHARS],
+            "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
         })
     return bounded[-MAX_STOP_ROWS:]
 

@@ -241,8 +241,19 @@ def _journal_rows(
         return []
     try:
         rows = journal.read(session_id, state_root=state_root)
+        overflow = journal.read_overflow(session_id, state_root=state_root)
     except (OSError, ValueError, TypeError) as exc:
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
+    for marker in overflow:
+        if marker.get("path_identity") == journal.OVERFLOW_SENTINEL:
+            raise LunaReviewFailure("candidate journal overflow metadata is full; start a new session")
+        marker_turn = marker.get("turn_id")
+        if not isinstance(marker_turn, str):
+            raise LunaReviewFailure("current-session journal overflow state is malformed")
+        if marker_turn in {"", turn_id}:
+            raise LunaReviewFailure(
+                f"the current-session journal was truncated above {MAX_COMMENT_ROWS} candidates; split the turn"
+            )
     matching = [
         row for row in rows
         if row.get("turn_id") in {"", turn_id}
@@ -354,6 +365,8 @@ def _review_work(
             or not row["source_context"].strip()
         ):
             raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
+        if role == "document" and row.get("source_truncated") is True:
+            raise LunaReviewFailure("the current-session journal truncated a document source; split the turn")
         if role == "comment" and (
             not isinstance(row.get("path"), str)
             or not row["path"].strip()
@@ -361,6 +374,8 @@ def _review_work(
             or not row["text"].strip()
         ):
             raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
+        if role == "comment" and row.get("text_truncated") is True:
+            raise LunaReviewFailure("the current-session journal truncated a comment candidate; split the turn")
     built = request_for_rows(rows)
     if built is None:
         return None, "the current-session journal has no reviewable candidates"
