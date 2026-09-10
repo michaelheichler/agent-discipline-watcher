@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { decodeAdwPolicy, sanitizeDisplay, type AdwBridgeRunner } from "./adw-config";
 
 import { createExtension } from "./index";
@@ -231,10 +231,10 @@ describe("watcher helpers", () => {
     );
   });
 
-  test("canonicalizes targets under the session cwd", () => {
+  test("resolves explicit targets independently of the session boundary", () => {
     expect(canonicalPath("src/a.ts", TEST_CWD)).toBe(`${TEST_CWD}/src/a.ts`);
-    expect(canonicalPath("../outside.ts", TEST_CWD)).toBeUndefined();
-    expect(canonicalPath("/etc/hosts", TEST_CWD)).toBeUndefined();
+    expect(canonicalPath("../outside.ts", TEST_CWD)).toBe(resolve(TEST_CWD, "../outside.ts"));
+    expect(canonicalPath("/etc/hosts", TEST_CWD)).toBe("/etc/hosts");
     expect(canonicalPath("src/\u0000a.ts", TEST_CWD)).toBeUndefined();
   });
 

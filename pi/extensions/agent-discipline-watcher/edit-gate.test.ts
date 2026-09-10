@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { hashlineEdits, hashlinePatchSource } from "./hashline";
 import { preGatePayloads, selectableModels } from "./index";
@@ -121,10 +122,11 @@ describe("pre-gate payloads", () => {
     ]);
   });
 
-  test("refuses a target outside the session directory", () => {
-    expect(() => preGatePayloads(ctx, event, [{ path: "../outside.ts", added: "x" }])).toThrow(
-      "could not resolve an edit target",
-    );
+  test("scans an explicit target outside the session directory", () => {
+    const payloads = preGatePayloads(ctx, event, [{ path: "../outside.ts", added: "x" }]);
+    expect(payloads[0].tool_input).toEqual({
+      file_path: resolve(TEST_CWD, "../outside.ts"), new_string: "x",
+    });
   });
 
   test("falls back to the raw tool input when no target is named", () => {

@@ -32,7 +32,7 @@ def test_a_non_python_file_is_left_alone(tmp_path) -> None:
 def test_a_missing_file_is_left_alone(tmp_path) -> None:
     assert judge_review.run(_payload(tmp_path / "gone.py")) == (0, "")
 
-def test_a_symlink_outside_the_project_is_left_alone(tmp_path) -> None:
+def test_an_explicit_external_symlink_can_reach_review(tmp_path) -> None:
     project = tmp_path / "project"
     project.mkdir()
     outside = tmp_path / "outside.py"
@@ -40,7 +40,9 @@ def test_a_symlink_outside_the_project_is_left_alone(tmp_path) -> None:
     link = project / "linked.py"
     link.symlink_to(outside)
 
-    assert judge_review.run(_payload(link)) == (0, "")
+    target = judge_review._target(_payload(link), (".py",))
+    assert target == outside.resolve()
+    assert judge_review._read(target, str(project)) == NARRATING_SOURCE
 
 
 def test_a_file_without_candidates_never_reaches_the_model(tmp_path, monkeypatch) -> None:

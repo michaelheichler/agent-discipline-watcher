@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
 const MAX_RUNNER_INPUT_BYTES = 1_000_000;
 const MAX_RUNNER_OUTPUT_BYTES = 64 * 1024;
@@ -191,39 +191,7 @@ export function canonicalPath(rawPath: unknown, cwd?: string): string | undefine
     const root = resolve(cwd);
     const expanded = path === "~" ? homedir() : path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
     const target = resolve(root, expanded);
-    const lexical = relative(root, target);
-    if (!lexical || lexical === ".." || lexical.startsWith(`..${sep}`) || isAbsolute(lexical)) {
-      return undefined;
-    }
-    let realRoot: string;
-    try {
-      realRoot = realpathSync(root);
-    } catch {
-      return undefined;
-    }
-    let realTarget: string;
-    try {
-      realTarget = realpathSync(target);
-    } catch {
-      let existing = dirname(target);
-      while (true) {
-        try {
-          const realParent = realpathSync(existing);
-          const suffix = relative(existing, target);
-          realTarget = resolve(realParent, suffix);
-          break;
-        } catch {
-          const parent = dirname(existing);
-          if (parent === existing) return undefined;
-          existing = parent;
-        }
-      }
-    }
-    const actual = relative(realRoot, realTarget);
-    if (!actual || actual === ".." || actual.startsWith(`..${sep}`) || isAbsolute(actual)) {
-      return undefined;
-    }
-    return target;
+    return target === root ? undefined : target;
   } catch {
     return undefined;
   }
@@ -378,7 +346,7 @@ function validatedToolInput(
   if (normalized.file_path !== undefined) {
     const target = canonicalPath(normalized.file_path, cwd);
     if (target === undefined) {
-      throw new Error("tool target is invalid or outside the session cwd");
+      throw new Error("tool target is not a valid file path");
     }
     normalized.file_path = target;
   }

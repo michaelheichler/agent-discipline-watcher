@@ -19,7 +19,6 @@ from lib.config import effective_hook_config
 from lib.scanner import PROSE_EXTS, scan_all
 
 JUDGED_SUFFIXES = (".py",)
-# WHY: The route once accepted only .md, so an HTML or text document never reached the meaning layer at all.
 PROSE_SUFFIXES = tuple(sorted(PROSE_EXTS))
 WAKE_EXIT_CODE = 2
 MAX_CANDIDATES = 40
@@ -28,7 +27,6 @@ TEMP_ROOTS = (Path(tempfile.gettempdir()).resolve(), Path("/tmp"), Path("/privat
 
 
 def _is_session_scratch(path: Path) -> bool:
-    # WHY: A throwaway file is not worth a judge call.
     if SCRATCH_DIRNAME not in path.parts:
         return False
     return any(str(path).startswith(str(root)) for root in TEMP_ROOTS)
@@ -45,7 +43,6 @@ def _target(payload: object, suffixes: tuple[str, ...]) -> Path | None:
         if not path.is_absolute():
             path = root / path
         path = path.resolve(strict=True)
-        path.relative_to(root)
     except (OSError, RuntimeError, ValueError):
         return None
     if path.suffix not in suffixes or _is_session_scratch(path):
@@ -57,7 +54,6 @@ def _target(payload: object, suffixes: tuple[str, ...]) -> Path | None:
         return None
     return path
 def _review_config(payload: object) -> dict | None:
-    """Permit model review only when project policy explicitly allows source egress."""
     try:
         config = effective_hook_config({}, payloads.cwd(payload) or None)
     except (OSError, TypeError, ValueError):
@@ -66,12 +62,13 @@ def _review_config(payload: object) -> dict | None:
     return config if isinstance(boundary, dict) and boundary.get("enabled") is True else None
 
 
-def _read(path: Path, cwd: str) -> str | None:
+def _read(path: Path, _cwd: str) -> str | None:
     root_fd = -1
     descriptor = -1
     try:
-        root = Path(cwd).expanduser().resolve(strict=True)
-        relative = path.resolve(strict=True).relative_to(root)
+        target = path.resolve(strict=True)
+        root = Path(target.anchor)
+        relative = target.relative_to(root)
         directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
         root_fd = os.open(root, directory_flags)
         descriptor = root_fd
@@ -121,7 +118,6 @@ def _pattern_message(findings: tuple[Finding, ...]) -> str:
 
 
 def _pattern_findings(payload: object) -> tuple[Finding, ...]:
-    """Skip model-backed source review when project egress policy is disabled."""
     config = _review_config(payload)
     if config is None:
         return ()
@@ -138,7 +134,6 @@ def _pattern_findings(payload: object) -> tuple[Finding, ...]:
 
 
 def _judged_message(payload: object) -> str:
-    """A judged rule never reaches the write path, because only a reader separates an ordinary series from slop cadence."""
     config = _review_config(payload)
     if config is None:
         return ""
@@ -176,7 +171,6 @@ class _Review(NamedTuple):
 
 
 def _claim_reading(scope: blocker_state.BlockerScope, key: str, fresh: str) -> tuple[str, int]:
-    # WHY: A read runs for tens of seconds. Spend the round first.
     before: list[tuple[str, int]] = []
 
     def mutate(state: dict) -> dict:
@@ -191,7 +185,6 @@ def _claim_reading(scope: blocker_state.BlockerScope, key: str, fresh: str) -> t
 
 
 def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str, cfg: dict) -> _Review:
-    """An unchanged document is left unread, because a second read costs a call and answers the same thing."""
     key = str(path)
     fresh = document_review.digest_of(text)
     digest, rounds = _claim_reading(scope, key, fresh)
@@ -204,7 +197,6 @@ def _notes_for(scope: blocker_state.BlockerScope, path: Path, text: str, cfg: di
 
 
 def _document_message(payload: object) -> str:
-    """A whole document is read on the async route because the Stop hook has ten seconds and this call needs more."""
     config = _review_config(payload)
     if config is None:
         return ""
