@@ -99,6 +99,8 @@ def _bash_target_paths(payload: dict) -> list[str]:
             if aggregate_bytes > MAX_TARGET_BYTES:
                 raise ValueError("OMP target bridge nested Bash input exceeds its size limit")
             queue.append((child, depth + 1))
+    if any(path.startswith("~") and path != "~" and not path.startswith("~/") for path in paths):
+        raise ValueError("OMP target bridge cannot resolve named home paths. Use an absolute path.")
     if directory_changed and any(
         not Path(path).is_absolute() and not path.startswith("~") for path in paths
     ):

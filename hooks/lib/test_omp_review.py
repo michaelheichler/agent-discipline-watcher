@@ -85,6 +85,29 @@ def test_targets_operation_rejects_relative_paths_after_directory_change(tmp_pat
         omp_review.run({"operation": "targets", "payload": payload}, {})
 
 
+@pytest.mark.parametrize("prefix", ["", "cd sub && ", "bash -c '"])
+def test_targets_operation_rejects_named_home_paths(tmp_path, prefix):
+    command = prefix + "printf body > ~other/note.md"
+    if prefix == "bash -c '":
+        command += "'"
+    payload = {
+        "cwd": str(tmp_path), "tool_name": "Bash",
+        "tool_input": {"command": command},
+    }
+
+    with pytest.raises(ValueError, match="named home"):
+        omp_review.run({"operation": "targets", "payload": payload}, {})
+
+
+def test_targets_operation_preserves_current_home_paths_after_directory_change(tmp_path):
+    payload = {
+        "cwd": str(tmp_path), "tool_name": "Bash",
+        "tool_input": {"command": "cd sub && printf body > ~/note.md"},
+    }
+
+    assert omp_review.run({"operation": "targets", "payload": payload}, {}) == {"paths": ["~/note.md"]}
+
+
 @pytest.mark.parametrize("command", [
     "env -C sub bash -c 'printf body > nested.md'",
     "sudo -D sub bash -c 'printf body > nested.md'",
