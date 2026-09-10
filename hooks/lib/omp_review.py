@@ -62,4 +62,4 @@ def run(request: object, config: dict | None = None) -> dict:
     index = request.get("request_id")
     if type(index) is not int or not 0 <= index < len(work):
         raise ValueError("invalid OMP review request index")
-    return validated_findings(work[index], request.get("output"))
+    return validated_findings(work[index], request.get("output"), {**cfg, "session_id": payloads.session_id(payload)})

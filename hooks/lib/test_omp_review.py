@@ -65,13 +65,41 @@ def test_comment_batches_include_candidates_beyond_the_old_limit(tmp_path):
     assert [request["candidate_count"] for request in prepared["requests"]] == [40, 3]
 
 
-def test_document_chunks_include_the_entire_source(tmp_path):
+def test_document_review_preserves_boundaries_and_one_note_budget(tmp_path):
     path = tmp_path / "draft.md"
     path.write_text("A complete sentence.\n" * 1300 + "Final tail.", encoding="utf-8")
     prepared = prepare(path)
     documents = [request for request in prepared["requests"] if request["kind"] == "document"]
-    assert len(documents) == 2
+    assert len(documents) == 1
+    assert path.read_text(encoding="utf-8") in documents[0]["prompt"]
     assert "Final tail." in documents[-1]["prompt"]
+
+
+def test_ambiguous_document_quote_requires_more_context(tmp_path):
+    path = tmp_path / "draft.md"
+    path.write_text("Ready.\nFirst section.\nReady.\nSecond section.", encoding="utf-8")
+    prepared = prepare(path)
+    with pytest.raises(ValueError, match="ambiguous"):
+        validate(path, prepared, {"notes": [{"quote": "Ready.", "problem": "Unclear status.", "fix": "Name the ready component."}]})
+
+
+def test_large_finding_batch_keeps_every_row_in_a_report(tmp_path, monkeypatch):
+    from lib import reporting
+
+    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
+    path = tmp_path / "source.py"
+    path.write_text((f"# {COMMENT}\n" * 40), encoding="utf-8")
+    prepared = prepare(path)
+    result = validate(path, prepared, {"items": [
+        {"index": index, "verdict": "describes_code", "reason": "Describes the implementation. " * 25}
+        for index in range(40)
+    ]})
+    assert len(result["reason"]) <= 900
+    report = next((tmp_path / "reports").glob("*.json"))
+    assert str(report) in result["reason"]
+    rows = json.loads(report.read_text(encoding="utf-8"))
+    assert len(rows) == 40
+    assert f"{path}:40:" in rows[-1]["message"]
 
 
 def test_fabricated_document_quote_is_rejected(tmp_path):

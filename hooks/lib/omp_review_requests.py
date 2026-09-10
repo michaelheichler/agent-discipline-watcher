@@ -15,6 +15,7 @@ from .scanner import PROSE_EXTS, _exempt_families, _is_exempt, scan_all
 
 MAX_BATCH_CANDIDATES = 40
 MAX_SOURCE_CHARS = 24_000
+MAX_DOCUMENT_CHARS = 128 * 1024
 MAX_REQUESTS = 16
 
 
@@ -23,7 +24,6 @@ class ReviewWork:
     request: JudgeRequest
     path: str
     candidates: tuple[Candidate | PatternCandidate, ...] = ()
-    offset: int = 0
     blocking: bool = True
 
 
@@ -44,14 +44,14 @@ def _comment_work(path: str, text: str, config: dict) -> list[ReviewWork]:
 
 
 def _document_work(path: str, text: str, config: dict) -> list[ReviewWork]:
-    return [
-        ReviewWork(
-            JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=text[start:start + MAX_SOURCE_CHARS]),
-            path, offset=text[:start].count("\n"), blocking=gate_state("english", config) == "enforce",
-        )
-        for start in range(0, len(text), MAX_SOURCE_CHARS)
-        if text[start:start + MAX_SOURCE_CHARS].strip()
-    ]
+    if len(text) > MAX_DOCUMENT_CHARS:
+        raise ValueError("document review exceeds the source limit; split the document")
+    if not text.strip():
+        return []
+    return [ReviewWork(
+        JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=text),
+        path, blocking=gate_state("english", config) == "enforce",
+    )]
 
 
 def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
