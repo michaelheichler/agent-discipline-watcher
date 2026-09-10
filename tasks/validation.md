@@ -40,6 +40,15 @@ The full local Python rerun passed 2416 tests with 18 skips and 274 subtests.
 PR 5 merged after Cubic reported no findings. CI passed 2414 Python tests on
 each tested version, with repository-wide pylint at 10.00/10.
 
+The remote refresh to v0.20.15 matches release a75b05b. Fresh Luna read probes
+passed in Codex and OMP. Claude used the full Haiku ID without HTTP 404.
+Its Stop reviewer returned structured success, but the post-write reviewer
+made repeated model calls without submitting StructuredOutput. Task 12
+tracks the prompt correction and another installed probe.
+
+The structured-response prompt regressions passed 109 focused Python tests
+with 34 subtests. Pylint scored 10.00/10 on the changed Python files.
+
 ## Native-model review findings
 
 [x] hooks/lib/test_claude_luna.py line 2, punctuation/prose_colon. Preserve the existing tool directive. Pylint accepts it.

@@ -271,10 +271,21 @@ class PostToolUseWiringTests(unittest.TestCase):
 
     def test_the_agent_reviewer_enumerates_its_output_space(self):
         """Enumerated in the prompt because a chatty reply fails the hook and gates nothing."""
-        prompt = self._agent_entries()[0]["prompt"]
-        self.assertIn('{"ok": true}', prompt)
-        self.assertIn('"reason"', prompt)
-        self.assertIn("no prose", prompt.lower())
+        prompts = [
+            entry["prompt"]
+            for event, entry in all_hooks(self.config)
+            if event in ("PostToolUse", "Stop") and entry.get("type") == "agent"
+        ]
+        self.assertEqual(len(prompts), 2)
+        for prompt in prompts:
+            with self.subTest(event=prompt.splitlines()[1]):
+                self.assertIn('{"ok": true}', prompt)
+                self.assertIn('"reason"', prompt)
+                self.assertIn("no prose", prompt.lower())
+                self.assertIn("StructuredOutput", prompt)
+                self.assertIn("exactly once", prompt)
+                self.assertIn("plain text", prompt)
+                self.assertNotIn("JSON:", prompt)
 
     def test_no_agent_handler_runs_on_pre_tool_use(self):
         """Kept off PreToolUse because a non-conforming reply there denies the tool call, reproduced in f9da7d5."""

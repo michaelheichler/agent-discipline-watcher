@@ -54,8 +54,13 @@ def test_every_agent_preset_registers_a_reviewer_on_both_events(preset: str) -> 
     """Cover both because a write check alone leaves the finished turn unreviewed."""
     generated = claude_presets.generated_hooks(preset)
 
-    assert generated["PostToolUse"][0]["hooks"][0]["type"] == "agent"
-    assert generated["Stop"][0]["hooks"][0]["type"] == "agent"
+    for event in ("PostToolUse", "Stop"):
+        entry = generated[event][0]["hooks"][0]
+        assert entry["type"] == "agent"
+        assert "StructuredOutput" in entry["prompt"]
+        assert "exactly once" in entry["prompt"]
+        assert "plain text" in entry["prompt"]
+        assert "JSON:" not in entry["prompt"]
 
 
 def test_the_luna_preset_registers_a_command_on_both_events() -> None:

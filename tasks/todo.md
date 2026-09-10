@@ -125,3 +125,14 @@ probe. Publish the reviewed fix and refresh the remote installation.
 
 Depends on the remote checks in 10. Expected scope covers the native preset
 renderer and plugin manifest, plus their tests.
+
+## 12. Native Claude structured output
+
+The installed v0.20.15 post-write probe exhausted its response attempts
+without calling StructuredOutput. The Stop review called that tool and passed.
+
+- [ ] Native prompts submit their result through StructuredOutput.
+- [ ] A fresh installed Haiku probe completes both native hooks.
+
+Verification covers all generated native presets and the static plugin
+manifest. Review the patch through Cubic before release and remote refresh.
