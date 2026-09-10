@@ -2,7 +2,7 @@
 
 Repair all seven review findings for OMP, Claude Code, and Codex, including
 the latched Stop guard. The user authorized implementation, Cubic review,
-merge, a patch release, and installation locally and on tux@10.0.10.106.
+merge, a patch release, and installation locally and on the designated remote host.
 Live tests use Haiku or Luna. Luna subagents work at max reasoning.
 
 ## Decisions
@@ -21,8 +21,8 @@ regression test and ends with a focused test run.
 
 ## Delivery
 
-Run the full Python and Bun suites, shell checks, and pylint before opening
-the PR. Address Cubic findings, merge, bump the patch version, and tag it.
+Run the full Python and Bun suites before opening the PR. Check shell syntax
+and pylint too. Address Cubic findings before merging, then bump and tag the patch version.
 Install the released copy for all three harnesses on both machines.
 Archive old reports and preserve unrelated settings and credentials.
 Never delete active hook state to release a failing check.
@@ -33,4 +33,3 @@ Keep external reads safe against symlink races. Do not clear unresolved files
 because an unrelated scan passed. Keep model failures visible and retryable.
 Claude's proxy returned HTTP 407 in the review, so verify its login path.
 Record infrastructure failures separately from ADW behavior.
-

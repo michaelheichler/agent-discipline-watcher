@@ -100,7 +100,7 @@ Depends on 8. Expected scope covers release metadata and changelog.
 
 ## 10. Install on both machines
 
-Refresh all three harnesses locally and on tux@10.0.10.106.
+Refresh all three harnesses locally and on the designated remote host.
 
 - [ ] Archive old reports and preserve unrelated settings.
 - [ ] All six installations reference the released ADW copy.

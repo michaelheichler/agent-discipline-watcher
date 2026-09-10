@@ -94,7 +94,7 @@ def test_large_finding_batch_keeps_every_row_in_a_report(tmp_path, monkeypatch):
         {"index": index, "verdict": "describes_code", "reason": "Describes the implementation. " * 25}
         for index in range(40)
     ]})
-    assert len(result["reason"]) <= 900
+    assert len(result["reason"].encode("utf-8")) <= 900
     report = next((tmp_path / "reports").glob("*.json"))
     assert str(report) in result["reason"]
     rows = json.loads(report.read_text(encoding="utf-8"))
@@ -108,6 +108,14 @@ def test_fabricated_document_quote_is_rejected(tmp_path):
     prepared = prepare(path)
     with pytest.raises(ValueError, match="quote"):
         validate(path, prepared, {"notes": [{"quote": "The release is cancelled.", "problem": "Contradiction.", "fix": "Correct it."}]})
+
+
+def test_document_finding_includes_the_reviewed_quote(tmp_path):
+    path = tmp_path / "draft.md"
+    path.write_text("The release ships on Friday.", encoding="utf-8")
+    prepared = prepare(path)
+    result = validate(path, prepared, {"notes": [{"quote": "on Friday", "problem": "Unclear date.", "fix": "Give the date."}]})
+    assert "Quote: on Friday" in result["reason"]
 
 
 def test_changed_file_cannot_accept_a_stale_clean_result(tmp_path):

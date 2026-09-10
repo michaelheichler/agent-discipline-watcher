@@ -18,7 +18,7 @@ The existing inode-swap regression still blocks a replacement file.
 
 ## Machine preflight
 
-SSH to tux@10.0.10.106 works. Remote Claude is 2.1.263, Codex is 0.153.4,
+SSH to the designated remote host works. Remote Claude is 2.1.263, Codex is 0.153.4,
 and OMP is 18.1.12. The remote noninteractive shell needs ~/.bun/bin and
 ~/.local/bin on PATH. Both machines have Claude subscription sessions.
 
@@ -51,8 +51,8 @@ its deadline because the agent kept the flagged wording, but a second probe
 repaired the document and finished without an ADW block. Every harness model
 role used Luna.
 
-The final lifecycle suite passed all 112 Bun tests, including partial writes,
-notebook aliases, deletion recovery, and provider error redaction.
+The final lifecycle suite passed all 112 Bun tests. Coverage includes partial
+writes and notebook aliases, along with deletion recovery and provider errors.
 The extension also bundled successfully.
 
 ## Retention startup cost
@@ -80,12 +80,17 @@ The full Python run with the first overflow regressions passed 2191 tests,
 
 - [x] hooks/lib/codex_luna.py line 1, file_length_warning. Keep this repair focused. Extract request construction before the module reaches 750 lines.
 - [x] omp-review.ts line 69, provider error exposure. Replaced raw SDK errors with safe category messages and passed the secret disclosure regression.
-- [x] hooks/lib/omp_review_findings.py line 42, repeated quote attribution. The first matching quote identifies a valid source occurrence because the response schema provides no occurrence index.
+- [x] hooks/lib/omp_review_findings.py line 42, repeated quote attribution. Cubic prompted a stricter check. Ambiguous quotes now require distinguishing source context.
 - [x] watcher.ts line 1, file_length_warning. The path fix shrank the file.
 - [x] index.test.ts line 1, file_length_warning. Keep new suites in separate files.
+
+## Writing observations
+
 - [x] tasks/validation.md line 11, low_sentence_variance. Shortened the result and combined its supporting evidence.
 - [x] tasks/validation.md line 49, low_sentence_variance. Varied the sentence lengths in the live probe record.
 - [x] tasks/validation.md line 12, long_sentence. Put the pylint result in its own sentence.
+- [x] tasks/validation.md line 55, three_item_list. Reworded the coverage record as two paired examples.
+- [x] tasks/validation.md line 81, oversized_list. Separated writing observations from code observations.
 
 The hook also reported existing narration comments in the two touched Python
 modules. Those comments no longer remain, and the focused checks pass.

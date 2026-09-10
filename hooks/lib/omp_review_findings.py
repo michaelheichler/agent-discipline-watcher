@@ -6,7 +6,7 @@ from .judge_contracts import ReviewKind, output_schema, validate_payload
 from .omp_review_requests import ReviewWork
 from . import reporting
 
-MAX_FEEDBACK_CHARS = 900
+MAX_FEEDBACK_BYTES = 900
 
 
 def _text(value: str) -> str:
@@ -44,17 +44,17 @@ def _document_findings(work: ReviewWork, payload: dict) -> list[str]:
         if not note["problem"].strip() or not note["fix"].strip():
             raise ValueError("document review note has no problem or fix")
         line = source[:source.index(quote)].count("\n") + 1
-        findings.append(f"{_text(work.path)}:{line}: {_text(note['problem'])} Fix: {_text(note['fix'])}")
+        findings.append(f"{_text(work.path)}:{line}: Quote: {_text(quote)} Problem: {_text(note['problem'])} Fix: {_text(note['fix'])}")
     return findings
 
 
 def _finding_message(findings: list[str], config: dict | None) -> str:
     message = "agent-discipline-watcher OMP review:\n" + "\n".join(findings)
-    if len(message) <= MAX_FEEDBACK_CHARS:
+    if len(message.encode("utf-8")) <= MAX_FEEDBACK_BYTES:
         return message
     report = reporting.write_full_report([{"message": row} for row in findings], config)
     message = f"agent-discipline-watcher OMP review found {len(findings)} findings. Read every row in the full report: {report}"
-    if len(message) > MAX_FEEDBACK_CHARS:
+    if len(message.encode("utf-8")) > MAX_FEEDBACK_BYTES:
         raise ValueError("review report path exceeds the feedback limit")
     return message
 
