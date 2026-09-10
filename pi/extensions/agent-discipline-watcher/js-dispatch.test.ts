@@ -75,6 +75,18 @@ describe("restricted JavaScript tool dispatch", () => {
     expect(isToolDispatch("await tool.mcp__fs__read({path:'a.md'});")).toBe(true);
   });
 
+  test("keeps escaped templates literal and rejects encoded prototype keys", () => {
+    expect(isToolDispatch("await tool.read({path:`\\${process.exit()}`});")).toBe(true);
+    expect(isToolDispatch("await tool.read({path:`\\\\${process.exit()}`});")).toBe(false);
+    expect(isToolDispatch("await tool.read({'\\x5f\\x5fproto__':{}});")).toBe(false);
+    expect(isToolDispatch("await tool.read({'\\u{5f}\\u{5f}proto__':{}});")).toBe(false);
+  });
+
+  test("rejects executable continuations across a newline", () => {
+    expect(isToolDispatch("await tool.read({})\n(process.exit())")).toBe(false);
+    expect(isToolDispatch("await tool.read({})\n[process.exit()]")).toBe(false);
+  });
+
   test("enforces code and nesting bounds", () => {
     const valid = "await tool.read({});";
     expect(isToolDispatch(valid + " ".repeat(64 * 1024 - valid.length))).toBe(true);
