@@ -107,6 +107,104 @@ def test_codex_overflow_blocks_before_judging_and_recovers_after_correction(
     assert session_state.read_state("overflow", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
 
 
+def test_old_turn_overflow_stays_blocked_until_the_path_is_refreshed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    source = tmp_path / "code.py"
+    source.write_text("source\n", encoding="utf-8")
+    monkeypatch.setattr(
+        journal, "_candidate_rows",
+        lambda path, digest, _text, turn_id, tool_use_id: _rows(
+            path, digest, codex_luna.MAX_COMMENT_ROWS + 1, turn_id, tool_use_id,
+        ),
+    )
+    journal.record_edit("overflow-old-turn", "turn-old", "tool-1", source, state_root=state_root)
+
+    with pytest.raises(codex_luna.LunaReviewFailure, match="truncated"):
+        codex_luna._journal_rows(
+            {"session_id": "overflow-old-turn"}, "turn-new", state_root,
+        )
+
+
+def test_full_overflow_metadata_requires_a_new_codex_session(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    session_state.write_state(
+        "overflow-sentinel",
+        {
+            journal.OVERFLOW_KEY: {
+                journal.OVERFLOW_SENTINEL: {
+                    "path_identity": journal.OVERFLOW_SENTINEL,
+                    "content_hash": "",
+                    "turn_id": "",
+                    "candidate_count": journal.MAX_ROWS + 1,
+                    "omitted_count": 1,
+                },
+            },
+        },
+        state_root,
+    )
+
+    with pytest.raises(codex_luna.LunaReviewFailure, match="new Codex session"):
+        codex_luna._journal_rows(
+            {"session_id": "overflow-sentinel"}, "turn-new", state_root,
+        )
+
+
+def test_legacy_document_prefix_is_rejected_before_review(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "state"
+    session_state.write_state(
+        "legacy-document",
+        {
+            journal.STATE_KEY: [{
+                "role": "document",
+                "path": "draft.md",
+                "source_context": "x" * journal.MAX_STOP_DOCUMENT_CHARS,
+                "turn_id": "turn-1",
+            }],
+        },
+        state_root,
+    )
+
+    with pytest.raises(codex_luna.LunaReviewFailure, match="truncated"):
+        codex_luna._review_work(
+            {"session_id": "legacy-document"}, "turn-1", state_root,
+        )
+
+
+def test_same_hash_edit_replaces_a_legacy_document_prefix(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "draft.md"
+    state_root = tmp_path / "state"
+    full_source = "a" * journal.MAX_STOP_DOCUMENT_CHARS + "\nTAIL"
+    source.write_text(full_source, encoding="utf-8")
+    journal.record_edit("legacy-refresh", "turn-1", "tool-1", source, state_root=state_root)
+
+    def downgrade(state: dict) -> dict:
+        rows = []
+        for row in state[journal.STATE_KEY]:
+            updated = dict(row)
+            if updated.get("role") == "document":
+                updated.pop("source_truncated", None)
+                updated["source_context"] = full_source[: journal.MAX_STOP_DOCUMENT_CHARS]
+            rows.append(updated)
+        return {**state, journal.STATE_KEY: rows}
+
+    session_state.update_state("legacy-refresh", downgrade, state_root)
+    journal.record_edit("legacy-refresh", "turn-2", "tool-2", source, state_root=state_root)
+
+    documents = [
+        row for row in journal.read("legacy-refresh", state_root=state_root)
+        if row.get("role") == "document"
+    ]
+    assert len(documents) == 1
+    assert documents[0]["source_context"].endswith("TAIL")
+    assert documents[0]["source_truncated"] is False
+
+
 def test_document_journal_keeps_the_tail_within_the_file_bound(tmp_path: Path) -> None:
     source = tmp_path / "draft.md"
     state_root = tmp_path / "state"

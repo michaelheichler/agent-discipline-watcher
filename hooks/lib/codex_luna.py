@@ -246,15 +246,16 @@ def _journal_rows(
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
     for marker in overflow:
         if marker.get("path_identity") == journal.OVERFLOW_SENTINEL:
-            raise LunaReviewFailure("candidate journal overflow metadata is full; start a new session")
+            raise LunaReviewFailure(
+                "candidate journal overflow metadata is full; start a new Codex session because this session cannot recover all omitted files"
+            )
         marker_turn = marker.get("turn_id")
         if not isinstance(marker_turn, str):
             raise LunaReviewFailure("current-session journal overflow state is malformed")
-        if marker_turn in {"", turn_id}:
-            target = _bounded(marker.get("path_identity") or "an unknown file")
-            raise LunaReviewFailure(
-                f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the file with fewer candidates or start a new turn"
-            )
+        target = _bounded(marker.get("path_identity") or "an unknown file")
+        raise LunaReviewFailure(
+            f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the affected file with fewer candidates before retrying"
+        )
     matching = [
         row for row in rows
         if row.get("turn_id") in {"", turn_id}
@@ -270,7 +271,7 @@ def _journal_rows(
         unique.append(row)
     if len(unique) > MAX_COMMENT_ROWS:
         raise LunaReviewFailure(
-            f"the current-session journal has {len(unique)} candidates, above the limit of {MAX_COMMENT_ROWS}; split the turn"
+            f"the current-session journal has {len(unique)} candidates, above the limit of {MAX_COMMENT_ROWS}; reduce candidates in the affected files before retrying"
         )
     return unique
 
@@ -344,7 +345,7 @@ def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, li
         work.append((comment_request(tuple(comments)), comments))
     if len(work) > MAX_REVIEW_REQUESTS:
         raise LunaReviewFailure(
-            f"the current-turn Luna review needs {len(work)} requests, above the limit of {MAX_REVIEW_REQUESTS}; split the turn"
+            f"the current-turn Luna review needs {len(work)} requests, above the limit of {MAX_REVIEW_REQUESTS}; shorten documents or reduce edited files before retrying"
         )
     return tuple(work) or None
 
@@ -366,7 +367,7 @@ def _review_work(
             or not row["source_context"].strip()
         ):
             raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
-        if role == "document" and row.get("source_truncated") is True:
+        if role == "document" and journal.document_source_truncated(row):
             raise LunaReviewFailure("the current-session journal truncated a document source; split the document before reviewing")
         if role == "comment" and (
             not isinstance(row.get("path"), str)

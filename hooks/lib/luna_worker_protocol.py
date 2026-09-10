@@ -7,7 +7,7 @@ from .judge_contracts import JudgeRequest
 from .luna_storage import LunaProviderFailure
 
 
-def request_payload(request: JudgeRequest, launch: object) -> dict[str, Any]:
+def request_payload(request: JudgeRequest, launch: Any) -> dict[str, Any]:
     return {
         "review_kind": request.review_kind.value,
         "candidates": request.candidates,

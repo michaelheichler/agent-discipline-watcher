@@ -208,6 +208,24 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
     return rows
 
 
+def document_source_truncated(row: dict[str, Any]) -> bool:
+    if row.get("role") != "document":
+        return False
+    if row.get("source_truncated") is True:
+        return True
+    if "source_truncated" in row:
+        return False
+    source = row.get("source_context")
+    return isinstance(source, str) and len(source) >= MAX_STOP_DOCUMENT_CHARS
+
+
+def _migrate_row(row: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(row)
+    if document_source_truncated(row):
+        migrated["source_truncated"] = True
+    return migrated
+
+
 def _stored_rows(state: dict) -> list:
     existing = state.get(STATE_KEY)
     return list(existing) if isinstance(existing, list) else []
@@ -252,7 +270,10 @@ def _superseded(row: object, target: str, digest: str) -> bool:
         return False
     identity = _row_identity(row)
     if identity == target:
-        return row.get("content_hash") != digest
+        return (
+            row.get("content_hash") != digest
+            or (row.get("role") == "document" and document_source_truncated(row))
+        )
     return _path_status(identity) == "missing"
 
 
@@ -395,7 +416,11 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     rows = state.get(STATE_KEY)
     if not isinstance(rows, list):
         return []
-    return [dict(row) for row in rows if isinstance(row, dict) and row.get("role") in {"comment", "document"}]
+    return [
+        _migrate_row(row)
+        for row in rows
+        if isinstance(row, dict) and row.get("role") in {"comment", "document"}
+    ]
 
 
 def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:

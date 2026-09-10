@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -29,6 +30,7 @@ LUNA_EFFORT = "high"
 PROVIDER_NAME = "openai-codex"
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 JUDGE_TIMEOUT_SECONDS = 120
+MAX_TIMEOUT_SECONDS = 24 * 60 * 60
 MAX_OVERLOAD_ATTEMPTS = 3
 CONFIG_OVERRIDES = (
     "features.apps=false",
@@ -236,13 +238,18 @@ class LunaJudge:
         self._runtime_root = Path(runtime_root) if runtime_root is not None else Path.home() / ".adw" / "runtime"
         self._cache_root = Path(cache_root) if cache_root is not None else Path.home() / ".adw" / "cache" / "judges"
         self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
-        if timeout_seconds is not None and (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or timeout_seconds <= 0
-        ):
-            raise ValueError("timeout_seconds must be positive")
-        self._timeout_seconds = float(timeout_seconds) if timeout_seconds is not None else None
+        if timeout_seconds is None:
+            self._timeout_seconds = None
+        else:
+            if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+                raise ValueError("timeout_seconds must be finite, positive, and bounded")
+            try:
+                normalized_timeout = float(timeout_seconds)
+            except (OverflowError, ValueError) as exc:
+                raise ValueError("timeout_seconds must be finite, positive, and bounded") from exc
+            if not math.isfinite(normalized_timeout) or not 0 < normalized_timeout <= MAX_TIMEOUT_SECONDS:
+                raise ValueError("timeout_seconds must be finite, positive, and bounded")
+            self._timeout_seconds = normalized_timeout
 
     @property
     def timeout_seconds(self) -> float | None:

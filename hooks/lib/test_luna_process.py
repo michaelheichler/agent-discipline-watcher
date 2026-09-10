@@ -119,8 +119,10 @@ def test_instance_timeout_overrides_the_module_default(tmp_path: Path, monkeypat
     )
     monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 30.0)
 
+    started = time.monotonic()
     with pytest.raises(LunaProviderFailure, match="timed out"):
         bounded.judge(_request())
+    assert time.monotonic() - started < 5.0
 
 
 STALL_STAGES = {
