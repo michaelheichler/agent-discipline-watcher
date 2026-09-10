@@ -165,7 +165,7 @@ manifest. Review the patch through Cubic before release and remote refresh.
 ## 16. Reviewed patch release
 
 - [x] Resolve updater review findings and pass the full regression suite.
-- [ ] Merge the reviewed updater and publish v0.20.18.
+- [x] Merge the reviewed updater and publish v0.20.18.
 - [ ] Refresh all three remote harnesses and verify their installed revision.
 - [ ] Complete the Mac installation through the permitted maintenance entrypoint.
 

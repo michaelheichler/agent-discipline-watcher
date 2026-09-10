@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.19 (2026-09-11)
+
+### Fixed
+
+- Claude release updates use the pinned official repository over HTTPS, avoiding an SSH credential requirement for public source.
+- The updater repairs stale native commit metadata through a user plugin reinstall that preserves persistent data. Strict release and content checks remain in place.
+- Regression tests verify that a failed native reinstall restores the previous cache, registry, and enabled setting in both supported Claude profile locations.
+
 ## 0.20.18 (2026-09-11)
 
 ### Fixed
