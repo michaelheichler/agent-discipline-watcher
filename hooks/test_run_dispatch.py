@@ -29,11 +29,11 @@ DISPATCH = {
     "Stop": "stop.py",
     "SessionEnd": "session_end.py",
     "JudgeReview": "judge_review.py",
+    "OmpReview": "omp_review.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)
 
-# The stub answers only through PATH resolution, because an absolute interpreter would run the real hook and drop this marker.
 STUB_MARKER = "adw-stub"
 
 
@@ -50,12 +50,11 @@ class RunDispatchTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _stub(self, directory, name, *, meets_floor, version="3.99.0"):
-        # run.sh probes a candidate with -c before running a hook, so the stub answers that call separately.
         stub = Path(directory) / name
         probe = f'printf "%s\\n" "{version}"; ' if meets_floor else ""
         stub.write_text(
             "#!/bin/sh\n"
-            f'if [ "$1" = "-c" ]\nthen\n  {probe}exit {0 if meets_floor else 1}\nfi\n'
+            f'if [ "$1" = "-I" ] && [ "$2" = "-S" ] && [ "$3" = "-c" ]\nthen\n  {probe}exit {0 if meets_floor else 1}\nfi\n'
             f'echo "{STUB_MARKER}:{name} $@"\n'
         )
         stub.chmod(0o755)
@@ -95,6 +94,7 @@ class RunDispatchTests(unittest.TestCase):
                 result = self._run(event)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertTrue(result.stdout.startswith(STUB_MARKER), result.stdout)
+                self.assertIn(" -E -S ", result.stdout)
                 self.assertTrue(result.stdout.strip().endswith(script), result.stdout)
 
     def test_every_dispatched_script_exists(self):

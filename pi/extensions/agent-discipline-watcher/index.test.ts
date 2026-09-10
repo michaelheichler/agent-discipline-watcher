@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { decodeAdwPolicy, sanitizeDisplay, type AdwBridgeRunner } from "./adw-config";
 
 import { createExtension } from "./index";
@@ -40,7 +40,7 @@ function createHarness(
       sent.push({ message, options });
     },
   };
-  createExtension(pi as never, run as never, bridge);
+  createExtension(pi as never, run as never, bridge, async (_ctx, payload) => run("JudgeReview", payload));
   return { handlers, commands, sent };
 }
 
@@ -118,7 +118,7 @@ test("OMP model selection reaches the guarded Save request", async () => {
 
   await command.handler("configure", commandContext);
 
-  expect(saved?.adw_model).toBe("claude-haiku-4-5");
+  expect(saved?.adw_model).toBe("anthropic/claude-haiku-4-5");
 });
 
 describe("judge availability warning", () => {
@@ -231,10 +231,10 @@ describe("watcher helpers", () => {
     );
   });
 
-  test("canonicalizes targets under the session cwd", () => {
+  test("resolves explicit targets independently of the session boundary", () => {
     expect(canonicalPath("src/a.ts", TEST_CWD)).toBe(`${TEST_CWD}/src/a.ts`);
-    expect(canonicalPath("../outside.ts", TEST_CWD)).toBeUndefined();
-    expect(canonicalPath("/etc/hosts", TEST_CWD)).toBeUndefined();
+    expect(canonicalPath("../outside.ts", TEST_CWD)).toBe(resolve(TEST_CWD, "../outside.ts"));
+    expect(canonicalPath("/etc/hosts", TEST_CWD)).toBe("/etc/hosts");
     expect(canonicalPath("src/\u0000a.ts", TEST_CWD)).toBeUndefined();
   });
 

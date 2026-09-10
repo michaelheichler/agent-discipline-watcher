@@ -103,6 +103,28 @@ def test_worker_spawn_time_consumes_the_single_parent_deadline(tmp_path: Path, m
         judge.judge(_request())
 
 
+def test_instance_timeout_overrides_the_module_default(tmp_path: Path, monkeypatch) -> None:
+    judge = _judge(tmp_path, monkeypatch, """
+        import sys
+        import time
+        sys.stdin.read()
+        time.sleep(30)
+    """)
+    bounded = LunaJudge(
+        sdk=judge._sdk,
+        runtime_root=tmp_path / "runtime",
+        cache_root=tmp_path / "cache",
+        auth_source=tmp_path / "missing-auth.json",
+        timeout_seconds=0.05,
+    )
+    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 30.0)
+
+    started = time.monotonic()
+    with pytest.raises(LunaProviderFailure, match="timed out"):
+        bounded.judge(_request())
+    assert time.monotonic() - started < 5.0
+
+
 STALL_STAGES = {
     "startup": "",
     "sdk-run": "sys.stdin.read()",

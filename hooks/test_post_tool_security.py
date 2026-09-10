@@ -25,7 +25,7 @@ def test_record_scans_the_approved_open_file(tmp_path: Path) -> None:
     assert "deferred_work_comment" in response["reason"]
 
 
-def test_record_blocks_a_target_outside_cwd(tmp_path: Path) -> None:
+def test_record_scans_a_target_outside_cwd(tmp_path: Path) -> None:
     outside = tmp_path.with_name(f"{tmp_path.name}-outside.py")
     outside.write_text("# " + ("TO" + "DO") + " outside\n", encoding="utf-8")
     try:
@@ -34,10 +34,10 @@ def test_record_blocks_a_target_outside_cwd(tmp_path: Path) -> None:
         outside.unlink(missing_ok=True)
 
     assert response["decision"] == "block"
-    assert "unscannable_file" in response["reason"]
+    assert "deferred_work_comment" in response["reason"]
 
 
-def test_record_blocks_a_symlink_that_escapes_cwd(tmp_path: Path) -> None:
+def test_record_scans_an_explicit_symlink_outside_cwd(tmp_path: Path) -> None:
     outside = tmp_path.with_name(f"{tmp_path.name}-outside.py")
     outside.write_text("# " + ("TO" + "DO") + " outside\n", encoding="utf-8")
     link = tmp_path / "edited.py"
@@ -49,7 +49,18 @@ def test_record_blocks_a_symlink_that_escapes_cwd(tmp_path: Path) -> None:
         outside.unlink(missing_ok=True)
 
     assert response["decision"] == "block"
-    assert "unscannable_file" in response["reason"]
+    assert "deferred_work_comment" in response["reason"]
+
+
+def test_record_accepts_a_clean_external_file(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    target = tmp_path / "plan.md"
+    target.write_text("The cache holds one row.\n", encoding="utf-8")
+
+    response = record.run(_payload(project, target), _config(tmp_path))
+
+    assert response == {}
 
 
 def test_record_blocks_a_path_swap_without_scanning_the_new_inode(tmp_path: Path, monkeypatch) -> None:

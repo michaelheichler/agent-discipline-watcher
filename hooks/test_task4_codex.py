@@ -1,5 +1,4 @@
 from __future__ import annotations
-# pylint: disable=too-few-public-methods
 
 import json
 import tomllib
@@ -25,6 +24,10 @@ class Provider:
         self.result = result
         self.error = error
 
+    @property
+    def request_count(self) -> int:
+        return len(self.calls)
+
     def judge(self, request: JudgeRequest) -> JudgeResult:
         self.calls.append(request)
         if self.error is not None:
@@ -44,6 +47,46 @@ class FlakyProvider(Provider):
             raise self.first_error
         assert self.result is not None
         return self.result
+
+
+class MixedProvider:
+    def __init__(self, *, fail_on_call: int | None = None) -> None:
+        self.calls: list[JudgeRequest] = []
+        self.fail_on_call = fail_on_call
+
+    @property
+    def request_count(self) -> int:
+        return len(self.calls)
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        self.calls.append(request)
+        if self.fail_on_call == len(self.calls):
+            raise LunaProviderFailure("provider unavailable", category="provider")
+        if request.review_kind is ReviewKind.COMMENT:
+            payload = {
+                "items": [{"index": 0, "verdict": "describes_code", "reason": "describes behavior"}],
+            }
+        else:
+            payload = {
+                "notes": [{"quote": "A sentence.", "problem": "weak bridge", "fix": "Add a bridge."}],
+            }
+        return JudgeResult(
+            payload=payload,
+            provider="openai-codex",
+            model="gpt-5.6-luna",
+            effort="high",
+            rubric_version="adw-rubric-v1",
+            usage={"total_tokens": 1},
+        )
+
+
+class TimedJudge(MixedProvider):
+    instances: list["TimedJudge"] = []
+
+    def __init__(self, *, timeout_seconds: float) -> None:
+        super().__init__()
+        self.timeout_seconds = timeout_seconds
+        self.instances.append(self)
 
 
 def _result(request_kind: ReviewKind = ReviewKind.COMMENT) -> JudgeResult:
@@ -249,6 +292,139 @@ def test_codex_stop_reclaims_stale_inflight_reservation_and_reviews(tmp_path: Pa
     state = session_state.read_state("s1", state_root)
     assert state[codex_luna.STATE_KEY] == ["turn-1"]
     assert not state.get(codex_luna.IN_FLIGHT_KEY)
+
+
+def test_codex_reviews_document_and_comment_rows_before_finishing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state_root = tmp_path / "state"
+    rows = [
+        {"role": "document", "path": "note.md", "source_context": "A sentence.", "turn_id": "turn-1"},
+        {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows.", "turn_id": "turn-1"},
+    ]
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+    provider = MixedProvider()
+
+    response = stop.run(
+        {"session_id": "mixed", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)},
+        {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")},
+        provider=provider,
+    )
+
+    assert response["decision"] == "block"
+    assert "ADW Luna document review" in response["reason"]
+    assert "ADW Luna comment review" in response["reason"]
+    assert [request.review_kind for request in provider.calls] == [ReviewKind.DOCUMENT, ReviewKind.COMMENT]
+    assert session_state.read_state("mixed", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
+
+
+def test_codex_reviews_each_document_without_truncating_trailing_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: [
+        {"role": "document", "path": "one.md", "source_context": "one", "turn_id": "turn-1"},
+        {"role": "document", "path": "two.md", "source_context": "two", "turn_id": "turn-1"},
+        {"role": "document", "path": "three.md", "source_context": "three", "turn_id": "turn-1"},
+        {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows.", "turn_id": "turn-1"},
+    ])
+    monkeypatch.setattr(codex_luna, "MAX_SOURCE_CHARS", 82)
+    provider = MixedProvider()
+
+    response = stop.run(
+        {"session_id": "all-docs", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)},
+        {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")},
+        provider=provider,
+    )
+
+    assert response["decision"] == "block"
+    documents = [request for request in provider.calls if request.review_kind is ReviewKind.DOCUMENT]
+    assert len(documents) == 2
+    assert all(len(request.source_context) <= codex_luna.MAX_SOURCE_CHARS for request in documents)
+    assert {path for request in documents for path in ("one.md", "two.md", "three.md") if path in request.source_context} == {
+        "one.md", "two.md", "three.md",
+    }
+    assert any(request.review_kind is ReviewKind.COMMENT for request in provider.calls)
+
+
+def test_codex_mixed_review_failure_rolls_back_everything_for_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    rows = [
+        {"role": "document", "path": "note.md", "source_context": "A sentence.", "turn_id": "turn-1"},
+        {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows.", "turn_id": "turn-1"},
+    ]
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+    provider = MixedProvider(fail_on_call=2)
+    config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
+    payload = {"session_id": "mixed-retry", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)}
+
+    first = stop.run(payload, config, provider=provider)
+    provider.fail_on_call = None
+    retry = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
+
+    assert first["decision"] == "block"
+    assert retry["decision"] == "block"
+    assert len(provider.calls) == 4
+    assert session_state.read_state("mixed-retry", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
+
+
+def test_codex_rejects_a_review_plan_that_cannot_finish_before_the_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    rows = [
+        {"role": "document", "path": "one.md", "source_context": "one", "turn_id": "turn-1"},
+        {"role": "document", "path": "two.md", "source_context": "two", "turn_id": "turn-1"},
+    ]
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(codex_luna, "MAX_SOURCE_CHARS", 60)
+    monkeypatch.setattr(codex_luna, "MAX_REVIEW_REQUESTS", 1)
+    provider = MixedProvider()
+
+    response = stop.run(
+        {"session_id": "too-many", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)},
+        {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")},
+        provider=provider,
+    )
+
+    assert response["decision"] == "block"
+    assert "above the limit" in response["reason"]
+    assert provider.calls == []
+    state = session_state.read_state("too-many", state_root)
+    assert state.get(codex_luna.STATE_KEY) != ["turn-1"]
+    assert not state.get(codex_luna.IN_FLIGHT_KEY)
+
+
+def test_codex_gives_the_real_luna_judge_the_remaining_review_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        {"role": "document", "path": "note.md", "source_context": "A sentence."},
+        {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows."},
+    ]
+    work = codex_luna.request_for_rows(rows)
+    assert work is not None
+    TimedJudge.instances.clear()
+    clock = iter((100.0, 100.1, 102.0))
+    monkeypatch.setattr(codex_luna, "LunaJudge", TimedJudge)
+    monkeypatch.setattr(codex_luna, "REVIEW_DEADLINE_SECONDS", 5.0)
+    monkeypatch.setattr(codex_luna.time, "monotonic", lambda: next(clock))
+
+    feedback = codex_luna._judge_work(None, work)
+
+    assert feedback
+    assert [round(judge.timeout_seconds, 1) for judge in TimedJudge.instances] == [4.9, 3.0]
+
+
+def test_codex_does_not_mark_a_truncated_journal_as_reviewed(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [
+        {"role": "comment", "path": f"code-{index}.py", "line": 1, "text": "Returns rows.", "turn_id": "turn-1"}
+        for index in range(codex_luna.MAX_COMMENT_ROWS + 1)
+    ]
+    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+
+    with pytest.raises(codex_luna.LunaReviewFailure, match="above the limit"):
+        codex_luna._journal_rows({"session_id": "too-many"}, "turn-1", None)
 
 
 def test_session_end_always_fails_open_and_best_effort_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

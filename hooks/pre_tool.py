@@ -9,9 +9,11 @@ from lib.payloads import exact_string_dict
 import pre_bash
 import pre_commit
 import pre_mcp
+import pre_python
 import pre_write
 
 DIRECT_WRITERS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
+PYTHON_TOOLS = frozenset({"Python"})
 
 UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this tool call and blocked it rather than letting it through. "
@@ -25,7 +27,7 @@ def _invalid_payload(payload: object) -> bool:
     name = payloads.tool_name(payload)
     if not name:
         return True
-    if name not in DIRECT_WRITERS and name != "Bash":
+    if name not in DIRECT_WRITERS and name not in PYTHON_TOOLS and name != "Bash":
         return False
     fields = exact_string_dict(payload)
     for key in ("tool_input", "toolInput", "input"):
@@ -79,6 +81,8 @@ def _dispatch(payload: dict, config: dict | None) -> dict:
         return pre_write.run(payload, config)
     if name == "Bash":
         return _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
+    if name in PYTHON_TOOLS:
+        return pre_python.run(payload, config)
     if name.startswith("mcp__"):
         return pre_mcp.run(payload, config)
     return {}

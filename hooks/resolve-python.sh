@@ -27,7 +27,7 @@ adw_resolve_python() {
   if [ -n "${ADW_PYTHON:-}" ]
   then
     adw_override="$(command -v "$ADW_PYTHON" 2>/dev/null || true)"
-    adw_version="$("$adw_override" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
+    adw_version="$("$adw_override" -I -S -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
     adw_key="$(adw_python_version_key "$adw_version")" || return 0
     adw_python_key_at_least "$adw_key" "$adw_floor_key" && printf '%s\n' "$adw_override"
     return 0
@@ -44,7 +44,7 @@ adw_resolve_python() {
     for adw_candidate in "$adw_dir"/python3.[0-9][0-9] "$adw_dir"/python3.[0-9] "$adw_dir"/python3 "$adw_dir"/python
     do
       [ -x "$adw_candidate" ] || continue
-      adw_version="$("$adw_candidate" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
+      adw_version="$("$adw_candidate" -I -S -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
       adw_key="$(adw_python_version_key "$adw_version")" || continue
       adw_python_key_at_least "$adw_key" "$adw_floor_key" || continue
       if [ -z "$adw_best_key" ] || [ "$adw_key" \> "$adw_best_key" ]

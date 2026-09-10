@@ -18,7 +18,7 @@ OWN_TESTS = {
         "lib/test_claude_quarantine.py",
     ),
     host.CODEX: ("test_task4_codex.py",),
-    host.OMP: (),
+    host.OMP: ("lib/test_omp_review.py",),
     host.COWORK: (),
 }
 SHARED_TESTS = ("lib/test_core_boundary.py", "lib/test_scanner.py", "lib/test_host.py")

@@ -105,16 +105,13 @@ def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) 
 _MAX_OPEN_SCAN_BYTES = 1_000_000
 
 def _approved_path(raw_path: object, cwd: Path) -> tuple[Path, tuple[int, int]] | None:
-    """Resolve a candidate under cwd and capture its device and inode before opening it."""
     if not isinstance(raw_path, str):
         return None
     candidate_text = raw_path.strip()
     if not candidate_text or any(ord(char) < 0x20 or ord(char) == 0x7F for char in candidate_text):
         return None
     try:
-        root = cwd.expanduser().resolve(strict=True)
         path = payloads.resolved_path(candidate_text, cwd).resolve(strict=True)
-        path.relative_to(root)
         metadata = path.stat()
     except (OSError, RuntimeError, ValueError):
         return None
@@ -123,7 +120,6 @@ def _approved_path(raw_path: object, cwd: Path) -> tuple[Path, tuple[int, int]] 
     return path, (metadata.st_dev, metadata.st_ino)
 
 def _held_fallback(descriptor: int, path: Path) -> list[dict]:
-    """Build a fallback finding from the approved descriptor without reopening the pathname."""
     try:
         os.lseek(descriptor, 0, os.SEEK_SET)
         with os.fdopen(os.dup(descriptor), "rb") as stream:
@@ -138,7 +134,6 @@ def _held_fallback(descriptor: int, path: Path) -> list[dict]:
 def _scan_open_file(
     path: Path, identity: tuple[int, int], cfg: dict
 ) -> tuple[list[dict], list[dict]] | None:
-    """Read and scan bytes from the descriptor whose inode was approved."""
     descriptor: int | None = None
     try:
         descriptor = os.open(
@@ -168,7 +163,6 @@ def _scan_open_file(
 
 
 def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Scan only regular files inside cwd from an inode-checked descriptor."""
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:

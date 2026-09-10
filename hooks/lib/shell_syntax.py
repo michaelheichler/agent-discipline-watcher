@@ -5,16 +5,16 @@ import shlex
 from pathlib import PurePosixPath
 from typing import NamedTuple
 
+from .shell_operators import (
+    LEADING_REDIRECT_RE, PIPE_OPERATORS, SEPARATORS,
+    _merge_adjacent_fragments, _split_punctuation_runs,
+)
+
 DYNAMIC_RE = re.compile(r"[$`]")
-SEPARATORS = frozenset({"&&", "||", ";", "|", "|&", "&", "(", ")"})
-PIPE_OPERATORS = frozenset({"|", "|&"})
-# Matched only in command position, because naming a script inside a quoted string is not running it.
 INTERPRETERS = frozenset({
     "python", "python3", "sh", "bash", "zsh", "dash", "command", "env", "exec", "sudo", "time", "nohup",
 })
-# Excludes true interpreters, because stepping past one here would let a wrapper hide inline code from detection.
 WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec"})
-# Skip ordinary wrapper flag values but reparse env split strings because only the latter can contain commands.
 WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
     "env": frozenset({"-u", "--unset", "-C", "--chdir", "-a", "--argv0"}),
     "sudo": frozenset({
@@ -35,10 +35,10 @@ INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
     "sh": frozenset({"-c"}), "bash": frozenset({"-c"}), "zsh": frozenset({"-c"}), "dash": frozenset({"-c"}), "ksh": frozenset({"-c"}),
 }
 SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
-# Because a fused file operand must not defeat this match, the file half is optional here.
-LEADING_REDIRECT_RE = re.compile(r"^(\d*)(>>?|>\||<<?)")
 VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
+PYTHON_VALUE_OPTION_RE = re.compile(r"^-[bBdEhIiOPqRsSuvVx]*([cmWX])")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+QUOTED_FRAGMENT_RE = re.compile(r'''\\.|'[^']*'|"(?:\\.|[^"\\])*"''')
 PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
 
 
@@ -152,7 +152,7 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
     flags = _interpreter_code_flags(name)
     if flags is None:
         return None
-    matched = _flag_payload_token(segment[index + 1:], flags)
+    matched = _flag_payload_token(segment[index + 1:], flags, python_options=name.startswith("python"))
     if matched is None:
         return None
     flag, payload_token = matched
@@ -162,8 +162,11 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
     return InterpreterInvocation(name, flag, payload)
 
 
-def _flag_payload_token(args: list[str], flags: frozenset[str]) -> tuple[str, str | None] | None:
-    """Matches a code flag whether it is clustered, quoted, or fused with its payload, because bash -lc and python3 -c'code' still pass that payload to the interpreter."""
+def _flag_payload_token(
+    args: list[str], flags: frozenset[str], *, python_options: bool = False,
+) -> tuple[str, str | None] | None:
+    if python_options:
+        return _python_flag_payload_token(args)
     long_flags = [flag for flag in flags if flag.startswith("--")]
     short_flags = [flag for flag in flags if len(flag) == 2 and flag.startswith("-")]
     for i, arg in enumerate(args):
@@ -185,6 +188,31 @@ def _flag_payload_token(args: list[str], flags: frozenset[str]) -> tuple[str, st
     return None
 
 
+def _python_flag_payload_token(args: list[str]) -> tuple[str, str | None] | None:
+    value_pending = False
+    index = 0
+    while index < len(args):
+        after_redirect = _skip_leading_redirect(args, index)
+        if after_redirect is not None:
+            index = after_redirect
+            continue
+        token = _bare(args[index])
+        index += 1
+        if value_pending:
+            value_pending = False
+            continue
+        option = PYTHON_VALUE_OPTION_RE.match(token)
+        if option is None:
+            continue
+        if option[1] == "m":
+            return None
+        if option[1] in {"W", "X"}:
+            value_pending = option.end() == len(token)
+            continue
+        return "-c", token[option.end():] or (args[index] if index < len(args) else None)
+    return None
+
+
 def _is_literal_token(token: str) -> bool:
     if token.startswith("'") and token.endswith("'") and len(token) >= 2:
         return True
@@ -202,35 +230,20 @@ CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
 
 def _tokens(command: str) -> list[str]:
     try:
-        lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()")
+        lexer = shlex.shlex(_separate_quoted_fragments(command), posix=False, punctuation_chars=";&|()>")
         lexer.whitespace_split = True
         raw = list(lexer)
     except ValueError:
         raw = command.split()
-    raw = _merge_adjacent_fragments(command, raw)
+    raw = _merge_adjacent_fragments(command, _split_punctuation_runs(raw))
     return _expand_env_split_strings(_merge_clobber_operator(raw))
 
 
-def _merge_adjacent_fragments(command: str, tokens: list[str]) -> list[str]:
-    """Join fragments that touch with no whitespace between them into one token, because Bash concatenates a quoted span directly against a neighboring quoted or bare span into a single word, while shlex leaves each quoted span as its own token."""
-    merged: list[str] = []
-    search_from = 0
-    prev_end: int | None = None
-    prev_is_word = False
-    for token in tokens:
-        start = command.find(token, search_from)
-        if start == -1:
-            start = search_from
-        end = start + len(token)
-        is_word = token not in SEPARATORS
-        if is_word and prev_is_word and start == prev_end:
-            merged[-1] += token
-        else:
-            merged.append(token)
-        prev_end = end
-        prev_is_word = is_word
-        search_from = end
-    return merged
+def _separate_quoted_fragments(command: str) -> str:
+    return QUOTED_FRAGMENT_RE.sub(
+        lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
+        command,
+    )
 
 
 def _is_unquoted_assignment(token: str) -> bool:

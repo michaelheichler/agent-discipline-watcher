@@ -77,13 +77,11 @@ def test_shell_payload_block_blocks(command):
     assert "Write or Edit" in reason
 
 
-# Pin this case because a write token in the first fragment must block even if the fragment join regresses.
 def test_adjacent_quoted_fragments_in_a_python_payload_still_block():
     reason = blocked("""python3 -c 'open("x'"t.txt"'","w").write("y")'""")
     assert "inline_interpreter_write" in reason
 
 
-# Pin the exact probe because only the joined word carries the write token, so this test holds the fragment join.
 def test_a_write_call_split_across_the_operand_boundary_still_blocks():
     reason = blocked("""python3 -c 'a=1'"; open('t.txt','w').write('y')\"""")
     assert "inline_interpreter_write" in reason
@@ -95,13 +93,37 @@ def test_a_literal_shell_payload_reenters_the_full_gate():
 
 
 @pytest.mark.parametrize("command", [
-    """python3 -c 'open("x.txt").read()'""",
-    """python3 -c 'open("x.txt", "r").read()'""",
-    """python3 -c 'with open("x.txt", "rb") as f: f.read()'""",
-    """python3 -c 'import json; json.load(open("x.json"))'""",
+    """python3 -I -S -c 'open("x.txt").read()'""",
+    """python3 -I -S -c 'open("x.txt", "r").read()'""",
+    """python3 -I -S -c 'with open("x.txt", "rb") as f: f.read()'""",
+    """python3 -I -S -c 'import json; json.load(open("x.json"))'""",
+    """python3 -I -S -c 'from pathlib import Path; Path("x.txt").read_text(encoding="utf-8")'""",
+    """python3 -I -S -c 'from pathlib import Path; print(Path("x.bin").read_bytes())'""",
+    """python3 -I -S -c 'from pathlib import Path; assert Path("x.txt").exists()'""",
+    """python3 -I -S -c 'from pathlib import Path; p = Path("smoke.txt"); print(p.exists()); print(repr(p.read_text()))'""",
 ])
 def test_a_read_only_open_call_is_allowed(command):
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+def test_a_read_only_pathlib_heredoc_is_allowed():
+    command = "python3 -I -S <<'EOF'\nfrom pathlib import Path\nprint(Path('x.txt').read_text())\nEOF"
+    assert allowed(command) == {}
+
+
+def test_a_read_only_pathlib_pipe_is_allowed():
+    command = "printf \"from pathlib import Path; print(Path('x.txt').read_text())\" | python3 -I -S"
+    assert allowed(command) == {}
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c 'import json as j; print(j.load(open(\"x.json\")))'",
+    "python3 -c 'from pathlib import Path as P; print(P(\"x.txt\").read_text())'",
+    "python3 -c 'from pathlib import Path; reader = Path(\"x.txt\").read_text; reader()'",
+])
+def test_python_aliases_and_indirect_calls_block(command):
+    reason = blocked(command)
+    assert "inline_interpreter_write" in reason
 
 
 @pytest.mark.parametrize("command", [
@@ -298,6 +320,66 @@ def test_opaque_source_write_blocks(command):
     assert "Write or Edit" in reason
 
 
+@pytest.mark.parametrize("separator", [";", "&&", "||", "&"])
+@pytest.mark.parametrize("group", ["({body})", "{{ {body}; }}", "( {{ {body}; }} )"])
+@pytest.mark.parametrize("literal_write", ["echo literal > x.txt", "echo literal | tee x.txt"])
+def test_grouped_python_keeps_sequential_literal_writes_independent(separator, group, literal_write):
+    body = f"python3 -I -S -c 'print(1)' {separator} {literal_write}"
+
+    assert allowed(group.format(body=body)) == {}
+
+
+@pytest.mark.parametrize("group", ["({body})", "{{ {body}; }}", "( {{ {body}; }} )"])
+@pytest.mark.parametrize("destination", ["> x.txt", "| tee x.txt", "| (tee x.txt)"])
+def test_compound_python_output_keeps_its_enclosing_write_destination(group, destination):
+    body = "python3 -I -S -c 'print(1)'; echo literal"
+    command = f"{group.format(body=body)} {destination}"
+
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "(python3 -I -S -c 'print(1)' > x.txt; echo literal)",
+    "{ echo literal; (python3 -I -S -c 'print(1)' | tee x.txt); }",
+    "python3 -I -S -c 'print(1)' | { cat > x.txt; echo literal; }",
+    "(python3 -I -S -c 'print(1)'; (echo literal)) > x.txt",
+])
+def test_compound_commands_keep_internal_python_output_writes_blocked(command):
+    assert "opaque_source_write" in blocked(command)
+
+
+def test_excessive_compound_nesting_blocks_without_a_hook_error():
+    command = "( " * 1100 + "python3 -I -S -c 'print(1)'" + " )" * 1100 + " > x.txt"
+
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "(exec > x.txt; python3 -I -S -c 'print(1)')",
+    "( { exec > x.txt; }; python3 -I -S -c 'print(1)')",
+    "( { exec > x.txt; } 3> err.txt; python3 -I -S -c 'print(1)')",
+    "( { exec 3> x.txt; } > err.txt; python3 -I -S -c 'print(1)' >&3)",
+    "(\npython3 -I -S -c 'print(1)'\n) > x.txt",
+    "{\npython3 -I -S -c 'print(1)'\n} | tee x.txt",
+    "python3 -I -S -c 'print(1)' |\n(tee x.txt)",
+    "(python3 -I -S -c 'print(1)'; (echo literal))|tee x.txt",
+])
+def test_compound_output_follows_persistent_redirects_and_newlines(command):
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "( (exec > x.txt); python3 -I -S -c 'print(1)')",
+    "(exec > x.txt & python3 -I -S -c 'print(1)')",
+    "(exec > x.txt | cat; python3 -I -S -c 'print(1)')",
+    "(\npython3 -I -S -c 'print(1)'\necho literal > x.txt\n)",
+    "(python3 -I -S -c 'print(1)' ); echo literal > x.txt",
+    "cat <<'EOF'\npython3 -I -S -c 'print(1)' > x.txt\nEOF",
+])
+def test_separate_shell_scopes_do_not_inherit_a_write_destination(command):
+    assert allowed(command) == {}
+
+
 TRIGGERS = (
     """python3 -c 'open("x.txt", "w").write("y")'""",
     'sh -c "$CMD"',
@@ -327,14 +409,14 @@ def test_a_config_key_releases_no_rule(command):
 
 
 @pytest.mark.parametrize("command", [
-    "python3 -c 'print(1)'",
-    "python3 -c '1 + 1'",
-    "env -i python3 -c 'print(1)'",
-    "python3.12 -c 'print(1)'",
-    "env -S 'python3 -c \"print(1)\"'",
-    "env --split-string 'python3 -c \"print(1)\"'",
-    "env -S'python3 -c \"print(1)\"'",
-    "env --split-string='python3 -c \"print(1)\"'",
+    "python3 -I -S -c 'print(1)'",
+    "python3 -I -S -c '1 + 1'",
+    "env -i python3 -I -S -c 'print(1)'",
+    "python3.12 -I -S -c 'print(1)'",
+    "env -S 'python3 -I -S -c \"print(1)\"'",
+    "env --split-string 'python3 -I -S -c \"print(1)\"'",
+    "env -S'python3 -I -S -c \"print(1)\"'",
+    "env --split-string='python3 -I -S -c \"print(1)\"'",
     "base64 -d blob.txt",
     "base64 -o out.bin blob.txt",
     "openssl enc -out out.bin",
@@ -353,7 +435,7 @@ def test_a_config_key_releases_no_rule(command):
     "echo 'reminder to run dd if=/dev/zero later'",
     """echo env -S 'python3 -c "import os"'""",
     "dd if=/dev/zero of=/dev/null",
-    "printf 'clean text' | python3 -c 'print(1)'",
+    "printf 'clean text' | python3 -I -S -c 'print(1)'",
     "awk '{print $1}' file.txt",
     "> out.log ls",
 ])

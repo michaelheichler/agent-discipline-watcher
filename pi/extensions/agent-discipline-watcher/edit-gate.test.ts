@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { hashlineEdits, hashlinePatchSource } from "./hashline";
 import { preGatePayloads, selectableModels } from "./index";
@@ -18,7 +19,7 @@ describe("model selection from the host catalogue", () => {
       { provider: "zai", id: "glm-5.3" },
     ]);
 
-    expect(offered).toEqual(["claude-haiku-4-5", "claude-sonnet-5", "gpt-5.6", "glm-5.3"]);
+    expect(offered).toEqual(["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-5", "openai-codex/gpt-5.6", "zai/glm-5.3"]);
   });
 
   test("drops an id that would not survive display sanitising", () => {
@@ -29,7 +30,7 @@ describe("model selection from the host catalogue", () => {
       { provider: "anthropic", id: "a".repeat(300) },
     ]);
 
-    expect(offered).toEqual(["claude-haiku-4-5"]);
+    expect(offered).toEqual(["anthropic/claude-haiku-4-5"]);
   });
 
   test("caps the list so a hostile catalogue cannot flood the picker", () => {
@@ -121,10 +122,11 @@ describe("pre-gate payloads", () => {
     ]);
   });
 
-  test("refuses a target outside the session directory", () => {
-    expect(() => preGatePayloads(ctx, event, [{ path: "../outside.ts", added: "x" }])).toThrow(
-      "could not resolve an edit target",
-    );
+  test("scans an explicit target outside the session directory", () => {
+    const payloads = preGatePayloads(ctx, event, [{ path: "../outside.ts", added: "x" }]);
+    expect(payloads[0].tool_input).toEqual({
+      file_path: resolve(TEST_CWD, "../outside.ts"), new_string: "x",
+    });
   });
 
   test("falls back to the raw tool input when no target is named", () => {

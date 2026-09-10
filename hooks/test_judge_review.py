@@ -32,7 +32,7 @@ def test_a_non_python_file_is_left_alone(tmp_path) -> None:
 def test_a_missing_file_is_left_alone(tmp_path) -> None:
     assert judge_review.run(_payload(tmp_path / "gone.py")) == (0, "")
 
-def test_a_symlink_outside_the_project_is_left_alone(tmp_path) -> None:
+def test_an_explicit_external_symlink_can_reach_review(tmp_path, monkeypatch) -> None:
     project = tmp_path / "project"
     project.mkdir()
     outside = tmp_path / "outside.py"
@@ -40,7 +40,15 @@ def test_a_symlink_outside_the_project_is_left_alone(tmp_path) -> None:
     link = project / "linked.py"
     link.symlink_to(outside)
 
-    assert judge_review.run(_payload(link)) == (0, "")
+    target = judge_review._target(_payload(link), (".py",))
+    assert target == outside.resolve()
+    assert judge_review._read(target, str(project)) == NARRATING_SOURCE
+    monkeypatch.setattr(judge_review, "_review_config", lambda _payload: {"data_boundary": {"enabled": True}})
+    monkeypatch.setattr(judge_review, "judge", lambda found, _model: tuple(Verdict(item, True, "Narrates code.") for item in found))
+    code, message = judge_review.run(_payload(link))
+    assert code == judge_review.WAKE_EXIT_CODE
+    assert f"{outside.resolve()}:2:" in message
+    assert "Counts the retries" in message
 
 
 def test_a_file_without_candidates_never_reaches_the_model(tmp_path, monkeypatch) -> None:
