@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lib import claude_presets
+
 ROOT = Path(__file__).resolve().parents[1]
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 CLAUDE_MERGE = ROOT / "hooks" / "merge-claude-settings.py"
@@ -68,6 +70,24 @@ def merged_watcher_hooks(skill_dir: str) -> dict:
 
 
 class PluginManifestTests(unittest.TestCase):
+    def test_default_agent_models_match_generated_haiku_preset(self):
+        config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+        generated = claude_presets.generated_hooks("haiku")
+        installed = {
+            event: next(
+                entry["model"]
+                for hook_event, entry in all_hooks(config)
+                if hook_event == event and entry.get("type") == "agent"
+            )
+            for event in ("PostToolUse", "Stop")
+        }
+        expected = {
+            event: generated[event][0]["hooks"][0]["model"]
+            for event in ("PostToolUse", "Stop")
+        }
+
+        self.assertEqual(installed, expected)
+
     def test_session_end_releases_the_active_session_lease(self):
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
         commands = [entry["command"] for event, entry in hook_commands(config) if event == "SessionEnd"]
@@ -247,7 +267,7 @@ class PostToolUseWiringTests(unittest.TestCase):
         """Carried by the plugin because a preset write into settings.json is a step nobody runs."""
         entries = self._agent_entries()
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["model"], "haiku")
+        self.assertEqual(entries[0]["model"], "claude-haiku-4-5-20251001")
 
     def test_the_agent_reviewer_enumerates_its_output_space(self):
         """Enumerated in the prompt because a chatty reply fails the hook and gates nothing."""

@@ -111,3 +111,17 @@ Depends on 9. Expected scope covers installed configuration and deployment evide
 ## Checkpoint after task 10
 
 - [ ] Run the relevant suites and record results before proceeding.
+
+## 11. Native Claude model identifiers
+
+Remote verification found that native agent hooks send the short model alias
+directly to the API, which rejects it with HTTP 404.
+
+- [x] Default and generated Anthropic hooks use supported API model identifiers.
+- [x] Live Haiku hook review completes without a model-not-found error.
+
+Verification uses preset and manifest regressions, followed by a remote Haiku
+probe. Publish the reviewed fix and refresh the remote installation.
+
+Depends on the remote checks in 10. Expected scope covers the native preset
+renderer and plugin manifest, plus their tests.

@@ -21,9 +21,9 @@ def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> No
     stop = generated["Stop"][0]
     assert post["matcher"] == "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
     assert post["hooks"][0]["type"] == "agent"
-    assert post["hooks"][0]["model"] == "haiku"
+    assert post["hooks"][0]["model"] == "claude-haiku-4-5-20251001"
     assert stop["hooks"][0]["type"] == "agent"
-    assert stop["hooks"][0]["model"] == "sonnet"
+    assert stop["hooks"][0]["model"] == "claude-sonnet-4-6"
     assert "batch" in stop["hooks"][0]["prompt"].lower()
     for preset in claude_native.PRESETS:
         assert "PreToolUse" not in claude_native.generated_hooks(preset)
@@ -321,7 +321,7 @@ def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path:
     assert {
         group_name: next(hook["model"] for hook in configured["hooks"][group_name][0]["hooks"] if hook.get("type") == "agent")
         for group_name in ("PostToolUse", "Stop")
-    } == {"PostToolUse": "haiku", "Stop": "sonnet"}
+    } == {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
 
 
 def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -359,7 +359,7 @@ def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_
     assert {
         lifecycle: next(hook["model"] for hook in configured["hooks"][lifecycle][0]["hooks"] if hook.get("type") == "agent")
         for lifecycle in ("PostToolUse", "Stop")
-    } == {"PostToolUse": "haiku", "Stop": "sonnet"}
+    } == {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
     assert not preset.with_name(preset.name + ".txn").exists()
 
 

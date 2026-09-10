@@ -33,3 +33,11 @@ Keep external reads safe against symlink races. Do not clear unresolved files
 because an unrelated scan passed. Keep model failures visible and retryable.
 Claude's proxy returned HTTP 407 in the review, so verify its login path.
 Record infrastructure failures separately from ADW behavior.
+
+## Remote verification follow-up
+
+The remote installation exposed a native Claude hook failure. Agent hooks
+forward short model aliases to the API without resolving them. Replace those
+aliases with supported API identifiers, prove the rendered configuration in
+tests, and verify Haiku through the installed native hook before releasing
+the follow-up patch. Keep injected Luna names and command handlers unchanged.

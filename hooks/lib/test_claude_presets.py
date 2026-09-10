@@ -28,14 +28,14 @@ def test_a_stored_sonnet_preset_reads_as_the_preset_that_replaced_it(tmp_path) -
 
 def test_mixed_spends_the_cheaper_model_on_the_more_frequent_role() -> None:
     """Split the roles because a comment check runs per write while a document check runs per turn."""
-    assert claude_presets.model_for("mixed", "comment") == "haiku"
-    assert claude_presets.model_for("mixed", "document") == "sonnet"
+    assert claude_presets.model_for("mixed", "comment") == "claude-haiku-4-5-20251001"
+    assert claude_presets.model_for("mixed", "document") == "claude-sonnet-4-6"
 
 
 def test_haiku_runs_one_model_for_both_roles() -> None:
     """Keep it uniform because this preset exists to hold cost flat."""
-    assert claude_presets.model_for("haiku", "comment") == "haiku"
-    assert claude_presets.model_for("haiku", "document") == "haiku"
+    assert claude_presets.model_for("haiku", "comment") == "claude-haiku-4-5-20251001"
+    assert claude_presets.model_for("haiku", "document") == "claude-haiku-4-5-20251001"
 
 
 def test_luna_native_names_the_model_the_harness_injects() -> None:
