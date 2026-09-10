@@ -34,7 +34,9 @@ INTERPRETER_CODE_FLAGS: dict[str, frozenset[str]] = {
 SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
 LEADING_REDIRECT_RE = re.compile(r"^(\d*)(>>?|>\||<<?)")
 VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
+PYTHON_VALUE_OPTION_RE = re.compile(r"^-[bBdEhIiOPqRsSuvVx]*([cmWX])")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
+QUOTED_FRAGMENT_RE = re.compile(r'''\\.|'[^']*'|"(?:\\.|[^"\\])*"''')
 PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
 
 
@@ -161,6 +163,8 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
 def _flag_payload_token(
     args: list[str], flags: frozenset[str], *, python_options: bool = False,
 ) -> tuple[str, str | None] | None:
+    if python_options:
+        return _python_flag_payload_token(args)
     long_flags = [flag for flag in flags if flag.startswith("--")]
     short_flags = [flag for flag in flags if len(flag) == 2 and flag.startswith("-")]
     for i, arg in enumerate(args):
@@ -172,9 +176,6 @@ def _flag_payload_token(
             if bare.startswith(prefix):
                 return flag, bare[len(prefix):]
         next_arg = args[i + 1] if i + 1 < len(args) else None
-        cluster = re.match(r"^-[A-Za-z]*?c", bare) if python_options else None
-        if cluster is not None:
-            return "-c", bare[cluster.end():] or next_arg
         for flag in short_flags:
             letter = flag[1]
             if len(bare) > 2 and bare.startswith("-") and not bare.startswith("--") and bare[-1] == letter and bare[1:-1].isalpha():
@@ -182,6 +183,31 @@ def _flag_payload_token(
         for flag in short_flags:
             if bare.startswith(flag) and len(bare) > len(flag):
                 return flag, bare[len(flag):]
+    return None
+
+
+def _python_flag_payload_token(args: list[str]) -> tuple[str, str | None] | None:
+    value_pending = False
+    index = 0
+    while index < len(args):
+        after_redirect = _skip_leading_redirect(args, index)
+        if after_redirect is not None:
+            index = after_redirect
+            continue
+        token = _bare(args[index])
+        index += 1
+        if value_pending:
+            value_pending = False
+            continue
+        option = PYTHON_VALUE_OPTION_RE.match(token)
+        if option is None:
+            continue
+        if option[1] == "m":
+            return None
+        if option[1] in {"W", "X"}:
+            value_pending = option.end() == len(token)
+            continue
+        return "-c", token[option.end():] or (args[index] if index < len(args) else None)
     return None
 
 
@@ -202,13 +228,20 @@ CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
 
 def _tokens(command: str) -> list[str]:
     try:
-        lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()")
+        lexer = shlex.shlex(_separate_quoted_fragments(command), posix=False, punctuation_chars=";&|()")
         lexer.whitespace_split = True
         raw = list(lexer)
     except ValueError:
         raw = command.split()
     raw = _merge_adjacent_fragments(command, _split_punctuation_runs(raw))
     return _expand_env_split_strings(_merge_clobber_operator(raw))
+
+
+def _separate_quoted_fragments(command: str) -> str:
+    return QUOTED_FRAGMENT_RE.sub(
+        lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
+        command,
+    )
 
 
 def _split_punctuation_runs(tokens: list[str]) -> list[str]:

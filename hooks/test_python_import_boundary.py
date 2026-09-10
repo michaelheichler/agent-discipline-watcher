@@ -215,6 +215,9 @@ def test_read_only_python_output_cannot_write_unreviewed_content(tmp_path, comma
     "python3 -I -S -c 'print(1)'; printf 'The cache holds two rows.' > note.md",
     "python3 -ISc 'print(1)'",
     "python3 -ISc'print(1)'",
+    "(python3 -ISc'print(1)'); printf 'Ready\\n'",
+    "(python3 -ISc\"print(1)\"); printf 'Ready\\n'",
+    "(python3 -ISc'print(\"$HOME\")'); printf 'Ready\\n'",
     "(python3 -I -S -c 'print(1)'); echo literal > x.txt",
     "(python3 -I -S -c 'print(1)')&& echo literal > x.txt",
     "(python3 -I -S -c 'print(1)')|| echo literal > x.txt",
@@ -235,6 +238,21 @@ def test_clustered_python_flags_keep_the_attached_payload(code):
     assert invocation.payload == code
 
 
+@pytest.mark.parametrize("payload,expected", [
+    ("'print(1)'", "print(1)"),
+    ('"print(1)"', "print(1)"),
+    ("'print(\"$HOME\")'", 'print("$HOME")'),
+    ('"$CODE"', None),
+])
+def test_subshell_closure_keeps_the_attached_python_payload(payload, expected):
+    command = f"(python3 -ISc{payload}); printf 'Ready\\n'"
+    segments = _segments(command)
+    invocation = interpreter_invocation(segments[0])
+
+    assert invocation is not None
+    assert invocation.payload == expected, segments
+
+
 def test_quoted_shell_operators_remain_in_the_python_payload():
     code = 'print(");&&|| |&")'
     command = f"(python3 -I -S -c {shlex.quote(code)}); echo literal > x.txt"
@@ -242,6 +260,42 @@ def test_quoted_shell_operators_remain_in_the_python_payload():
 
     assert invocation is not None
     assert invocation.payload == code
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -mpydoc str",
+    "python3 -m pydoc str",
+    "python3 -m pydoc -c print",
+    "python3 -Wonce::DeprecationWarning script.py",
+    "python3 -W once::DeprecationWarning script.py",
+    "python3 -Xpycache_prefix=cache script.py",
+    "python3 -X pycache_prefix=cache script.py",
+    "python3 -W -c script.py",
+    "python3 -X -c script.py",
+])
+def test_python_option_values_are_not_inline_code(command):
+    assert interpreter_invocation(_segments(command)[0]) is None
+    assert pre_tool.run({"tool_name": "Bash", "tool_input": {"command": command}}) == {}
+
+
+@pytest.mark.parametrize("options", [
+    "-Wonce::DeprecationWarning",
+    "-W once::DeprecationWarning",
+    "-Xpycache_prefix=cache",
+    "-X pycache_prefix=cache",
+    "-W -c",
+    "-X -c",
+])
+@pytest.mark.parametrize("code", ["print(1)", 'open("target.md","w").write("unreviewed")'])
+def test_python_value_options_do_not_hide_later_code_or_grant_isolation(options, code):
+    command = f"python3 -I -S {options} -c{shlex.quote(code)} -c 'print(2)'"
+    invocation = interpreter_invocation(_segments(command)[0])
+
+    assert invocation is not None
+    assert invocation.payload == code
+    result = pre_tool.run({"tool_name": "Bash", "tool_input": {"command": command}})
+    assert result.get("decision") == "block"
+    assert "python3 -I -S" in result["reason"]
 
 
 @pytest.mark.parametrize("command", [
@@ -264,6 +318,8 @@ def test_isolation_flags_must_belong_to_the_python_startup_options(command):
     "python3 -I -S -c 'open(\"target.md\", \"w\").write(\"unreviewed\")'",
     "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")' -c 'print(1)'",
     "python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")'",
+    "(python3 -ISc'open(\"target.md\",\"w\").write(\"unreviewed\")'); printf 'Ready\\n'",
+    '(python3 -ISc"$CODE"); printf "Ready\\n"',
     "python3 -IS -c 'from pathlib import Path; Path(\"target.md\").write_text(\"unreviewed\")'",
     "python3 -I -S <<'EOF'\nopen('target.md', 'w').write('unreviewed')\nEOF",
     "printf \"open('target.md', 'w').write('unreviewed')\" | python3 -I -S",
