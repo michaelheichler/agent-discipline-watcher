@@ -394,14 +394,15 @@ def _has_python_source(segment: list[str], depth: int = 0) -> bool:
 
 def _output_pipeline_groups(line: str) -> list[list[list[str]]]:
     tokens: list[str] = []
-    depth = 0
+    groups: list[str] = []
     for token in _tokens(line):
-        if token == "(" or (token == "{" and (not tokens or tokens[-1] in {";", "&&", "||", "|", "&"})):
-            depth += 1
-        elif token in {"}", ")"} and depth:
-            depth -= 1
+        command_start = not tokens or tokens[-1] in {";", "&&", "||", "|", "&"}
+        if token == "(" or (token == "{" and command_start):
+            groups.append(")" if token == "(" else "}")
+        elif groups and token == groups[-1] and (token == ")" or command_start):
+            groups.pop()
         else:
-            tokens.append("|" if depth and token in {";", "&&", "||", "&"} else token)
+            tokens.append("|" if groups and token in {";", "&&", "||", "&"} else token)
     return _pipeline_groups(" ".join(tokens))
 
 

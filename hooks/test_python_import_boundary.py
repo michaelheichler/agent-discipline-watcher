@@ -203,6 +203,7 @@ def test_installed_pretool_contract_allows_trusted_path_reads(tmp_path, tool):
     "sh -c 'python3 -I -S -c \"print(1)\"' > copy.md",
     "(python3 -I -S -c 'print(1)'; echo done) > copy.md",
     "{ python3 -I -S -c 'print(1)'; } | tee copy.md",
+    "(python3 -I -S -c 'print(1)'; echo }; echo done) > copy.md",
 ])
 def test_read_only_python_output_cannot_write_unreviewed_content(tmp_path, command):
     result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
