@@ -51,3 +51,15 @@ def test_malformed_nonpaths_cannot_interrupt_retention(tmp_path):
     malformed = {"snippet": "invalid\0.json", "message": "An ordinary sentence.", "counter": 3}
 
     assert retention._referenced_reports(malformed, reports) == set()
+
+
+def test_invalid_reports_root_does_not_prevent_ledger_compaction(tmp_path):
+    reports = tmp_path / "reports"
+    reports.symlink_to(reports)
+    ledger = tmp_path / "ledger.jsonl"
+    old = {"ts": "2000-01-01T00:00:00+00:00", "report": str(reports / "old.json")}
+    live = {"session_id": "live", "report": str(reports / "live.json")}
+    ledger.write_text(json.dumps(old) + "\n" + json.dumps(live) + "\n", encoding="utf-8")
+
+    assert retention._compact_ledger(ledger, 1_000_000_000, frozenset({"live"}), reports) == set()
+    assert ledger.read_text(encoding="utf-8") == json.dumps(live) + "\n"

@@ -24,8 +24,17 @@ def _row_timestamp(row: dict) -> float | None:
         return None
 
 
+def _resolved_reports_root(reports_root: Path) -> Path | None:
+    try:
+        return reports_root.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
 def _referenced_reports(row: object, reports_root: Path, *, resolved_root: Path | None = None) -> set[Path]:
-    resolved_root = reports_root.resolve() if resolved_root is None else resolved_root
+    resolved_root = _resolved_reports_root(reports_root) if resolved_root is None else resolved_root
+    if resolved_root is None:
+        return set()
     found: set[Path] = set()
     if isinstance(row, dict):
         for value in row.values():
@@ -55,7 +64,7 @@ def _is_kept(row: dict, cutoff: float, live: frozenset[str]) -> bool:
 def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Path) -> set[Path]:
     if not path.exists():
         return set()
-    resolved_reports = reports.resolve()
+    resolved_reports = _resolved_reports_root(reports)
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     kept_reports: set[Path] = set()
     try:
@@ -68,7 +77,8 @@ def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Pa
                     continue
                 if not isinstance(row, dict) or _is_kept(row, cutoff, live):
                     target.write(line)
-                    kept_reports.update(_referenced_reports(row, reports, resolved_root=resolved_reports))
+                    if resolved_reports is not None:
+                        kept_reports.update(_referenced_reports(row, reports, resolved_root=resolved_reports))
         os.replace(temporary, path)
     except BaseException:
         try:
