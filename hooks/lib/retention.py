@@ -24,21 +24,22 @@ def _row_timestamp(row: dict) -> float | None:
         return None
 
 
-def _referenced_reports(row: object, reports_root: Path) -> set[Path]:
+def _referenced_reports(row: object, reports_root: Path, *, resolved_root: Path | None = None) -> set[Path]:
+    resolved_root = reports_root.resolve() if resolved_root is None else resolved_root
     found: set[Path] = set()
     if isinstance(row, dict):
         for value in row.values():
-            found.update(_referenced_reports(value, reports_root))
+            found.update(_referenced_reports(value, reports_root, resolved_root=resolved_root))
     elif isinstance(row, list):
         for value in row:
-            found.update(_referenced_reports(value, reports_root))
-    elif isinstance(row, str):
+            found.update(_referenced_reports(value, reports_root, resolved_root=resolved_root))
+    elif isinstance(row, str) and row.endswith(".json") and "\x00" not in row:
         path = Path(row)
         try:
             resolved = path.resolve()
-            if resolved.is_relative_to(reports_root.resolve()):
+            if resolved.is_relative_to(resolved_root):
                 found.add(resolved)
-        except OSError:
+        except (OSError, RuntimeError, ValueError):
             pass
     return found
 
@@ -54,6 +55,7 @@ def _is_kept(row: dict, cutoff: float, live: frozenset[str]) -> bool:
 def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Path) -> set[Path]:
     if not path.exists():
         return set()
+    resolved_reports = reports.resolve()
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     kept_reports: set[Path] = set()
     try:
@@ -66,7 +68,7 @@ def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Pa
                     continue
                 if not isinstance(row, dict) or _is_kept(row, cutoff, live):
                     target.write(line)
-                    kept_reports.update(_referenced_reports(row, reports))
+                    kept_reports.update(_referenced_reports(row, reports, resolved_root=resolved_reports))
         os.replace(temporary, path)
     except BaseException:
         try:
