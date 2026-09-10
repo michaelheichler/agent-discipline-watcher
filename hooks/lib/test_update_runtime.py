@@ -80,6 +80,7 @@ def _fixture_release(source):
     files = {
         "install.sh": "#!/bin/sh\nexit 0\n",
         "bin/adw": "#!/bin/sh\nexit 0\n",
+        "bin/adw-judge": "#!/bin/sh\nexit 0\n",
         "hooks/update.py": "updater = True\n",
         "hooks/lib/update_runtime.py": "runtime = 'new'\n",
         "pi/extensions/agent-discipline-watcher/index.ts": "export const active = true;\n",
@@ -92,6 +93,7 @@ def _fixture_release(source):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     (source / "bin/adw").chmod(0o755)
+    (source / "bin/adw-judge").chmod(0o755)
     return source
 
 
@@ -105,6 +107,10 @@ def _simulate_install(source, hosts, environment):
     command.parent.mkdir(parents=True, exist_ok=True)
     command.unlink(missing_ok=True)
     command.symlink_to(installed / "bin/adw")
+    if "claude" in hosts:
+        judge = home / ".adw/bin/adw-judge"
+        judge.unlink(missing_ok=True)
+        judge.symlink_to(installed / "bin/adw-judge")
     if "omp" in hosts:
         agent = home / ".omp/agent"
         link = agent / "extensions/agent-discipline-watcher"
@@ -386,3 +392,50 @@ def test_real_omp_installer_updates_only_the_temporary_home(managed_home, monkey
     assert evidence.read_text() == '{"pending":true}'
     assert not (managed_home / ".claude").exists()
     assert not (managed_home / ".codex").exists()
+
+
+def test_alternate_claude_profile_controls_install_and_rollback(available_update, monkeypatch):
+    home = available_update.home
+    calls = []
+    profile = home / ".config/claude-code"
+    profile.mkdir(parents=True)
+    settings = profile / "settings.json"
+    settings.write_text('{"theme":"dark"}', encoding="utf-8")
+
+    def pinned_plugin(_home, _source, _commit, environment):
+        assert environment["CLAUDE_CONFIG_DIR"] == str(profile)
+        calls.append("plugin")
+        settings.write_text('{"theme":"changed"}', encoding="utf-8")
+
+    def failed_install(_source, _hosts, environment):
+        assert environment["CLAUDE_CONFIG_DIR"] == str(profile)
+        calls.append("installer")
+        raise RuntimeError("installer failure")
+
+    monkeypatch.setattr(update_runtime, "_install_claude", pinned_plugin)
+    monkeypatch.setattr(update_runtime, "_run_installer", failed_install)
+    assert update_runtime.main(["update", "--claude"]) == 2
+    assert settings.read_text() == '{"theme":"dark"}'
+    assert calls == ["plugin", "installer"]
+    assert not (home / ".claude").exists()
+
+
+def test_claude_update_requires_its_preset_launcher(available_update, monkeypatch, capsys):
+    (available_update.source / "bin/adw-judge").unlink()
+    monkeypatch.setattr(update_runtime, "_install_claude", lambda *args: None)
+    assert update_runtime.main(["update", "--claude"]) == 2
+    assert "adw-judge" in capsys.readouterr().err
+    assert not (available_update.home / ".adw/updates/installed.json").exists()
+
+
+def test_claude_update_rejects_a_missing_preset_link(available_update, monkeypatch, capsys):
+    monkeypatch.setattr(update_runtime, "_install_claude", lambda *args: None)
+
+    def missing_link(source, hosts, environment):
+        _simulate_install(source, hosts, environment)
+        (available_update.home / ".adw/bin/adw-judge").unlink()
+
+    monkeypatch.setattr(update_runtime, "_run_installer", missing_link)
+    assert update_runtime.main(["update", "--claude"]) == 2
+    assert "adw-judge" in capsys.readouterr().err
+    assert not (available_update.home / ".adw/updates/installed.json").exists()

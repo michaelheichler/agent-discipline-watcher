@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -125,3 +126,22 @@ def test_skipping_the_plugin_step_leaves_the_cache_alone(tmp_path: Path) -> None
     assert log.read_text(encoding="utf-8") == ""
     assert finished.returncode == 0, finished.stderr
     assert "/plugin marketplace add" not in finished.stdout
+
+
+def test_selected_claude_profile_receives_legacy_cleanup(tmp_path: Path) -> None:
+    profile = tmp_path / ".config/claude-code"
+    profile.mkdir(parents=True)
+    settings = profile / "settings.json"
+    settings.write_text(json.dumps({"theme": "dark", "hooks": {"PreToolUse": [{"hooks": [{
+        "type": "command", "command": "/old/agent-discipline-watcher/hooks/run.sh PreToolUse",
+    }]}]}}), encoding="utf-8")
+    finished = subprocess.run(
+        [str(REPO_ROOT / "install.sh"), "--claude"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        env={"HOME": str(tmp_path), "PATH": BASE_PATH, "CLAUDE_CONFIG_DIR": str(profile), "ADW_SKIP_PLUGIN": "1"},
+    )
+    assert finished.returncode == 0, finished.stderr
+    result = json.loads(settings.read_text(encoding="utf-8"))
+    assert result["theme"] == "dark"
+    assert "agent-discipline-watcher/hooks/run.sh" not in json.dumps(result)
+    assert not (tmp_path / ".claude").exists()

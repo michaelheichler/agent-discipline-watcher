@@ -142,6 +142,12 @@ installed executable and host flags before permitting the update.
 Arbitrary installer scripts still require a Terminal install.
 The updater requires the default installation directory.
 
+The updater selects an existing Claude profile under `~/.claude` or
+`~/.config/claude-code`. If both exist, run the installer from Terminal with
+`CLAUDE_CONFIG_DIR` set to the selected profile.
+It requires a supported Python in the system executable directories and
+ignores `ADW_PYTHON`. Custom interpreters remain an installer option.
+
 Install the first release containing the updater from Terminal. An older
 installed guard cannot authorize the new command. Restart the selected agent
 harnesses after updating so they load the new hooks and extension.

@@ -131,3 +131,17 @@ def test_the_claude_install_never_edits_a_shell_startup_file(tmp_path: Path) -> 
 
     for name in (".zshrc", ".bashrc"):
         assert (tmp_path / name).read_text(encoding="utf-8") == "# user content\n"
+
+
+def test_foreign_updater_link_is_refused_before_any_host_install(tmp_path: Path) -> None:
+    link = tmp_path / ".adw/bin/adw"
+    link.parent.mkdir(parents=True)
+    link.symlink_to("/tmp/user-managed-adw")
+    before = _touched(tmp_path)
+
+    finished = _run(["--omp"], tmp_path)
+
+    assert finished.returncode == 2
+    assert "foreign symlink" in finished.stderr
+    assert _touched(tmp_path) == before
+    assert str(link.readlink()) == "/tmp/user-managed-adw"

@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 from pathlib import Path
 
 import pytest
 
-from lib import update_claude
+from lib import update_claude, update_claude_state
 
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -15,7 +16,7 @@ REPOSITORY = "michaelheichler/agent-discipline-watcher"
 
 
 def _staged_release(root: Path) -> Path:
-    for directory in ("hooks", "pi", "skills"):
+    for directory in ("commands", "hooks", "pi", "skills"):
         target = root / directory
         target.mkdir(parents=True)
         (target / f"{directory}.txt").write_text(directory, encoding="utf-8")
@@ -25,8 +26,8 @@ def _staged_release(root: Path) -> Path:
     return root
 
 
-def _config(home: Path) -> Path:
-    config = home / ".claude"
+def _config(home: Path, relative: Path = Path(".claude")) -> Path:
+    config = home / relative
     (config / "plugins").mkdir(parents=True)
     return config
 
@@ -53,7 +54,7 @@ def _copy_release(source: Path, cache: Path) -> None:
     manifest = cache / ".claude-plugin" / "plugin.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_bytes((source / ".claude-plugin" / "plugin.json").read_bytes())
-    for directory in ("hooks", "pi", "skills"):
+    for directory in ("commands", "hooks", "pi", "skills"):
         target = cache / directory
         target.mkdir(parents=True)
         for file in (source / directory).iterdir():
@@ -75,12 +76,18 @@ fi
 if [ "$ADW_STUB_FAIL" = "1" ]; then
   exit 9
 fi
+if [ "$ADW_STUB_UPDATE_FAIL" = "1" ] && [ "$1" = "plugin" ] && [ "$2" = "update" ]; then
+  exit 8
+fi
 if [ "$1" = "plugin" ] && [ "$2" = "install" -o "$2" = "update" ]; then
   mkdir -p "$ADW_STUB_CACHE"
-  for tree in hooks pi skills; do
+  for tree in commands hooks pi skills; do
     mkdir -p "$ADW_STUB_CACHE/$tree"
     cp -R "$ADW_STUB_SOURCE/$tree/." "$ADW_STUB_CACHE/$tree/"
   done
+  if [ "$ADW_STUB_BAD_COMMANDS" = "1" ]; then
+    printf '%s' different > "$ADW_STUB_CACHE/commands/commands.txt"
+  fi
   if [ "$ADW_STUB_BAD_MODE" = "1" ]; then
     chmod 0644 "$ADW_STUB_CACHE/hooks/hooks.txt"
   fi
@@ -108,14 +115,20 @@ def _environment(home: Path, stub: Path, source: Path, cache: Path, installed: P
         "ADW_STUB_FAIL": "0",
         "ADW_STUB_ENABLED": "true",
         "ADW_STUB_BAD_MODE": "0",
+        "ADW_STUB_UPDATE_FAIL": "0",
+        "ADW_STUB_BAD_COMMANDS": "0",
     }
 
 
-def _scenario(tmp_path: Path, scope: str = "user") -> tuple[Path, Path, Path, Path, Path, dict[str, str]]:
+def _scenario(
+    tmp_path: Path,
+    scope: str = "user",
+    config_relative: Path = Path(".claude"),
+) -> tuple[Path, Path, Path, Path, Path, dict[str, str]]:
     home = tmp_path / "home"
     home.mkdir()
     source = _staged_release(tmp_path / "release")
-    config = _config(home)
+    config = _config(home, config_relative)
     cache = config / "plugins" / "cache" / "agent-discipline-watcher" / "agent-discipline-watcher" / COMMIT[:12]
     _copy_release(source, cache)
     installed = tmp_path / "installed.json"
@@ -124,6 +137,7 @@ def _scenario(tmp_path: Path, scope: str = "user") -> tuple[Path, Path, Path, Pa
     log = tmp_path / "calls.log"
     stub = _stub_cli(tmp_path / "bin")
     environment = _environment(home, stub, source, cache, installed, log)
+    environment["ADW_STUB_CONFIG"] = str(config)
     return home, source, config, cache, log, environment
 
 
@@ -154,6 +168,28 @@ def test_cli_environment_is_bound_to_the_requested_home(tmp_path: Path) -> None:
 
     assert f"env HOME={home} CLAUDECODE=" in log.read_text(encoding="utf-8")
     assert json.loads((home / ".claude" / "plugins" / "installed_plugins.json").read_text(encoding="utf-8"))["plugins"]
+
+
+def test_sole_native_config_profile_is_used(tmp_path: Path) -> None:
+    home, source, config, _cache, _log, environment = _scenario(
+        tmp_path,
+        config_relative=Path(".config") / "claude-code",
+    )
+
+    update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+    assert (config / "plugins" / "installed_plugins.json").is_file()
+    assert not (home / ".claude").exists()
+
+
+def test_multiple_native_config_profiles_require_an_explicit_root(tmp_path: Path) -> None:
+    home, source, _config_root, _cache, _log, environment = _scenario(tmp_path)
+    _config(home, Path(".config") / "claude-code")
+
+    with pytest.raises(ValueError, match="Use the Terminal installer with CLAUDE_CONFIG_DIR"):
+        update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+    assert not (home / update_claude.MARKETPLACE_RELATIVE).exists()
 
 
 def test_bad_installed_commit_restores_the_previous_catalog_and_state(tmp_path: Path) -> None:
@@ -201,6 +237,25 @@ def test_invalid_commit_is_rejected_before_creating_the_catalog(tmp_path: Path) 
     assert not (home / update_claude.MARKETPLACE_RELATIVE).exists()
 
 
+def test_atomic_json_preserves_a_zero_saved_mode(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+
+    update_claude_state._atomic_write_json(path, {"state": True}, 0)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0
+
+
+def test_update_failure_falls_back_to_user_install(tmp_path: Path) -> None:
+    home, source, _config_root, _cache, log, environment = _scenario(tmp_path)
+    environment["ADW_STUB_UPDATE_FAIL"] = "1"
+
+    update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert any(line.startswith("plugin update ") for line in calls)
+    assert any(line.startswith("plugin install ") for line in calls)
+
+
 def test_matching_commit_is_rejected_when_the_plugin_is_disabled(tmp_path: Path) -> None:
     home, source, _config_root, _cache, _log, environment = _scenario(tmp_path)
     environment["ADW_STUB_ENABLED"] = "false"
@@ -224,6 +279,23 @@ def test_manifest_mismatch_is_rejected_even_when_runtime_trees_match(tmp_path: P
     )
 
     with pytest.raises(RuntimeError, match="file mismatch"):
+        update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+
+def test_commands_tree_mismatch_is_rejected(tmp_path: Path) -> None:
+    home, source, _config_root, _cache, _log, environment = _scenario(tmp_path)
+    environment["ADW_STUB_BAD_COMMANDS"] = "1"
+
+    with pytest.raises(RuntimeError, match="commands"):
+        update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+
+def test_commands_tree_symlink_is_rejected_in_the_staged_release(tmp_path: Path) -> None:
+    home, source, _config_root, _cache, _log, environment = _scenario(tmp_path)
+    link = source / "commands" / "linked.txt"
+    link.symlink_to(source / "hooks" / "hooks.txt")
+
+    with pytest.raises(ValueError, match="symlink"):
         update_claude.install_pinned_plugin(home, source, COMMIT, environment)
 
 

@@ -24,7 +24,6 @@ ARCHIVE_ROOT = f"https://{CODELOAD_HOST}/{REPOSITORY}/tar.gz"
 PLUGIN_NAME = "agent-discipline-watcher"
 
 HTTP_TIMEOUT = 20.0
-MAX_REDIRECTS = 4
 MAX_API_BYTES = 1 << 20
 MAX_ARCHIVE_BYTES = 64 << 20
 MAX_TAR_BYTES = 288 << 20
@@ -67,15 +66,9 @@ class _Archive:
 
 class _RedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        count = getattr(req, "_adw_redirect_count", 0)
-        if count >= MAX_REDIRECTS:
-            raise ValueError("release download exceeded the redirect limit")
         target = urljoin(req.full_url, newurl)
         _validate_url(target)
-        redirected = super().redirect_request(req, fp, code, msg, headers, target)
-        if redirected is not None:
-            setattr(redirected, "_adw_redirect_count", count + 1)
-        return redirected
+        raise ValueError("release redirects are not allowed")
 
 
 def _validate_url(url: str) -> None:
@@ -440,6 +433,17 @@ def _extract(bundle: tarfile.TarFile, archive: _Archive, destination: Path) -> N
         raise
 
 
+def _remove_empty_destination(destination: Path, created: os.stat_result | None) -> None:
+    if created is None or not stat.S_ISDIR(created.st_mode):
+        return
+    try:
+        current = destination.lstat()
+        if stat.S_ISDIR(current.st_mode) and os.path.samestat(created, current):
+            destination.rmdir()
+    except OSError:
+        pass
+
+
 def stage_release(release: Release, destination: Path) -> None:
     if not isinstance(release, Release):
         raise ValueError("release has the wrong type")
@@ -454,19 +458,16 @@ def stage_release(release: Release, destination: Path) -> None:
         raise ValueError("release archive exceeds the size limit")
     archive_bytes = _decompressed_tar(archive_bytes)
     archive = _archive_plan(archive_bytes)
+    created: os.stat_result | None = None
     try:
         with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:") as bundle:
             contents = _required_contents(bundle, archive)
             _validate_release_files(contents, tag)
             if not existed:
                 destination.mkdir(mode=0o700)
+                created = destination.lstat()
             _destination_state(destination)
             _extract(bundle, archive, destination)
     except BaseException:
-        if not existed and destination.exists():
-            _remove_created(list(destination.iterdir()))
-            try:
-                destination.rmdir()
-            except OSError:
-                pass
+        _remove_empty_destination(destination, created)
         raise

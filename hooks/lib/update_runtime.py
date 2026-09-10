@@ -25,6 +25,7 @@ MANAGED_LINKS = frozenset({
     ".adw/bin/adw", ".adw/bin/adw-judge", ".local/bin/agent-discipline",
     ".local/bin/adw-cli", ".local/bin/adw-judge",
     ".codex/skills/agent-discipline-watcher", ".claude/skills/agent-discipline-watcher",
+    ".config/claude-code/skills/agent-discipline-watcher",
     ".omp/agent/extensions/agent-discipline-watcher", ".agents/skills/agent-discipline-watcher",
 })
 
@@ -126,21 +127,29 @@ def _update_lock(home: Path):
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def _selected_paths(home: Path, hosts: tuple[str, ...]) -> list[Path]:
+def _claude_root(home: Path) -> Path:
+    from .update_claude import claude_config_root
+
+    return claude_config_root(home, {})
+
+
+def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None = None) -> list[Path]:
     paths = [INSTALL_PATH, Path(".adw/bin/adw"), Path(".local/bin/agent-discipline"), Path(".local/bin/adw-cli")]
     if "codex" in hosts:
         paths.extend(map(Path, (".codex/config.toml", ".codex/hooks.json", ".codex/skills/agent-discipline-watcher", ".adw/runtime/codex")))
     if "omp" in hosts:
         paths.extend(map(Path, (".omp/agent/settings.json", ".omp/agent/extensions/agent-discipline-watcher", ".agents/skills/agent-discipline-watcher")))
     if "claude" in hosts:
+        profile = (claude_root or _claude_root(home)).relative_to(home)
         paths.extend(map(Path, (
-            ".claude/settings.json", ".claude/skills/agent-discipline-watcher",
             ".adw/bin/adw-judge", ".local/bin/adw-judge", ".zshrc", ".bashrc",
             ".adw/update-marketplace",
-            ".claude/plugins/installed_plugins.json", ".claude/plugins/known_marketplaces.json",
-            ".claude/plugins/marketplaces/agent-discipline-watcher",
-            ".claude/plugins/cache/agent-discipline-watcher",
         )))
+        paths.extend(profile / name for name in (
+            "settings.json", "skills/agent-discipline-watcher", "plugins/installed_plugins.json",
+            "plugins/known_marketplaces.json", "plugins/marketplaces/agent-discipline-watcher",
+            "plugins/cache/agent-discipline-watcher",
+        ))
     return [home / path for path in paths]
 
 
@@ -224,13 +233,15 @@ def _inventory(root: Path) -> dict[str, tuple[str, int]]:
     return files
 
 
-def _source_inventory(source: Path) -> dict[str, tuple[str, int]]:
+def _source_inventory(source: Path, hosts: tuple[str, ...] = ()) -> dict[str, tuple[str, int]]:
     inventory = _inventory(source)
     required = {"install.sh", "bin/adw", "hooks/update.py", "hooks/lib/update_runtime.py"}
     if not required.issubset(inventory):
         raise RuntimeError("the published release does not include the supported updater")
     if not inventory["bin/adw"][1] & stat.S_IXUSR:
         raise RuntimeError("the published updater command is not executable")
+    if "claude" in hosts and not inventory.get("bin/adw-judge", ("", 0))[1] & stat.S_IXUSR:
+        raise RuntimeError("the published release needs an executable bin/adw-judge")
     return inventory
 
 
@@ -284,6 +295,11 @@ def _verify_install(home: Path, source: Path, hosts: tuple[str, ...], expected: 
         _verify_codex(home, source)
     if "omp" in hosts:
         _verify_omp(home)
+    if "claude" in hosts:
+        judge = home / ".adw/bin/adw-judge"
+        target = installed / "bin/adw-judge"
+        if not judge.is_symlink() or judge.resolve() != target or not os.access(target, os.X_OK):
+            raise RuntimeError("adw-judge does not point to the installed executable")
 
 
 def _record_release(updates: Path, release: update_release.Release, hosts: tuple[str, ...]) -> None:
@@ -307,12 +323,15 @@ def _perform_update(home: Path, updates: Path, hosts: tuple[str, ...], release: 
     try:
         source = workspace / "release"
         update_release.stage_release(release, source)
-        expected = _source_inventory(source)
-        paths = _selected_paths(home, hosts)
+        expected = _source_inventory(source, hosts)
+        environment = _installer_environment(home)
+        claude_root = _claude_root(home) if "claude" in hosts else None
+        if claude_root is not None:
+            environment["CLAUDE_CONFIG_DIR"] = str(claude_root)
+        paths = _selected_paths(home, hosts, claude_root)
         _preflight_paths(paths, home)
         backups = _backup_paths(paths, workspace / "backup")
         try:
-            environment = _installer_environment(home)
             if "claude" in hosts:
                 _install_claude(home, source, release.commit, environment)
                 environment["ADW_SKIP_PLUGIN"] = "1"

@@ -217,6 +217,20 @@ def test_redirect_handler_rejects_a_host_escape() -> None:
         handler.redirect_request(request, None, 302, "Found", {}, "https://example.com/release")
 
 
+@pytest.mark.parametrize("source,target", [
+    (update_release.LATEST_URL, "https://api.github.com/repos/other/project/releases/latest"),
+    (update_release.LATEST_URL, "/repos/other/project/releases/latest"),
+    (f"{update_release.ARCHIVE_ROOT}/{COMMIT}", f"https://codeload.github.com/other/project/tar.gz/{COMMIT}"),
+    (f"{update_release.ARCHIVE_ROOT}/{COMMIT}", f"{update_release.ARCHIVE_ROOT}/{'b' * 40}"),
+    (update_release.LATEST_URL, update_release.LATEST_URL),
+])
+def test_release_redirects_cannot_change_repository_or_revision(source, target):
+    handler = update_release._RedirectHandler()
+    request = urllib.request.Request(source)
+    with pytest.raises(ValueError, match="redirects"):
+        handler.redirect_request(request, None, 302, "Found", {}, target)
+
+
 def test_archive_member_bounds_are_checked_before_advancing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(update_release, "MAX_MEMBER_BYTES", 3)
     monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files={"install.sh": b"1234"}))

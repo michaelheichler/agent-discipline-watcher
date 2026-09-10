@@ -5,7 +5,7 @@ host_dir="$(cd "$(dirname "$0")" && pwd)"
 . "$host_dir/../common.sh"
 adw_host_prelude
 
-claude_home="$HOME/.claude"
+claude_home="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 adw_bin="$HOME/.adw/bin"
 
 adw_backup_file "$claude_home/settings.json"

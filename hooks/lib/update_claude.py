@@ -23,7 +23,7 @@ REPOSITORY = "michaelheichler/agent-discipline-watcher"
 MARKETPLACE_RELATIVE = Path(".adw") / "update-marketplace"
 CONFIG_ENV = "CLAUDE_CONFIG_DIR"
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
-TREES_TO_VERIFY = ("hooks", "pi", "skills")
+TREES_TO_VERIFY = ("commands", "hooks", "pi", "skills")
 FILES_TO_VERIFY = (Path(".claude-plugin") / "plugin.json",)
 CLI_TIMEOUT_SECONDS = 180
 
@@ -111,21 +111,39 @@ def _cli_environment(home: Path, environment: Mapping[str, str]) -> dict[str, st
     return result
 
 
+def claude_config_root(home: Path, environment: Mapping[str, str]) -> Path:
+    return _config_root(_directory(Path(home), "home"), environment)
+
+
 def _config_root(home: Path, environment: Mapping[str, str]) -> Path:
     raw = str(environment.get(CONFIG_ENV, "")).strip()
     if raw == "~":
         candidate = home
     elif raw.startswith("~/"):
         candidate = home / raw[2:]
+    elif raw:
+        candidate = Path(raw)
     else:
-        candidate = Path(raw) if raw else home / ".claude"
+        candidate = _default_config_root(home)
     if not candidate.is_absolute():
         candidate = home / candidate
     target = Path(os.path.abspath(candidate))
     if not _within(target, home):
         raise ValueError(f"Claude config directory is outside the requested home: {target}")
+    if target.exists() and not target.is_dir():
+        raise ValueError(f"Claude config directory is not a directory: {target}")
     _reject_path_symlinks(target, home)
     return target
+
+
+def _default_config_root(home: Path) -> Path:
+    alternate = home / ".config" / "claude-code"
+    standard = home / ".claude"
+    if alternate.exists() and standard.exists():
+        raise ValueError(
+            "Claude has multiple config profiles. Use the Terminal installer with CLAUDE_CONFIG_DIR"
+        )
+    return alternate if alternate.exists() else standard
 
 
 def _within(path: Path, parent: Path) -> bool:
@@ -200,7 +218,7 @@ def _install_plugin(home: Path, config_root: Path, environment: Mapping[str, str
         _run_cli(home, plugin, environment)
         return
     except RuntimeError as first_error:
-        if plugin[2] != "update":
+        if plugin[1] != "update":
             raise
         try:
             _run_cli(

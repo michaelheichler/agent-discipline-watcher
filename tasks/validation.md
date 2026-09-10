@@ -233,3 +233,26 @@ pre-write, post-write, and Stop for Cursor rules, including an old denial.
 
 - [x] `hooks/lib/scanner.py:300`, `long_comment`. Removed the inherited comment.
 - [x] `hooks/lib/scanner.py:1`, `file_length_warning`. Recorded a focused split plan before the 750-line limit.
+
+## Updater review repairs
+
+- [x] `hooks/lib/update_policy.py:16`, shell wrapper. The full gate already rejects the reported PATH override. Added a regression through the hook entrypoint.
+- [x] `hooks/lib/update_release.py:466`, cleanup race. Removed the directory sweep and restricted cleanup to an empty directory with the recorded inode.
+- [x] `hooks/lib/update_claude.py:110`, profile selection. Resolve the supported profile once and use it for backup, installation, and verification.
+- [x] `install.sh:106`, late registration refusal. Check a foreign updater link before any host mutation.
+- [x] `hooks/lib/update_claude_state.py:205`, permission preservation. Restore the saved mode, including zero.
+
+- [x] `hooks/lib/update_release.py:75`, repository redirects. Reject redirects and verify the fixed upstream endpoints still work.
+- [x] `hooks/lib/update_claude.py:26`, command coverage. Include plugin commands in content and mode verification.
+- [x] `hooks/lib/update_claude.py:203`, fallback selection. Read the command verb at the correct index and test install after update failure.
+- [x] `hooks/lib/update_runtime.py:234`, judge launcher. Require the published executable and verify its installed link.
+- [x] `bin/adw:4`, custom interpreter. Document the intentional system-path requirement. The generic installer still supports custom interpreters.
+
+- [x] `hooks/lib/update_runtime.py:76`, direct entry. Gate direct managed Python calls, including relative and wrapped calls. Require isolated Python startup before importing the runtime.
+- [x] `hooks/pre_bash.py:1`, file_length_warning. Move the new working-directory helpers into the update policy module.
+- [x] `hooks/lib/update_claude.py:140`, profile guidance. Direct ambiguous profiles to the Terminal installer instead of suggesting an unsupported updater override.
+
+The full local Python suite passed 2,576 tests with 18 existing skips and
+276 subtests. Repository-wide pylint scored 10.00/10. The final policy
+extraction also passed 125 focused tests. The pinned Claude plugin installed
+and verified twice through the real CLI in a temporary home, without model calls.

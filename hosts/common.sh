@@ -14,7 +14,7 @@ adw_backup_file() {
   cp "$1" "$1.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"
 }
 
-adw_replace_link() {
+adw_check_link_target() {
   local link_path="$1"
   local target="$2"
   local legacy_target="${3:-}"
@@ -25,6 +25,14 @@ adw_replace_link() {
       echo "refusing to replace foreign symlink: $link_path -> $current" >&2
       return 2
     fi
+  fi
+}
+
+adw_replace_link() {
+  local link_path="$1"
+  local target="$2"
+  adw_check_link_target "$link_path" "$target" "${3:-}" || return 2
+  if [ -L "$link_path" ]; then
     rm -f "$link_path"
   elif [ -e "$link_path" ]; then
     mv "$link_path" "$link_path.agent-discipline-watcher.bak.$(date +%Y%m%d%H%M%S)"

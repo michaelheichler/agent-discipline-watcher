@@ -202,7 +202,7 @@ def _remove_state_file(path: Path) -> None:
 
 
 def _atomic_write_json(path: Path, value: dict[str, Any], mode: int) -> None:
-    atomic_write(path, (json.dumps(value, indent=2, sort_keys=True) + "\n").encode(), mode or 0o600)
+    atomic_write(path, (json.dumps(value, indent=2, sort_keys=True) + "\n").encode(), mode)
 
 
 def _read_json(path: Path) -> dict[str, Any]:

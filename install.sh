@@ -87,6 +87,9 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
+. "$repo_dir/hosts/common.sh"
+adw_check_link_target "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
+
 "$installer_python" "$repo_dir/hooks/install_runtime.py" \
   --source "$repo_dir" \
   --destination "$install_dir" >/dev/null
