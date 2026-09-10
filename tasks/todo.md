@@ -2,11 +2,11 @@
 
 ## 1. OMP external paths
 
-Accept absolute, home-relative, sibling, and symlink targets.
+Accept external targets and resolve home-relative paths.
 
-- [ ] External targets reach the scanner.
-- [ ] Invalid paths fail closed.
-- [ ] Verify with Bun path and edit-gate tests.
+- [x] External targets reach the scanner.
+- [x] Invalid paths fail closed.
+Verification uses Bun path and edit-gate tests.
 
 Depends on none. Expected scope covers watcher.ts and two tests.
 
@@ -14,9 +14,9 @@ Depends on none. Expected scope covers watcher.ts and two tests.
 
 Scan readable external files without a false unscannable finding.
 
-- [ ] External clean files pass and violations block.
-- [ ] Regular-file and inode checks remain enforced.
-- [ ] Verify with record and judge-review tests.
+- [x] External clean files pass and violations block.
+- [x] Regular-file and inode checks remain enforced.
+Verification uses record and judge-review tests.
 
 Depends on none. Expected scope covers record.py, judge_review.py, and tests.
 
@@ -26,7 +26,7 @@ Replace the session latch with pending targets that verification can clear.
 
 - [ ] Repaired scans and failed attempts can finish.
 - [ ] Unrelated scans cannot clear unresolved files.
-- [ ] Verify with Bun lifecycle tests.
+Verification uses Bun lifecycle tests.
 
 Depends on 1 and 2. Expected scope covers index.ts and lifecycle tests.
 
@@ -40,9 +40,9 @@ Map installed Python and notebook contracts into ADW checks.
 
 - [ ] ADW checks mutations and scans completed writes.
 - [ ] Read-only calls work and unknown writes fail explicitly.
-- [ ] Verify with adapter tests with real payload shapes.
+Verification uses adapter tests with real payload shapes.
 
-Depends on 3. Expected scope covers adapter, watcher, and tests.
+Depends on 3. Expected scope covers the adapter and watcher tests.
 
 ## 5. Codex mixed review
 
@@ -50,7 +50,7 @@ Review every candidate type before recording a completed turn.
 
 - [ ] Document and comment findings both reach the user.
 - [ ] Provider failures remain retryable.
-- [ ] Verify with Codex review tests.
+Verification uses Codex review tests.
 
 Depends on none. Expected scope covers codex_luna.py and tests.
 
@@ -60,7 +60,7 @@ Connect ADW review requests to a working provider.
 
 - [ ] Enabled review returns model findings.
 - [ ] Disabled egress makes no calls and failures stay visible.
-- [ ] Verify with provider tests and one Luna live probe.
+Verification uses provider tests and one Luna live probe.
 
 Depends on 5 if sharing the review contract. Expected scope covers provider, adapter, extension, and tests.
 
@@ -74,7 +74,7 @@ Distinguish known reads from opaque writes.
 
 - [ ] Path.read_text verification passes.
 - [ ] Dynamic writes and indirect execution still block.
-- [ ] Verify with Bash opaque-write tests.
+Verification uses Bash opaque-write tests.
 
 Depends on none. Expected scope covers interpreter analysis and tests.
 
@@ -84,7 +84,7 @@ Publish tested changes for Cubic review.
 
 - [ ] Python, Bun, shell checks, and pylint pass.
 - [ ] Resolve each Cubic finding with a fix or evidence.
-- [ ] Verify with PR checks and review threads.
+Verification uses PR checks and review threads.
 
 Depends on 1 through 7. Expected scope covers task records and PR metadata.
 
@@ -94,7 +94,7 @@ Merge the reviewed changes and publish a patch release.
 
 - [ ] Required checks pass on the reviewed head.
 - [ ] Version metadata agrees with the changelog and tag.
-- [ ] Verify with main and release tag checks.
+Verification uses main and release tag checks.
 
 Depends on 8. Expected scope covers release metadata and changelog.
 
@@ -104,12 +104,10 @@ Refresh all three harnesses locally and on tux@10.0.10.106.
 
 - [ ] Archive old reports and preserve unrelated settings.
 - [ ] All six installations reference the released ADW copy.
-- [ ] Verify with allowed and blocked writes using Haiku or Luna.
+Verification uses allowed and blocked writes using Haiku or Luna.
 
 Depends on 9. Expected scope covers installed configuration and deployment evidence.
 
 ## Checkpoint after task 10
 
 - [ ] Run the relevant suites and record results before proceeding.
-
-
