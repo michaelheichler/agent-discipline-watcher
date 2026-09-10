@@ -256,3 +256,11 @@ The full local Python suite passed 2,576 tests with 18 existing skips and
 276 subtests. Repository-wide pylint scored 10.00/10. The final policy
 extraction also passed 125 focused tests. The pinned Claude plugin installed
 and verified twice through the real CLI in a temporary home, without model calls.
+
+- [x] `hooks/lib/update_policy.py:98`, home directory changes. Resolve HOME operands and bare cd before classifying a relative managed script.
+- [x] `hooks/lib/update_policy.py:126`, Python option parsing. Reuse the shared option matcher for clustered flags and distinguish module or help calls from script execution.
+
+The final independent review reproduced both cases before the fixes. Its
+49 focused tests passed afterward, with pylint at 10.00/10 and no discipline
+findings. Cubic skipped incremental review because its monthly quota was full.
+The final full run passed 2,593 tests with 18 existing skips and 276 subtests.

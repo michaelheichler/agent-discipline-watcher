@@ -175,3 +175,71 @@ def test_direct_managed_runtime_update_is_blocked_at_full_gate(
 
     assert result.get("decision") == "block"
     assert "install_without_sandbox_home" in result.get("reason", "")
+
+
+@pytest.mark.parametrize("command", [
+    'cd "$HOME/.adw/install/agent-discipline-watcher"; python3 -I -S hooks/update.py update --omp',
+    'cd "${HOME}/.adw/install/agent-discipline-watcher"; python3 -I -S hooks/update.py update --omp',
+    "cd; python3 -I -S .adw/install/agent-discipline-watcher/hooks/update.py update --omp",
+    "cd --; python3 -I -S .adw/install/agent-discipline-watcher/hooks/update.py update --omp",
+    'sh -c \'cd "$HOME/.adw/install/agent-discipline-watcher"; python3 -I -S hooks/update.py update --omp\'',
+    'cd "${HOME}/.adw/install/agent-discipline-watcher"; sh -c \'python3 -I -S hooks/update.py update --omp\'',
+])
+def test_home_directory_changes_block_managed_runtime_at_full_gate(
+    updater: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+) -> None:
+    monkeypatch.setattr(update_policy.pwd, "getpwuid", lambda _uid: SimpleNamespace(pw_dir=str(tmp_path)))
+    project = tmp_path / "project"
+    project.mkdir()
+    config = {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")}
+    payload = {
+        "session_id": "home-directory-runtime-update",
+        "cwd": str(project),
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+    }
+
+    result = pre_bash.run(payload, config)
+
+    assert result.get("decision") == "block"
+    assert "install_without_sandbox_home" in result.get("reason", "")
+
+
+@pytest.mark.parametrize(("options", "blocked"), [
+    ("-ISW ignore", True),
+    ("-ISX dev", True),
+    ("-ISWignore", True),
+    ("-ISXdev", True),
+    ("-mjson.tool --help", False),
+    ("-Imjson.tool --help", False),
+    ("-I -m json.tool --help", False),
+    ("-I -S --help", False),
+    ("-I -S -V", False),
+    ("-I -S -hW ignore", False),
+    ("-I -S -", False),
+])
+def test_python_options_preserve_managed_script_classification_at_full_gate(
+    updater: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    options: str,
+    blocked: bool,
+) -> None:
+    monkeypatch.setattr(update_policy.pwd, "getpwuid", lambda _uid: SimpleNamespace(pw_dir=str(tmp_path)))
+    runtime = updater.resolve().parents[1] / "hooks/update.py"
+    config = {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")}
+    payload = {
+        "session_id": "python-options-runtime-update",
+        "cwd": str(tmp_path),
+        "tool_name": "Bash",
+        "tool_input": {"command": f"python3 {options} {runtime} update --omp"},
+    }
+
+    result = pre_bash.run(payload, config)
+
+    assert (result.get("decision") == "block") is blocked
+    if blocked:
+        assert "install_without_sandbox_home" in result.get("reason", "")

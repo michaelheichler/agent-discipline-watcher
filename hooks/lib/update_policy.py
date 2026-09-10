@@ -14,10 +14,11 @@ from .shell_parse import (
     _words,
 )
 from .protected import _literal, _normalize
+from .shell_syntax import PYTHON_VALUE_OPTION_RE
 
 HOST_FLAGS = frozenset({"--claude", "--codex", "--omp"})
 PYTHON_NAMES = frozenset({"python", "python2", "python3"})
-PYTHON_VALUE_FLAGS = frozenset({"-c", "-m", "-W", "-X"})
+PYTHON_EXIT_FLAGS = frozenset({"-", "--help", "--help-env", "--help-xoptions", "--help-all", "--version"})
 
 
 def untrusted_update(
@@ -88,7 +89,7 @@ def _segment_contexts(
 
 
 def _next_shell_cwd(
-    segment: list[str], current: Path, home: str | os.PathLike[str] | None,
+    segment: list[str], current: Path, home: str | os.PathLike[str],
 ) -> Path:
     words = _words(segment)
     index = _command_word_index(segment)
@@ -98,10 +99,13 @@ def _next_shell_cwd(
     if operand == "--":
         operand_index = words.index(operand, index + 1) + 1
         operand = words[operand_index] if operand_index < len(words) else None
-    if operand is None or not _is_literal_token(operand):
+    if operand is None:
+        return _normalize(Path(home)) if words[index + 1:] in ([], ["--"]) else current
+    candidate = _expand_home_token(operand, Path(home))
+    if not _is_literal_token(str(candidate)):
         return current
     try:
-        candidate = _literal(operand, home) if operand.startswith("~") else Path(operand)
+        candidate = _literal(str(candidate), home) if str(candidate).startswith("~") else candidate
         if candidate is None:
             return current
         if not candidate.is_absolute():
@@ -121,14 +125,17 @@ def _python_script_index(words: list[str], start: int) -> int | None:
             continue
         if token == "--":
             return index + 1 if index + 1 < len(words) else None
-        if token in PYTHON_VALUE_FLAGS:
-            if token in {"-c", "-m"}:
+        if token in PYTHON_EXIT_FLAGS:
+            return None
+        option = PYTHON_VALUE_OPTION_RE.match(token)
+        if option is not None:
+            if option[1] in {"c", "m"} or set("hV").intersection(option[0][1:-1]):
                 return None
-            expecting_value = True
-            continue
-        if token.startswith("-W") or token.startswith("-X"):
+            expecting_value = option.end() == len(token)
             continue
         if token.startswith("-"):
+            if not token.startswith("--") and set("hV").intersection(token[1:]):
+                return None
             continue
         return index
     return None
