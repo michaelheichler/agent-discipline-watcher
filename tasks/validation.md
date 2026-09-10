@@ -49,6 +49,12 @@ tracks the prompt correction and another installed probe.
 The structured-response prompt regressions passed 109 focused Python tests
 with 34 subtests. Pylint scored 10.00/10 on the changed Python files.
 
+The temporary-plugin Haiku probe submitted structured decisions from both
+native reviewers, with no missing-output or API error. The post-write result
+flagged vague fixture wording. The Stop result was clean.
+
+[x] structured-final-note.md line 1, native/comment review. Replaced the vague fixture sentence with its test purpose. The installed probe will review this wording again.
+
 ## Native-model review findings
 
 [x] hooks/lib/test_claude_luna.py line 2, punctuation/prose_colon. Preserve the existing tool directive. Pylint accepts it.

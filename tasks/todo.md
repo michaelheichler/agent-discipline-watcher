@@ -131,7 +131,7 @@ renderer and plugin manifest, plus their tests.
 The installed v0.20.15 post-write probe exhausted its response attempts
 without calling StructuredOutput. The Stop review called that tool and passed.
 
-- [ ] Native prompts submit their result through StructuredOutput.
+- [x] Native prompts submit their result through StructuredOutput.
 - [ ] A fresh installed Haiku probe completes both native hooks.
 
 Verification covers all generated native presets and the static plugin
