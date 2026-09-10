@@ -320,6 +320,66 @@ def test_opaque_source_write_blocks(command):
     assert "Write or Edit" in reason
 
 
+@pytest.mark.parametrize("separator", [";", "&&", "||", "&"])
+@pytest.mark.parametrize("group", ["({body})", "{{ {body}; }}", "( {{ {body}; }} )"])
+@pytest.mark.parametrize("literal_write", ["echo literal > x.txt", "echo literal | tee x.txt"])
+def test_grouped_python_keeps_sequential_literal_writes_independent(separator, group, literal_write):
+    body = f"python3 -I -S -c 'print(1)' {separator} {literal_write}"
+
+    assert allowed(group.format(body=body)) == {}
+
+
+@pytest.mark.parametrize("group", ["({body})", "{{ {body}; }}", "( {{ {body}; }} )"])
+@pytest.mark.parametrize("destination", ["> x.txt", "| tee x.txt", "| (tee x.txt)"])
+def test_compound_python_output_keeps_its_enclosing_write_destination(group, destination):
+    body = "python3 -I -S -c 'print(1)'; echo literal"
+    command = f"{group.format(body=body)} {destination}"
+
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "(python3 -I -S -c 'print(1)' > x.txt; echo literal)",
+    "{ echo literal; (python3 -I -S -c 'print(1)' | tee x.txt); }",
+    "python3 -I -S -c 'print(1)' | { cat > x.txt; echo literal; }",
+    "(python3 -I -S -c 'print(1)'; (echo literal)) > x.txt",
+])
+def test_compound_commands_keep_internal_python_output_writes_blocked(command):
+    assert "opaque_source_write" in blocked(command)
+
+
+def test_excessive_compound_nesting_blocks_without_a_hook_error():
+    command = "( " * 1100 + "python3 -I -S -c 'print(1)'" + " )" * 1100 + " > x.txt"
+
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "(exec > x.txt; python3 -I -S -c 'print(1)')",
+    "( { exec > x.txt; }; python3 -I -S -c 'print(1)')",
+    "( { exec > x.txt; } 3> err.txt; python3 -I -S -c 'print(1)')",
+    "( { exec 3> x.txt; } > err.txt; python3 -I -S -c 'print(1)' >&3)",
+    "(\npython3 -I -S -c 'print(1)'\n) > x.txt",
+    "{\npython3 -I -S -c 'print(1)'\n} | tee x.txt",
+    "python3 -I -S -c 'print(1)' |\n(tee x.txt)",
+    "(python3 -I -S -c 'print(1)'; (echo literal))|tee x.txt",
+])
+def test_compound_output_follows_persistent_redirects_and_newlines(command):
+    assert "opaque_source_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    "( (exec > x.txt); python3 -I -S -c 'print(1)')",
+    "(exec > x.txt & python3 -I -S -c 'print(1)')",
+    "(exec > x.txt | cat; python3 -I -S -c 'print(1)')",
+    "(\npython3 -I -S -c 'print(1)'\necho literal > x.txt\n)",
+    "(python3 -I -S -c 'print(1)' ); echo literal > x.txt",
+    "cat <<'EOF'\npython3 -I -S -c 'print(1)' > x.txt\nEOF",
+])
+def test_separate_shell_scopes_do_not_inherit_a_write_destination(command):
+    assert allowed(command) == {}
+
+
 TRIGGERS = (
     """python3 -c 'open("x.txt", "w").write("y")'""",
     'sh -c "$CMD"',

@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from lib.shell_parse import (
     HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
-    _segments, _tokens, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
+    _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
+from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import is_known_read_only_python
-from lib.python_shell import isolated_python, python_startup, startup_finding
+from lib.python_shell import isolated_python, startup_finding
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
@@ -30,7 +31,6 @@ WRITE_CAPABLE_TOKEN_RE = re.compile(
     r"\bfs\.\w|\bFile\.\w|\bIO\.\w|decode\(|`|"
     r"\brequire\(|\bfile_put_contents\(|\bfopen\(|\bfwrite\("
 )
-PYTHON_INTERPRETER_RE = re.compile(r"python(?:2|3)?(?:\.\d+)?$")
 OPEN_CALL_RE = re.compile(r"\bopen\(")
 READ_ONLY_MODE_CHARS = frozenset("rbtU")
 ARG_TOKEN_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|[()]|,|[^()',\"]+")
@@ -149,10 +149,6 @@ def _is_bare_interpreter_segment(segment: list[str]) -> bool:
 def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> list[dict]:
     findings = []
     for segment in _segments(command):
-        index = _payload_command_index(segment)
-        if index < len(segment) and PYTHON_INTERPRETER_RE.fullmatch(_basename(segment[index])) and python_startup(segment).unsupported_inline:
-            findings.append(startup_finding(make_finding, "inline_interpreter_write"))
-            continue
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter in SHELL_C_INTERPRETERS:
             continue
@@ -380,43 +376,11 @@ def _line_is_mutating(line: str) -> bool:
     )
 
 
-def _has_python_source(segment: list[str], depth: int = 0) -> bool:
-    index = _payload_command_index(segment)
-    if index < len(segment) and PYTHON_INTERPRETER_RE.fullmatch(_basename(segment[index])):
-        return True
-    invocation = interpreter_invocation(segment)
-    if invocation is None or invocation.interpreter not in SHELL_C_INTERPRETERS:
-        return False
-    if depth >= 2 or invocation.payload is None:
-        return True
-    return any(_has_python_source(inner, depth + 1) for group in _output_pipeline_groups(invocation.payload) for inner in group)
-
-
-def _output_pipeline_groups(line: str) -> list[list[list[str]]]:
-    tokens: list[str] = []
-    groups: list[str] = []
-    for token in _tokens(line):
-        command_start = not tokens or tokens[-1] in {";", "&&", "||", "|", "&"}
-        if token == "(" or (token == "{" and command_start):
-            groups.append(")" if token == "(" else "}")
-        elif groups and token == groups[-1] and (token == ")" or command_start):
-            groups.pop()
-        else:
-            tokens.append("|" if groups and token in {";", "&&", "||", "&"} else token)
-    return _pipeline_groups(" ".join(tokens))
-
-
-def _python_output_write(line: str) -> bool:
-    return any(
-        any(_write_path_writes(segment) for segment in group)
-        and any(_has_python_source(segment) for segment in group)
-        for group in _output_pipeline_groups(line)
-    )
-
-
 def opaque_source_findings(command: str, make_finding: FindingFactory) -> list[dict]:
     findings = [make_finding("opaque_source_write") for segment in _segments(command) if _dd_file_output(segment)]
+    if _python_output_write(command):
+        findings.append(make_finding("opaque_source_write"))
     for line, _, _ in _logical_lines(command):
-        if _python_output_write(line) or (has_process_substitution(line) and _line_is_mutating(line)):
+        if has_process_substitution(line) and _line_is_mutating(line):
             findings.append(make_finding("opaque_source_write"))
     return findings
