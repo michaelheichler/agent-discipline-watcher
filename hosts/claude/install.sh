@@ -44,11 +44,16 @@ esac
 
 [ "${ADW_CLAUDE_LEGACY:-0}" = "1" ] && exit 0
 
+if [ "${ADW_SKIP_PLUGIN:-0}" = "1" ]; then
+  echo "Claude preset CLI installed. Plugin installation skipped as requested."
+  exit 0
+fi
+
 marketplace="agent-discipline-watcher"
 plugin="agent-discipline-watcher@$marketplace"
 plugin_installed=0
 
-if [ "${ADW_SKIP_PLUGIN:-0}" != "1" ] && command -v claude >/dev/null 2>&1; then
+if command -v claude >/dev/null 2>&1; then
   echo "Clearing the stale Claude plugin cache. The ~/.adw settings tree stays."
   "$ADW_PYTHON" "$ADW_SKILL_DIR/hooks/claude_cache_nuke.py" || true
 

@@ -52,3 +52,31 @@ OMP code mode wraps ordinary tools in JavaScript eval calls. ADW must admit
 literal calls through the tool bridge while keeping direct JavaScript file
 access blocked. Recognize a bounded dispatch grammar, retain each nested
 tool's gate, and verify both read success and write rejection on OMP.
+
+## Controlled maintenance
+
+Keep ordinary configuration edits available through the existing content
+checks. Add an installed updater for the latest published ADW release from
+the fixed official repository. It accepts host choices only, stages the exact
+release revision, and owns installation paths and subprocess environment.
+
+The updater must preserve pending state and unrelated host settings. Claude
+must use the same pinned revision, with plugin installation verified before
+legacy wiring removal. Generic installer commands retain their current guard.
+Use Terminal for the first installation of the updater.
+
+## Cursor rule classification
+
+Treat `.mdc` as Markdown in both prose classification and YAML frontmatter
+masking. Verify an unchanged Cursor rule through post-edit and Stop, then
+prove ordinary body violations still block. Reproduce the reported glob
+case with OMP and a cheap model before pushing.
+
+OMP implements `xd://report_issue` as a native report device. Route only that
+exact write destination to OMP without filesystem checks. Preserve its own
+consent prompt. Verify that failed reports cannot create pending file scans
+and that ordinary file writes keep their gates.
+
+`hooks/lib/scanner.py:1` reports `file_length_warning`. Keep this parsing fix
+narrow. Before the scanner reaches 750 lines, move its file-format predicates
+and constants into one shared module, with classification tests unchanged.

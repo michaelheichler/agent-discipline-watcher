@@ -204,3 +204,32 @@ The active hook rejected the installer preview command with
 install_without_sandbox_home. No installer ran. The command used --dry-run,
 but the guard still required a sandbox HOME. Deployment must respect that
 active guard rather than disable it or override its authorization setting.
+
+## Cursor rules and native reports
+
+The unchanged `app-marcumar/.cursor/rules/rust-model-parity.mdc` reproduced
+ten false comment findings before the fix. The same bytes produced no
+findings after `.mdc` joined the shared Markdown format set.
+
+The reported file predates the fix. Its report timestamp is September 10 at
+23:08, while the parser changed at 23:11. Mac OMP loads the checkout through
+its extension symlink. The later advisor observation saw this new work.
+
+Fresh OMP 18.1.17 session `01a08d33-3cb0-75ad-b51d-ba9739a0d9f8` used
+`openai-codex/gpt-5.6-luna` with maximum reasoning. It changed one word in a
+temporary copy of the exact rule. The native ledger recorded pre-write,
+post-edit, and Stop without findings. The diff contains only the requested
+replacement. Haiku could not start because the OMP profile lacks Anthropic
+credentials. The probe left the project rule intact and used normal guard checks.
+
+The installed OMP binary implements the exact `xd://report_issue` device.
+Its handler owns consent and grievance storage. ADW now leaves that route
+to OMP. Tests reject other virtual targets and prevent a report result from
+hiding an accepted filesystem write. The tests sent no live report.
+
+The OMP suite passed 214 tests. The broad Python run passed 2,440 tests with
+18 existing skips and 276 subtests. Focused shell-entry tests also verified
+pre-write, post-write, and Stop for Cursor rules, including an old denial.
+
+- [x] `hooks/lib/scanner.py:300`, `long_comment`. Removed the inherited comment.
+- [x] `hooks/lib/scanner.py:1`, `file_length_warning`. Recorded a focused split plan before the 750-line limit.

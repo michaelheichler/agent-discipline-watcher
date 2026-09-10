@@ -109,7 +109,7 @@ def test_skipping_the_plugin_step_leaves_the_cache_alone(tmp_path: Path) -> None
     stub_dir = tmp_path / "stub"
     _stub_claude(stub_dir, log)
 
-    subprocess.run(
+    finished = subprocess.run(
         [str(REPO_ROOT / "install.sh"), "--claude"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
         env={
@@ -123,3 +123,5 @@ def test_skipping_the_plugin_step_leaves_the_cache_alone(tmp_path: Path) -> None
 
     assert stale.exists()
     assert log.read_text(encoding="utf-8") == ""
+    assert finished.returncode == 0, finished.stderr
+    assert "/plugin marketplace add" not in finished.stdout

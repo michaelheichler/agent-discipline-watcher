@@ -101,4 +101,8 @@ for host_name in $chosen; do
     ADW_CLAUDE_LEGACY="${ADW_CLAUDE_LEGACY:-0}" "$host_installer"
 done
 
+. "$install_dir/hosts/common.sh"
+mkdir -p "$HOME/.adw/bin"
+adw_replace_link "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
+
 echo "installed agent-discipline-watcher for: $(echo "$chosen" | tr '\n' ' ')"

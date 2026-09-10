@@ -26,6 +26,7 @@ from lib.shell_parse import (
 )
 from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
+from lib.update_policy import untrusted_update
 
 BASH_WRITE_CAP = 100
 OVERSIZE_WRITE = (
@@ -50,8 +51,8 @@ MAX_SHELL_PAYLOAD_DEPTH = 1
 
 RULES: dict[str, Rule] = {
     "install_without_sandbox_home": Rule(
-        detail="Installer or merge script aimed at the real HOME",
-        action="Re-run it with a sandbox HOME such as HOME=\"$(mktemp -d)\".",
+        detail="Installer or updater lacks a trusted installation route",
+        action="Use the installed adw updater with explicit host flags, or run the installer yourself in Terminal. Test installers only in an isolated HOME.",
     ),
     "commit_gate_bypass": Rule(
         detail="Commit skips the pre-commit gate",
@@ -187,7 +188,7 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
         return []
     segments = _segments(command)
     hits = []
-    if any(_runs_installer(segment) and not _sets_home(segment) for segment in segments):
+    if any((_runs_installer(segment) and not _sets_home(segment)) or untrusted_update(segment, home) for segment in segments):
         hits.append("install_without_sandbox_home")
     if any(_skips_commit_gate(segment) for segment in segments):
         hits.append("commit_gate_bypass")

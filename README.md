@@ -88,7 +88,7 @@ flow before using model review. There is no API-key fallback.
 ```bash
 ./install.sh
 ./install.sh -y
-./install.sh --no-claude --codex -y
+./install.sh --codex -y
 ```
 
 ### OMP (`oh-my-pi`)
@@ -112,7 +112,8 @@ the installed client configuration points into the development checkout.
 ```
 
 ```bash
-./install.sh                      # Claude + Codex + OMP
+./install.sh                      # Choose hosts interactively
+./install.sh --claude --codex --omp
 ./install.sh --omp -y             # OMP only
 ./pi/install.sh -y                # OMP only (direct)
 ./pi/install.sh --remove -y       # uninstall OMP extension
@@ -121,14 +122,47 @@ the installed client configuration points into the development checkout.
 Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Set
 `ADW_INSTALL_DIR` to choose a different isolated install root. Restart OMP
 after install, or pass `--extension` to load it immediately.
+
+### Controlled release updates
+
+The top-level installer registers `~/.adw/bin/adw`. Its `update` command
+installs the latest published release from the official ADW repository for
+the hosts you select. It accepts no alternate repository, checkout, or
+installation directory. It uses the account's default directories and
+preserves session state and all recorded findings.
+
+```bash
+~/.adw/bin/adw update --claude --codex --omp --dry-run
+~/.adw/bin/adw update --claude --codex --omp
+```
+
+Use an absolute path in agent tool calls. For example,
+`/Users/yourname/.adw/bin/adw update --omp` lets the guard validate the
+installed executable and host flags before permitting the update.
+Arbitrary installer scripts still require a Terminal install.
+The updater requires the default installation directory.
+
+Install the first release containing the updater from Terminal. An older
+installed guard cannot authorize the new command. Restart the selected agent
+harnesses after updating so they load the new hooks and extension.
+
 In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
 screen. They edit the project `.agent-discipline.json` policy used by the same
 Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is
 separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
+Cursor `.mdc` rules use the same Markdown scanner and frontmatter handling
+as `.md` files. YAML glob patterns do not become code comments. The watcher
+still checks the Markdown body when an agent edits a rule or finishes a turn.
+
+OMP's exact `xd://report_issue` write destination uses the native report
+handler and its consent prompt. ADW does not treat that report as a project
+file or create a pending file scan for it. Other virtual write paths remain
+subject to target validation.
+
 ## Requirements
 
-A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the version it needs, because a watcher that stops enforcing without a word is worse than one that refuses to start.
+A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the required version. This prevents silent loss of enforcement.
 
 The plugin ships its own reviewer, so a plain install already judges on Haiku
 and needs no preset step. Select a different one with

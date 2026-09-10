@@ -104,6 +104,10 @@ def test_claude_writes_only_the_paths_its_manifest_declares(tmp_path: Path) -> N
     written = {str(path) for path in _touched(tmp_path) if not str(path).startswith(".adw/install")}
 
     assert ".adw/bin/adw-judge" in written
+    updater = tmp_path / ".adw/bin/adw"
+    assert updater.is_symlink()
+    assert updater.resolve() == tmp_path / ".adw/install/adw/bin/adw"
+    assert updater.resolve().is_file()
     assert not [path for path in written if path.startswith(".codex")]
     assert not [path for path in written if path.startswith(".agents")]
 
