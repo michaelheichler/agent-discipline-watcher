@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.18 (2026-09-11)
+
+### Fixed
+
+- Cursor `.mdc` files use Markdown and YAML frontmatter handling. Glob patterns no longer produce false code-comment findings during post-edit or Stop checks.
+- OMP routes the exact `xd://report_issue` destination to its native report handler and preserves its consent prompt.
+- Installer preflight rejects a foreign updater link before changing host installations.
+
+### Added
+
+- The installed `adw update` command refreshes selected hosts from the latest published ADW release, verifies the pinned source and host wiring, and restores the previous installation on failure.
+- Claude updates verify the enabled user plugin and its content before removing legacy hooks. The updater preserves findings and session state.
+
 ## 0.20.17 (2026-09-10)
 
 ### Fixed
