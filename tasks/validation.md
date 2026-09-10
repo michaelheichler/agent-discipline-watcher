@@ -1,5 +1,21 @@
 # Host repair validation
 
+## OMP code-mode regression
+
+The reported OMP 18.1.17 session called JavaScript eval with
+`display(await tool.bash({command:'which -a omp',timeout:30}));`.
+ADW rejected eval before the nested Bash command reached its gate. Two new
+regressions reproduce the failure, with 70 existing tests still passing.
+
+The live OMP 18.1.17 Luna probe now executes that exact wrapper and returns
+the resolved executable paths. Code mode remains enabled. A nested write
+probe reaches the normal content gate, which rejects its intentional rule
+violation before creating the file. All 184 Bun tests pass.
+
+[x] /tmp/adw-js-dispatch-probe/rejected.md line 1, `english/utilize`. The intentional negative probe returned the expected rejection. Confirmed that the file does not exist.
+
+[x] pi/extensions/agent-discipline-watcher/lifecycle.integration.test.ts line 1, file_length_warning. The focused regression keeps this suite below 750 lines. Split the language-specific lifecycle cases before further growth reaches that limit.
+
 ## Release and deployment
 
 PRs 4 through 6 merged after Cubic reported zero remaining findings and CI

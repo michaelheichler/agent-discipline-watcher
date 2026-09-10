@@ -68,6 +68,18 @@ describe("OMP tool adapter", () => {
     }).kind).toBe("unknown-write");
   });
 
+  test("allows literal JavaScript tool dispatch while retaining nested tool gates", () => {
+    const input = {
+      language: "js",
+      code: "display(await tool.bash({command:'which -a omp',timeout:30}));",
+    };
+    expect(adaptToolCall({ toolName: "eval", input })).toMatchObject({
+      kind: "other",
+      requiresTarget: false,
+    });
+    expect(adaptToolResult({ toolName: "eval", input }).kind).toBe("other");
+  });
+
   test("blocks every eval JavaScript call without a read-only proof", () => {
     expect(adaptToolCall({
       toolName: "eval",
