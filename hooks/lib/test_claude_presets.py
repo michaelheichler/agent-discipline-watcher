@@ -61,7 +61,9 @@ def test_every_agent_preset_registers_a_reviewer_on_both_events(preset: str) -> 
         assert "exactly once" in entry["prompt"]
         assert "plain text" in entry["prompt"]
         assert "JSON:" not in entry["prompt"]
-    assert "skip every remaining step" in generated["Stop"][0]["hooks"][0]["prompt"]
+    stop_prompt = generated["Stop"][0]["hooks"][0]["prompt"]
+    assert "skip every remaining step" in stop_prompt
+    assert stop_prompt.index("Batch all") < stop_prompt.index("OUTPUT CONTRACT")
 
 
 def test_the_luna_preset_registers_a_command_on_both_events() -> None:

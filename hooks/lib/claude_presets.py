@@ -57,8 +57,8 @@ def comment_prompt(preset: str) -> str:
         "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
         "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
         "or has no ADW candidate, use the successful StructuredOutput shape.\n"
+        "Do not deny or undo the completed write.\n"
         + STRUCTURED_OUTPUT_CONTRACT
-        + "Do not deny or undo the completed write.\n"
         + "Hook input: $ARGUMENTS"
     )
 
@@ -74,11 +74,11 @@ def stop_prompt(preset: str) -> str:
         "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
         "unrelated files, or read files not named by the helper output. "
         "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
+        "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
+        "uses the successful StructuredOutput shape. A clean review uses the same shape. A failed review uses "
+        "the failure shape below.\n"
+        "Use the session_id from this hook input to locate only its journal.\n"
         + STRUCTURED_OUTPUT_CONTRACT
-        + "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
-        + "uses the successful StructuredOutput shape. A clean review uses the same shape. A failed review uses "
-        + "the failure shape above.\n"
-        + "Use the session_id from this hook input to locate only its journal.\n"
         + "Hook input: $ARGUMENTS"
     )
 
