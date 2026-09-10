@@ -145,3 +145,26 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [x] Recognize literal tool dispatch without allowing arbitrary JavaScript.
 - [x] Verify nested mutation gates and the installed OMP read path.
 - [x] Merge the reviewed fix and publish the next patch release.
+
+## 14. Controlled maintenance
+
+- [x] Fetch and validate a published release from the fixed official source.
+- [x] Install selected hosts with fixed destinations and preserved state.
+- [x] Keep configuration exceptions and unrelated protection rules intact.
+- [x] Verify failures and successful updates in isolated homes before release.
+
+## 15. Cursor rules in OMP
+
+- [x] Reproduce the false comments on the unchanged `.mdc` file.
+- [x] Share Markdown formats between prose detection and frontmatter masking.
+- [x] Verify pre-write, post-write, and Stop with real hook entrypoints.
+- [x] Verify a fresh scan clears a prior comment denial without changing the file.
+- [x] Complete a fresh Haiku or Luna OMP write and Stop probe before pushing.
+- [x] Verify native issue-report support and preserve its consent handling.
+
+## 16. Reviewed patch release
+
+- [x] Resolve updater review findings and pass the full regression suite.
+- [ ] Merge the reviewed updater and publish v0.20.18.
+- [ ] Refresh all three remote harnesses and verify their installed revision.
+- [ ] Complete the Mac installation through the permitted maintenance entrypoint.

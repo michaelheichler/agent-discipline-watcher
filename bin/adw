@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+unset ADW_PYTHON
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  if [ "${SOURCE#/}" = "$SOURCE" ]; then
+    SOURCE="$SOURCE_DIR/$SOURCE"
+  fi
+done
+DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+. "$DIR/hooks/resolve-python.sh"
+read -r FLOOR < "$DIR/.python-version"
+PYTHON="$(adw_resolve_python "$FLOOR")"
+[ -n "$PYTHON" ] || {
+  echo "adw: no Python $FLOOR or newer in the system paths." >&2
+  exit 2
+}
+exec "$PYTHON" -I -S "$DIR/hooks/update.py" "$@"

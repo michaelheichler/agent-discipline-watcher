@@ -87,6 +87,9 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
+. "$repo_dir/hosts/common.sh"
+adw_check_link_target "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
+
 "$installer_python" "$repo_dir/hooks/install_runtime.py" \
   --source "$repo_dir" \
   --destination "$install_dir" >/dev/null
@@ -100,5 +103,9 @@ for host_name in $chosen; do
   ADW_SKILL_DIR="$install_dir" ADW_PYTHON="$installer_python" \
     ADW_CLAUDE_LEGACY="${ADW_CLAUDE_LEGACY:-0}" "$host_installer"
 done
+
+. "$install_dir/hosts/common.sh"
+mkdir -p "$HOME/.adw/bin"
+adw_replace_link "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
 
 echo "installed agent-discipline-watcher for: $(echo "$chosen" | tr '\n' ' ')"

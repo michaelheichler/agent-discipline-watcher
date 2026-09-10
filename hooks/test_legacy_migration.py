@@ -113,7 +113,7 @@ class LegacyRemovalTests(unittest.TestCase):
 
 
 class InstallScriptTests(unittest.TestCase):
-    def test_default_claude_branch_prints_the_plugin_commands(self):
+    def test_claude_branch_reports_an_explicit_plugin_skip(self):
         with tempfile.TemporaryDirectory() as home:
             settings = Path(home) / ".claude" / "settings.json"
             settings.parent.mkdir(parents=True)
@@ -122,8 +122,8 @@ class InstallScriptTests(unittest.TestCase):
                 ["bash", str(INSTALL), "--claude"],
                 capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
             )
-            self.assertIn("/plugin marketplace add", result.stdout)
-            self.assertIn("/plugin install agent-discipline-watcher@", result.stdout)
+            self.assertIn("Plugin installation skipped as requested.", result.stdout)
+            self.assertNotIn("/plugin marketplace add", result.stdout)
             self.assertNotIn("agent-discipline-watcher/hooks/run.sh", settings.read_text(encoding="utf-8"))
 
     def test_legacy_flag_still_writes_path_based_wiring(self):
@@ -164,7 +164,7 @@ class InstallScriptTests(unittest.TestCase):
                 ["bash", str(INSTALL), "--claude"],
                 capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
             )
-            self.assertIn("/plugin marketplace add", result.stdout)
+            self.assertIn("Claude preset CLI installed.", result.stdout)
             self.assertFalse((Path(home) / ".codex" / "config.toml").exists())
 
     def test_claude_only_flag_does_not_also_run_the_omp_branch(self):

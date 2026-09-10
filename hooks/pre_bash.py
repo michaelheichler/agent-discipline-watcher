@@ -26,6 +26,7 @@ from lib.shell_parse import (
 )
 from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
+from lib.update_policy import _segment_contexts, untrusted_update
 
 BASH_WRITE_CAP = 100
 OVERSIZE_WRITE = (
@@ -50,8 +51,8 @@ MAX_SHELL_PAYLOAD_DEPTH = 1
 
 RULES: dict[str, Rule] = {
     "install_without_sandbox_home": Rule(
-        detail="Installer or merge script aimed at the real HOME",
-        action="Re-run it with a sandbox HOME such as HOME=\"$(mktemp -d)\".",
+        detail="Installer or updater lacks a trusted installation route",
+        action="Use the installed adw updater with explicit host flags, or run the installer yourself in Terminal. Test installers only in an isolated HOME.",
     ),
     "commit_gate_bypass": Rule(
         detail="Commit skips the pre-commit gate",
@@ -131,7 +132,12 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     command = _command(payload)
     if not command:
         return allow()
-    findings = command_findings(command, cfg) + target_findings(command, cfg) + opaque_write_findings(command, cfg)
+    cwd = payload.get("cwd") or "."
+    findings = (
+        command_findings(command, cfg, cwd=cwd)
+        + target_findings(command, cfg)
+        + opaque_write_findings(command, cfg, cwd=cwd)
+    )
     if findings:
         reason, _ = compact_block(findings, cfg)
         _record(payload, cfg, turn_id, findings, started)
@@ -181,13 +187,22 @@ def _verdict(decisions: list[tuple[dict, str]], cfg: dict, inherited: list[dict]
     return {"systemMessage": notice} if notice else allow()
 
 
-def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
+def command_findings(
+    command: str,
+    config: dict | None = None,
+    home: str | os.PathLike[str] | None = None,
+    cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     """Judge shell segments independently because an allowed segment must not hide a prohibited sibling."""
     if not command or authorized(config):
         return []
     segments = _segments(command)
+    contexts = _segment_contexts(segments, cwd, home)
     hits = []
-    if any(_runs_installer(segment) and not _sets_home(segment) for segment in segments):
+    if any(
+        (_runs_installer(segment) and not _sets_home(segment)) or untrusted_update(segment, home, segment_cwd)
+        for segment, segment_cwd in contexts
+    ):
         hits.append("install_without_sandbox_home")
     if any(_skips_commit_gate(segment) for segment in segments):
         hits.append("commit_gate_bypass")
@@ -221,32 +236,46 @@ def _shell_targets(command: str) -> dict[str, str | None]:
     return targets
 
 
-def opaque_write_findings(command: str, config: dict | None = None) -> list[dict]:
+def opaque_write_findings(
+    command: str,
+    config: dict | None = None,
+    cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     """Hard block here, because a write route the scanner cannot read through cannot be judged any other way."""
-    return _opaque_findings(command, config, 0)
+    return _opaque_findings(command, config, 0, cwd)
 
 
-def _opaque_findings(command: str, config: dict | None, depth: int) -> list[dict]:
+def _opaque_findings(
+    command: str,
+    config: dict | None,
+    depth: int,
+    cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     if not command or authorized(config):
         return []
     make_finding = _finding_factory(command)
     findings: list[dict] = []
     findings.extend(inline_interpreter_findings(command, make_finding))
-    findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth)))
+    findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth, cwd)))
     findings.extend(dynamic_heredoc_findings(command, make_finding))
     findings.extend(decode_pipe_findings(command, make_finding))
     findings.extend(inplace_edit_findings(command, make_finding))
     findings.extend(opaque_source_findings(command, make_finding))
-    findings.extend(_shell_payload_findings(command, config, depth))
+    findings.extend(_shell_payload_findings(command, config, depth, cwd))
     return findings
 
 
-def _stdin_recurse(command: str, config: dict | None, depth: int) -> Callable[[str], list[dict]]:
+def _stdin_recurse(
+    command: str,
+    config: dict | None,
+    depth: int,
+    cwd: str | os.PathLike[str] | None,
+) -> Callable[[str], list[dict]]:
     """Close over the outer command and its recursion depth, because a shell consumer's literal stdin body is a fresh command one level deeper, capped the same as a shell -c payload."""
     def recurse(body: str) -> list[dict]:
         if depth >= MAX_SHELL_PAYLOAD_DEPTH:
             return [_finding("interpreter_heredoc_write", command)]
-        return _recursed_findings(body, config, depth + 1)
+        return _recursed_findings(body, config, depth + 1, cwd)
     return recurse
 
 
@@ -257,22 +286,36 @@ def _finding_factory(command: str) -> Callable[[str], dict]:
     return make_finding
 
 
-def _shell_payload_findings(command: str, config: dict | None, depth: int) -> list[dict]:
+def _shell_payload_findings(
+    command: str,
+    config: dict | None,
+    depth: int,
+    cwd: str | os.PathLike[str] | None,
+) -> list[dict]:
     findings = []
-    for segment in _segments(command):
+    for segment, segment_cwd in _segment_contexts(_segments(command), cwd, None):
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter not in SHELL_C_INTERPRETERS:
             continue
         if invocation.payload is None or depth >= MAX_SHELL_PAYLOAD_DEPTH:
             findings.append(_finding("shell_payload_block", command))
             continue
-        findings.extend(_recursed_findings(invocation.payload, config, depth + 1))
+        findings.extend(_recursed_findings(invocation.payload, config, depth + 1, segment_cwd))
     return findings
 
 
-def _recursed_findings(payload: str, config: dict | None, depth: int) -> list[dict]:
+def _recursed_findings(
+    payload: str,
+    config: dict | None,
+    depth: int,
+    cwd: str | os.PathLike[str] | None,
+) -> list[dict]:
     """Re-enter one level of the gate's own self-protection checks, because a literal shell -c payload is a fresh command."""
-    return command_findings(payload, config) + target_findings(payload, config) + _opaque_findings(payload, config, depth)
+    return (
+        command_findings(payload, config, cwd=cwd)
+        + target_findings(payload, config)
+        + _opaque_findings(payload, config, depth, cwd)
+    )
 
 
 def _literal_shell_c_payloads(command: str) -> list[str]:

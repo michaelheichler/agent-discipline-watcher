@@ -204,3 +204,63 @@ The active hook rejected the installer preview command with
 install_without_sandbox_home. No installer ran. The command used --dry-run,
 but the guard still required a sandbox HOME. Deployment must respect that
 active guard rather than disable it or override its authorization setting.
+
+## Cursor rules and native reports
+
+The unchanged `app-marcumar/.cursor/rules/rust-model-parity.mdc` reproduced
+ten false comment findings before the fix. The same bytes produced no
+findings after `.mdc` joined the shared Markdown format set.
+
+The reported file predates the fix. Its report timestamp is September 10 at
+23:08, while the parser changed at 23:11. Mac OMP loads the checkout through
+its extension symlink. The later advisor observation saw this new work.
+
+Fresh OMP 18.1.17 session `01a08d33-3cb0-75ad-b51d-ba9739a0d9f8` used
+`openai-codex/gpt-5.6-luna` with maximum reasoning. It changed one word in a
+temporary copy of the exact rule. The native ledger recorded pre-write,
+post-edit, and Stop without findings. The diff contains only the requested
+replacement. Haiku could not start because the OMP profile lacks Anthropic
+credentials. The probe left the project rule intact and used normal guard checks.
+
+The installed OMP binary implements the exact `xd://report_issue` device.
+Its handler owns consent and grievance storage. ADW now leaves that route
+to OMP. Tests reject other virtual targets and prevent a report result from
+hiding an accepted filesystem write. The tests sent no live report.
+
+The OMP suite passed 214 tests. The broad Python run passed 2,440 tests with
+18 existing skips and 276 subtests. Focused shell-entry tests also verified
+pre-write, post-write, and Stop for Cursor rules, including an old denial.
+
+- [x] `hooks/lib/scanner.py:300`, `long_comment`. Removed the inherited comment.
+- [x] `hooks/lib/scanner.py:1`, `file_length_warning`. Recorded a focused split plan before the 750-line limit.
+
+## Updater review repairs
+
+- [x] `hooks/lib/update_policy.py:16`, shell wrapper. The full gate already rejects the reported PATH override. Added a regression through the hook entrypoint.
+- [x] `hooks/lib/update_release.py:466`, cleanup race. Removed the directory sweep and restricted cleanup to an empty directory with the recorded inode.
+- [x] `hooks/lib/update_claude.py:110`, profile selection. Resolve the supported profile once and use it for backup, installation, and verification.
+- [x] `install.sh:106`, late registration refusal. Check a foreign updater link before any host mutation.
+- [x] `hooks/lib/update_claude_state.py:205`, permission preservation. Restore the saved mode, including zero.
+
+- [x] `hooks/lib/update_release.py:75`, repository redirects. Reject redirects and verify the fixed upstream endpoints still work.
+- [x] `hooks/lib/update_claude.py:26`, command coverage. Include plugin commands in content and mode verification.
+- [x] `hooks/lib/update_claude.py:203`, fallback selection. Read the command verb at the correct index and test install after update failure.
+- [x] `hooks/lib/update_runtime.py:234`, judge launcher. Require the published executable and verify its installed link.
+- [x] `bin/adw:4`, custom interpreter. Document the intentional system-path requirement. The generic installer still supports custom interpreters.
+
+- [x] `hooks/lib/update_runtime.py:76`, direct entry. Gate direct managed Python calls, including relative and wrapped calls. Require isolated Python startup before importing the runtime.
+- [x] `hooks/pre_bash.py:1`, file_length_warning. Move the new working-directory helpers into the update policy module.
+- [x] `hooks/lib/update_claude.py:140`, profile guidance. Direct ambiguous profiles to the Terminal installer instead of suggesting an unsupported updater override.
+
+The full local Python suite passed 2,576 tests with 18 existing skips and
+276 subtests. Repository-wide pylint scored 10.00/10. The final policy
+extraction also passed 125 focused tests. The pinned Claude plugin installed
+and verified twice through the real CLI in a temporary home, without model calls.
+
+- [x] `hooks/lib/update_policy.py:98`, home directory changes. Resolve HOME operands and bare cd before classifying a relative managed script.
+- [x] `hooks/lib/update_policy.py:126`, Python option parsing. Reuse the shared option matcher for clustered flags and distinguish module or help calls from script execution.
+
+The final independent review reproduced both cases before the fixes. Its
+49 focused tests passed afterward, with pylint at 10.00/10 and no discipline
+findings. Cubic skipped incremental review because its monthly quota was full.
+The final full run passed 2,593 tests with 18 existing skips and 276 subtests.
