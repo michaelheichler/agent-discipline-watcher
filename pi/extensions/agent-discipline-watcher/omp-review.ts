@@ -67,7 +67,18 @@ function reviewKey(ctx: OmpReviewContext, prepared: PreparedReview): string {
 }
 
 function failureResult(error: unknown): WatcherResult {
-  const reason = error instanceof Error ? error.message : "unknown review error";
+  const category = error instanceof OmpProviderFailure ? error.category : "response";
+  const reason = {
+    model: "could not select the configured model",
+    authentication: "could not authenticate with the selected model",
+    request: "could not prepare the review request",
+    cancelled: "was cancelled before the review completed",
+    stale: "the source or policy changed during review",
+    timeout: "timed out before the review completed",
+    response: "received an unusable model response",
+    disabled: "was disabled by policy",
+    provider: "the provider failed while reviewing the file",
+  }[category] ?? "the provider failed while reviewing the file";
   return {
     decision: "block",
     reason: `agent-discipline-watcher OMP review incomplete: ${reason}. Check the selected model and OMP login, then retry the file or Stop.`,

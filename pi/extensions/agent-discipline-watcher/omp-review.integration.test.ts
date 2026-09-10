@@ -74,7 +74,7 @@ test("disabled review reads no model catalogue and makes no completion calls", a
 test("omitted verdicts remain pending and a later complete review releases Stop", async () => {
   let calls = 0;
   const harness = fixture(async () => answer(++calls <= 2 ? [verdict(0)] : [verdict(0), verdict(1)]));
-  expect(JSON.stringify(await harness.result())).toContain("every candidate exactly once");
+  expect(JSON.stringify(await harness.result())).toContain("received an unusable model response");
   expect(calls).toBe(2);
   expect(await harness.stop()).toBeUndefined();
   expect(calls).toBe(3);
@@ -99,8 +99,22 @@ test("all failed recovery attempts keep Stop blocked with an actionable reason",
   await harness.result();
   expect(await harness.stop()).toMatchObject({
     decision: "block",
-    reason: expect.stringContaining("provider offline. Check the selected model and OMP login"),
+    reason: expect.stringContaining("the provider failed while reviewing the file. Check the selected model and OMP login"),
   });
+});
+
+test("does not expose provider error details in review guidance", async () => {
+  const harness = fixture(async () => {
+    throw new Error("Authorization: Bearer secret-value");
+  });
+  await harness.result();
+  const stop = await harness.stop();
+  expect(stop).toMatchObject({
+    decision: "block",
+    reason: expect.stringContaining("the provider failed while reviewing the file"),
+  });
+  expect(JSON.stringify(stop)).not.toContain("secret-value");
+  expect(JSON.stringify(stop)).not.toContain("Authorization");
 });
 
 test("a policy change during review prevents retries from sending more source", async () => {
