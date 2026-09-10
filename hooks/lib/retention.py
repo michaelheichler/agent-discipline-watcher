@@ -26,7 +26,7 @@ def _row_timestamp(row: dict) -> float | None:
 
 def _resolved_reports_root(reports_root: Path) -> Path | None:
     try:
-        return reports_root.resolve()
+        return reports_root.resolve(strict=True)
     except (OSError, RuntimeError, ValueError):
         return None
 

@@ -89,3 +89,7 @@ The completed OMP routing suite passed 125 Bun tests. Its Python checks passed
 The final full Python run passed 2245 tests with 18 existing skips and 274
 subtests. The last shell-grouping fix also passed 423 focused tests.
 Pylint scored 10.00/10, and shell syntax checks passed.
+
+Python 3.13 CI exposed a path-resolution difference for looping symlinks.
+Strict report-root resolution fixed it. All 11 retention and startup tests then
+passed on Python 3.11 and 3.13, with pylint at 10.00/10.
