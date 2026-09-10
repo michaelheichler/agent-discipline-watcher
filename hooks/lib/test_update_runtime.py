@@ -439,3 +439,41 @@ def test_claude_update_rejects_a_missing_preset_link(available_update, monkeypat
     assert update_runtime.main(["update", "--claude"]) == 2
     assert "adw-judge" in capsys.readouterr().err
     assert not (available_update.home / ".adw/updates/installed.json").exists()
+
+
+@pytest.mark.parametrize("relative", [".claude", ".config/claude-code"])
+def test_failed_claude_reinstall_restores_cache_and_registration(available_update, monkeypatch, relative):
+    profile = available_update.home / relative
+    plugin = "agent-discipline-watcher@agent-discipline-watcher"
+    cache = profile / "plugins/cache/agent-discipline-watcher"
+    old_guard = cache / "agent-discipline-watcher/old/hooks/guard.py"
+    new_guard = cache / "agent-discipline-watcher/new/hooks/guard.py"
+    registry = profile / "plugins/installed_plugins.json"
+    settings = profile / "settings.json"
+    previous = {
+        old_guard: b"original guard\n",
+        registry: json.dumps({"version": 2, "plugins": {plugin: [{
+            "scope": "user", "gitCommitSha": "b" * 40, "installPath": str(old_guard.parent.parent),
+        }]}}).encode(),
+        settings: json.dumps({"theme": "dark", "enabledPlugins": {plugin: True, "other@market": True}}).encode(),
+    }
+    for path, content in previous.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    calls = []
+
+    def failed_reinstall(_home, _source, _commit, environment):
+        calls.append(environment["CLAUDE_CONFIG_DIR"])
+        shutil.rmtree(cache)
+        new_guard.parent.mkdir(parents=True)
+        new_guard.write_bytes(b"unverified replacement\n")
+        registry.write_text(json.dumps({"version": 2, "plugins": {}}), encoding="utf-8")
+        settings.write_text(json.dumps({"enabledPlugins": {plugin: False}}), encoding="utf-8")
+        raise RuntimeError("reinstall verification failed")
+
+    monkeypatch.setattr(update_runtime, "_install_claude", failed_reinstall)
+    assert update_runtime.main(["update", "--claude"]) == 2
+    assert calls == [str(profile)]
+    assert {path: path.read_bytes() for path in previous} == previous
+    assert not new_guard.exists()
+    assert not (available_update.home / ".adw/updates/installed.json").exists()

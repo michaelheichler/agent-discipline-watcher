@@ -264,3 +264,35 @@ The final independent review reproduced both cases before the fixes. Its
 49 focused tests passed afterward, with pylint at 10.00/10 and no discipline
 findings. Cubic skipped incremental review because its monthly quota was full.
 The final full run passed 2,593 tests with 18 existing skips and 276 subtests.
+
+## Installed release checks
+
+PR 9 merged after CI passed on Python 3.11, 3.12, and 3.13, with Bun green.
+Published v0.20.18 at 8702710. Its release CI passed.
+
+The remote fresh installer completed for all three harnesses. Their code
+trees match the release. Claude still recorded old plugin metadata, so the
+managed updater rejected that mismatch and restored its backup. No success
+receipt hid the failed migration.
+
+Fresh remote Claude Haiku and Codex Luna sessions wrote and read the probe
+document. Both Claude native reviewers submitted StructuredOutput, and every
+observed Claude API dispatch used Haiku. OMP Luna edited the copied Cursor
+rule and completed pre-write, post-edit, and Stop without findings in session
+`01a08d74-8068-75d0-9705-8939a08c1430`.
+
+## Native plugin migration repair
+
+- [x] `hooks/lib/update_claude.py:170`, SSH transport. Use the documented HTTPS repository source with the exact release SHA.
+- [x] `hooks/lib/update_claude.py:220`, stale native metadata. Reinstall the user plugin with data preservation when native update leaves the wrong commit, then verify its content and registration.
+
+The isolated Tux reproduction first failed to clone over SSH. Its fallback
+install returned already installed. With HTTPS, native update changed the
+cache path but retained the old gitCommitSha. The repaired helper passed the
+same migration on Claude 2.1.263 and 2.1.266 with the full pinned commit.
+
+Rollback tests cover both supported Claude profiles. A failed native reinstall
+restores the old cache bytes, registry, and enabled setting, removes the
+replacement cache, and records no success receipt.
+The final full suite passed 2,596 tests with 18 existing skips and 276 subtests.
+Independent review found no remaining defect in the migration repair.

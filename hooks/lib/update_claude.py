@@ -47,7 +47,7 @@ def install_pinned_plugin(
     try:
         _write_catalog(catalog_path, pinned_commit)
         _register_marketplace(target_home, catalog_path.parent.parent, cli_environment)
-        _install_plugin(target_home, config_root, cli_environment)
+        _install_plugin(target_home, config_root, cli_environment, pinned_commit)
         _verify_registration(config_root, catalog_path.parent.parent)
         _verify_install(target_home, config_root, staged_source, pinned_commit)
     except BaseException as error:
@@ -167,7 +167,7 @@ def _catalog(commit: str) -> dict[str, Any]:
         "plugins": [{
             "name": PLUGIN_NAME,
             "description": "Deterministic discipline gates for agent output and edits.",
-            "source": {"source": "github", "repo": REPOSITORY, "sha": commit},
+            "source": {"source": "url", "url": f"https://github.com/{REPOSITORY}.git", "sha": commit},
             "category": "productivity",
         }],
     }
@@ -210,36 +210,57 @@ def _register_marketplace(home: Path, marketplace_root: Path, environment: Mappi
             raise RuntimeError(f"Claude marketplace registration failed: {update_error}") from add_error
 
 
-def _install_plugin(home: Path, config_root: Path, environment: Mapping[str, str]) -> None:
-    plugin = ["plugin", "update", PLUGIN_ID] if _user_plugin_installed(config_root) else [
-        "plugin", "install", PLUGIN_ID, "--scope", "user", "--yes",
-    ]
-    try:
-        _run_cli(home, plugin, environment)
+def _install_plugin(
+    home: Path,
+    config_root: Path,
+    environment: Mapping[str, str],
+    commit: str,
+) -> None:
+    install = ["plugin", "install", PLUGIN_ID, "--scope", "user", "--yes"]
+    if not _user_plugin_installed(config_root):
+        _run_cli(home, install, environment)
         return
+
+    try:
+        _run_cli(home, ["plugin", "update", PLUGIN_ID, "--scope", "user", "--yes"], environment)
     except RuntimeError as first_error:
-        if plugin[1] != "update":
-            raise
         try:
-            _run_cli(
-                home,
-                ["plugin", "install", PLUGIN_ID, "--scope", "user", "--yes"],
-                environment,
-            )
+            _run_cli(home, install, environment)
         except RuntimeError as install_error:
             raise RuntimeError(f"Claude plugin update and install failed: {install_error}") from first_error
 
+    if _user_plugin_has_commit(config_root, commit):
+        return
+    _reinstall_user_plugin(home, environment)
+
+
+def _reinstall_user_plugin(home: Path, environment: Mapping[str, str]) -> None:
+    _run_cli(
+        home,
+        ["plugin", "uninstall", PLUGIN_ID, "--scope", "user", "--keep-data", "--yes"],
+        environment,
+    )
+    _run_cli(home, ["plugin", "install", PLUGIN_ID, "--scope", "user", "--yes"], environment)
+
 
 def _user_plugin_installed(config_root: Path) -> bool:
+    return bool(_user_plugin_entries(config_root))
+
+
+def _user_plugin_has_commit(config_root: Path, commit: str) -> bool:
+    return any(str(entry.get("gitCommitSha", "")).lower() == commit for entry in _user_plugin_entries(config_root))
+
+
+def _user_plugin_entries(config_root: Path) -> list[dict[str, Any]]:
     try:
         registry = _read_json(config_root / "plugins" / "installed_plugins.json")
     except RuntimeError:
-        return False
+        return []
     plugins = registry.get("plugins")
     entries = plugins.get(PLUGIN_ID) if isinstance(plugins, dict) else None
-    return isinstance(entries, list) and any(
-        isinstance(entry, dict) and entry.get("scope") == "user" for entry in entries
-    )
+    if not isinstance(entries, list):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict) and entry.get("scope") == "user"]
 
 
 def _verify_registration(config_root: Path, marketplace_root: Path) -> None:
