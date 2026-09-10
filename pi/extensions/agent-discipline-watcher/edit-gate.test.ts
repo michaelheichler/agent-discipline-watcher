@@ -19,7 +19,7 @@ describe("model selection from the host catalogue", () => {
       { provider: "zai", id: "glm-5.3" },
     ]);
 
-    expect(offered).toEqual(["claude-haiku-4-5", "claude-sonnet-5", "gpt-5.6", "glm-5.3"]);
+    expect(offered).toEqual(["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-5", "openai-codex/gpt-5.6", "zai/glm-5.3"]);
   });
 
   test("drops an id that would not survive display sanitising", () => {
@@ -30,7 +30,7 @@ describe("model selection from the host catalogue", () => {
       { provider: "anthropic", id: "a".repeat(300) },
     ]);
 
-    expect(offered).toEqual(["claude-haiku-4-5"]);
+    expect(offered).toEqual(["anthropic/claude-haiku-4-5"]);
   });
 
   test("caps the list so a hostile catalogue cannot flood the picker", () => {

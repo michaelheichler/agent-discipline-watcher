@@ -20,7 +20,6 @@ RUN_SH = ROOT / "hooks" / "run.sh"
 STUB_MARKER = "adw-stub"
 REPO_SLUG = "michaelheichler/agent-discipline-watcher"
 
-# Taken from the Claude Code hooks reference, because an unknown event key can break config parsing rather than no-op.
 SUPPORTED_EVENTS = frozenset({
     "SessionStart", "Setup", "UserPromptSubmit", "UserPromptExpansion", "PreToolUse",
     "PermissionRequest", "PermissionDenied", "PostToolUse", "PostToolUseFailure",
@@ -30,7 +29,6 @@ SUPPORTED_EVENTS = frozenset({
     "WorktreeCreate", "WorktreeRemove", "PreCompact", "PostCompact",
     "Elicitation", "ElicitationResult", "SessionEnd",
 })
-# Limited to the events the hooks reference lists, because an if filter on any other event never runs.
 IF_CAPABLE_EVENTS = frozenset({
     "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "PermissionDenied",
 })
@@ -159,7 +157,7 @@ class PluginHookRegistrationTests(unittest.TestCase):
 
     def test_every_dispatch_route_is_registered_or_a_compatibility_alias(self):
         registered = {route_of(entry) for _, entry in hook_commands(self.config)}
-        aliases = {"PreCommit", "Configure", "JudgeReview"}
+        aliases = {"PreCommit", "Configure", "JudgeReview", "OmpReview"}
         self.assertEqual(set(self.dispatch) - aliases, registered)
         self.assertEqual(self.dispatch["PreCommit"], self.dispatch["PreToolUse"])
 
@@ -273,8 +271,6 @@ class PostToolUseWiringTests(unittest.TestCase):
 
 
 class PluginLoaderTests(unittest.TestCase):
-    """Exercises the real loader, because plugin validate and plugin install both accept a manifest the loader rejects."""
-
     def setUp(self):
         if shutil.which("claude") is None:
             self.skipTest("claude CLI not on PATH")
@@ -322,7 +318,6 @@ class PluginValidatorTests(unittest.TestCase):
         binary = shutil.which("claude")
         if binary is None:
             self.skipTest("claude CLI not on PATH")
-        # No --strict, because the CLAUDE.md warning is a known, accepted dev-workflow file.
         for target in (str(ROOT), str(PLUGIN_MANIFEST)):
             with self.subTest(target=target):
                 result = subprocess.run(

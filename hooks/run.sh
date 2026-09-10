@@ -1,14 +1,12 @@
 #!/bin/sh
 set -eu
 
-# CDPATH is unset first because an exported CDPATH makes cd echo the directory it landed in, which
-# would end up glued into these paths.
 unset CDPATH
 DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$(cd "$DIR/.." && pwd)/.python-version"
 FLOOR=""
 
-DISPATCH="SessionStart:session_start.py Configure:configure.py UserPromptSubmit:prompt_submit.py PreToolUse:pre_tool.py PreCommit:pre_tool.py PostToolUse:record.py PostToolBatch:batch.py PostToolUseFailure:failure.py SubagentStart:subagent_start.py SubagentStop:subagent_stop.py Stop:stop.py SessionEnd:session_end.py JudgeReview:judge_review.py"
+DISPATCH="SessionStart:session_start.py Configure:configure.py UserPromptSubmit:prompt_submit.py PreToolUse:pre_tool.py PreCommit:pre_tool.py PostToolUse:record.py PostToolBatch:batch.py PostToolUseFailure:failure.py SubagentStart:subagent_start.py SubagentStop:subagent_stop.py Stop:stop.py SessionEnd:session_end.py JudgeReview:judge_review.py OmpReview:omp_review.py"
 
 die() {
   echo "run.sh: $1" >&2

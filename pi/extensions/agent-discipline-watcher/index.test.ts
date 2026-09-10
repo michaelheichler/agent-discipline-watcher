@@ -40,7 +40,7 @@ function createHarness(
       sent.push({ message, options });
     },
   };
-  createExtension(pi as never, run as never, bridge);
+  createExtension(pi as never, run as never, bridge, async (_ctx, payload) => run("JudgeReview", payload));
   return { handlers, commands, sent };
 }
 
@@ -118,7 +118,7 @@ test("OMP model selection reaches the guarded Save request", async () => {
 
   await command.handler("configure", commandContext);
 
-  expect(saved?.adw_model).toBe("claude-haiku-4-5");
+  expect(saved?.adw_model).toBe("anthropic/claude-haiku-4-5");
 });
 
 describe("judge availability warning", () => {

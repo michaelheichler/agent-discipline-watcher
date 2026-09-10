@@ -29,11 +29,11 @@ DISPATCH = {
     "Stop": "stop.py",
     "SessionEnd": "session_end.py",
     "JudgeReview": "judge_review.py",
+    "OmpReview": "omp_review.py",
 }
 
 EXPECTED_USAGE = "usage: run.sh " + "|".join(DISPATCH)
 
-# The stub answers only through PATH resolution, because an absolute interpreter would run the real hook and drop this marker.
 STUB_MARKER = "adw-stub"
 
 
@@ -50,7 +50,6 @@ class RunDispatchTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _stub(self, directory, name, *, meets_floor, version="3.99.0"):
-        # run.sh probes a candidate with -c before running a hook, so the stub answers that call separately.
         stub = Path(directory) / name
         probe = f'printf "%s\\n" "{version}"; ' if meets_floor else ""
         stub.write_text(
