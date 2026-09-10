@@ -6,7 +6,7 @@ SEPARATORS = frozenset({"&&", "||", ";", "|", "|&", "&", "(", ")"})
 PIPE_OPERATORS = frozenset({"|", "|&"})
 REDIRECT_OPERATORS = frozenset({">", ">>", ">|", ">&", "&>", "&>>"})
 JOINED_OPERATOR_RE = re.compile(r"(?:&&|\|\||\|&|&>>?|[0-9]*(?:>>?|>\||>&))$")
-LEADING_REDIRECT_RE = re.compile(r"^(?:&>>?|[0-9]*(?:>>|>\||>&|>|<<?))")
+LEADING_REDIRECT_RE = re.compile(r"^(?:&>>?|[0-9]*(?:>>|>\||>&|>|<{1,3}))")
 REDIRECT_HEAD_RE = re.compile(r"^([0-9]*)(&>>?|>&|>>|>\||>)")
 
 

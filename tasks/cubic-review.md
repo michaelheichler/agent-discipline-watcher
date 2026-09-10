@@ -115,6 +115,10 @@
 - [x] hooks/lib/shell_parse.py line 66, what_docstring. Removed the flagged HeredocEvent description.
 - [x] hooks/lib/shell_parse.py line 84, what_docstring. Removed the flagged write_targets description.
 
+## Leading input review
+
+- [x] hooks/lib/shell_operators.py line 9, here-string command discovery. Consume the complete input redirect before identifying an inline interpreter. All 586 shared tests pass, with pylint at 10.00/10.
+
 The document and retention checks, including external review routing, passed
 31 tests with one opt-in live test skipped. Pylint scored 10.00/10.
 

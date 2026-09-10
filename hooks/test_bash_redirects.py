@@ -72,3 +72,19 @@ def test_combined_stream_literal_writes_are_scanned(operator):
 
     assert result.get("decision") == "block", result
     assert "inflated_diction" in result["reason"]
+
+
+@pytest.mark.parametrize("redirect", ["<<< 'input'", "<<<'input'", "0<<< 'input'", "0<<<'input'"])
+def test_leading_here_strings_do_not_hide_python_writes(redirect):
+    command = f"""{redirect} python3 -I -S -c 'open("x.txt", "w").write("body")'"""
+    result = pre_bash.run({"tool_input": {"command": command}})
+
+    assert result.get("decision") == "block", result
+    assert "inline_interpreter_write" in result["reason"]
+
+
+@pytest.mark.parametrize("redirect", ["<<< 'input'", "<<<'input'", "0<<< 'input'", "0<<<'input'"])
+def test_leading_here_strings_allow_isolated_python_reads(redirect):
+    command = f"{redirect} python3 -I -S -c 'print(1)'"
+
+    assert pre_bash.run({"tool_input": {"command": command}}) == {}
