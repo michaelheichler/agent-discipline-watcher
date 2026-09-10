@@ -17,6 +17,13 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
 HANDLER_TIMEOUT = 120
+STRUCTURED_OUTPUT_CONTRACT = (
+    "OUTPUT CONTRACT. Use the native StructuredOutput tool exactly once at the end of the review. "
+    "Pass one object in exactly one of these two shapes.\n"
+    "{\"ok\": true}\n"
+    "{\"ok\": false, \"reason\": \"one remediation instruction under 200 characters\"}\n"
+    "Do not return the object as plain text. Do not add an output label or any prose after the tool call.\n"
+)
 
 
 def validate_preset(value: str) -> str:
@@ -49,11 +56,10 @@ def comment_prompt(preset: str) -> str:
         "do not expect another hook to have prepared context and do not duplicate the raw event content. "
         "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
         "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
-        "or has no ADW candidate, return exactly {\"ok\": true}.\n"
-        "A successful check returns exactly {\"ok\": true}. A failed check returns {\"ok\": false, "
-        "\"reason\": \"one bounded remediation instruction\"}.\n"
+        "or has no ADW candidate, use the successful StructuredOutput shape.\n"
         "Do not deny or undo the completed write.\n"
-        "Hook input: $ARGUMENTS"
+        + STRUCTURED_OUTPUT_CONTRACT
+        + "Hook input: $ARGUMENTS"
     )
 
 
@@ -62,16 +68,18 @@ def stop_prompt(preset: str) -> str:
     return (
         f"{MANAGED_MARKER}\n"
         "You are ADW's Stop verifier.\n"
-        "Check stop_hook_active before doing any work. If it is true, return exactly {\"ok\": true}. "
+        "Check stop_hook_active before doing any work. If it is true, skip every remaining step and "
+        "use the successful StructuredOutput shape. "
         f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
         "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
         "unrelated files, or read files not named by the helper output. "
         "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
         "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
-        "returns exactly {\"ok\": true}. A clean review returns exactly {\"ok\": true}. A failed review "
-        "returns {\"ok\": false, \"reason\": \"one bounded remediation instruction\"}.\n"
+        "uses the successful StructuredOutput shape. A clean review uses the same shape. A failed review uses "
+        "the failure shape below.\n"
         "Use the session_id from this hook input to locate only its journal.\n"
-        "Hook input: $ARGUMENTS"
+        + STRUCTURED_OUTPUT_CONTRACT
+        + "Hook input: $ARGUMENTS"
     )
 
 

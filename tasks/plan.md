@@ -41,3 +41,7 @@ forward short model aliases to the API without resolving them. Replace those
 aliases with supported API identifiers, prove the rendered configuration in
 tests, and verify Haiku through the installed native hook before releasing
 the follow-up patch. Keep injected Luna names and command handlers unchanged.
+
+The installed native hook also needs an explicit structured response. Remove
+the plain JSON completion cue and direct native reviewers to the harness's
+StructuredOutput tool. Verify the installed result after a reviewed release.
