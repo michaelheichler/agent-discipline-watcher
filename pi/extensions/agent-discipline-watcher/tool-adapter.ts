@@ -1,4 +1,5 @@
 import { normalizeArgs } from "./watcher";
+import { isToolDispatch } from "./js-dispatch";
 
 const DIRECT_TOOL_NAMES: Record<string, string> = {
   write: "Write",
@@ -88,6 +89,8 @@ export type TargetResolver = (toolName: string, input: Record<string, unknown>) 
 
 const UNKNOWN_WRITE_REASON =
   "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
+const UNSUPPORTED_JAVASCRIPT_REASON =
+  "agent-discipline-watcher cannot verify this JavaScript eval. Use literal await tool.name({...}) calls, optionally wrapped in display(...), so nested tools can be checked.";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -246,7 +249,7 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
   if (lower === "eval") {
     const language = stringValue(input.language)?.toLowerCase();
     if (language === "py" || language === "python") return "python";
-    if (language === "js" || language === "javascript") return "unknown-write";
+    if (language === "js" || language === "javascript") return isToolDispatch(input.code) ? "other" : "unknown-write";
     return "unknown-write";
   }
   if (lower === "python") return "python";
@@ -276,7 +279,10 @@ export function adaptToolCall(event: OmpToolEvent, resolveTargets?: TargetResolv
   }
   const hookToolName = DIRECT_TOOL_NAMES[event.toolName.toLowerCase()] ?? event.toolName;
   if (kind === "unknown-write") {
-    return { kind, hookToolName, input: { ...input }, requiresTarget: true, reason: UNKNOWN_WRITE_REASON };
+    const language = stringValue(input.language)?.toLowerCase();
+    const reason = event.toolName.toLowerCase() === "eval" && (language === "js" || language === "javascript")
+      ? UNSUPPORTED_JAVASCRIPT_REASON : UNKNOWN_WRITE_REASON;
+    return { kind, hookToolName, input: { ...input }, requiresTarget: true, reason };
   }
   const normalized = directInput(input);
   const targets = mutationTargets(event.toolName, input, resolveTargets);

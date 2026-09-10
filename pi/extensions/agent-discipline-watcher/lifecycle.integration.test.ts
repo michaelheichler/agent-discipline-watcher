@@ -469,6 +469,31 @@ test("blocks an eval Python mutation through the shared pre-tool gate", async ()
   expect(events).toEqual(["PreToolUse", "PostToolUseFailure", "Stop"]);
 });
 
+test("lets JavaScript dispatch reach the Bash gate without latching its wrapper", async () => {
+  const commands: string[] = [];
+  const handlers = createHarness((event, payload) => {
+    if (event === "PreToolUse") {
+      const command = (payload.tool_input as { command: string }).command;
+      commands.push(command);
+      if (command !== "which -a omp") return { decision: "block", reason: "unsafe shell write" };
+    }
+    return {};
+  });
+  const input = { language: "js", code: "display(await tool.bash({command:'which -a omp'}));" };
+  expect(await handlers.get("tool_call")!({ toolName: "eval", input }, ctx)).toBeUndefined();
+  expect(await handlers.get("tool_call")!(
+    { toolName: "bash", input: { command: "which -a omp" } }, ctx,
+  )).toBeUndefined();
+  expect(await handlers.get("tool_call")!(
+    { toolName: "bash", input: { command: "printf bad > note.md" } }, ctx,
+  )).toEqual({ block: true, reason: "unsafe shell write" });
+  await handlers.get("tool_result")!(
+    { toolName: "eval", input, content: [{ type: "text", text: "/usr/bin/omp" }] }, ctx,
+  );
+  expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+  expect(commands).toEqual(["which -a omp", "printf bad > note.md"]);
+});
+
 test("pre-gates notebook aliases before allowing the edit", async () => {
   const events: string[] = [];
   const handlers = createHarness((event, payload) => {

@@ -138,3 +138,10 @@ without calling StructuredOutput. The Stop review called that tool and passed.
 
 Verification covers all generated native presets and the static plugin
 manifest. Review the patch through Cubic before release and remote refresh.
+
+## 13. OMP JavaScript dispatch
+
+- [x] Reproduce the reported which command from its recorded eval input.
+- [x] Recognize literal tool dispatch without allowing arbitrary JavaScript.
+- [x] Verify nested mutation gates and the installed OMP read path.
+- [ ] Merge the reviewed fix and publish the next patch release.

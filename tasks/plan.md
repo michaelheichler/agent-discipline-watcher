@@ -45,3 +45,10 @@ the follow-up patch. Keep injected Luna names and command handlers unchanged.
 The installed native hook also needs an explicit structured response. Remove
 the plain JSON completion cue and direct native reviewers to the harness's
 StructuredOutput tool. Verify the installed result after a reviewed release.
+
+## OMP JavaScript dispatch
+
+OMP code mode wraps ordinary tools in JavaScript eval calls. ADW must admit
+literal calls through the tool bridge while keeping direct JavaScript file
+access blocked. Recognize a bounded dispatch grammar, retain each nested
+tool's gate, and verify both read success and write rejection on OMP.
