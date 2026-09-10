@@ -93,7 +93,7 @@ Depends on 1 through 7. Expected scope covers task records and PR metadata.
 Merge the reviewed changes and publish a patch release.
 
 - [x] Required checks pass on the reviewed head.
-- [ ] Version metadata agrees with the changelog and tag.
+- [x] Version metadata agrees with the changelog and tag.
 Verification uses main and release tag checks.
 
 Depends on 8. Expected scope covers release metadata and changelog.
@@ -102,7 +102,7 @@ Depends on 8. Expected scope covers release metadata and changelog.
 
 Refresh all three harnesses locally and on the designated remote host.
 
-- [ ] Archive old reports and preserve unrelated settings.
+- [x] Archive old reports and preserve unrelated settings.
 - [ ] All six installations reference the released ADW copy.
 Verification uses allowed and blocked writes using Haiku or Luna.
 

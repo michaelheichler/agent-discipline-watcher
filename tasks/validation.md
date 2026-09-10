@@ -1,5 +1,17 @@
 # Host repair validation
 
+## Release and deployment
+
+PR 4 merged after Cubic reported zero new issues and every CI job passed.
+CI passed 2413 Python tests on each tested version and 156 Bun tests.
+The published v0.20.14 tag points to e54a2d7. README and CHANGELOG agree.
+
+- [ ] install.sh line 1, self_protection/install_without_sandbox_home. Automatic review rejected the official local installer before execution. Installation requires an execution context that permits live-home maintenance.
+
+The designated remote host still returns Network is unreachable over SSH.
+Both machines have verified report and ledger backups. Fresh installations,
+old-report cleanup, and post-install harness checks remain incomplete.
+
 ## Baseline
 
 Python passed 2118 tests with 18 skips. Bun passed 64 tests.
