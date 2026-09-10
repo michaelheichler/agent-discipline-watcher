@@ -168,3 +168,11 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [ ] Merge the reviewed updater and publish v0.20.18.
 - [ ] Refresh all three remote harnesses and verify their installed revision.
 - [ ] Complete the Mac installation through the permitted maintenance entrypoint.
+
+## 17. Claude plugin migration
+
+- [x] Reproduce the remote upgrade in an isolated home with the native CLI.
+- [x] Use HTTPS for the pinned public plugin repository.
+- [x] Repair stale native commit metadata while preserving plugin data.
+- [ ] Verify rollback, review the follow-up, and publish the next 0.20 patch.
+- [ ] Verify the installed release and plugin commit on both machines.
