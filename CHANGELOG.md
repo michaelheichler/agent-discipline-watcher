@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.14 (2026-09-10)
+
+### Fixed
+
+- OMP scans explicit external targets and retries unresolved files at Stop, so successful verification clears the affected target.
+- Native OMP review uses the authenticated provider and reports complete findings. Mutation checks cover nested edits and MCP operations.
+- Codex reviews document and comment batches together. Journal overflow remains visible until source coverage recovers.
+- Python reads require trusted startup. Shell parsing preserves quoted payloads and tracks output through compound commands, combined redirects, and here-strings.
+- Retention filters report references before resolving paths, preventing startup timeouts on large ledgers.
+
 ## 0.20.13 (2026-09-08)
 
 ### Fixed
@@ -102,7 +112,7 @@
 
 ### Changed
 
-- Installers now copy ADW into `~/.adw/install/agent-discipline-watcher` and point OMP, Codex, Claude legacy wiring, and command links at that isolated copy instead of the development checkout. Foreign install directories and symlinks are preserved rather than overwritten.
+- Installers now copy ADW into `~/.adw/install/agent-discipline-watcher` and point OMP, Codex, Claude legacy wiring, and command links at that isolated copy instead of the development checkout. Installers preserve foreign install directories and symlinks.
 - Every judge that reaches the Claude CLI now pins Haiku. `pattern_judge` and `document_review` previously selected Sonnet, and the Claude native presets emitted Sonnet for Stop reviews. A new `hooks/lib/judge_model.py` screens the name, the configure bridge rejects a stronger model, and the OMP picker offers Haiku only. The `luna` preset sits outside that path, since it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers recorded for the meaning layer came from a Sonnet reader and need re-measuring.
 - OMP no longer spawns the Claude CLI. `hooks/lib/host.py` reads the `OMPCODE` marker, and the judge availability gate refuses the CLI under OMP so judging can move to OMP's own models.
 
@@ -117,8 +127,8 @@
 ### Changed
 
 - OMP now pre-gates every supported mutating file tool and Bash, rescans trusted post-tool targets, and runs the configured review path without forwarding raw file content.
-- Model-backed review reads are confined to the project boundary. They use descriptor-based no-follow reads, inode checks, bounded input, and an explicit enabled data boundary.
-- Hook response text is sanitized and bounded without truncating a complete contract that already fits. Python support remains 3.11 and newer.
+- Model-backed reviews read only within the project boundary. They use descriptor-based no-follow reads, inode checks, bounded input, and an explicit enabled data boundary.
+- The hooks sanitize and bound response text without truncating a complete contract that already fits. Python support remains 3.11 and newer.
 
 ### Fixed
 
@@ -147,12 +157,12 @@
 
 - Native Claude Code judging presets: `/agent-discipline-watcher:adw-judge mixed|luna|haiku|sonnet|status`. `mixed` keeps Haiku on comment checks and Sonnet on prose and document reviews. `luna` routes both roles through the subscription-backed Codex Luna judge. Remote Claude sessions default to Haiku, and Desktop or Cowork can opt into the explicit Haiku-only setting.
 - Codex synchronization for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. Codex always uses GPT-5.6 Luna at high effort through the official `openai-codex` subscription runtime, with one review per completed interaction and no API-key or model fallback.
-- Active-session leases and retention sweeps for state, journals, findings, reports, caches, and logs. Live sessions and runtime/model directories stay protected while stale orphan JSON and cache artifacts are removed.
+- Active-session leases and retention sweeps for state, journals, findings, reports, caches, and logs. The sweeps protect live sessions and runtime/model directories while removing stale orphan JSON and cache artifacts.
 
 ### Changed
 
-- Hook responses, model feedback, journals, and review inputs are bounded and deduplicated so repeated hooks do not inflate the orchestration context. Content-hash cache entries are reused for 30 days and written through crash-safe state transitions.
-- Installers provision the ADW-owned Codex runtime and merge only the managed Codex hook block, preserving unrelated user configuration. Claude installation is handled by the Claude Code marketplace and plugin commands.
+- The hooks bound and deduplicate response text, model feedback, journals, and review inputs so repeated hooks do not inflate the orchestration context. The cache reuses content-hash entries for 30 days and writes them through crash-safe state transitions.
+- Installers provision the ADW-owned Codex runtime and merge only the managed Codex hook block, preserving unrelated user configuration. The Claude Code marketplace and plugin commands handle Claude installation.
 
 ### Fixed
 
@@ -175,7 +185,7 @@
 - A `because` clause no longer rescues a comment that opens on the code. The opening clause decides it, which is the standard the judge prompt has always stated and the deterministic rule never enforced. `Returns the cached row because callers need stable identity` blocks. So does its subject-first twin, `The reader returns the cached row because callers need stable identity`, which is the form that walked past the opener test for a whole release. `Callers need stable identity, because a fresh read renumbers every row` passes.
 - Comments cap at 60 characters, down from 150. Anything longer belongs on a wiki page.
 - `assumes`, `requires` and `guarantees` stopped counting as reasons. They open a contract, not a justification, and every opener exception went with them.
-- On this repository the tightened rules report 239 findings across 69 of 147 files: 148 over the character cap, 75 narrating docstrings, 16 narrating comments.
+- On this repository the tightened rules report 239 findings across 69 of 147 files. The character cap accounts for 148 findings. Narrating docstrings account for 75, and narrating comments for 16.
 
 ### Added
 
@@ -199,7 +209,7 @@
 ### Changed
 
 - `three_item_list` moved from off to the judged gate. It had sat off since a 0.0000 precision reading, which measured the regex alone. Behind the reader it clears 121 held-out candidates at 1.0000 precision with 0 false positives and 0.5422 recall.
-- The reader behind the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary technical sentences as `ai_closer` on two of four runs over one document, where Sonnet cleared the same document four times out of four. Re-measured after the reader: `ai_closer` and `utilize` 1.0000, `inflated_diction` 0.9595 with recall up from 0.7067 to 0.9467, `vague_quantity` 0.9406, `business_jargon` 0.8507. All five stay above the 0.85 floor and keep their block.
+- The reader behind the meaning layer and the judged gate is Sonnet, not Haiku. Haiku blocked two ordinary technical sentences as `ai_closer` on two of four runs over one document, where Sonnet cleared the same document four times out of four. Re-measurement after the reader gave `ai_closer` and `utilize` 1.0000. It gave `inflated_diction` 0.9595 with recall up from 0.7067 to 0.9467, `vague_quantity` 0.9406, and `business_jargon` 0.8507. All five stay above the 0.85 floor and keep their block.
 - The interpreter floor dropped from 3.14 to 3.11, the oldest release carrying `tomllib` and `dataclass(slots=True)`. A hard 3.14 floor turned every hook into an exit 2 on any machine without that build.
 
 ### Fixed
@@ -215,7 +225,7 @@
 
 ### Fixed
 
-- Every hook except `SessionStart` crashed on a machine whose only `python3` was the macOS system build. `hooks/run.sh` hardcoded `PYTHON=python3` and checked only that the name resolved, so a 3.9 interpreter was accepted and then died importing `enum.StrEnum`. Claude Code reported "failed with non-blocking status code" on `PreToolUse`, `PostToolUse` and `PostToolBatch` while the contract still loaded, so the watcher went on announcing rules it had stopped enforcing. `run.sh` now probes every candidate on PATH and runs the first that meets the floor.
+- Every hook except `SessionStart` crashed on a machine whose only `python3` was the macOS system build. `hooks/run.sh` hardcoded `PYTHON=python3` and checked only that the name resolved, so it accepted a 3.9 interpreter that then died importing `enum.StrEnum`. Claude Code reported "failed with non-blocking status code" on `PreToolUse`, `PostToolUse` and `PostToolBatch` while the contract still loaded. The watcher went on announcing rules it had stopped enforcing. `run.sh` now probes every candidate on PATH and runs the first that meets the floor.
 - An exported `CDPATH` corrupted the paths `run.sh` derives from its own location, because `cd` echoes the directory when it resolves one through `CDPATH`. `run.sh` unsets it before resolving anything.
 
 ### Changed
@@ -225,24 +235,24 @@
 
 ### Added
 
-- `ADW_PYTHON` names the interpreter to run the hooks with, for a qualifying build that is not on the PATH the client starts with. It is probed against the same floor, and one below it fails rather than falling back.
+- `ADW_PYTHON` names the interpreter to run the hooks with, for a qualifying build that is not on the PATH the client starts with. `run.sh` probes it against the same floor and rejects a build below it without falling back.
 
 ## 0.18.5 (2026-08-27)
 
 ### Added
 
-- The watcher reads meaning, not only exact words. `hooks/lib/pattern_semantic.py` embeds each prose sentence, votes it against one pattern's own violating and clean neighbours, and sends the survivors to Haiku, which decides whether the sentence instantiates the named pattern. A rule speaks only where that pipeline has been measured, and blocks only where the measurement reached 0.85 precision. `ai_closer` and `utilize` measured 1.0000, `vague_quantity` 0.9519, `inflated_diction` 0.9381, `business_jargon` 0.9344.
+- The watcher reads meaning, not only exact words. `hooks/lib/pattern_semantic.py` embeds each prose sentence, votes it against one pattern's own violating and clean neighbours, and sends the survivors to Haiku. Haiku decides whether the sentence instantiates the named pattern. A rule reports only where the pipeline has measurements, and blocks only where the measurement reached 0.85 precision. `ai_closer` and `utilize` measured 1.0000, `vague_quantity` 0.9519, `inflated_diction` 0.9381, `business_jargon` 0.9344.
 - `hooks/lib/pattern_judge.py`, a judge for any named pattern. It receives the rule, the fix the rule asks for, and real examples of both sides, and returns one verdict per sentence. An absent judge confirms nothing, a skipped index reads as clean, and no candidates costs no call. Rules run in parallel because one call each in series cost a file scan 228 seconds.
-- `hooks/lib/pattern_exemplars.jsonl`, 2099 real sentences over 27 rules with their source recorded, drawn only from the development split so a later measurement stays honest. Their vectors are cached under the exemplar digest, which took a warm scan from 40 seconds to 11.
+- `hooks/lib/pattern_exemplars.jsonl`, 2099 real sentences over 27 rules with their source recorded, drawn only from the development split so a later measurement stays honest. Caching their vectors under the exemplar digest took a warm scan from 40 seconds to 11.
 - A human baseline the rules never had. `evals/build_human_corpus.py` draws 60000 sentences from news, encyclopedia and pre-1930 books, and `evals/measure_human_hit_rate.py` scores every rule against prose no model wrote. The AI tell rules fire on 1 sentence in 20000 or fewer there, and `passive_voice` fires on 1 in 4.
-- An assistant corpus. `evals/build_ai_corpus.py` draws 88148 sentences from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k` across 69 models. Rules that name an AI tell fire zero times on human prose, so without this side they had no violating class and could not be measured at all.
+- An assistant corpus. `evals/build_ai_corpus.py` draws 88148 sentences from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k` across 69 models. Rules that name an AI tell fire zero times on human prose, so measurements needed this corpus to supply a violating class.
 - `evals/build_pattern_benchmark.py` and `evals/qualify_embeddings.py`. The clean side is drawn half from human prose and half from assistant replies, because a human-only clean side lets provenance stand in for the pattern. 27 rules reach the row count where 15 did before.
 
 ### Changed
 
 - The long sentence finding no longer asks for fragments. It said "Split it into shorter sentences", which is the instruction that produced the fragmentation the other rules then punished. It now says to cut a clause or break at one clause boundary.
-- Every watcher path lives under `~/.adw`. State, ledger, reports, leases, models and caches share one root, an existing `~/.agent-discipline` is migrated once, and a host-supplied data directory no longer splits reports away from the rest.
-- The embedding runtime is provisioned rather than assumed. `hooks/lib/model_artifacts.py` resolves the platform to its own build, `hooks/lib/model_store.py` downloads and verifies it by pinned sha256, and `hooks/lib/embedding_server.py` starts it on a free port and stops it by pid. The hard-coded host addresses are gone.
+- Every watcher path lives under `~/.adw`. State, ledger, reports, leases, models and caches share one root. The watcher migrates an existing `~/.agent-discipline` once, and a host-supplied data directory no longer splits reports away from the rest.
+- ADW provisions the embedding runtime. `hooks/lib/model_artifacts.py` resolves the platform to its own build, `hooks/lib/model_store.py` downloads and verifies it by pinned sha256, and `hooks/lib/embedding_server.py` starts it on a free port and stops it by pid. The hard-coded host addresses are gone.
 - The turn bracket is opt-in behind `ADW_EMBEDDING_ENABLED`.
 
 ### Fixed
@@ -254,19 +264,19 @@
 
 ### Added
 
-- The 98 stop-slop patterns are detected. `hooks/lib/slop_phrase.py` carries the weighted marker and formulaic phrase rules, `hooks/lib/slop_structure.py` carries the ten structural categories, and `prose_structure.py` gained the rhythm statistics. Coverage was 6 of 98 before this release.
-- A judgement layer for the comments the deterministic rules cannot decide. `hooks/lib/narration_candidates.py` selects lines that open on a behaviour verb and still carry a why marker, which is exactly the set `_has_strong_why_marker` lets through today. `hooks/lib/judge.py` sends them to Haiku through the Claude Code session login, with `ANTHROPIC_API_KEY` stripped from the subprocess so no key is spent, and `ADW_JUDGE_ACTIVE` set so a nested hook cannot recurse. 22 such lines exist in this repository and the judge calls 21 of them narration.
+- The scanner detects all 98 stop-slop patterns. `hooks/lib/slop_phrase.py` carries the weighted marker and formulaic phrase rules, `hooks/lib/slop_structure.py` carries the ten structural categories, and `prose_structure.py` gained the rhythm statistics. Coverage was 6 of 98 before this release.
+- A judgement layer for the comments the deterministic rules cannot decide. `hooks/lib/narration_candidates.py` selects lines that open on a behaviour verb and still carry a why marker, which is exactly the set `_has_strong_why_marker` lets through today. `hooks/lib/judge.py` sends them to Haiku through the Claude Code session login. It strips `ANTHROPIC_API_KEY` from the subprocess to avoid API-key billing and sets `ADW_JUDGE_ACTIVE` so a nested hook cannot recurse. 22 such lines exist in this repository and the judge calls 21 of them narration.
 - `hooks/judge_review.py` on the `JudgeReview` route, registered as a second `PostToolUse` group over `Write|Edit|MultiEdit` with `async` and `asyncRewake`. It returns no permission decision, so it delays no write and weakens no gate. It wakes the session on exit 2 with one line per finding. Every deny-capable route still fails the merge-config async guard.
-- `hooks/lib/embedding_client.py` and `hooks/lib/embedding_lease.py`. The client speaks the OpenAI embeddings contract over an ordered host list, so the MLX server on a Mac and the GGUF server on an x86 box answer the same call and the first reachable host wins. An absent server returns None rather than raising, a 5xx is retried, and a 4xx raises because a wrong model or route is a configuration defect. The lease is refcounted per session, so the model loads once per machine rather than once per subagent, and a crashed session frees it through a dead-pid probe and a 900 second sweep.
-- The model is loaded and released around each turn. `UserPromptSubmit` takes the session lease and probes the hosts, and `Stop` releases it, so the model is resident while a turn runs and the last live session unloads it. The probe is one short attempt per host, because a retry ladder inside a prompt hook would stall the turn. The lease records the Claude Code process as its owner rather than the hook's own pid, since a hook exits within the second and its lease would be swept as dead. `ADW_EMBEDDING_DISABLED` turns the whole bracket off, and an absent server costs the turn nothing.
-- Both embedding hosts are verified. The Mac serves `LFM2.5-Embedding-350M-bf16` under MLX on port 8000, and the x86 box serves `LFM2.5-Embedding-350M-Q8_0.gguf` under llama.cpp on port 8014, woken on demand by its router at `/embed/v1/embeddings`. Both return 1024 dimensions, so the two hosts share one vector space and failover between them is sound. Each server binds loopback, so a remote host is reached through a locally forwarded port and no address is baked into the release.
+- `hooks/lib/embedding_client.py` and `hooks/lib/embedding_lease.py`. The client speaks the OpenAI embeddings contract over an ordered host list. The MLX server on a Mac and the GGUF server on an x86 box answer the same call, and the first reachable host wins. An absent server returns None rather than raising. The client retries a 5xx and raises on a 4xx because a wrong model or route is a configuration defect. The lease counts references per session, so the model loads once per machine rather than once per subagent. A dead-pid probe and a 900 second sweep free the lease after a session crashes.
+- The hooks load and release the model around each turn. `UserPromptSubmit` takes the session lease and probes the hosts, and `Stop` releases it. The model stays resident while a turn runs, and the last live session unloads it. The probe is one short attempt per host, because a retry ladder inside a prompt hook would stall the turn. The lease records the Claude Code process as its owner rather than the hook's own pid. A hook exits within the second, so the sweeper would mark its lease as dead. `ADW_EMBEDDING_DISABLED` turns the whole bracket off, and an absent server costs the turn nothing.
+- Verification covered both embedding hosts. The Mac serves `LFM2.5-Embedding-350M-bf16` under MLX on port 8000, and the x86 box serves `LFM2.5-Embedding-350M-Q8_0.gguf` under llama.cpp on port 8014. Its router wakes it on demand at `/embed/v1/embeddings`. Both return 1024 dimensions, so the two hosts share one vector space and failover between them is sound. Each server binds loopback, so clients reach a remote host through a locally forwarded port, and the release embeds no address.
 - `hooks/lib/slop_exemplars.jsonl`, 86 phrase exemplars rebuilt deterministically from the stop-slop reference files by `evals/build_slop_exemplars.py`. Single-word entries stay in the regex layer, where an exact literal belongs.
 
 ### Changed
 
-- `passive_voice` catches the irregular participles. `be` plus an `ed` or `en` suffix is blind to `was built`, `is set`, `is read` and `was rebuilt`, which carried 10 of 13 real passives in a tracked sample. Detection is now 13 of 13 with no hit on six active-voice controls.
-- The sentence length cap is derived per document from Tukey's upper fence rather than fixed, and `SENTENCE_VARIATION_LIMIT` moved from 0.32 to 0.16, the measured p05 of 709 real paragraphs. The old value sat near the median and flagged 33.85 percent of ordinary writing.
-- Headings, setext underlines, and list-item labels are masked before the phrase rules run, so a title is no longer scanned as prose.
+- `passive_voice` catches irregular participles. Matching `be` plus only an `ed` or `en` suffix missed forms such as `built`, `set`, `read`, and `rebuilt`, which accounted for 10 of 13 real passives in a tracked sample. Detection now covers 13 of 13 with no hit on six active-voice controls.
+- The scanner derives the sentence length cap per document from Tukey's upper fence, and `SENTENCE_VARIATION_LIMIT` moved from 0.32 to 0.16, the measured p05 of 709 real paragraphs. The old value sat near the median and flagged 33.85 percent of ordinary writing.
+- The scanner masks headings and setext underlines before running the phrase rules. It also masks list-item labels so titles no longer count as prose.
 
 ### Measured and not shipped
 
@@ -280,13 +290,13 @@
 
 ### Fixed
 
-- `grants_escape` missed two ways to silence the watcher through its own config. A `kill_switches` entry for every family reaches the gates through a key the gate map never reads, and a tree-wide `exempt_paths` or `exempt_families` glob suppresses every scanned file. Both were caught only by the blanket seal, so both are now detected on their own terms.
+- `grants_escape` missed two ways to silence the watcher through its own config. A `kill_switches` entry for every family reaches the gates through a key the gate map never reads. A tree-wide `exempt_paths` or `exempt_families` glob suppresses every scanned file. The blanket seal was the only check that caught either case. `grants_escape` now detects both directly.
 
 ## 0.17.7 (2026-08-26)
 
 ### Added
 
-- `hooks/lib/findings.py` holds the finding value objects. `Finding` and `Rule` are frozen slotted dataclasses that validate their own invariants and raise on an empty family, a line below one, an empty action, or an unsupported key. `Outcome` and `VerdictKind` are string enums, so ledger rows still serialize and compare as bare strings for consumers outside the process. Serialized output is unchanged, key order included.
+- `hooks/lib/findings.py` holds the finding value objects. The frozen, slotted `Finding` and `Rule` dataclasses validate their own invariants and raise on an empty family, a line below one, an empty action, or an unsupported key. `Outcome` and `VerdictKind` are string enums, so ledger rows still serialize and compare as bare strings for consumers outside the process. Serialization preserves the output and key order.
 - `hooks/lib/shell_syntax.py` carries tokenizing, segmentation, pipeline grouping, and interpreter resolution, split out of `hooks/lib/shell_parse.py` along the dependency direction. Write and heredoc detection stay behind, because heredoc bodies and write targets are mutually dependent and separating them would create an import cycle. `shell_parse.py` re-exports every moved name, so existing imports keep resolving.
 - `session_state.read_state_strict` and `session_state.update_state_strict`. `advance_turn` now uses the strict path, so a corrupt state file raises instead of silently returning an empty dict and erasing unresolved blockers.
 - Parameter objects for the wide hook signatures: `StorageRoots`, `BlockerScope`, `McpRunContext`, `DecisionRecord`, `HeartbeatRecord`, `LedgerInvocation`, `Adjudication`, `ShapedWrite`, and the per-hook run contexts.
@@ -294,8 +304,8 @@
 ### Changed
 
 - Every comment and docstring in non-test source now states why the code is the way it is, or is gone. That closed 70 `what_docstring`, 2 `what_comment`, and 2 `prose_comment_block` findings in the watcher's own source.
-- Deep nesting is gone from non-test source. 18 functions were flattened with guard clauses and named helpers, including the parsers behind the write and opaque-write gates, with behaviour held identical.
-- Return types are declared on every non-test library function.
+- Guard clauses and named helpers remove deep nesting from 18 non-test functions, including the parsers behind the write and opaque-write gates, while preserving behaviour.
+- Every non-test library function declares its return type.
 - Prose findings fixed in `README.md`, `CHANGELOG.md`, `tasks/plan.md`, and `tasks/spec-bash-write-guard.md`.
 
 ### Removed
@@ -304,7 +314,7 @@
 
 ### Known remaining
 
-- 11 functions still take four or more parameters. Two cannot change shape because behavioural tests call them positionally, `pre_commit.run` and `scan_input.int_setting`. The rest are judged not to improve from a parameter object.
+- 11 functions still take four or more parameters. Two cannot change shape because behavioural tests call them positionally, `pre_commit.run` and `scan_input.int_setting`. Review found no benefit from a parameter object for the rest.
 - Two `long_sentence` findings in `LICENSE`. The MIT text is verbatim and rewording it would change its legal meaning, so it needs an `exempt_families` entry rather than an edit.
 - `hooks/batch.py` and `hooks/lib/scanner.py` carry a file length warning.
 
@@ -312,7 +322,7 @@
 
 ### Changed
 
-- Self-protection no longer polices file access across a client home. The `live_client_surface` rule, which blocked every path under `~/.claude`, `~/.codex`, `~/.pi`, `~/.omp`, `~/.agents/skills`, and `~/.config/opencode`, is replaced by two narrower rules. `watcher_install_surface` blocks writes to the watcher's own install directories and to `~/.local/bin/agent-discipline*`. `watcher_wiring_removal` blocks a write to a client settings file only when it drops the watcher's hook entries, so unrelated edits to those files now pass. Which files an agent may touch is a host permission setting, not a watcher rule. `~/.claude/CLAUDE.md` and shell rc files are no longer protected.
+- Self-protection no longer polices file access across a client home. Two narrower rules replace `live_client_surface`, which blocked every path under `~/.claude`, `~/.codex`, `~/.pi`, `~/.omp`, `~/.agents/skills`, and `~/.config/opencode`. `watcher_install_surface` blocks writes to the watcher's own install directories and to `~/.local/bin/agent-discipline*`. `watcher_wiring_removal` blocks a write to a client settings file only when it drops the watcher's hook entries, so unrelated edits to those files now pass. Which files an agent may touch is a host permission setting, not a watcher rule. The watcher no longer protects `~/.claude/CLAUDE.md` or shell rc files.
 - The install block message states that `ADW_ALLOW_PROTECTED_EDIT` releases every self-protection rule rather than presenting it as a routine escape.
 
 ### Fixed
@@ -323,14 +333,14 @@
 
 ### Fixed
 
-- `pi/install.sh --remove` no longer deletes a real directory or a symlink owned by another install at `~/.omp/agent/extensions/agent-discipline-watcher`. Removal now matches the Claude legacy-link guard: only unlink when the path is our own symlink target.
+- `pi/install.sh --remove` no longer deletes a real directory or a symlink owned by another install at `~/.omp/agent/extensions/agent-discipline-watcher`. Removal now matches the Claude legacy-link guard. It only removes a symlink pointing to this installation.
 
 ## 0.17.4 (2026-08-24)
 
 ### Added
 
-- OMP (`oh-my-pi`) support: `pi/extensions/agent-discipline-watcher/` is an `ExtensionAPI` extension that calls the same `hooks/run.sh` engine as Claude Code and Codex. It gates `write`/`bash` on `tool_call`, rescans touched files on `tool_result` (including hashline `[path#TAG]` and `MV` destinations), injects the SessionStart contract on the next turn, and blocks unresolved findings on `session_stop`.
-- Dedicated OMP installer at `pi/install.sh`: symlinks the extension into `~/.omp/agent/extensions/agent-discipline-watcher`, registers it in `settings.json` via `pi/merge-settings.py`, supports `--remove`, and honors `PI_CODING_AGENT_DIR`.
+- OMP (`oh-my-pi`) gains an `ExtensionAPI` extension at `pi/extensions/agent-discipline-watcher/`. It calls the same `hooks/run.sh` engine as Claude Code and Codex. It gates `write`/`bash` on `tool_call`, rescans touched files on `tool_result` (including hashline `[path#TAG]` and `MV` destinations), injects the SessionStart contract on the next turn, and blocks unresolved findings on `session_stop`.
+- The dedicated OMP installer at `pi/install.sh` symlinks the extension into `~/.omp/agent/extensions/agent-discipline-watcher`, registers it in `settings.json` via `pi/merge-settings.py`, supports `--remove`, and honors `PI_CODING_AGENT_DIR`.
 - Main `install.sh` gains `--omp` / `--no-omp` flags and delegates OMP wiring to `pi/install.sh`. Selective installs (`--claude`, `--codex`, `--omp`) no longer touch the other harnesses.
 - Installer tests for OMP target isolation, idempotent registration, and profile-aware agent directories.
 
@@ -350,7 +360,7 @@
 
 ### Fixed
 
-- `python3 -c`, `node -e`, and similar inline payloads no longer block on a read-only `open()`. The 0.17.1 rule flagged every `open(` call regardless of mode, so `open("x.txt").read()` and `open("x.txt", "r")` were treated the same as a write. The check now reads the mode argument: a missing mode (Python defaults to `'r'`), a literal made only of `r`, `b`, `t`, or `U`, clears the call. A write-capable literal (`w`, `a`, `x`, `+`), a mode built at runtime, or an unterminated call still blocks exactly as before.
+- `python3 -c`, `node -e`, and similar inline payloads no longer block on a read-only `open()`. The 0.17.1 rule flagged every `open(` call regardless of mode, treating `open("x.txt").read()` and `open("x.txt", "r")` the same as a write. The check now reads the mode argument. A missing mode (Python defaults to `'r'`) or a literal made only of `r`, `b`, `t`, or `U` clears the call. A write-capable literal (`w`, `a`, `x`, `+`), a mode built at runtime, or an unterminated call still blocks exactly as before.
 
 ## 0.17.1 (2026-08-20)
 
@@ -362,8 +372,8 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
   Code the watcher cannot read before it runs:
   - Inline interpreter code that can write files, like `python -c`, `node -e`, or `php -r` with a write call inside. Harmless one-liners like `python3 -c 'print(1)'` still work.
-  - Scripts fed into an interpreter through a heredoc or a pipe, like `python3 <<EOF` or `echo "..." | sh`. Content piped into a shell is checked as if you had run it directly.
-  - Nested shells, meaning `sh -c` and quoted commands passed through `env -S`, which are unwrapped and checked all the way down.
+  - Scripts fed into an interpreter through a heredoc or a pipe, like `python3 <<EOF` or `echo "..." | sh`. The watcher checks content piped into a shell as if you had run it directly.
+  - Nested shells, meaning `sh -c` and quoted commands passed through `env -S`. The watcher unwraps and checks them all the way down.
 
   Content that reaches a file without passing a readable stage:
   - Heredocs aimed at a file whose content the watcher cannot read, for example when the body contains variables that only expand at run time.
@@ -372,18 +382,18 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
   Edits that bypass the Edit tool:
   - In-place editors, meaning `sed -i` in all its spellings, `perl -pi`, and `awk` or `gawk` with the inplace extension. Plain `sed` and `awk` transforms to the screen stay allowed.
-- Regular Bash writes now get the same treatment as the Write and Edit tools. Overwriting a committed file reports old debt without blocking you for it. Appending only checks the lines you add, and appends that push a file past the length limit are blocked.
+- Regular Bash writes now get the same treatment as the Write and Edit tools. Overwriting a committed file reports old debt without blocking you for it. Appending only checks the lines you add, and the watcher blocks appends that push a file past the length limit.
 - Every block message names the rule and tells the agent to use the Write or Edit tool instead.
 
 ### Fixed
 
-- Many trick spellings that used to slip through are now caught: quoted or versioned interpreter names (`'python3'`, `python3.12`), fused flags (`bash -lc`, `sed -Ei`), wrappers like `sudo` and `env` in front of the command, redirects placed before the command, interpreters in the middle of a pipeline, and write calls split across adjacent quoted strings.
+- The watcher now catches previously missed spellings. It recognizes quoted or versioned interpreter names (`'python3'`, `python3.12`) and fused flags (`bash -lc`, `sed -Ei`). It also recognizes wrappers like `sudo` and `env` in front of the command, and redirects placed before the command. The checks reach interpreters in the middle of a pipeline and write calls split across adjacent quoted strings.
 - Fewer false alarms: `sed -fi` (a script file, not in-place), `xxd -r -o 16` (an offset, not an output file), `gawk -i somelib` (a library, not in-place), and appending to a file without a trailing newline no longer miscounts the file length.
 
 ### Notes
 
-- Known remaining gaps are written down in the test suite so the next hardening pass starts from an honest list: echoing an expanded variable into a file, `curl` piped into `tee`, `python3 -m module` runs, and stream transforms into a new file.
-- The human escape hatch is unchanged: setting `ADW_ALLOW_PROTECTED_EDIT=1` in your own shell releases all of these rules.
+- The tests document the remaining gaps for the next hardening pass. They cover echoing an expanded variable into a file and `curl` piped into `tee`, plus `python3 -m module` runs and stream transforms into a new file.
+- Setting `ADW_ALLOW_PROTECTED_EDIT=1` in your own shell still releases all of these rules.
 
 ## 0.17.0 (2026-08-18)
 
@@ -394,15 +404,15 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
   as undecidable instead of silently swallowing the error.
 - Made `record.run` fail closed (block) instead of returning an empty response when
   `session_state.update_state` or `update_state_strict` raises on a write failure.
-- Named the parse error and path on stderr when `.agent-discipline.json` is malformed,
+- Named the parse error and path on stderr when parsing `.agent-discipline.json` fails,
   instead of falling back to defaults without any signal.
 - Included the exit code and stderr detail in the `gitnexus` probe's degraded-state
   message instead of a bare "error" string.
 - Fixed a non-atomic write in `merge-claude-settings.py` by reusing the same
   write-to-temp-then-rename pattern already used in `merge-codex-config.py`.
 - Unified the two divergent trust predicates in `prompt_submit.py` (`prompt_firewall_mode`
-  and `data_boundary`) so a dict-subclass config object is treated as untrusted
-  consistently by both checks.
+  and `data_boundary`) so both checks consistently treat a dict-subclass config
+  object as untrusted.
 - Removed `hooks/claude-settings.snippet.json`. The Claude settings merge now writes
   its merged JSON directly and atomically instead of merging in a separate snippet file.
 
@@ -419,8 +429,8 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
   shared `hooks/testing.py` and `hooks/conftest.py` modules.
 - Extracted `scripts/eval_scoring.py` out of `scripts/run_evals.py`.
 - Deleted the unused `_exact_string_dict` alias from `hooks/pre_mcp.py`.
-- Reworked `hooks/lib/config.py`: removed `ALWAYS_ON_RULES`, added
-  `project_config_path()`, and split gate/rule state resolution into
+- Reworked `hooks/lib/config.py` and removed `ALWAYS_ON_RULES`. Added
+  `project_config_path()` and split gate/rule state resolution into
   `_gate_state_from` and `_rule_state_from`.
 
 ### Tests
@@ -437,10 +447,10 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
 - Passed 1,157 tests and 227 subtests after review triage.
 - Passed pylint at 10.00/10 on all tracked Python files.
-- Ran the repository's own review against itself. No blocking findings remain
-  that were introduced by this change set.
-- Triaged 39 automated PR review findings. 32 were confirmed by reproduction
-  and fixed with regression tests, 7 were declined with stated reasons.
+- Ran the repository's own review against itself. This change set introduces
+  no blocking findings.
+- Triaged 39 automated PR review findings. Reproduced and fixed 32 with
+  regression tests. Declined the other 7 with stated reasons.
 
 ## 0.16.3 (2026-08-17)
 
@@ -449,9 +459,9 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 - Named `ADW_ALLOW_PROTECTED_EDIT` in the `live_client_surface` block message, so a
   blocked `.claude/settings*.json` write no longer reads as unconditionally
   unblockable. The override already existed and stays env-var only.
-- Masked Python string content before comment scanning. `.py` files were never
-  string-masked the way JS and TS files are. A string literal starting with `//`
-  or `/*` after whitespace was misread as a real comment. An unclosed `/*` inside
+- Masked Python string content before comment scanning, matching existing
+  JS and TS behavior. The scanner misread a string literal starting with `//`
+  or `/*` after whitespace as a real comment. An unclosed `/*` inside
   a string, such as a glob fixture like `"generated/*"`, made the block comment
   regex swallow the rest of the file, corrupting every line after it.
 
@@ -474,8 +484,8 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
 - Passed 1,026 tests and 212 subtests.
 - Passed pylint at 10.00/10 and strict Claude plugin validation.
-- Verified with a real Claude Code session: the first Write was denied, Claude
-  corrected the comment, retried successfully, and completed without user input.
+- Verified in a real Claude Code session. The hook denied the first Write.
+  Claude corrected the comment and retried successfully, then completed without user input.
 
 ## 0.16.1 (2026-08-13)
 
@@ -499,7 +509,7 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 ### Changed
 
 - Restored the complete pre-rewrite hard-block behavior while preserving later
-  security, mixed-language, packaging, and pylint fixes.
+  security and mixed-language fixes, along with packaging and pylint fixes.
 - Enforced one strict WHY line for code comments and docstrings.
 - Made WHAT comments, weak reasons, consecutive prose comments, and multi-line
   docstrings unconditional blockers that config and model output cannot release.
@@ -509,8 +519,8 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
 - Removed semantic adjudication and cached release paths from write, post-write,
   and batch enforcement.
-- Blocked strict findings in HTML comments, JavaScript block comments, malformed
-  Python, tagged leading comments, and vague causal wording.
+- Blocked strict findings in HTML comments and JavaScript block comments.
+  Checks also cover malformed Python. Tagged leading comments and vague causal wording block too.
 - Preserved JavaScript strings and structured license headers during comment scans.
 - Kept Bash post-write scanning aligned across plugin and legacy Claude installs.
 
@@ -552,10 +562,10 @@ Agents were sneaking file writes past the watcher by going through Bash instead 
 
 - Rejected malformed hook payloads instead of allowing sensitive writes.
 - Preserved unconditional blockers during baseline subtraction.
-- Prevented script strings from being scanned as source comments.
+- Excluded script strings from source-comment scans.
 - Scanned ANSI-C quoted commit messages containing escaped apostrophes.
 - Resolved relative write baselines against the payload working directory.
-- Prevented released ambiguous findings from being blocked again after writing.
+- Made post-write checks honor releases for ambiguous findings.
 - Removed automatic source, post-write, and commit-message mutation.
 
 ### Archived

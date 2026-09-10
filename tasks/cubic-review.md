@@ -119,6 +119,10 @@
 
 - [x] hooks/lib/shell_operators.py line 9, here-string command discovery. Consume the complete input redirect before identifying an inline interpreter. All 586 shared tests pass, with pylint at 10.00/10.
 
+## Release document check
+
+- [x] CHANGELOG.md line 1, oversized_list. The warning came from concatenated patch fragments. The complete document scan reports zero findings after the inherited prose repairs.
+
 The document and retention checks, including external review routing, passed
 31 tests with one opt-in live test skipped. Pylint scored 10.00/10.
 

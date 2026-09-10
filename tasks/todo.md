@@ -83,7 +83,7 @@ Depends on none. Expected scope covers interpreter analysis and tests.
 Publish tested changes for Cubic review.
 
 - [x] Python, Bun, shell checks, and pylint pass.
-- [ ] Resolve each Cubic finding with a fix or evidence.
+- [x] Resolve each Cubic finding with a fix or evidence.
 Verification uses PR checks and review threads.
 
 Depends on 1 through 7. Expected scope covers task records and PR metadata.
@@ -92,7 +92,7 @@ Depends on 1 through 7. Expected scope covers task records and PR metadata.
 
 Merge the reviewed changes and publish a patch release.
 
-- [ ] Required checks pass on the reviewed head.
+- [x] Required checks pass on the reviewed head.
 - [ ] Version metadata agrees with the changelog and tag.
 Verification uses main and release tag checks.
 
