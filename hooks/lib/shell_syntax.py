@@ -207,8 +207,18 @@ def _tokens(command: str) -> list[str]:
         raw = list(lexer)
     except ValueError:
         raw = command.split()
-    raw = _merge_adjacent_fragments(command, raw)
+    raw = _merge_adjacent_fragments(command, _split_punctuation_runs(raw))
     return _expand_env_split_strings(_merge_clobber_operator(raw))
+
+
+def _split_punctuation_runs(tokens: list[str]) -> list[str]:
+    parts: list[str] = []
+    for token in tokens:
+        if re.fullmatch(r"[;&|()]+", token):
+            parts.extend(re.findall(r"&&|\|\||\|&|[;&|()]", token))
+        else:
+            parts.append(token)
+    return parts
 
 
 def _merge_adjacent_fragments(command: str, tokens: list[str]) -> list[str]:

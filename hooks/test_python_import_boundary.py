@@ -215,6 +215,12 @@ def test_read_only_python_output_cannot_write_unreviewed_content(tmp_path, comma
     "python3 -I -S -c 'print(1)'; printf 'The cache holds two rows.' > note.md",
     "python3 -ISc 'print(1)'",
     "python3 -ISc'print(1)'",
+    "(python3 -I -S -c 'print(1)'); echo literal > x.txt",
+    "(python3 -I -S -c 'print(1)')&& echo literal > x.txt",
+    "(python3 -I -S -c 'print(1)')|| echo literal > x.txt",
+    "(python3 -I -S -c 'print(1)')|cat",
+    "(python3 -I -S -c 'print(1)')|&cat",
+    "( (python3 -I -S -c 'print(1)')); echo literal > x.txt",
 ])
 def test_python_reads_keep_safe_shell_output_routes(command):
     assert pre_tool.run({"tool_name": "Bash", "tool_input": {"command": command}}) == {}
@@ -223,6 +229,15 @@ def test_python_reads_keep_safe_shell_output_routes(command):
 @pytest.mark.parametrize("code", ["print(1)", 'open("target.md","w").write("unreviewed")'])
 def test_clustered_python_flags_keep_the_attached_payload(code):
     command = f"python3 -ISc{shlex.quote(code)} -c 'print(2)'"
+    invocation = interpreter_invocation(_segments(command)[0])
+
+    assert invocation is not None
+    assert invocation.payload == code
+
+
+def test_quoted_shell_operators_remain_in_the_python_payload():
+    code = 'print(");&&|| |&")'
+    command = f"(python3 -I -S -c {shlex.quote(code)}); echo literal > x.txt"
     invocation = interpreter_invocation(_segments(command)[0])
 
     assert invocation is not None
