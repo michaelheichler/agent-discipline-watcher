@@ -1,5 +1,5 @@
 const UNKNOWN_TARGET = "<unresolved-target>";
-const MAX_REJECTED_TOOLS = 1024;
+export const MAX_REJECTED_TOOLS = 1024;
 
 type SessionState = {
   pending: Map<string, string>;

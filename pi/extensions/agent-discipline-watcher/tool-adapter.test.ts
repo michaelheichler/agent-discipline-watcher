@@ -237,6 +237,22 @@ describe("OMP tool adapter", () => {
     }).deletedTargetPaths).toEqual(["a.md"]);
   });
 
+  test.each([
+    "list_write_requests", "get_delete_history", "read_update_log", "getWriteStatus", "batch_list_write_requests",
+  ])("keeps the MCP query %s outside mutation coverage", name => {
+    expect(adaptToolCall({
+      toolName: `mcp__fs__${name}`,
+      input: { path: "a.md" },
+    })).toMatchObject({ kind: "other", requiresTarget: false });
+  });
+
+  test.each(["write_file", "batch_write_files", "delete_file"])("does not let a read operation disguise MCP %s", name => {
+    expect(adaptToolCall({
+      toolName: `mcp__fs__${name}`,
+      input: { path: "a.md", operation: "read" },
+    })).toMatchObject({ kind: "mcp", requiresTarget: true, targetPaths: ["a.md"] });
+  });
+
   test("does not use the MCP server name as a mutation signal", () => {
     expect(mutationKind("mcp__write_server__read_file", { path: "a.md" })).toBe("other");
   });

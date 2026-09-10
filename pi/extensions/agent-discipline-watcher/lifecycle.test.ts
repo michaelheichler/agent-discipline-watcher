@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { VerificationLedger } from "./lifecycle";
+import { MAX_REJECTED_TOOLS, VerificationLedger } from "./lifecycle";
 
 describe("VerificationLedger", () => {
   test("clears only the target that receives a successful verification", () => {
@@ -60,13 +60,13 @@ describe("VerificationLedger", () => {
     ledger.acceptTool("session-1", "accepted", ["/tmp/accepted.md"]);
     ledger.rejectTool("session-2", "isolated");
 
-    for (let index = 0; index <= 1024; index += 1) {
+    for (let index = 0; index <= MAX_REJECTED_TOOLS; index += 1) {
       ledger.rejectTool("session-1", `call-${index}`);
     }
 
     expect(ledger.rejectedTool("session-1", "call-0")).toBe(false);
     expect(ledger.rejectedTool("session-1", "call-1")).toBe(true);
-    expect(ledger.rejectedTool("session-1", "call-1024")).toBe(true);
+    expect(ledger.rejectedTool("session-1", `call-${MAX_REJECTED_TOOLS}`)).toBe(true);
     expect(ledger.pendingTargets("session-1")).toEqual(["/tmp/pending.md"]);
     expect(ledger.pendingReasons("session-1")).toEqual(["repair the source"]);
     expect(ledger.acceptedTargets("session-1", "accepted")).toEqual(["/tmp/accepted.md"]);
@@ -75,11 +75,11 @@ describe("VerificationLedger", () => {
 
   test("refreshes repeated rejection IDs before expiring older attempts", () => {
     const ledger = new VerificationLedger();
-    for (let index = 0; index < 1024; index += 1) {
+    for (let index = 0; index < MAX_REJECTED_TOOLS; index += 1) {
       ledger.rejectTool("session-1", `call-${index}`);
     }
     ledger.rejectTool("session-1", "call-0");
-    ledger.rejectTool("session-1", "call-1024");
+    ledger.rejectTool("session-1", `call-${MAX_REJECTED_TOOLS}`);
 
     expect(ledger.rejectedTool("session-1", "call-0")).toBe(true);
     expect(ledger.rejectedTool("session-1", "call-1")).toBe(false);

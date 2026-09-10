@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createExtension } from "./index";
+import { MAX_REJECTED_TOOLS } from "./lifecycle";
 import { type WatcherResult } from "./watcher";
 
 type Handler = (event: unknown, ctx?: unknown) => Promise<unknown>;
@@ -253,7 +254,7 @@ test.each(["orphan", "evicted rejection"])("rechecks an existing path from an %s
     return event === "PreToolUse" ? { decision: "block", reason: "denied" } : {};
   });
   if (status === "evicted rejection") {
-    for (let index = 0; index <= 1024; index += 1) {
+    for (let index = 0; index <= MAX_REJECTED_TOOLS; index += 1) {
       await handlers.get("tool_call")!(
         { toolName: "write", toolCallId: `denied-${index}`, input: { path: FIXTURE_A, content: "body" } }, ctx,
       );

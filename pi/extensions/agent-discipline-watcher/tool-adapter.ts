@@ -133,8 +133,9 @@ function mcpHasContent(input: Record<string, unknown>): boolean {
 
 function mcpNameHasOperation(toolName: string, operations: ReadonlySet<string>): boolean {
   const name = toolName.split("__").slice(2).join("__");
-  return name.replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
-    .toLowerCase().split(/[^a-z0-9]+/u).some(part => operations.has(part));
+  const parts = name.replace(/([a-z0-9])([A-Z])/gu, "$1_$2").toLowerCase().match(/[a-z0-9]+/gu) ?? [];
+  const operation = parts[0] === "batch" ? parts[1] : parts[0];
+  return operations.has(operation ?? "");
 }
 
 function mcpIsMutation(toolName: string, input: Record<string, unknown>): boolean {
