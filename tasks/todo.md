@@ -103,7 +103,7 @@ Depends on 8. Expected scope covers release metadata and changelog.
 Refresh all three harnesses locally and on the designated remote host.
 
 - [x] Archive old reports and preserve unrelated settings.
-- [x] All three remote installations reference v0.20.16.
+- [x] All three remote installations reference v0.20.17.
 - [ ] All three local installations reference the released ADW copy.
 - [x] Remote Haiku and Luna probes pass on the installed release.
 Verification uses allowed and blocked writes using Haiku or Luna.
@@ -144,4 +144,4 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [x] Reproduce the reported which command from its recorded eval input.
 - [x] Recognize literal tool dispatch without allowing arbitrary JavaScript.
 - [x] Verify nested mutation gates and the installed OMP read path.
-- [ ] Merge the reviewed fix and publish the next patch release.
+- [x] Merge the reviewed fix and publish the next patch release.

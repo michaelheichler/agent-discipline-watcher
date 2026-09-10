@@ -17,14 +17,20 @@ PR 7 merged after Cubic reported zero findings. Final CI passed 187 Bun tests
 and 2414 Python tests on each tested version. Pylint scored 10.00/10 across
 the repository.
 
+Published v0.20.17 at a444313. The Mac's linked OMP extension passed the live
+Luna probes. The official remote installer refreshed all three harnesses,
+and their source trees match the release. A fresh remote OMP Luna probe also
+ran the exact JavaScript-wrapped command successfully. Existing OMP sessions
+need a restart to load the extension change.
+
 [x] /tmp/adw-js-dispatch-probe/rejected.md line 1, `english/utilize`. The intentional negative probe returned the expected rejection. Confirmed that the file does not exist.
 
 [x] pi/extensions/agent-discipline-watcher/lifecycle.integration.test.ts line 1, file_length_warning. The focused regression keeps this suite below 750 lines. Split the language-specific lifecycle cases before further growth reaches that limit.
 
 ## Release and deployment
 
-PRs 4 through 6 merged after Cubic reported zero remaining findings and CI
-passed. The published v0.20.16 tag points to 787eebe. README and CHANGELOG
+PRs 4 through 7 merged after Cubic reported zero remaining findings and CI
+passed. The published v0.20.17 tag points to a444313. README and CHANGELOG
 agree. All three remote installations match that release's source trees.
 
 The final installed Claude Haiku probe returned structured success from both
