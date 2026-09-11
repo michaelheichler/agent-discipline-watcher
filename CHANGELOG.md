@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.21 (2026-09-11)
+
+### Changed
+
+- OMP allows arbitrary JavaScript eval syntax and tools without a known adapter, including hub. ADW no longer rejects them because it cannot classify their source or tool name.
+- Workspace observation scans actual file changes after execution, including failed calls and changes detected at Stop. Known native mutation checks remain.
+- Bounded snapshots report incomplete coverage without an unresolved-target blocker. Regression tests cover partial snapshots and preserve findings outside observer coverage.
+
 ## 0.20.20 (2026-09-11)
 
 ### Fixed
