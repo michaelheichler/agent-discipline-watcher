@@ -85,6 +85,12 @@ to the installed copy, not the development checkout. Luna reviews use the
 Codex ChatGPT subscription only. Log in through Codex's browser or device-code
 flow before using model review. There is no API-key fallback.
 
+Claude Code defines the deterministic hook coverage. Codex uses the same
+shared handlers for SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
+SubagentStart, SubagentStop, Stop, and SessionEnd. The pre-tool handler sees
+every tool, and the post-tool handler includes Bash writes. Codex does not
+provide Claude's PostToolBatch or PostToolUseFailure events.
+
 ```bash
 ./install.sh
 ./install.sh -y
@@ -203,8 +209,13 @@ install needs the explicit Haiku-only environment.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
 Missing runtime, subscription login, model availability, or provider
-transport emits one bounded actionable finding. Run `./install.sh --codex -y`
+transport emits a bounded user notice and pauses provider retries for five
+minutes in that session. Deterministic checks remain active. ADW records
+completion only after a successful review. Run `./install.sh --codex -y`
 to repair the runtime, then complete Codex ChatGPT login.
+
+ADW keeps confirmed findings active until the affected source changes.
+An unrelated edit cannot release them during a provider outage.
 
 ## Environment variables
 
@@ -237,10 +248,16 @@ With none of the URL variables set, the watcher runs its own server on a free po
 | `ADW_SENTENCE_WORD_CAP` | 40 | Fallback sentence cap. Normally the cap is a Tukey upper fence computed from the document's own sentences, so dense prose gets a higher cap than terse prose. This value applies only when a document has too few sentences to measure. |
 | `ADW_LIST_ITEM_CAP` | 8 | Items before a list is oversized. |
 | `ADW_FUNC_BLOCK_LINES` | 80 | Function length that blocks. |
-| `ADW_FILE_BLOCK_LINES` | 1000 | File length that blocks. It warns at 500 and turns critical at 750. |
-| `ADW_MAX_SCAN_BYTES` | 1000000 | Files above this are not scanned. |
+| `ADW_MAX_SCAN_BYTES` | 1000000 | Full-text scan limit. Larger files retain fallback length checks. |
 
 Each also has a project config key in `.agent-discipline.json`. The config key wins where you set both, and the environment variable is the fallback.
+
+Code files warn at 500 lines and turn critical at 750.
+At 1000, ADW blocks the write.
+
+ADW measures the resulting file after appends or patch moves, regardless of
+the size of the diff. The legacy `ADW_FILE_BLOCK_LINES` and `file_block_lines`
+settings do not change these thresholds.
 
 ### Escape hatches and internals
 
@@ -289,6 +306,11 @@ In OMP, `/adw configure` and `/agent-discipline configure` edit this project pol
 The `self_protection` family blocks routes around the gates. It covers the watcher's own install directories and a write that strips the watcher's hook entries from a client settings file. It also covers installer commands without a sandboxed `HOME`, no-verify commits, cap overrides, state deletion, and protected configuration edits. No project configuration can disable these rules.
 
 It does not police file access in general. The host's own permission settings own everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp`. The watcher judges how an agent writes, not where.
+
+The Python read checker accepts loops, generators, path joins, and text
+processing. The checker permits ordinary Python startup when it trusts
+the import paths. Writes, unknown calls, and executable startup overrides
+retain their checks.
 
 `config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that would weaken the gates. That means a self-authorization key, a downgraded always-blocking rule, a redirected state or ledger root, or anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
 

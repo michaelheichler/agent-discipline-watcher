@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Codex matches Claude's supported command-hook coverage, including Bash post-write scans, prompt submission, and subagent lifecycle checks.
+- Patch checks measure resulting file length. Bash length checks account for sequential writes, newlines, and literal printf formatting.
+- Read-only Python loops, generators, path joins, and trusted ordinary startup no longer receive write findings.
+- Codex keeps host turn IDs in the candidate journal. Provider failures produce a user notice and pause retries for five minutes while deterministic checks remain active.
+- Confirmed review findings survive provider outages until their source changes. Unrelated edits cannot release them.
+- Successful deletions and moves no longer produce missing-file findings. Missing write targets still block and name their paths.
+- Reports retain distinct line findings and remove duplicate Stop findings. Codex installation preserves unrelated handlers that share a group with ADW.
+- Tests isolate their default report storage from the live ADW profile.
+
 ## 0.20.21 (2026-09-11)
 
 ### Changed
