@@ -63,6 +63,8 @@ const UNDECODABLE_EDIT =
   "agent-discipline-watcher could not decode this edit patch, so nothing was scanned. Split it into fewer sections and retry.";
 const UNRESOLVED_EDIT_TARGET =
   "agent-discipline-watcher could not resolve a valid edit target for scanning, so nothing was scanned.";
+const UNRESOLVED_NATIVE_EDIT =
+  "OMP edit expects hashline input beginning with [path#hash] and anchored operations. Read the file for its current hashline, then use PUT, INS, or DEL.";
 const UNKNOWN_OMP_WRITE =
   "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
 
@@ -294,7 +296,8 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
       const targets = [...payloadTargets(payloads), ...adaptedTargets(adapted, ctx.cwd)];
       if (adapted.requiresTarget && targets.length === 0) {
         if (event.toolCallId) ledger.rejectTool(session, event.toolCallId);
-        return { block: true, reason: UNRESOLVED_EDIT_TARGET };
+        const reason = adapted.hookToolName === "Edit" ? UNRESOLVED_NATIVE_EDIT : UNRESOLVED_EDIT_TARGET;
+        return { block: true, reason };
       }
       for (const payload of payloads) {
         const result = run("PreToolUse", payload);

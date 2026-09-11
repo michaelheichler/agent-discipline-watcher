@@ -72,6 +72,23 @@ def test_a_dry_run_writes_nothing_at_all(tmp_path: Path) -> None:
     assert _touched(tmp_path) == []
 
 
+def test_router_migrates_omp_links_from_its_original_checkout(tmp_path: Path) -> None:
+    extension = tmp_path / ".omp/agent/extensions/agent-discipline-watcher"
+    extension.parent.mkdir(parents=True)
+    extension.symlink_to(REPO_ROOT / "pi/extensions/agent-discipline-watcher")
+    runtime = tmp_path / ".agents/skills/agent-discipline-watcher"
+    runtime.parent.mkdir(parents=True)
+    runtime.symlink_to(REPO_ROOT)
+
+    finished = _run(["--omp"], tmp_path)
+
+    assert finished.returncode == 0, finished.stderr
+    installed = tmp_path / ".adw/install/adw"
+    assert extension.resolve() == installed / "pi/extensions/agent-discipline-watcher"
+    assert not runtime.is_symlink()
+    assert (REPO_ROOT / "pi/extensions/agent-discipline-watcher/index.ts").is_file()
+
+
 def test_an_unknown_flag_is_refused_rather_than_ignored(tmp_path: Path) -> None:
     """Refuse the typo because silently installing nothing looks the same as success."""
     finished = _run(["--kodex", "--dry-run"], tmp_path)

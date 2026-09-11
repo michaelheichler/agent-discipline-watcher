@@ -21,6 +21,11 @@ from . import update_release
 INSTALL_PATH = Path(".adw/install/agent-discipline-watcher")
 HOSTS = ("claude", "codex", "omp")
 EXTENSION_PATH = Path("pi/extensions/agent-discipline-watcher")
+PLUGIN_NAME = "agent-discipline-watcher"
+LEGACY_LINK_TARGETS = {
+    ".agents/skills/agent-discipline-watcher": Path(),
+    ".omp/agent/extensions/agent-discipline-watcher": EXTENSION_PATH,
+}
 MANAGED_LINKS = frozenset({
     ".adw/bin/adw", ".adw/bin/adw-judge", ".local/bin/agent-discipline",
     ".local/bin/adw-cli", ".local/bin/adw-judge",
@@ -153,12 +158,96 @@ def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None
     return [home / path for path in paths]
 
 
-def _preflight_paths(paths: list[Path], home: Path) -> None:
+def _safe_legacy_source(path: Path, home: Path) -> Path | None:
+    relative = path.relative_to(home).as_posix()
+    suffix = LEGACY_LINK_TARGETS.get(relative)
+    if suffix is None or not path.is_symlink():
+        return None
+    root: Path | None = None
+    valid = False
+    try:
+        target = path.resolve(strict=True)
+        root = target
+        for _part in suffix.parts:
+            root = root.parent
+        raw_target = os.readlink(path)
+        valid = (
+            root / suffix == target
+            and os.path.isabs(raw_target)
+            and raw_target == str(root / suffix)
+            and root.is_relative_to(home)
+        )
+        if valid:
+            _check_path(root, home)
+            manifest_path = root / ".claude-plugin/plugin.json"
+            _check_external_file(manifest_path, root)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            valid = isinstance(manifest, dict) and manifest.get("name") == PLUGIN_NAME
+        if valid:
+            _check_external_file(root / "hooks/run.sh", root)
+            _check_external_file(root / EXTENSION_PATH / "index.ts", root)
+            valid = _omp_registration_matches(home, root)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        return None
+    return root if valid else None
+
+
+def _check_external_file(path: Path, root: Path) -> None:
+    relative = path.relative_to(root)
+    current = root
+    for part in relative.parts[:-1]:
+        current /= part
+        metadata = current.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"legacy ADW source has an unsafe directory: {current}")
+        if metadata.st_uid != os.getuid() or metadata.st_mode & 0o022:
+            raise RuntimeError(f"legacy ADW source directory is not protected: {current}")
+    leaf = path
+    metadata = leaf.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError(f"legacy ADW source has an unsafe file: {leaf}")
+    if metadata.st_uid != os.getuid() or metadata.st_mode & 0o022 or metadata.st_nlink != 1:
+        raise RuntimeError(f"legacy ADW source file is not protected: {leaf}")
+
+
+def _omp_registration_matches(home: Path, root: Path) -> bool:
+    settings = home / ".omp/agent/settings.json"
+    if not settings.exists() or settings.is_symlink() or not settings.is_file():
+        return False
+    try:
+        value = json.loads(settings.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    entries = value.get("extensions") if isinstance(value, dict) else None
+    if not isinstance(entries, list):
+        return False
+    expected = str(root / EXTENSION_PATH / "index.ts")
+    owned = [entry for entry in entries if PLUGIN_NAME in json.dumps(entry)]
+    return bool(owned) and expected in owned
+
+
+def _preflight_paths(paths: list[Path], home: Path) -> Path | None:
     installed = home / INSTALL_PATH
+    legacy_roots: set[Path] = set()
+    legacy_paths: dict[Path, Path] = {}
     for path in paths:
         managed_link = path.relative_to(home).as_posix() in MANAGED_LINKS
         owned_link = managed_link and path.is_symlink() and path.resolve().is_relative_to(installed)
+        if managed_link and path.is_symlink() and not owned_link:
+            legacy_root = _safe_legacy_source(path, home)
+            if legacy_root is not None:
+                legacy_roots.add(legacy_root)
+                legacy_paths[path] = legacy_root
+                continue
         _check_path(path, home, allow_link=owned_link)
+    if len(legacy_roots) > 1:
+        raise RuntimeError("ADW legacy links point to different source roots")
+    for path in legacy_paths:
+        metadata = path.lstat()
+        if metadata.st_uid != os.getuid() or metadata.st_nlink != 1:
+            raise RuntimeError(f"legacy ADW link is not owned: {path}")
+        _check_path(path, home, allow_link=True)
+    return next(iter(legacy_roots), None)
 
 
 def _backup_paths(paths: list[Path], destination: Path) -> dict[Path, Path | None]:
@@ -329,7 +418,9 @@ def _perform_update(home: Path, updates: Path, hosts: tuple[str, ...], release: 
         if claude_root is not None:
             environment["CLAUDE_CONFIG_DIR"] = str(claude_root)
         paths = _selected_paths(home, hosts, claude_root)
-        _preflight_paths(paths, home)
+        legacy_root = _preflight_paths(paths, home)
+        if legacy_root is not None:
+            environment["ADW_LEGACY_INSTALL_DIR"] = str(legacy_root)
         backups = _backup_paths(paths, workspace / "backup")
         try:
             if "claude" in hosts:
