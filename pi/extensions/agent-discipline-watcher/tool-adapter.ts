@@ -1,5 +1,4 @@
 import { normalizeArgs } from "./watcher";
-import { isToolDispatch } from "./js-dispatch";
 
 const DIRECT_TOOL_NAMES: Record<string, string> = {
   write: "Write",
@@ -64,7 +63,7 @@ const DELETE_OPERATIONS = new Set(["delete", "remove"]);
 const MCP_PATH_KEYS = ["path", "file_path", "relative_path", "source", "destination"] as const;
 const MCP_CONTENT_KEYS = ["content", "contents", "text", "data", "new_string", "new_source", "file_text"] as const;
 const REPORT_PATH_ALIASES = ["file_path", "filePath", "notebook_path", "notebookPath"] as const;
-export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "host-report" | "unknown-write" | "other";
+export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "host-report" | "observed" | "other";
 
 export type OmpToolEvent = {
   toolName: string;
@@ -87,11 +86,6 @@ export type AdaptedTool = {
 };
 
 export type TargetResolver = (toolName: string, input: Record<string, unknown>) => readonly string[];
-
-const UNKNOWN_WRITE_REASON =
-  "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
-const UNSUPPORTED_JAVASCRIPT_REASON =
-  "agent-discipline-watcher cannot verify this JavaScript eval. Use literal await tool.name({...}) calls, optionally wrapped in display(...), so nested tools can be checked.";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -249,7 +243,7 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
   if (isHostReportWrite(toolName, input)) return "host-report";
   const lower = toolName.toLowerCase();
   if (READ_TOOLS.has(lower)) return "read";
-  if (lower === "context_notes") return Object.prototype.hasOwnProperty.call(input, "text") ? "unknown-write" : "read";
+  if (lower === "context_notes") return Object.prototype.hasOwnProperty.call(input, "text") ? "observed" : "read";
   if (lower === "bash") return "bash";
   if (lower === "write" || lower === "edit" || lower === "multiedit" || lower === "apply_patch") return "write";
   if (lower === "notebookedit" || lower === "notebook" || lower === "write_notebook") {
@@ -258,18 +252,17 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
   if (lower === "eval") {
     const language = stringValue(input.language)?.toLowerCase();
     if (language === "py" || language === "python") return "python";
-    if (language === "js" || language === "javascript") return isToolDispatch(input.code) ? "other" : "unknown-write";
-    return "unknown-write";
+    return "observed";
   }
   if (lower === "python") return "python";
-  if (lower === "debug") return DEBUG_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
-  if (lower === "lsp") return LSP_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
+  if (lower === "debug") return DEBUG_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "observed";
+  if (lower === "lsp") return LSP_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "observed";
   if (lower.startsWith("mcp__")) {
-    if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
+    if (Object.prototype.hasOwnProperty.call(input, "command")) return "observed";
     return mcpIsMutation(toolName, input) ? "mcp" : "other";
   }
-  if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
-  return SAFE_NON_MUTATING_TOOLS.has(lower) ? "other" : "unknown-write";
+  if (Object.prototype.hasOwnProperty.call(input, "command")) return "observed";
+  return SAFE_NON_MUTATING_TOOLS.has(lower) ? "other" : "observed";
 }
 
 function directInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -290,12 +283,7 @@ export function adaptToolCall(event: OmpToolEvent, resolveTargets?: TargetResolv
   if (kind === "host-report") {
     return { kind, hookToolName, input: { ...input }, requiresTarget: false };
   }
-  if (kind === "unknown-write") {
-    const language = stringValue(input.language)?.toLowerCase();
-    const reason = event.toolName.toLowerCase() === "eval" && (language === "js" || language === "javascript")
-      ? UNSUPPORTED_JAVASCRIPT_REASON : UNKNOWN_WRITE_REASON;
-    return { kind, hookToolName, input: { ...input }, requiresTarget: true, reason };
-  }
+  if (kind === "observed") return { kind, hookToolName, input: { ...input }, requiresTarget: false };
   const normalized = directInput(input);
   const targets = mutationTargets(event.toolName, input, resolveTargets);
   const preGateInputs = editPreGateInputs(input);

@@ -5,6 +5,7 @@ import { isAbsolute, resolve } from "node:path";
 import { sanitizeDisplay } from "./adw-config";
 import { hashlineEdits, hashlinePatchSource, type HashlineEdit } from "./hashline";
 import { VerificationLedger } from "./lifecycle";
+import { WorkspaceObserver } from "./workspace-observer";
 import type { OmpReviewContext, OmpReviewRun } from "./omp-review";
 import { runReviewBridge, validatedTargetPaths } from "./omp-review-bridge";
 import {
@@ -65,8 +66,6 @@ const UNRESOLVED_EDIT_TARGET =
   "agent-discipline-watcher could not resolve a valid edit target for scanning, so nothing was scanned.";
 const UNRESOLVED_NATIVE_EDIT =
   "OMP edit expects hashline input beginning with [path#hash] and anchored operations. Read the file for its current hashline, then use PUT, INS, or DEL.";
-const UNKNOWN_OMP_WRITE =
-  "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
 
 function sessionId(ctx: ExtensionContext): string {
   return ctx.sessionManager.getSessionId();
@@ -225,6 +224,7 @@ export function preGatePayloads(
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, review: OmpReviewRun): void {
   const ledger = new VerificationLedger();
+  const observer = new WorkspaceObserver();
   const resolveBashTargets = (ctx: ExtensionContext, event: ToolCallEvent | ToolResultEvent) =>
     (toolName: string, input: Record<string, unknown>): readonly string[] => {
       if (toolName.toLowerCase() !== "bash" || typeof input.command !== "string") return [];
@@ -238,6 +238,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
 
   pi.on("session_start", async (_event, ctx: ExtensionContext) => {
     ledger.resetSession(sessionId(ctx));
+    observer.reset(sessionId(ctx));
     try {
       const result = run("SessionStart", watcherPayload(ctx.cwd, sessionId(ctx)));
       const message = feedbackMessage(result) ?? blockReason(result);
@@ -276,9 +277,9 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
         reason: sanitizeDisplay(error instanceof Error ? error.message : "agent-discipline-watcher could not decode this OMP tool call", 16 * 1024),
       };
     }
-    if (adapted.kind === "unknown-write") {
-      if (event.toolCallId) ledger.rejectTool(sessionId(ctx), event.toolCallId);
-      return { block: true, reason: adapted.reason ?? UNKNOWN_OMP_WRITE };
+    if (adapted.kind === "observed") {
+      observer.begin(sessionId(ctx), ctx.cwd);
+      return undefined;
     }
     if (adapted.kind === "host-report") return undefined;
     const preGateMutation = ["write", "bash", "mcp", "notebook", "python"].includes(adapted.kind);
@@ -337,31 +338,35 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
     try {
       adapted = adaptToolResult(event, resolveBashTargets(ctx, event));
     } catch {
-      adapted = { kind: "unknown-write", hookToolName: event.toolName, input: event.input, requiresTarget: true, reason: UNKNOWN_OMP_WRITE };
+      adapted = { kind: "observed", hookToolName: event.toolName, input: event.input, requiresTarget: false };
     }
     const session = sessionId(ctx);
+    const observed = adapted.kind === "observed";
+    const changes = observed ? observer.collect(session) : { changed: [], deleted: [], notices: [] };
+    for (const path of changes.deleted) if (isMissingPath(path)) ledger.clearTarget(session, path);
     if (adapted.kind === "host-report" && !(event.toolCallId && ledger.acceptedTool(session, event.toolCallId))) {
       return undefined;
     }
     const acceptedMcpResult = event.toolName.toLowerCase().startsWith("mcp__") &&
       Boolean(event.toolCallId && ledger.acceptedTool(session, event.toolCallId));
-    const scanMutation = isPostScanTool(event.toolName) || ["write", "bash", "mcp", "notebook", "python", "unknown-write"].includes(adapted.kind) || acceptedMcpResult;
+    const scanMutation = observed || isPostScanTool(event.toolName) || ["write", "bash", "mcp", "notebook", "python"].includes(adapted.kind) || acceptedMcpResult;
     if (!scanMutation) return undefined;
     const targetRequired = adapted.requiresTarget;
     const paths = new Set<string>();
     try {
-      for (const path of postToolPaths(adapted.input, event.details, event.content, ctx.cwd)) paths.add(path);
+      if (!observed) for (const path of postToolPaths(adapted.input, event.details, event.content, ctx.cwd)) paths.add(path);
     } catch {
       paths.clear();
     }
-    addAdaptedTargets(paths, adapted, ctx.cwd);
+    if (!observed) addAdaptedTargets(paths, adapted, ctx.cwd);
+    for (const path of changes.changed) paths.add(path);
     if (event.toolCallId) {
       for (const path of ledger.acceptedTargets(session, event.toolCallId)) paths.add(path);
     }
     const deletedTargets = new Set(
       event.toolCallId ? ledger.acceptedDeletedTargets(session, event.toolCallId) : [],
     );
-    if (event.isError) {
+    if (event.isError && !observed) {
       let result;
       try {
         result = run("PostToolUseFailure", eventFailurePayload(ctx, event, adapted));
@@ -389,20 +394,22 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
     if (paths.size === 0) {
       if (!targetRequired) {
         if (event.toolCallId) ledger.finishTool(session, event.toolCallId);
-        return undefined;
+        return changes.notices.length ? { content: appendNotice(event.content, changes.notices.join("\n\n")) } : undefined;
       }
       ledger.markUnknown(session);
       if (event.toolCallId) ledger.finishTool(session, event.toolCallId);
       return { content: appendNotice(event.content, UNRESOLVED_EDIT_SCAN) };
     }
-    const messages: string[] = [];
+    const messages: string[] = [...changes.notices];
     for (const filePath of paths) {
       if (deletedTargets.has(filePath) && isMissingPath(filePath)) {
         ledger.clearTarget(session, filePath);
         continue;
       }
       try {
-        const result = run("PostToolUse", watcherPayload(ctx.cwd, session, adapted.hookToolName, { file_path: filePath }, event.toolCallId));
+        observer.acknowledge(session, filePath);
+        const tool = observed ? "Write" : adapted.hookToolName;
+        const result = run("PostToolUse", watcherPayload(ctx.cwd, session, tool, { file_path: filePath }, event.toolCallId));
         if (result.decision === "block" || blockReason(result)) {
           ledger.markPending(session, filePath);
           messages.push("PostToolUse watcher could not verify the completed tool result.");
@@ -410,7 +417,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
         }
         const message = feedbackMessage(result);
         if (message) messages.push(message);
-        const reviewed = await review(ctx, watcherPayload(ctx.cwd, session, adapted.hookToolName, { file_path: filePath }, event.toolCallId));
+        const reviewed = await review(ctx, watcherPayload(ctx.cwd, session, tool, { file_path: filePath }, event.toolCallId));
         const reviewReason = blockReason(reviewed);
         if (reviewed.decision === "block" || reviewReason) {
           const reason = reviewReason || "OMP review could not verify the completed tool result.";
@@ -433,7 +440,10 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
 
   pi.on("session_stop", async (event: SessionStopEvent, ctx: ExtensionContext): Promise<SessionStopResult> => {
     const session = sessionId(ctx);
-    const recoveryMessages: string[] = [];
+    const changes = observer.collect(session);
+    for (const path of changes.deleted) if (isMissingPath(path)) ledger.clearTarget(session, path);
+    for (const path of changes.changed) ledger.markPending(session, path);
+    const recoveryMessages: string[] = [...changes.notices];
     for (const target of ledger.pendingTargets(session)) {
       if (target === VerificationLedger.UNKNOWN_TARGET) continue;
       try {

@@ -87,48 +87,37 @@ describe("OMP tool adapter", () => {
     });
   });
 
-  test("blocks unsupported eval languages before they can write", () => {
+  test("observes unsupported eval languages without a target requirement", () => {
     expect(adaptToolCall({
       toolName: "eval",
       toolCallId: "call-ruby",
       input: { language: "ruby", code: "File.write('a.md', 'body')" },
-    }).kind).toBe("unknown-write");
-  });
-
-  test("allows literal JavaScript tool dispatch while retaining nested tool gates", () => {
-    const input = {
-      language: "js",
-      code: "display(await tool.bash({command:'which -a omp',timeout:30}));",
-    };
-    expect(adaptToolCall({ toolName: "eval", input })).toMatchObject({
-      kind: "other",
+    })).toEqual({
+      kind: "observed",
+      hookToolName: "eval",
+      input: { language: "ruby", code: "File.write('a.md', 'body')" },
       requiresTarget: false,
     });
-    expect(adaptToolResult({ toolName: "eval", input }).kind).toBe("other");
   });
 
-  test("keeps nested JavaScript eval subject to its own check", () => {
-    expect(adaptToolCall({
-      toolName: "eval",
-      input: { language: "js", code: "await tool.eval({language:'js',code:'process.exit()'});" },
-    }).kind).toBe("other");
-    expect(adaptToolCall({
-      toolName: "eval",
-      input: { language: "js", code: "process.exit()" },
-    }).kind).toBe("unknown-write");
-  });
-
-  test("blocks every eval JavaScript call without a read-only proof", () => {
-    expect(adaptToolCall({
-      toolName: "eval",
-      toolCallId: "call-js-read",
-      input: { language: "js", code: "fs.readFileSync('a.md', 'utf8')" },
-    }).kind).toBe("unknown-write");
-    expect(adaptToolCall({
-      toolName: "eval",
-      toolCallId: "call-js-alias",
-      input: { language: "js", code: "fs['writeFileSync']('a.md', 'body')" },
-    }).kind).toBe("unknown-write");
+  test("observes arbitrary eval JavaScript without parsing its source", () => {
+    const inputs = [
+      { language: "js", code: "while (true) { await tool.write({path: target, content: body}); }" },
+      { language: "javascript", code: "await tool[toolName]({path: computedPath, content: body});" },
+      { language: "js", code: "import fs from 'node:fs'; fs.writeFileSync('a.md', 'body');" },
+      { language: "javascript", code: "process.exit()" },
+    ];
+    for (const input of inputs) {
+      const event = { toolName: "eval", toolCallId: "call-js", input };
+      const expected = {
+        kind: "observed",
+        hookToolName: "eval",
+        input,
+        requiresTarget: false,
+      };
+      expect(adaptToolCall(event)).toEqual(expected);
+      expect(adaptToolResult(event)).toEqual(expected);
+    }
   });
 
   test("maps NotebookEdit using its native target and source fields", () => {
@@ -192,12 +181,17 @@ describe("OMP tool adapter", () => {
     });
   });
 
-  test("fails closed for context notebook replacement", () => {
+  test("observes context notebook replacement without a target requirement", () => {
     expect(adaptToolCall({
       toolName: "context_notes",
       toolCallId: "call-context-write",
       input: { text: "replace the notebook" },
-    }).kind).toBe("unknown-write");
+    })).toEqual({
+      kind: "observed",
+      hookToolName: "context_notes",
+      input: { text: "replace the notebook" },
+      requiresTarget: false,
+    });
     expect(adaptToolCall({
       toolName: "context_notes",
       toolCallId: "call-context-read",
@@ -223,30 +217,42 @@ describe("OMP tool adapter", () => {
     });
   });
 
-  test("fails closed for an unknown tool that declares a write operation", () => {
+  test("observes an unknown tool that declares a write operation without a target", () => {
     expect(adaptToolCall({
       toolName: "custom_writer",
       toolCallId: "call-4",
       input: { operation: "write", path: "a.md", content: "body" },
     })).toEqual({
-      kind: "unknown-write",
+      kind: "observed",
       hookToolName: "custom_writer",
       input: { operation: "write", path: "a.md", content: "body" },
-      requiresTarget: true,
-      reason: "agent-discipline-watcher could not classify this OMP tool as a safe mutation.",
+      requiresTarget: false,
     });
   });
 
-  test("fails closed for unknown command and mutation shapes", () => {
-    expect(mutationKind("custom_runner", { command: "printf body > a.md" })).toBe("unknown-write");
-    expect(mutationKind("custom_writer", { destination: "a.md", payload: "body" })).toBe("unknown-write");
+  test("observes unknown command and mutation shapes without a target", () => {
+    expect(mutationKind("custom_runner", { command: "printf body > a.md" })).toBe("observed");
+    expect(mutationKind("custom_writer", { destination: "a.md", payload: "body" })).toBe("observed");
+  });
+
+  test("observes hub tools without requiring a target or rejection reason", () => {
+    expect(adaptToolCall({
+      toolName: "hub",
+      toolCallId: "hub-1",
+      input: { operation: "write", destination: "a.md", payload: "body" },
+    })).toEqual({
+      kind: "observed",
+      hookToolName: "hub",
+      input: { operation: "write", destination: "a.md", payload: "body" },
+      requiresTarget: false,
+    });
   });
 
   test("allows only documented read-only LSP and debug actions", () => {
     expect(mutationKind("lsp", { action: "hover" })).toBe("other");
-    expect(mutationKind("lsp", { action: "rename_file" })).toBe("unknown-write");
+    expect(mutationKind("lsp", { action: "rename_file" })).toBe("observed");
     expect(mutationKind("debug", { action: "threads" })).toBe("other");
-    expect(mutationKind("debug", { action: "continue" })).toBe("unknown-write");
+    expect(mutationKind("debug", { action: "continue" })).toBe("observed");
   });
 
   test("adapts MCP file writes and deletes for lifecycle scanning", () => {
