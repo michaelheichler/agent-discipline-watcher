@@ -185,3 +185,14 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [x] Pass independent security review and all CI jobs, then merge PR 11.
 - [x] Publish 0.20.20 and update all three harnesses on both machines.
 - [x] Verify a fresh OMP code-mode edit through the installed release.
+
+## 19. JavaScript execution with observed writes
+
+- [x] Reproduce JavaScript and hub classification rejections.
+- [x] Remove the JavaScript syntax allowlist and unknown-tool execution veto.
+- [x] Observe resulting workspace writes after success, failure, and at Stop.
+- [x] Test partial coverage, nested writes, deleted files, and session isolation.
+- [x] Complete independent review of snapshot limits and finding retention.
+- [x] Verify native OMP execution with Luna and finish all required checks.
+- [ ] Merge the reviewed change and publish the next 0.20 patch release.
+- [ ] Update and verify all three harnesses on both machines.

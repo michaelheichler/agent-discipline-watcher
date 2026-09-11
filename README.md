@@ -42,7 +42,7 @@ All three corpora rebuild byte for byte. See `evals/README.md`.
 
 ## How it works
 
-Every tool call goes through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
+Known mutations go through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
 Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
 
@@ -122,6 +122,22 @@ the installed client configuration points into the development checkout.
 Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Set
 `ADW_INSTALL_DIR` to choose a different isolated install root. Restart OMP
 after install, or pass `--extension` to load it immediately.
+
+OMP JavaScript execution has no ADW syntax allowlist. JavaScript eval and tools
+without a known adapter use workspace observation, so computed calls and `hub`
+operations can run. Native Write, Edit, and Bash calls keep their existing checks.
+
+The observer compares regular-file metadata before execution, after success or
+failure, and at Stop. It scans concrete changed files through the post-write
+pipeline. Actual content findings still receive the normal review. An unknown
+tool name or incomplete snapshot does not create an unresolved Stop blocker.
+
+Observation covers the current workspace. It skips symlinks and the `.git`,
+`node_modules`, and `.adw` directories, and each snapshot stops after 20,000
+entries or 250 ms. An incomplete snapshot produces a notice without rejecting
+execution. External paths and transient changes have no coverage guarantee.
+Background writes after Stop escape observation, while concurrent edits can
+appear in the workspace diff without reliable attribution to the agent.
 
 ### Controlled release updates
 

@@ -340,3 +340,29 @@ successful edit. The workstation session completed its edit on the first call.
 
 The Mac probe session was 01a08f2e-f86f-763c-a6e5-53e07e6e8068.
 The workstation probe session was 01a08f2f-d6de-70b2-bdb1-85f2fbdcd076.
+
+## JavaScript execution and observed writes
+
+The user changed the execution policy after OMP hub calls still failed.
+Regression tests reproduced both the JavaScript syntax veto and the unknown
+tool veto. The extension now observes actual workspace changes after JavaScript
+execution and after calls to tools without a known adapter. Known mutation
+checks remain.
+
+Independent review found two snapshot defects. Acknowledging files outside
+coverage could clear unrelated findings, and partial snapshots could classify
+unchanged files as new writes. Both fixes have regression tests. Review of the
+final observer found no remaining blocker.
+
+Native OMP 18.1.17 ran a fresh Luna process with the replacement extension.
+Session 01a08f47-5138-7701-ad01-2eabbece1066 passed computed arguments to hub,
+then imported node:fs/promises and directly changed a Markdown rule file.
+ADW recorded the file after execution, and Stop passed.
+
+Session 01a08f48-226b-70bf-948b-b5e865264731 wrote a deliberate comment
+violation through direct JavaScript. The write completed, then ADW reported
+the exact file and line. The agent read the written bytes and removed the
+comment with another direct write. The repaired file and Stop passed.
+
+All 201 extension tests passed. The full Python suite passed 2,604 tests with
+18 existing skips and 276 subtests.
