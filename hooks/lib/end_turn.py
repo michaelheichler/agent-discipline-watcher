@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from . import blocker_state, document_review, payloads, scan_input, session_state
@@ -37,6 +38,8 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
             rows = scan_input.fallback_findings(path)
         else:
             rows = strip_committed(path, scan_all(str(path), text, cfg), cfg)
+            digest = sha256(text.encode("utf-8")).hexdigest()
+            rows = [{**row, "content_hash": digest} for row in rows]
         findings.extend({**row, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block")
     return findings, existing
 
@@ -69,7 +72,6 @@ def _document_digest(path: Path) -> str:
 
 
 def _stale_document_keys(pending: dict[str, str], state: dict) -> set[str]:
-    # WHY: An edit moves the lines a note quotes.
     prefix = document_review.BLOCKER_KEY_PREFIX
     stale = set()
     for key in pending:

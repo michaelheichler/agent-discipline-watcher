@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import fcntl
-import hashlib
 import json
 import os
-import re
 import sys
 import time
 import uuid
@@ -15,12 +13,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    # Relative first because hook entry scripts import this as lib.reporting, where a bare name cannot resolve.
     from . import session_state
     from .findings import Finding, Outcome
+    from .finding_output import (
+        clip as _clip, deduplicated as _deduplicated, format_row,
+        safe_component as _safe_component, safe_text as _safe_text,
+    )
 except ImportError:
     import session_state
     from findings import Finding, Outcome
+    from finding_output import (
+        clip as _clip, deduplicated as _deduplicated, format_row,
+        safe_component as _safe_component, safe_text as _safe_text,
+    )
 
 LEDGER_FILENAME = "ledger.jsonl"
 LEDGER_LOCK_FILENAME = ".ledger.lock"
@@ -32,10 +37,7 @@ MAX_COMPACT_FIELD_BYTES = 768
 MAX_CURRENT_LEDGER_BYTES = 256 * 1024
 MAX_CURRENT_LEDGER_ROWS = 512
 
-# Heartbeat rows carry outcome="" because they record an observation, not a decision.
 OUTCOMES = Outcome
-
-_UNSAFE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_.-]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,13 +81,7 @@ def _reports_dir() -> Path:
     return session_state.plugin_data_home() / REPORT_DIRNAME
 
 
-def _safe_component(value: object, fallback: str) -> str:
-    text = _UNSAFE_COMPONENT_RE.sub("_", str(value or "")).strip("._")[:48]
-    return text or fallback
-
-
 def _prune_reports(directory: Path, keep: int) -> None:
-    """Bounded here because nothing ever deleted a written report, and one blocking gate can write three per turn."""
     try:
         entries = sorted(directory.glob("*.json"), key=lambda entry: entry.stat().st_mtime)
     except OSError:
@@ -98,7 +94,6 @@ def _prune_reports(directory: Path, keep: int) -> None:
 
 
 def write_full_report(findings: list[dict], config: dict | None = None) -> str:
-    """Named by session and turn, and pruned on write, because the prior tempfile never got deleted by anything."""
     fields = config or {}
     session_id = _safe_component(fields.get("session_id"), "session")
     turn_id = _safe_component(fields.get("turn_id"), "turn")
@@ -139,76 +134,9 @@ def compact_block(
     return reason, report
 
 
-def _canonical_path(value: object) -> str:
-    if not isinstance(value, str) or not value:
-        return ""
-    try:
-        return str(Path(value).expanduser().resolve(strict=False))
-    except (OSError, RuntimeError, ValueError):
-        return value
-
-
-def _finding_content_hash(finding: dict) -> str:
-    value = finding.get("content_hash")
-    if isinstance(value, str) and value:
-        return value
-    identity = {key: finding.get(key) for key in ("detail", "snippet", "action", "line")}
-    encoded = json.dumps(identity, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _deduplicated(findings: list[dict], config: dict | None = None) -> list[dict]:
-    cfg = config or {}
-    session_id = cfg.get("session_id", "")
-    turn_id = cfg.get("turn_id", "")
-    seen: set[tuple[object, ...]] = set()
-    result: list[dict] = []
-    for raw_finding in findings:
-        finding = raw_finding.to_dict() if isinstance(raw_finding, Finding) else raw_finding
-        if not isinstance(finding, dict):
-            continue
-        path = finding.get("path") or finding.get("file")
-        key = (
-            session_id,
-            turn_id,
-            finding.get("rule"),
-            _canonical_path(path),
-            _finding_content_hash(finding),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(finding)
-    return result
-
-
-def _safe_text(value: object) -> str:
-    """Keep finding fields inert across terminal, Markdown, and model-message sinks."""
-    text = str(value)
-    safe: list[str] = []
-    for character in text:
-        code = ord(character)
-        if character == "\n":
-            safe.append(character)
-        elif code < 32 or code == 127 or 0x80 <= code <= 0x9F or 0x202A <= code <= 0x202E or 0x2066 <= code <= 0x2069:
-            safe.append(" ")
-        else:
-            safe.append({"`": "'", "<": "‹", ">": "›"}.get(character, character))
-    return "".join(safe)
-
-
-def _clip(value: object, limit: int) -> str:
-    text = _safe_text(value)
-    encoded = text.encode("utf-8")
-    if len(encoded) <= limit:
-        return text
-    return encoded[: max(limit - 3, 0)].decode("utf-8", errors="ignore") + "..."
-
-
 def verdict_message(
     decisions: list[tuple[dict, str]], config: dict | None = None
 ) -> tuple[str, str]:
-    """Read gate state once for every hook, because a hook that judges findings on its own makes observe mean two things."""
     blocking = [finding for finding, outcome in decisions if outcome == Outcome.BLOCK]
     if blocking:
         return "block", compact_block(blocking, config)[0]
@@ -219,7 +147,6 @@ def verdict_message(
 
 
 def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
-    """Name debt the edit did not write, because dropping it in silence is what lets an old file stay broken."""
     if not findings:
         return ""
     lead = (
@@ -227,17 +154,6 @@ def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
         "you did not write. Fix them while you are in here."
     )
     return compact_block(findings, config, lead=lead)[0]
-
-
-def format_row(item: dict) -> str:
-    path = _safe_text(item.get("path") or item.get("file") or "<pending>").replace("\n", " ")
-    status = _safe_text(item.get("status")).replace("\n", " ") if item.get("status") else ""
-    prefix = f"[{status}] " if status else ""
-    family = _safe_text(item.get("family")).replace("\n", " ")
-    rule = _safe_text(item.get("rule")).replace("\n", " ")
-    line = _safe_text(item.get("line")).replace("\n", " ")
-    action = _safe_text(item.get("action")).replace("\n", " ")
-    return f"{prefix}{path}:{line} {family}/{rule}: {action}"
 
 
 def _default_ledger_root() -> Path:
@@ -262,7 +178,6 @@ def ledger_lock(root: str | os.PathLike[str] | None):
 
 
 def ledger_path(root: str | os.PathLike[str] | None = None) -> Path:
-    """Exposed because bin/agent-discipline needs the ledger file location without reaching into this module's private layout."""
     return _ledger_dir(root) / LEDGER_FILENAME
 
 
@@ -275,7 +190,6 @@ def _ledger_row(**fields) -> dict:
 
 
 def append_row(row: dict, root: str | os.PathLike[str] | None = None) -> None:
-    """Swallow ledger write errors because an unwritable evidence sink must never fail a hook."""
     try:
         line = json.dumps(row, ensure_ascii=True)
         with ledger_lock(root):
@@ -311,7 +225,6 @@ def _decision_from_fields(fields: dict[str, object]) -> tuple[DecisionRecord, ob
 
 
 def record_decision(*values: object, **fields: object) -> None:
-    """Reject unknown outcomes because ledger consumers assume every decision belongs to Outcome."""
     if len(values) == 1 and isinstance(values[0], DecisionRecord):
         decision = values[0]
         root = fields.pop("root", None)
@@ -346,7 +259,6 @@ def _heartbeat_from_fields(fields: dict[str, object]) -> tuple[HeartbeatRecord, 
 
 
 def record_heartbeat(*values: object, **fields: object) -> None:
-    """Record every invocation because distinct turn ids form the false-signal denominator even when no finding produced a decision."""
     if len(values) == 1 and isinstance(values[0], HeartbeatRecord):
         heartbeat = values[0]
         root = fields.pop("root", None)
@@ -387,7 +299,6 @@ def record_findings(
     root: str | os.PathLike[str] | None = None,
     config: dict | None = None,
 ) -> list[tuple[dict, str]]:
-    """Persist each verdict because gate behavior needs countable evidence for observe reports and false-signal review."""
     candidates = _deduplicated(findings, {"session_id": session_id, "turn_id": turn_id})
     evaluated = [
         (Finding.from_dict(finding), finding, _resolve_outcome(finding, config))
@@ -429,10 +340,8 @@ def _ledger_call(
 
 
 def run_with_ledger(*values: object, **fields: object) -> dict:
-    """Emit the heartbeat in finally because failed and finding-free invocations still count as observed turns."""
     invocation, gate = _ledger_call(values, fields)
     session_id = str(invocation.payload.get("session_id") or "")
-    # A sessionless invocation skips the ledger because it has no turn_id to stamp.
     host_turn_id = invocation.payload.get("turn_id")
     turn_id = (
         host_turn_id if isinstance(host_turn_id, str) and host_turn_id
@@ -457,7 +366,6 @@ def run_with_ledger(*values: object, **fields: object) -> dict:
 
 
 def read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> list[dict]:
-    """Public because batch.py must read this same ledger without duplicating the file's own parsing loop."""
     path = _ledger_dir(root) / filename
     if not path.exists():
         return []
@@ -474,7 +382,6 @@ def read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> lis
     return rows
 
 
-# Kept because callers outside this module referenced the old private name before it was promoted.
 _read_jsonl = read_jsonl
 
 
@@ -486,7 +393,6 @@ def read_session_turn(
     max_bytes: int = MAX_CURRENT_LEDGER_BYTES,
     max_rows: int = MAX_CURRENT_LEDGER_ROWS,
 ) -> list[dict]:
-    """Read only the bounded tail needed to correlate one active turn."""
     if (
         not isinstance(session_id, str) or not session_id
         or not isinstance(turn_id, str) or not turn_id
@@ -572,8 +478,6 @@ def adjudicate(adjudication: Adjudication | str, *values: object) -> dict:
 def false_signal_rate(
     family: str, root: str | os.PathLike[str] | None = None
 ) -> float | None:
-    """Withhold rates below 20 distinct observed turns because the per-20 measure requires one full exposure window."""
-    # Denominator is distinct turn ids, not row count, because a turn that fired many rows is one exposure.
     turn_ids = {
         row["turn_id"]
         for row in read_jsonl(LEDGER_FILENAME, root)
