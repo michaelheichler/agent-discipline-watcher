@@ -366,3 +366,13 @@ comment with another direct write. The repaired file and Stop passed.
 
 All 201 extension tests passed. The full Python suite passed 2,604 tests with
 18 existing skips and 276 subtests.
+
+PR 12 passed every CI job before merge. Release 0.20.21 installed successfully
+for Claude Code, Codex, and OMP on both machines. Both updater receipts and
+native Claude records name commit 598c13438cdbf63f8b701e385bd3592faa28c133.
+
+Fresh Luna sessions used the installed OMP extensions with computed hub
+arguments and direct JavaScript filesystem writes. Both ledgers recorded the
+changed fixture, then Stop passed with no findings. The Mac session was
+01a08f4e-68c0-758c-93d8-28742a8b9846. The workstation session was
+01a08f4e-694c-7192-86a9-74786e6e0824.

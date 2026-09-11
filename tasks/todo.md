@@ -194,5 +194,5 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [x] Test partial coverage, nested writes, deleted files, and session isolation.
 - [x] Complete independent review of snapshot limits and finding retention.
 - [x] Verify native OMP execution with Luna and finish all required checks.
-- [ ] Merge the reviewed change and publish the next 0.20 patch release.
-- [ ] Update and verify all three harnesses on both machines.
+- [x] Merge the reviewed change and publish the next 0.20 patch release.
+- [x] Update and verify all three harnesses on both machines.
