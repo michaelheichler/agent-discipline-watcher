@@ -2,7 +2,7 @@
   "name": "codex",
   "title": "OpenAI Codex",
   "summary": "The Codex CLI and its app surfaces, judging on Luna through the pinned SDK.",
-  "adapters": ["codex_luna"],
+  "adapters": ["codex_luna", "codex_luna_documents"],
   "entry_scripts": ["merge-codex-config.py", "merge-codex-hooks.py"],
   "installer": "install.sh",
   "extra_paths": [],

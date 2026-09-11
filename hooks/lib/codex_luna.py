@@ -6,21 +6,23 @@ from pathlib import Path
 from typing import Any
 
 from . import journal, payloads, session_state
+from .codex_luna_documents import document_work, feedback_sources
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
-from .document_review import request_for as document_request
-from .hookio import stop_block
+from .hookio import stop_block, system_message
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
-from .turn_retry import RETRY_KEY
+from .luna_storage import LunaProviderFailure
+from .turn_retry import (
+    FAILED_KEY, RETRY_KEY, pending_feedback, provider_cooling, record_provider_outage,
+    failure_entry as _failure_entry, record_failure as _record_failure,
+)
 
 
 STATE_KEY = "codex_luna_reviewed_turns"
 IN_FLIGHT_KEY = "codex_luna_inflight_reviews"
-FAILED_KEY = "codex_luna_failed_reviews"
 MAX_REVIEWED_TURNS = 64
-MAX_FAILURE_ATTEMPTS = 3
 RESERVATION_TTL_SECONDS = JUDGE_TIMEOUT_SECONDS
 MAX_SOURCE_CHARS = 24_000
 MAX_COMMENT_ROWS = 120
@@ -37,6 +39,13 @@ RESERVATION_FAILED = "reservation_failed"
 
 class LunaReviewFailure(RuntimeError):
     pass
+
+
+class InterruptedReview(LunaProviderFailure):
+    def __init__(self, cause: LunaProviderFailure, feedback: str, confirmed: list[dict]) -> None:
+        super().__init__(str(cause), category=cause.category)
+        self.feedback = feedback
+        self.confirmed = confirmed
 
 
 def _bounded(value: object) -> str:
@@ -191,42 +200,9 @@ def _rollback(
     return removed
 
 
-def _failure_entry(session_id: str, turn_id: str, state_root: str | Path | None) -> dict[str, Any] | None:
-    key = _turn_key(turn_id)
-    try:
-        state = session_state.read_state(session_id, state_root)
-    except (OSError, ValueError, TypeError) as exc:
-        raise LunaReviewFailure(f"review failure state could not be read: {exc}") from exc
-    rows = state.get(FAILED_KEY)
-    if not isinstance(rows, list):
-        return None
-    return next((row for row in rows if isinstance(row, dict) and row.get("turn_id") == key), None)
-
-
-def _record_failure(
-    session_id: str, turn_id: str, reason: str, state_root: str | Path | None,
-) -> None:
-    key = _turn_key(turn_id)
-    bounded_reason = _bounded(reason)
-
-    def update(state: dict) -> dict:
-        rows = [row for row in state.get(FAILED_KEY, []) if isinstance(row, dict)]
-        previous = next((row for row in rows if row.get("turn_id") == key), None)
-        attempts = previous.get("attempts", 0) if isinstance(previous, dict) else 0
-        attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else 0
-        rows = [row for row in rows if row.get("turn_id") != key]
-        rows.append({"turn_id": key, "attempts": attempts + 1, "reason": bounded_reason})
-        return {**state, FAILED_KEY: rows[-MAX_REVIEWED_TURNS:], RETRY_KEY: key}
-
-    try:
-        session_state.update_state(session_id, update, state_root)
-    except (OSError, ValueError, TypeError):
-        pass
-
-
 def _failure_block(reason: object, attempts: int = 0) -> dict:
-    suffix = f" Luna retry limit reached after {MAX_FAILURE_ATTEMPTS} attempts." if attempts >= MAX_FAILURE_ATTEMPTS else ""
-    return stop_block(_bounded(f"agent-discipline-watcher Luna review unavailable: {reason}.{suffix} Complete Codex ChatGPT subscription login or reinstall the ADW runtime, then retry."))
+    suffix = f" Review attempt {attempts} failed." if attempts else ""
+    return stop_block(_bounded(f"agent-discipline-watcher Luna review unavailable: {reason}.{suffix} Correct the review input or state and retry."))
 
 
 def _journal_rows(
@@ -276,62 +252,8 @@ def _journal_rows(
     return unique
 
 
-def _document_entries(rows: list[dict[str, Any]], content_limit: int) -> list[str]:
-    entries: list[str] = []
-    for row in rows:
-        if row.get("role") != "document" or not row.get("path") or not row.get("source_context"):
-            continue
-        path = str(row.get("path", ""))[:512]
-        source = str(row.get("source_context", ""))
-        if not source.strip():
-            continue
-        prefix = f"Path: {path}\n\n"[: max(0, content_limit - 1)]
-        body_limit = max(1, content_limit - len(prefix))
-        for offset in range(0, len(source), body_limit):
-            body = source[offset:offset + body_limit]
-            context = prefix + body
-            if context.strip():
-                entries.append(context)
-    return entries
-
-
-def _pack_document_entries(entries: list[str], content_limit: int) -> list[str]:
-    packed: list[str] = []
-    current = ""
-    for entry in entries:
-        if current and len(current) + 2 + len(entry) > content_limit:
-            packed.append(current)
-            current = ""
-        current = entry if not current else f"{current}\n\n{entry}"
-    if current:
-        packed.append(current)
-    return packed
-
-
-def _document_contexts(rows: list[dict[str, Any]]) -> tuple[list[str], bool]:
-    limit = max(1, MAX_SOURCE_CHARS)
-    label = f"Document: {DOCUMENT_LABEL}\n\n"
-    use_document_request = len(label) < limit
-    content_limit = limit - len(label) if use_document_request else limit
-    entries = _document_entries(rows, content_limit)
-    return _pack_document_entries(entries, content_limit), use_document_request
-
-
-def _document_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:
-    contexts, use_document_request = _document_contexts(rows)
-    work: list[tuple[JudgeRequest, list[Any]]] = []
-    for context in contexts:
-        request = (
-            document_request(DOCUMENT_LABEL, context)
-            if use_document_request
-            else JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=context)
-        )
-        work.append((request, []))
-    return work
-
-
 def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, list[Any]], ...] | None:
-    work = _document_work(rows)
+    work = document_work(rows, MAX_SOURCE_CHARS, DOCUMENT_LABEL)
     comments = [
         Candidate(
             str(row.get("path", ""))[:512],
@@ -406,21 +328,29 @@ def _reserve_review(
 
 def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> str:
     feedback_rows: list[str] = []
+    confirmed: list[dict] = []
     deadline = time.monotonic() + REVIEW_DEADLINE_SECONDS
     for request, candidates_or_rows in work:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise LunaReviewFailure("the Luna review deadline expired before all candidates were reviewed")
-        judge = provider if provider is not None else LunaJudge(timeout_seconds=remaining)
-        result = judge.judge(request)
+            cause = LunaProviderFailure("the Luna review deadline expired before all candidates were reviewed", category="timeout")
+            raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
+        try:
+            judge = provider if provider is not None else LunaJudge(timeout_seconds=remaining)
+            result = judge.judge(request)
+        except LunaProviderFailure as exc:
+            raise InterruptedReview(exc, "\n\n".join(feedback_rows), confirmed) from exc
         if not isinstance(result, JudgeResult):
-            raise ValueError("Luna provider returned an invalid result")
+            cause = LunaProviderFailure("Luna provider returned an invalid result", category="worker_protocol")
+            raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
         if request.review_kind is ReviewKind.COMMENT:
             feedback = _comment_feedback(result, tuple(candidates_or_rows))
         else:
             feedback = _document_feedback(result, candidates_or_rows)
         if feedback:
             feedback_rows.append(feedback)
+            if request.review_kind is ReviewKind.DOCUMENT:
+                confirmed.append({"feedback": _bounded(feedback), "sources": feedback_sources(result.payload, candidates_or_rows)})
     return "\n\n".join(feedback_rows)
 
 
@@ -430,15 +360,17 @@ def _preflight(
     turn_id: str,
     state_root: str | Path | None,
 ) -> tuple[dict[str, Any] | None, int, bool, dict | None]:
+    confirmed = pending_feedback(session_id, state_root)
+    if confirmed:
+        return None, 0, False, stop_block(_bounded(confirmed))
+    if provider_cooling(session_id, state_root):
+        return None, 0, False, {}
     try:
         previous_failure = _failure_entry(session_id, turn_id, state_root)
-    except LunaReviewFailure as exc:
+    except (OSError, ValueError, TypeError) as exc:
         return None, 0, False, _failure_block(exc)
     attempts = previous_failure.get("attempts", 0) if previous_failure else 0
     attempts = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else 0
-    if attempts >= MAX_FAILURE_ATTEMPTS:
-        reason = previous_failure.get("reason", "repeated provider failure") if previous_failure else "repeated provider failure"
-        return previous_failure, attempts, False, _failure_block(reason, attempts)
     reservation_state, reclaimed = _probe_reservation(session_id, turn_id, state_root)
     if reservation_state == IN_PROGRESS:
         return previous_failure, attempts, reclaimed, _failure_block(
@@ -500,9 +432,16 @@ def review(
         return _perform_review(
             session_id, turn_id, state_root, previous_failure, attempts, work, provider,
         )
-    except LunaReviewFailure as exc:
-        _record_failure(session_id, turn_id, str(exc), state_root)
-        return _failure_block(exc, attempts + 1)
+    except LunaProviderFailure as exc:
+        confirmed = exc.confirmed if isinstance(exc, InterruptedReview) else []
+        record_provider_outage(session_id, turn_id, _bounded(exc), state_root, feedback=confirmed)
+        notice = system_message(_bounded(
+            f"ADW Luna review unavailable: {exc}. ADW could not complete this review. "
+            "Automatic retries pause for five minutes. Deterministic checks remain active. "
+            "Check Codex subscription login and Luna availability."
+        ))
+        feedback = exc.feedback if isinstance(exc, InterruptedReview) else ""
+        return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
     except Exception as exc:
         _record_failure(session_id, turn_id, str(exc), state_root)
         return _failure_block(exc, attempts + 1)

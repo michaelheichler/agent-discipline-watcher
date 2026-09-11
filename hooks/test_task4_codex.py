@@ -162,7 +162,7 @@ def test_codex_stop_judges_current_session_journal_once_and_session_end_releases
     assert session_state.live_session_ids(state_root) == frozenset()
 
 
-def test_codex_stop_provider_failure_is_one_bounded_actionable_block(tmp_path: Path) -> None:
+def test_codex_stop_provider_failure_is_one_bounded_notice(tmp_path: Path) -> None:
     state_root = tmp_path / "state"
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     source = tmp_path / "note.md"
@@ -173,10 +173,9 @@ def test_codex_stop_provider_failure_is_one_bounded_actionable_block(tmp_path: P
 
     response = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
 
-    assert set(response) == {"decision", "reason"}
-    assert response["decision"] == "block"
-    assert response["reason"]
-    assert len(response["reason"].encode("utf-8")) <= 4096
+    assert set(response) == {"systemMessage"}
+    assert "review unavailable" in response["systemMessage"]
+    assert len(response["systemMessage"].encode("utf-8")) <= 900
     assert len(provider.calls) == 1
 
 
@@ -197,7 +196,8 @@ def test_codex_stop_journal_failure_blocks_and_active_retry_does_not_silently_al
     assert "Luna review unavailable" in retry["reason"]
 
 
-def test_codex_stop_provider_failure_rolls_back_reservation_for_retry(tmp_path: Path) -> None:
+def test_codex_stop_provider_failure_rolls_back_reservation_for_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(codex_luna.time, "time", lambda: 1000.0)
     state_root = tmp_path / "state"
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     source = tmp_path / "note.md"
@@ -207,15 +207,16 @@ def test_codex_stop_provider_failure_rolls_back_reservation_for_retry(tmp_path: 
     provider = FlakyProvider(LunaProviderFailure("subscription unavailable", category="authentication"), _result(ReviewKind.DOCUMENT))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
-    retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=provider)
+    monkeypatch.setattr(codex_luna.time, "time", lambda: 1400.0)
+    retry = stop.run({"session_id": "s1", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
 
-    assert first["decision"] == "block"
+    assert first.get("decision") != "block"
     assert retry == {}
     assert len(provider.calls) == 2
     assert session_state.read_state("s1", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
 
 
-def test_codex_stop_failure_retry_without_turn_id_reuses_same_turn_and_clears_identity(tmp_path: Path) -> None:
+def test_codex_stop_failure_without_turn_id_does_not_latch_retry(tmp_path: Path) -> None:
     state_root = tmp_path / "state"
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     source = tmp_path / "note.md"
@@ -227,11 +228,11 @@ def test_codex_stop_failure_retry_without_turn_id_reuses_same_turn_and_clears_id
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
     retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=provider)
 
-    assert first["decision"] == "block"
+    assert first.get("decision") != "block"
     assert retry == {}
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
     state = session_state.read_state("s1", state_root)
-    assert state[codex_luna.STATE_KEY] == ["turn-1"]
+    assert not state.get(codex_luna.STATE_KEY)
     assert codex_luna.RETRY_KEY not in state
     assert codex_luna.FAILED_KEY not in state or not state[codex_luna.FAILED_KEY]
 
@@ -345,15 +346,15 @@ def test_codex_reviews_each_document_without_truncating_trailing_rows(
     assert any(request.review_kind is ReviewKind.COMMENT for request in provider.calls)
 
 
-def test_codex_mixed_review_failure_rolls_back_everything_for_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+def test_codex_mixed_review_preserves_findings_when_a_later_request_fails(
+    tmp_path: Path,
 ) -> None:
     state_root = tmp_path / "state"
-    rows = [
-        {"role": "document", "path": "note.md", "source_context": "A sentence.", "turn_id": "turn-1"},
-        {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows.", "turn_id": "turn-1"},
-    ]
-    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+    files = {"note.md": "A sentence.\n", "code.py": "# Returns the rows because the caller needs a stable order for the report.\nvalue = 1\n"}
+    for name, text in files.items():
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        journal.record_edit("mixed-retry", "turn-1", name, path, state_root=state_root)
     provider = MixedProvider(fail_on_call=2)
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     payload = {"session_id": "mixed-retry", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)}
@@ -363,9 +364,12 @@ def test_codex_mixed_review_failure_rolls_back_everything_for_retry(
     retry = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
 
     assert first["decision"] == "block"
+    assert "ADW Luna document review" in first["reason"]
+    assert "unavailable" in first["systemMessage"]
     assert retry["decision"] == "block"
-    assert len(provider.calls) == 4
-    assert session_state.read_state("mixed-retry", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
+    assert retry["reason"] == first["reason"]
+    assert len(provider.calls) == 2
+    assert not session_state.read_state("mixed-retry", state_root).get(codex_luna.STATE_KEY)
 
 
 def test_codex_rejects_a_review_plan_that_cannot_finish_before_the_deadline(

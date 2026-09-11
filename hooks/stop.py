@@ -64,6 +64,8 @@ def run(
                 )
                 if reviewed.get("decision") == "block":
                     return reviewed
+                if reviewed:
+                    return {**verdict, **reviewed}
             return verdict
 
         return run_with_ledger(
