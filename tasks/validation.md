@@ -296,3 +296,26 @@ restores the old cache bytes, registry, and enabled setting, removes the
 replacement cache, and records no success receipt.
 The final full suite passed 2,596 tests with 18 existing skips and 276 subtests.
 Independent review found no remaining defect in the migration repair.
+
+## Captured OMP edit and checkout migration
+
+The September 11 OMP trace passed a Codex patch inside a JavaScript tool.edit
+call. Native OMP rejects that syntax and expects its current hashline header.
+The watcher hid the format error behind a generic unresolved-target message.
+The new diagnostic explains the native format without relaxing write checks.
+A fresh Luna code-mode session edited and read the fixture successfully, and
+its ledger recorded pre-write, post-edit, and Stop without findings.
+
+The Mac installer also copied the runtime before rejecting the existing OMP
+checkout link. The router had lost its original source path. A real installer
+regression reproduced that failure and passed after forwarding the legacy root.
+The updater now recognizes only registered, owned legacy OMP wiring, backs it
+up, and passes the validated root to the verified release installer.
+
+The partial Mac install contained a valid managed updater. Its supported
+Claude-only update completed and registered the updater command. A read-only
+check of the new migration code accepts the Mac's exact existing OMP wiring.
+
+The full Python suite passed 2,604 tests with 18 existing skips and 276 subtests.
+All 218 extension tests passed. The captured invalid JavaScript edit now returns
+the native hashline guidance in a fresh Luna session. The fixture stayed intact.

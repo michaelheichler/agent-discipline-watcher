@@ -101,6 +101,7 @@ for host_name in $chosen; do
     exit 2
   }
   ADW_SKILL_DIR="$install_dir" ADW_PYTHON="$installer_python" \
+    ADW_LEGACY_INSTALL_DIR="${ADW_LEGACY_INSTALL_DIR:-$repo_dir}" \
     ADW_CLAUDE_LEGACY="${ADW_CLAUDE_LEGACY:-0}" "$host_installer"
 done
 
