@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.21**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release is **0.20.22**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -309,8 +309,8 @@ It does not police file access in general. The host's own permission settings ow
 
 The Python read checker accepts loops, generators, path joins, and text
 processing. The checker permits ordinary Python startup when it trusts
-the import paths. Writes, unknown calls, and executable startup overrides
-retain their checks.
+the import paths. Writes and executable startup overrides retain their
+checks. Unknown calls must pass the read checker.
 
 `config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that would weaken the gates. That means a self-authorization key, a downgraded always-blocking rule, a redirected state or ledger root, or anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
 
