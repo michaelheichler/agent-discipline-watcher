@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from lib import embedding_client, embedding_server, embedding_session
+from lib import embedding_client, embedding_server, embedding_session, reporting
 
 
 def _disable_git_background_tasks() -> None:
@@ -31,8 +31,19 @@ def _quiet_git_subprocesses() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _isolated_default_reports(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    original = reporting._reports_dir
+    default_directory = original()
+
+    def reports_directory():
+        directory = original()
+        return tmp_path / "reports" if directory == default_directory else directory
+
+    monkeypatch.setattr(reporting, "_reports_dir", reports_directory)
+
+
+@pytest.fixture(autouse=True)
 def _never_touch_the_real_model(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
-    """Guards every test because one real prompt hook run downloaded a gigabyte and left 46 model servers on the machine."""
     root = tmp_path_factory.mktemp("embedding-server")
     monkeypatch.setattr(embedding_server, "default_root", lambda: root)
     monkeypatch.setattr(embedding_client, "default_root", lambda: root)
