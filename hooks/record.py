@@ -51,6 +51,7 @@ class _EditJournal:
 class _RecordGateContext:
     journal: _EditJournal
     tracked_paths: list[str]
+    scan_paths: list[str]
     cwd: Path
     config: dict
     blocker_scope: blocker_state.BlockerScope
@@ -168,12 +169,12 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
     for raw_path in paths:
         approved = _approved_path(raw_path, cwd)
         if approved is None:
-            owned_rows.extend(scan_input.fallback_findings_from_count(Path(raw_path), 0, capped=False))
+            owned_rows.extend(_stamped(scan_input.fallback_findings_from_count(Path(raw_path), 0, capped=False), Path(raw_path)))
             continue
         path, identity = approved
         scanned = _scan_open_file(path, identity, cfg)
         if scanned is None:
-            owned_rows.extend(scan_input.fallback_findings_from_count(path, 0, capped=False))
+            owned_rows.extend(_stamped(scan_input.fallback_findings_from_count(path, 0, capped=False), path))
             continue
         owned, inherited = scanned
         owned_rows.extend(_stamped(owned, path))
@@ -242,7 +243,7 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
         if projected["session_id"]:
             _journal_edits(context.journal, turn_id)
         owned, inherited = _scan_paths(
-            context.journal.paths, context.cwd, context.config
+            context.scan_paths, context.cwd, context.config
         )
         decisions = record_findings(
             session_id=projected["session_id"], hook="record",
@@ -281,11 +282,21 @@ def _run_record(payload: dict, config: dict | None) -> dict:
     gate_context = _gate_context_for(payload, projected, cfg, state_root, ledger_root)
     return run_with_ledger(
         hook="record",
-        payload=dict(projected),
+        payload={**projected, "turn_id": payloads.turn_id(payload)},
         gate=_gate_for(gate_context),
         ledger_root=ledger_root,
         state_root=state_root,
     )
+
+
+def _missing_removed_paths(payload: dict, cwd: Path) -> set[str]:
+    missing = set()
+    for raw_path in payloads.removed_paths(payload):
+        try:
+            payloads.resolved_path(raw_path, cwd).lstat()
+        except FileNotFoundError:
+            missing.add(raw_path)
+    return missing
 
 
 def _gate_context_for(
@@ -299,9 +310,11 @@ def _gate_context_for(
         raise ValueError("PostToolUse payload requires a trusted cwd")
     cwd = Path(projected["cwd"])
     paths = list(payloads.edited_paths(payload))
+    removed = _missing_removed_paths(payload, cwd)
     return _RecordGateContext(
         journal=_EditJournal(projected, paths, ledger_root, state_root),
         tracked_paths=[str(payloads.resolved_path(raw, cwd)) for raw in paths],
+        scan_paths=[raw for raw in paths if raw not in removed],
         cwd=cwd,
         config=cfg,
         blocker_scope=blocker_state.BlockerScope(

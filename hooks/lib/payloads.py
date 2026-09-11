@@ -241,6 +241,22 @@ def edited_paths(payload: object) -> tuple[str, ...]:
     return found
 
 
+def removed_paths(payload: object) -> tuple[str, ...]:
+    if tool_name(payload) != "apply_patch":
+        return ()
+    current = ""
+    removed = []
+    for line in _edit_text_from(_tool_input(payload)).splitlines():
+        header = _PATCH_FILE_RE.match(line)
+        if header:
+            current = header.group(1).strip().strip('"')
+            if line.startswith("*** Delete File:"):
+                removed.append(current)
+        elif current and _PATCH_MOVE_RE.match(line):
+            removed.append(current)
+    return tuple(removed)
+
+
 def resolved_path(raw_path: str, cwd: Path) -> Path:
     """Expand a leading ~ here because batch used to skip it, so a tilde path keyed differently than the scan that read it. An unresolvable ~user is kept literal, since it cannot exist on disk and the read that follows already treats a missing path as unscannable."""
     try:

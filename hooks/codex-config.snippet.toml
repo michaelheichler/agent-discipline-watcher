@@ -5,26 +5,36 @@ type = "command"
 command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SessionStart"
 statusMessage = "Loading agent discipline watcher"
 
-[[hooks.PreToolUse]]
-matcher = "apply_patch|Edit|Write"
-[[hooks.PreToolUse.hooks]]
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" UserPromptSubmit"
 timeout = 30
 
 [[hooks.PreToolUse]]
-matcher = "Bash"
 [[hooks.PreToolUse.hooks]]
 type = "command"
 command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse"
 timeout = 30
 
 [[hooks.PostToolUse]]
-matcher = "apply_patch|Edit|Write"
+matcher = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 [[hooks.PostToolUse.hooks]]
 type = "command"
 command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PostToolUse"
 timeout = 30
+
+[[hooks.SubagentStart]]
+[[hooks.SubagentStart.hooks]]
+type = "command"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SubagentStart"
+timeout = 10
+
+[[hooks.SubagentStop]]
+[[hooks.SubagentStop.hooks]]
+type = "command"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SubagentStop"
+timeout = 10
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]

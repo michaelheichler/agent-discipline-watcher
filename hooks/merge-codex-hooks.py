@@ -62,6 +62,13 @@ def is_watcher_group(group: object) -> bool:
     return any(marker in text for marker in WATCHER_MARKERS)
 
 
+def without_watcher_handlers(group: object) -> object | None:
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        return group
+    kept = [handler for handler in group["hooks"] if not is_watcher_group(handler)]
+    return {**group, "hooks": kept} if kept else None
+
+
 def merge(hooks_path: Path, skill_dir: Path) -> None:
     current = json.loads(hooks_path.read_text(encoding="utf-8")) if hooks_path.exists() else {}
     if not isinstance(current, dict):
@@ -73,7 +80,7 @@ def merge(hooks_path: Path, skill_dir: Path) -> None:
     for event, groups in list(hooks.items()):
         if not isinstance(groups, list):
             continue
-        kept = [group for group in groups if not is_watcher_group(group)]
+        kept = [remaining for group in groups if (remaining := without_watcher_handlers(group)) is not None]
         if kept:
             hooks[event] = kept
         else:

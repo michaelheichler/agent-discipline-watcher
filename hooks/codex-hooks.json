@@ -12,19 +12,19 @@
         ]
       }
     ],
-    "PreToolUse": [
+    "UserPromptSubmit": [
       {
-        "matcher": "apply_patch|Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PreToolUse",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" UserPromptSubmit",
             "timeout": 30
           }
         ]
-      },
+      }
+    ],
+    "PreToolUse": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
@@ -36,12 +36,34 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "apply_patch|Edit|Write",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash",
         "hooks": [
           {
             "type": "command",
             "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PostToolUse",
             "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SubagentStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" SubagentStop",
+            "timeout": 10
           }
         ]
       }
