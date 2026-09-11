@@ -319,3 +319,24 @@ check of the new migration code accepts the Mac's exact existing OMP wiring.
 The full Python suite passed 2,604 tests with 18 existing skips and 276 subtests.
 All 218 extension tests passed. The captured invalid JavaScript edit now returns
 the native hashline guidance in a fresh Luna session. The fixture stayed intact.
+
+## Installed 0.20.20 verification
+
+PR 11 and the release commit passed every CI job. Cubic skipped review after
+reaching its monthly quota. Independent security review found no remaining
+blocker in the migration changes.
+
+The managed updater completed for Claude Code, Codex, and OMP on both the Mac
+and tux at 10.0.10.106. Both receipts and native Claude plugin records name
+commit 5caa0655dde50acb1f7d40821c88d51d5015f4dd. OMP registrations and Codex
+hooks point to the managed runtime on each machine. The updater verified
+runtime contents and preserved existing findings and session state.
+
+Fresh Luna code-mode sessions edited a Markdown rule fixture with YAML glob
+frontmatter on both machines. Their ledgers recorded the edit and Stop without
+findings. The resulting files have identical SHA-256 hashes. The Mac session
+recovered from invalid native edit syntax using the new guidance before its
+successful edit. The workstation session completed its edit on the first call.
+
+The Mac probe session was 01a08f2e-f86f-763c-a6e5-53e07e6e8068.
+The workstation probe session was 01a08f2f-d6de-70b2-bdb1-85f2fbdcd076.
