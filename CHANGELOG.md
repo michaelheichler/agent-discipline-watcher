@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.20 (2026-09-11)
+
+### Fixed
+
+- OMP edit calls without a valid target explain the required native hashline format. Invalid calls do not latch Stop, and valid edits retain their checks.
+- The installer preserves its original checkout path when replacing legacy OMP links.
+- The managed updater migrates registered legacy OMP wiring after checking ownership and protected paths. It rejects foreign links and retains update rollback.
+
 ## 0.20.19 (2026-09-11)
 
 ### Fixed

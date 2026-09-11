@@ -166,7 +166,7 @@ manifest. Review the patch through Cubic before release and remote refresh.
 
 - [x] Resolve updater review findings and pass the full regression suite.
 - [x] Merge the reviewed updater and publish v0.20.18.
-- [ ] Refresh all three remote harnesses and verify their installed revision.
+- [x] Refresh all three remote harnesses and verify their installed revision.
 - [ ] Complete the Mac installation through the permitted maintenance entrypoint.
 
 ## 17. Claude plugin migration
@@ -174,5 +174,14 @@ manifest. Review the patch through Cubic before release and remote refresh.
 - [x] Reproduce the remote upgrade in an isolated home with the native CLI.
 - [x] Use HTTPS for the pinned public plugin repository.
 - [x] Repair stale native commit metadata while preserving plugin data.
-- [ ] Verify rollback, review the follow-up, and publish the next 0.20 patch.
+- [x] Verify rollback, review the follow-up, and publish the next 0.20 patch.
 - [ ] Verify the installed release and plugin commit on both machines.
+
+## 18. Native OMP edit and install migration
+
+- [x] Capture the failing edit and verify native OMP hashline requirements.
+- [x] Replace the generic target error with native format guidance.
+- [x] Reproduce and repair checkout migration with the real installer.
+- [x] Pass independent security review and all CI jobs, then merge PR 11.
+- [ ] Publish 0.20.20 and update all three harnesses on both machines.
+- [ ] Verify a fresh OMP code-mode edit through the installed release.
