@@ -59,7 +59,7 @@ def test_prose_rules_do_not_reach_a_code_target():
 
 
 def test_heredoc_target_and_content_are_paired():
-    assert pre_bash.write_targets(f"cat > out.md <<EOF\n{PROSE}\nEOF") == [("out.md", PROSE)]
+    assert pre_bash.write_targets(f"cat > out.md <<EOF\n{PROSE}\nEOF") == [("out.md", PROSE + "\n")]
 
 
 @pytest.mark.parametrize("command", [
@@ -137,12 +137,12 @@ def test_a_descriptor_merely_ending_in_2_is_a_real_write(command):
 
 
 def test_clobber_operator_is_still_a_write_target():
-    assert pre_bash.write_targets(f"echo '{PROSE}' >|out.md") == [("out.md", PROSE)]
+    assert pre_bash.write_targets(f"echo '{PROSE}' >|out.md") == [("out.md", PROSE + "\n")]
 
 
 def test_heredoc_on_a_shared_line_does_not_leak_into_an_unrelated_write():
     command = f"cat <<EOF > clean.txt; echo '{PROSE}' > out.md\nclean\nEOF"
-    assert pre_bash.write_targets(command) == [("clean.txt", "clean"), ("out.md", PROSE)]
+    assert pre_bash.write_targets(command) == [("clean.txt", "clean\n"), ("out.md", PROSE + "\n")]
 
 
 def test_pipe_fed_content_still_pairs_across_segments():
@@ -151,7 +151,7 @@ def test_pipe_fed_content_still_pairs_across_segments():
 
 def test_hyphenated_heredoc_delimiter_still_scans():
     command = f"cat > out.md <<END-OF\n{PROSE}\nEND-OF"
-    assert pre_bash.write_targets(command) == [("out.md", PROSE)]
+    assert pre_bash.write_targets(command) == [("out.md", PROSE + "\n")]
 
 
 def test_pipe_with_stderr_operator_is_still_a_write():
@@ -199,7 +199,7 @@ def test_a_dynamic_or_unterminated_heredoc_aimed_at_a_file_blocks(command):
 
 
 def test_single_quoted_dollar_stays_literal():
-    assert pre_bash.write_targets("echo '$5 budget' > out.md") == [("out.md", "$5 budget")]
+    assert pre_bash.write_targets("echo '$5 budget' > out.md") == [("out.md", "$5 budget\n")]
 
 
 def test_self_protection_still_blocks_and_takes_precedence():
@@ -273,7 +273,7 @@ def test_dev_null_is_not_a_write_target():
 
 def test_two_writes_on_one_line_pair_positionally():
     command = f"echo '{PROSE}' > a.md && echo clean > b.md"
-    assert pre_bash.write_targets(command) == [("a.md", PROSE), ("b.md", "clean")]
+    assert pre_bash.write_targets(command) == [("a.md", PROSE + "\n"), ("b.md", "clean\n")]
 
 
 @pytest.mark.parametrize("command, append", [
@@ -282,7 +282,7 @@ def test_two_writes_on_one_line_pair_positionally():
     ("echo 'x' >|out.md", False),
 ])
 def test_literal_writes_distinguishes_overwrite_from_append(command, append):
-    assert shell_parse.literal_writes(command) == [shell_parse.LiteralWrite("out.md", "x", append)]
+    assert shell_parse.literal_writes(command) == [shell_parse.LiteralWrite("out.md", "x\n", append)]
 
 
 @pytest.mark.parametrize("command, append", [
@@ -297,7 +297,7 @@ def test_literal_writes_distinguishes_tee_from_tee_append(command, append):
 
 def test_write_targets_stays_a_thin_projection_of_literal_writes():
     command = f"cat > out.md <<EOF\n{PROSE}\nEOF"
-    assert pre_bash.write_targets(command) == [("out.md", PROSE)]
+    assert pre_bash.write_targets(command) == [("out.md", PROSE + "\n")]
 
 
 @pytest.mark.parametrize("command, interpreter, flag", [
@@ -381,7 +381,7 @@ def test_heredoc_events_reports_body_and_write_target_for_a_clean_heredoc():
     command = f"cat > out.md <<EOF\n{PROSE}\nEOF"
     events = shell_parse.heredoc_events(command)
     assert len(events) == 1
-    assert events[0].body == PROSE
+    assert events[0].body == PROSE + "\n"
     assert events[0].dynamic is False
     assert events[0].group_has_write_target is True
     assert events[0].consumer_segment[0] == "cat"
@@ -492,11 +492,4 @@ def test_bash_append_to_a_long_prose_file_is_not_a_length_violation(tmp_path):
     target = tmp_path / "notes.md"
     target.write_text("one ordinary line\n" * 1200, encoding="utf-8")
     command = "echo 'one more plain line of ordinary text' >> notes.md"
-    assert pre_bash.run({"tool_input": {"command": command}, "cwd": str(tmp_path)}) == {}
-
-
-def test_bash_append_of_clean_lines_to_an_already_too_long_file_does_not_own_the_debt(tmp_path):
-    target = tmp_path / "big.py"
-    target.write_text("x = 1\n" * 1200, encoding="utf-8")
-    command = "echo 'y = 2' >> big.py"
     assert pre_bash.run({"tool_input": {"command": command}, "cwd": str(tmp_path)}) == {}

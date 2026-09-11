@@ -25,7 +25,7 @@ def test_combined_stream_redirects_block_python_output(command, redirect):
 def test_combined_stream_redirects_preserve_literal_write_metadata(operator, append, space):
     command = f"echo 'clean text' {operator}{space}'out file.txt'"
 
-    assert shell_parse.literal_writes(command) == [shell_parse.LiteralWrite("out file.txt", "clean text", append)]
+    assert shell_parse.literal_writes(command) == [shell_parse.LiteralWrite("out file.txt", "clean text\n", append)]
 
 
 @pytest.mark.parametrize("redirect", [

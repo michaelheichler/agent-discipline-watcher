@@ -1,4 +1,3 @@
-"""Shapes a literal Bash write's findings against the committed baseline, because an overwrite inherits the file's existing debt while an append only ever adds lines the command itself wrote."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,21 +10,32 @@ from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
 
 
+@dataclass(frozen=True, slots=True)
+class FileLength:
+    count: int = 0
+    capped: bool = False
+    ends_with_newline: bool = True
+
+
 def shaped_write_findings(
     command: str, config: dict | None, cwd: str | Path | None,
 ) -> tuple[list[dict], list[dict]]:
-    """Split an overwrite against the committed baseline and treat an append as fully owned, because appending only ever adds lines the command itself wrote."""
     resolved_cwd = Path(cwd) if cwd is not None else Path(".")
     owned: list[dict] = []
     inherited: list[dict] = []
+    lengths: dict[Path, FileLength] = {}
     for write in literal_writes(command):
         body = scannable_text(write.text, config or {})
         if body is None:
             continue
         shape = ShapedWrite(write, body, resolved_cwd, config)
+        path = _resolved_path(write.path, resolved_cwd).resolve()
         if write.append:
-            owned.extend(_append_shape_findings(shape))
+            before = lengths[path] if path in lengths else _file_length(path)
+            lengths[path] = _appended_length(before, body)
+            owned.extend(_append_shape_findings(shape, before, lengths[path]))
         else:
+            lengths[path] = _appended_length(FileLength(), body)
             shape_owned, shape_inherited = _overwrite_shape_findings(shape)
             owned.extend(shape_owned)
             inherited.extend(shape_inherited)
@@ -47,11 +57,12 @@ def _overwrite_shape_findings(shape: ShapedWrite) -> tuple[list[dict], list[dict
     )
 
 
-def _append_shape_findings(shape: ShapedWrite) -> list[dict]:
-    findings = _label_appended_text(_stamped_findings(shape.write.path, shape.body, shape.config))
-    length_finding = _append_length_finding(
-        shape.write.path, shape.body, _resolved_path(shape.write.path, shape.cwd)
-    )
+def _append_shape_findings(shape: ShapedWrite, before: FileLength, after: FileLength) -> list[dict]:
+    findings = _label_appended_text([
+        finding for finding in _stamped_findings(shape.write.path, shape.body, shape.config)
+        if finding["rule"] not in {"file_length_warning", "file_length_critical", "file_too_long"}
+    ])
+    length_finding = _append_length_finding(shape.write.path, shape.body, before, after)
     return findings + ([length_finding] if length_finding is not None else [])
 
 
@@ -81,24 +92,19 @@ def _append_length_row(finding: Finding) -> dict:
     }
 
 
-def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | None:
-    """Report only a length tier this append newly crosses, gated on the same code-file predicate the scanner uses, because a non-code target or debt the file already carried belongs to no one this append owns."""
+def _append_length_finding(path: str, body: str, before: FileLength, after: FileLength) -> dict | None:
     if not _code_file(path, body):
         return None
-    disk = file_line_count(resolved_path)
-    before = disk[0] if disk is not None else 0
-    total = before + len(body.splitlines())
-    if before and not _ends_with_newline(resolved_path):
-        total -= 1
-    policy = file_length_policy(total)
-    if policy is None or policy == file_length_policy(before):
+    policy = file_length_policy(after.count)
+    if policy is None or (policy[0] != "file_too_long" and policy == file_length_policy(before.count)):
         return None
     rule, action = policy
+    shown = f"at least {after.count}" if after.capped else str(after.count)
     finding = Finding(
         family="clean_code",
         rule=rule,
         line=1,
-        detail=f"File has {total} lines in {path}",
+        detail=f"File has {shown} lines in {path}",
         force=True,
         snippet=path.strip()[:180],
         action=action,
@@ -109,8 +115,22 @@ def _append_length_finding(path: str, body: str, resolved_path: Path) -> dict | 
     return _append_length_row(finding)
 
 
+def _file_length(path: Path) -> FileLength:
+    counted = file_line_count(path)
+    count, capped = counted if counted is not None else (0, False)
+    return FileLength(count, capped, _ends_with_newline(path))
+
+
+def _appended_length(before: FileLength, body: str) -> FileLength:
+    if not body:
+        return before
+    total = before.count + len(body.splitlines())
+    if before.count and not before.ends_with_newline:
+        total -= 1
+    return FileLength(total, before.capped, body.endswith("\n"))
+
+
 def _ends_with_newline(resolved_path: Path) -> bool:
-    """Default true on any read failure, because an unreadable file must not be blamed for a break the append did not cause."""
     try:
         with resolved_path.open("rb") as handle:
             handle.seek(-1, 2)

@@ -1,18 +1,22 @@
 from pathlib import Path
 
 
+def _find_lines(lines: list[str], before: list[str], cursor: int) -> int:
+    for trimmed in (False, True):
+        candidates = [line.rstrip() if trimmed else line for line in lines]
+        wanted = [line.rstrip() if trimmed else line for line in before]
+        for index in range(cursor, len(lines) - len(before) + 1):
+            if candidates[index:index + len(before)] == wanted:
+                return index
+    raise ValueError("patch context is missing")
+
+
 def _replace_hunk(lines: list[str], hunk: list[str], cursor: int) -> tuple[list[str], int]:
     before = [line[1:] for line in hunk if line.startswith((" ", "-"))]
     after = [line[1:] for line in hunk if line.startswith((" ", "+"))]
     if not before:
-        raise ValueError("patch hunk has no context")
-    matches = [
-        index for index in range(cursor, len(lines) - len(before) + 1)
-        if lines[index:index + len(before)] == before
-    ]
-    if len(matches) != 1:
-        raise ValueError("patch hunk is missing or ambiguous")
-    index = matches[0]
+        return lines + after, len(lines) + len(after)
+    index = _find_lines(lines, before, cursor)
     return lines[:index] + after + lines[index + len(before):], index + len(after)
 
 
@@ -25,6 +29,8 @@ def _updated_text(path: Path, body: list[str]) -> str:
             if hunk:
                 lines, cursor = _replace_hunk(lines, hunk, cursor)
                 hunk = []
+            if line.startswith("@@ "):
+                cursor = _find_lines(lines, [line[3:]], cursor) + 1
         elif line.startswith((" ", "+", "-")):
             hunk.append(line)
         else:

@@ -15,7 +15,7 @@ from lib.patch_content import projected_content
 from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
 )
-from lib.scanner import scan_all
+from lib.scanner import file_length_findings, scan_all
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)$", re.MULTILINE)
 
@@ -234,12 +234,18 @@ def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[
     for path, content in projected.items():
         resolved_path = _resolved_path(path, cwd)
         owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
+        if content is not None:
+            owned_rows.extend(_stamped(file_length_findings(path, content), path))
     for path, text in pending_writes(decoded):
         resolved_path = _resolved_path(path, cwd)
         if path not in projected:
             content = text if whole_file else None
             owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
         scanned = _stamped(scan_all(path, text, cfg), path)
+        if projected.get(path) is not None:
+            scanned = [row for row in scanned if row["rule"] not in {
+                "file_length_warning", "file_length_critical", "file_too_long",
+            }]
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue

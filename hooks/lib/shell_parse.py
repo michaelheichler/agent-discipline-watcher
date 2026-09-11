@@ -46,10 +46,15 @@ __all__ = [
 STDERR_DESCRIPTOR = "2"
 HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s()<>|&;'\"]+))")
 LITERAL_PRODUCERS = frozenset({"echo", "printf"})
-ECHO_FLAGS = frozenset({"-n", "-e", "-E", "-ne", "-en"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
+MAX_LITERAL_OUTPUT_CHARS = 1_000_000
+PRINTF_TOKEN_RE = re.compile(r"%%|%s|\\[\\abefnrtv]|[^%\\]+")
+PRINTF_ESCAPES = {
+    "\\": "\\", "a": "\a", "b": "\b", "e": "\x1b", "f": "\f",
+    "n": "\n", "r": "\r", "t": "\t", "v": "\v",
+}
 
 
 class LiteralWrite(NamedTuple):
@@ -112,7 +117,7 @@ def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str, b
         index += 1
         line = raw.lstrip("\t") if strip else raw
         if line.rstrip() == delimiter:
-            body = "\n".join(collected)
+            body = "".join(line + "\n" for line in collected)
             expandable = match.group(4) is not None
             return body, expandable and bool(DYNAMIC_RE.search(body)), index
         collected.append(line)
@@ -192,7 +197,7 @@ def _literal_contents(segments: list[list[str]]) -> list[str | None]:
     for segment in segments:
         index = _command_word_index(segment)
         if index < len(segment) and _basename(segment[index]) in LITERAL_PRODUCERS:
-            contents.append(_producer_text(segment[index + 1:]))
+            contents.append(_producer_text(_basename(segment[index]), segment[index + 1:]))
             continue
         payload = _shell_c_literal_payload(segment)
         if payload is not None:
@@ -214,9 +219,11 @@ def _shell_c_literal_payload(segment: list[str]) -> str | None:
     return contents[0]
 
 
-def _producer_text(args: list[str]) -> str | None:
+def _producer_text(producer: str, args: list[str]) -> str | None:
     words: list[str] = []
     skip = False
+    ending = "\n" if producer == "echo" else ""
+    expand = False
     for token in args:
         if skip:
             skip = False
@@ -227,10 +234,55 @@ def _producer_text(args: list[str]) -> str | None:
             continue
         if DYNAMIC_RE.search(token) and not (token.startswith("'") and token.endswith("'")):
             return None
-        if not words and _bare(token) in ECHO_FLAGS:
+        word = _bare(token)
+        if producer == "echo" and not words and re.fullmatch(r"-[neE]+", word):
+            for option in word[1:]:
+                if option == "n":
+                    ending = ""
+                else:
+                    expand = option == "e"
             continue
-        words.append(_bare(token))
-    return " ".join(words).replace("\\n", "\n").replace("\\t", "\t")
+        words.append(word)
+    if producer == "printf":
+        return _printf_text(words)
+    text = " ".join(words)
+    if expand:
+        text = text.replace("\\n", "\n").replace("\\t", "\t")
+    return text + ending
+
+
+def _printf_tokens(format_string: str) -> list[str | None] | None:
+    tokens = PRINTF_TOKEN_RE.findall(format_string)
+    if "".join(tokens) != format_string:
+        return None
+    return [
+        None if token == "%s" else "%" if token == "%%"
+        else PRINTF_ESCAPES[token[1]] if token.startswith("\\") else token
+        for token in tokens
+    ]
+
+
+def _printf_text(words: list[str]) -> str | None:
+    options_ended = words[:1] == ["--"]
+    args = words[1:] if options_ended else words
+    if not args or (not options_ended and args[0].startswith("-")):
+        return None
+    tokens = _printf_tokens(args[0])
+    if tokens is None:
+        return None
+    values = args[1:]
+    slots = tokens.count(None)
+    rounds = max(1, (len(values) + slots - 1) // slots) if slots else 1
+    size = rounds * sum(len(token) for token in tokens if token is not None)
+    if slots:
+        size += sum(len(value) for value in values)
+    if size > MAX_LITERAL_OUTPUT_CHARS:
+        return None
+    remaining = iter(values)
+    return "".join(
+        next(remaining, "") if token is None else token
+        for _ in range(rounds) for token in tokens
+    )
 
 
 def heredoc_events(command: str) -> list[HeredocEvent]:
