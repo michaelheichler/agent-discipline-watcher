@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.20.22 (2026-09-11)
+## 0.20.23 (2026-09-11)
+
+### Fixed
+
+- Restore the release version marker required by the managed updater. Add a check against the repository README and changelog.
+
+## 0.20.22 (2026-09-11, withdrawn)
 
 ### Fixed
 
