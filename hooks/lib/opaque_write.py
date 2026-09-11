@@ -1,18 +1,20 @@
 """Blocks Bash write routes the gate cannot judge, because their payload never passes through text the scanner can read."""
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from lib.shell_parse import (
-    HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
+    DYNAMIC_RE, HeredocEvent, SHELL_C_INTERPRETERS, _bare, _basename, _command_word_index, _interpreter_code_flags,
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import is_known_read_only_python
-from lib.python_shell import isolated_python, startup_finding
+from lib.python_shell import isolated_python, startup_finding, trusted_python_startup
+from lib.update_policy import _segment_contexts
 
 FindingFactory = Callable[[str], dict]
 RecurseFn = Callable[[str], list[dict]]
@@ -146,13 +148,51 @@ def _is_bare_interpreter_segment(segment: list[str]) -> bool:
     return _bare_interpreter_name(segment) is not None
 
 
-def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> list[dict]:
+def _execution_contexts(command: str, cwd: str | os.PathLike[str] | None) -> dict[tuple[str, ...], list[str]]:
+    source = "\n".join(line for line, _, _ in _logical_lines(command))
+    contexts: dict[tuple[str, ...], list[str]] = {}
+    directories: set[str] = set()
+    unresolved = False
+    for segment, directory in _segment_contexts(_segments(source), cwd, None):
+        directories.add(str(directory))
+        if unresolved:
+            contexts[tuple(segment)] = []
+        else:
+            contexts.setdefault(tuple(segment), []).extend(sorted(directories))
+        unresolved = unresolved or _changes_python_startup(segment)
+    return contexts
+
+
+def _changes_python_startup(segment: list[str]) -> bool:
+    index = _payload_command_index(segment)
+    verb = _basename(segment[index]) if index < len(segment) else ""
+    args = [_bare(token) for token in segment[index + 1:]]
+    if verb == "cd":
+        return any(DYNAMIC_RE.search(arg) or (arg.startswith("-") and arg != "--") for arg in args)
+    if verb in {"pushd", "popd", "source", ".", "eval"}:
+        return True
+    if not verb or verb in {"export", "declare", "typeset", "readonly", "unset"}:
+        return any(re.match(r"PYTHON[A-Z_]+(?:=|$)", _bare(token)) for token in segment)
+    return bool(MUTATING_VERB_RE.search(_segment_text(segment))) or _write_path_writes(segment)
+
+
+def _trusted_startup(segment: list[str] | tuple[str, ...], contexts: dict[tuple[str, ...], list[str]]) -> bool:
+    if isolated_python(segment):
+        return True
+    directories = contexts.get(tuple(segment))
+    return bool(directories) and all(trusted_python_startup(segment, directory) for directory in directories)
+
+
+def inline_interpreter_findings(
+    command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     findings = []
+    contexts = _execution_contexts(command, cwd)
     for segment in _segments(command):
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter in SHELL_C_INTERPRETERS:
             continue
-        if PYTHON_INTERPRETER_RE.fullmatch(invocation.interpreter) and not isolated_python(segment):
+        if PYTHON_INTERPRETER_RE.fullmatch(invocation.interpreter) and not _trusted_startup(segment, contexts):
             findings.append(startup_finding(make_finding, "inline_interpreter_write"))
             continue
         if (
@@ -163,17 +203,23 @@ def inline_interpreter_findings(command: str, make_finding: FindingFactory) -> l
     return findings
 
 
-def interpreter_stdin_findings(command: str, make_finding: FindingFactory, recurse: RecurseFn) -> list[dict]:
+def interpreter_stdin_findings(
+    command: str, make_finding: FindingFactory, recurse: RecurseFn, *, cwd: str | os.PathLike[str] | None = None,
+) -> list[dict]:
     findings = []
+    contexts = _execution_contexts(command, cwd)
     for event in heredoc_events(command):
-        findings.extend(_heredoc_stdin_findings(event, make_finding, recurse))
+        findings.extend(_heredoc_stdin_findings(event, make_finding, recurse, contexts))
     for line, _, _ in _logical_lines(command):
         for group in _pipeline_groups(line):
-            findings.extend(_pipe_interpreter_findings(group, make_finding, recurse))
+            findings.extend(_pipe_interpreter_findings(group, make_finding, recurse, contexts))
     return findings
 
 
-def _heredoc_stdin_findings(event: HeredocEvent, make_finding: FindingFactory, recurse: RecurseFn) -> list[dict]:
+def _heredoc_stdin_findings(
+    event: HeredocEvent, make_finding: FindingFactory, recurse: RecurseFn,
+    contexts: dict[tuple[str, ...], list[str]],
+) -> list[dict]:
     """Judge one heredoc's body against its actual consumer, because a shell consumer reads its own stdin as a nested command while any other interpreter reads it as inline code."""
     name = _bare_interpreter_name(event.consumer_segment)
     if name is None:
@@ -182,14 +228,17 @@ def _heredoc_stdin_findings(event: HeredocEvent, make_finding: FindingFactory, r
         if event.dynamic:
             return [make_finding("interpreter_heredoc_write")]
         return recurse(event.body)
-    if PYTHON_INTERPRETER_RE.fullmatch(name) and not isolated_python(event.consumer_segment):
+    if PYTHON_INTERPRETER_RE.fullmatch(name) and not _trusted_startup(event.consumer_segment, contexts):
         return [startup_finding(make_finding, "interpreter_heredoc_write")]
     if event.dynamic or _payload_is_write_capable(name, event.body):
         return [make_finding("interpreter_heredoc_write")]
     return []
 
 
-def _pipe_interpreter_findings(group: list[list[str]], make_finding: FindingFactory, recurse: RecurseFn) -> list[dict]:
+def _pipe_interpreter_findings(
+    group: list[list[str]], make_finding: FindingFactory, recurse: RecurseFn,
+    contexts: dict[tuple[str, ...], list[str]],
+) -> list[dict]:
     """Judge every bare interpreter stage that has a producer ahead of it, because stdin reaches a middle stage exactly as it reaches the last one."""
     findings = []
     for index in range(1, len(group)):
@@ -198,7 +247,7 @@ def _pipe_interpreter_findings(group: list[list[str]], make_finding: FindingFact
                 tuple(tuple(segment) for segment in group[:index]),
                 tuple(group[index]),
             )
-            findings.extend(_stage_interpreter_findings(stage, make_finding, recurse))
+            findings.extend(_stage_interpreter_findings(stage, make_finding, recurse, contexts))
     return findings
 
 
@@ -206,6 +255,7 @@ def _stage_interpreter_findings(
     stage: InterpreterStage,
     make_finding: FindingFactory,
     recurse: RecurseFn,
+    contexts: dict[tuple[str, ...], list[str]],
 ) -> list[dict]:
     """Judge one interpreter stage's stdin against its own producer text, because a shell consumer reads its stdin as a nested command while any other interpreter reads it as inline code."""
     producers = [list(segment) for segment in stage.producers]
@@ -216,7 +266,7 @@ def _stage_interpreter_findings(
     if _bare_interpreter_name(list(stage.consumer)) in SHELL_C_INTERPRETERS:
         return recurse(joined)
     name = _bare_interpreter_name(list(stage.consumer))
-    if name is not None and PYTHON_INTERPRETER_RE.fullmatch(name) and not isolated_python(stage.consumer):
+    if name is not None and PYTHON_INTERPRETER_RE.fullmatch(name) and not _trusted_startup(stage.consumer, contexts):
         return [startup_finding(make_finding, "interpreter_heredoc_write")]
     if name is not None and _payload_is_write_capable(name, joined):
         return [make_finding("interpreter_heredoc_write")]

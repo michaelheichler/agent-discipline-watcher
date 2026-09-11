@@ -255,8 +255,8 @@ def _opaque_findings(
         return []
     make_finding = _finding_factory(command)
     findings: list[dict] = []
-    findings.extend(inline_interpreter_findings(command, make_finding))
-    findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth, cwd)))
+    findings.extend(inline_interpreter_findings(command, make_finding, cwd=cwd))
+    findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth, cwd), cwd=cwd))
     findings.extend(dynamic_heredoc_findings(command, make_finding))
     findings.extend(decode_pipe_findings(command, make_finding))
     findings.extend(inplace_edit_findings(command, make_finding))

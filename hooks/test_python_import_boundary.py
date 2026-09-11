@@ -307,11 +307,13 @@ def test_python_value_options_do_not_hide_later_code_or_grant_isolation(options,
     "python3 -I -S $EXTRA -c 'print(1)'",
     "python3 -I -S -ic 'print(1)' <<'EOF'\nopen('target.md', 'w').write('unreviewed')\nEOF",
 ])
-def test_isolation_flags_must_belong_to_the_python_startup_options(command):
-    result = pre_tool.run({"tool_name": "Bash", "tool_input": {"command": command}})
+def test_isolation_flags_must_belong_to_the_python_startup_options(command, tmp_path):
+    marker = shadow_module(tmp_path, "pathlib")
+    result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
 
     assert result.get("decision") == "block"
     assert "python3 -I -S" in result["reason"]
+    assert not marker.exists()
 
 
 @pytest.mark.parametrize("command", [
@@ -329,3 +331,55 @@ def test_isolation_does_not_allow_python_file_mutations(command):
 
     assert result.get("decision") == "block"
     assert "Write or Edit" in result["reason"]
+
+
+@pytest.mark.parametrize("command", [
+    "cd modules && python3 -c 'print(1)'",
+    "cd modules && python3 <<'PY'\nprint(1)\nPY",
+    "cd modules && printf 'print(1)' | python3",
+])
+def test_python_startup_checks_the_changed_shell_directory(tmp_path, command):
+    modules = tmp_path / "modules"
+    modules.mkdir()
+    marker = shadow_module(modules, "pathlib")
+    result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
+
+    assert result.get("decision") == "block"
+    assert "python3 -I -S" in result["reason"]
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("prefix", ["(cd trusted);", "cd trusted | cat;"])
+def test_scoped_cd_cannot_hide_the_real_python_directory(tmp_path, prefix):
+    marker = shadow_module(tmp_path, "pathlib")
+    (tmp_path / "trusted").mkdir()
+    command = f"{prefix} python3 -c 'print(1)'"
+    result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
+
+    assert result.get("decision") == "block"
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("prefix", [
+    "PYTHONPATH=modules", "env PYTHONPATH=modules", "env -C modules",
+    "export PYTHONPATH=modules;", "PYTHONPATH=modules;", 'cd "$DEST" &&',
+])
+def test_python_startup_does_not_trust_unresolved_environment_changes(tmp_path, prefix, monkeypatch):
+    modules = tmp_path / "modules"
+    modules.mkdir()
+    marker = shadow_module(modules, "pathlib")
+    monkeypatch.setenv("DEST", str(modules))
+    command = f"{prefix} python3 -c 'print(1)'"
+    result = pre_tool.run({"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}})
+
+    assert result.get("decision") == "block"
+    assert not marker.exists()
+
+
+def test_python_inspect_environment_keeps_the_interactive_guard(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYTHONINSPECT", "1")
+    result = pre_tool.run({
+        "tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": "python3 -c 'print(1)'"},
+    })
+
+    assert result.get("decision") == "block"

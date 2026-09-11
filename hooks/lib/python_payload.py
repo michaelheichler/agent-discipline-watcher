@@ -5,6 +5,7 @@ import re
 
 from .python_imports import imports_are_trusted
 
+Kind = str | tuple[str, tuple["Kind", ...]]
 READ_ONLY_OPEN_MODE_CHARS = frozenset("rbtU")
 SAFE_IMPORTS = frozenset({"json"})
 PATH_IMPORT = ("pathlib", "Path")
@@ -18,7 +19,7 @@ PATH_METHODS = {
     "as_uri": "text",
     "exists": "value",
     "expanduser": "path",
-    "glob": "value",
+    "glob": ("sequence", ("path",)),
     "is_block_device": "value",
     "is_char_device": "value",
     "is_dir": "value",
@@ -28,14 +29,14 @@ PATH_METHODS = {
     "is_relative_to": "value",
     "is_socket": "value",
     "is_symlink": "value",
-    "iterdir": "value",
+    "iterdir": ("sequence", ("path",)),
     "lstat": "value",
     "match": "value",
     "read_bytes": "bytes",
     "read_text": "text",
     "relative_to": "path",
     "resolve": "path",
-    "rglob": "value",
+    "rglob": ("sequence", ("path",)),
     "samefile": "value",
     "stat": "value",
     "with_name": "path",
@@ -47,7 +48,7 @@ FILE_METHODS = {
     "read": "value",
     "readable": "value",
     "readline": "text",
-    "readlines": "value",
+    "readlines": ("sequence", ("text",)),
     "seekable": "value",
     "tell": "value",
 }
@@ -64,7 +65,36 @@ BYTES_METHODS = frozenset({
 })
 SAFE_LITERAL_TYPES = (str, bytes, int, float, complex, bool, type(None))
 ASSIGNABLE_KINDS = frozenset({"bytes", "file", "path", "text", "value"})
+
 SUSPICIOUS_BARE_LITERAL_RE = re.compile(r"(?:\b(?:write|exec|eval)\s*\(|__)")
+
+
+def common_kind(kinds: list[Kind] | tuple[Kind, ...]) -> Kind:
+    return kinds[0] if kinds and all(kind == kinds[0] for kind in kinds) else "value"
+
+
+def item_kind(kind: Kind | None) -> Kind | None:
+    if isinstance(kind, tuple):
+        return kind[1][0] if kind[0] == "sequence" else common_kind(kind[1])
+    return {"text": "text", "bytes": "value", "file": "text"}.get(kind)
+
+
+def assignable_kind(kind: Kind | None) -> bool:
+    if isinstance(kind, tuple):
+        return all(assignable_kind(item) for item in kind[1])
+    return kind in ASSIGNABLE_KINDS
+
+
+def text_method_result(base: str, method: str) -> Kind:
+    if method in {"split", "splitlines", "rsplit"}:
+        return ("sequence", (base,))
+    if method in {"partition", "rpartition"}:
+        return ("tuple", (base, base, base))
+    if method in {"decode", "encode"}:
+        return "text" if method == "decode" else "bytes"
+    if method.startswith("is") or method in {"count", "find", "index", "rfind", "rindex", "startswith", "endswith"}:
+        return "value"
+    return base
 
 
 def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: bool = False) -> bool:
@@ -77,7 +107,7 @@ def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: 
 
 class _ReadOnlyChecker:
     def __init__(self) -> None:
-        self.bindings: dict[str, str] = {
+        self.bindings: dict[str, Kind] = {
             name: "builtin" for name in SAFE_BUILTINS
         }
         self.bindings["open"] = "open"
@@ -108,6 +138,11 @@ class _ReadOnlyChecker:
             )
         elif isinstance(node, ast.With):
             result = self.with_statement(node)
+        elif isinstance(node, ast.For):
+            result = (
+                self.bind_target(node.target, item_kind(self.expression(node.iter)))
+                and self.statements(node.body) and self.statements(node.orelse)
+            )
         return result
 
     def suspicious_bare_literal(self, node: ast.expr) -> bool:
@@ -117,14 +152,21 @@ class _ReadOnlyChecker:
         return bool(SUSPICIOUS_BARE_LITERAL_RE.search(value))
 
     def assignment(self, node: ast.Assign) -> bool:
-        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+        if len(node.targets) != 1:
             return False
-        name = node.targets[0].id
-        kind = self.expression(node.value)
-        if name in self.protected_names or kind not in ASSIGNABLE_KINDS:
+        return self.bind_target(node.targets[0], self.expression(node.value))
+
+    def bind_target(self, node: ast.expr, kind: Kind | None) -> bool:
+        if not assignable_kind(kind):
             return False
-        self.bindings[name] = kind
-        return True
+        if isinstance(node, ast.Name) and node.id not in self.protected_names:
+            self.bindings[node.id] = kind
+            return True
+        if isinstance(node, (ast.Tuple, ast.List)) and isinstance(kind, tuple) and kind[0] == "tuple":
+            return len(node.elts) == len(kind[1]) and all(
+                self.bind_target(target, value) for target, value in zip(node.elts, kind[1])
+            )
+        return False
 
     def imports(self, node: ast.Import) -> bool:
         if len(node.names) != 1:
@@ -168,7 +210,7 @@ class _ReadOnlyChecker:
             self.bindings[name] = previous
         return result
 
-    def expression(self, node: ast.expr) -> str | None:
+    def expression(self, node: ast.expr) -> Kind | None:
         handlers = (
             (ast.Constant, self.constant),
             (ast.Name, self.name),
@@ -182,6 +224,7 @@ class _ReadOnlyChecker:
             ((ast.BinOp, ast.BoolOp), self.binary),
             (ast.Compare, self.compare),
             (ast.IfExp, self.conditional),
+            (ast.GeneratorExp, self.generator),
         )
         for node_type, handler in handlers:
             if isinstance(node, node_type):
@@ -189,13 +232,20 @@ class _ReadOnlyChecker:
         return None
 
     def constant(self, node: ast.Constant) -> str | None:
+        if isinstance(node.value, (str, bytes)):
+            return "text" if isinstance(node.value, str) else "bytes"
         return "value" if isinstance(node.value, SAFE_LITERAL_TYPES) else None
 
-    def name(self, node: ast.Name) -> str | None:
+    def name(self, node: ast.Name) -> Kind | None:
         return self.bindings.get(node.id)
 
-    def collection(self, node: ast.List | ast.Set | ast.Tuple) -> str | None:
-        return "value" if all(self.expression(item) is not None for item in node.elts) else None
+    def collection(self, node: ast.List | ast.Set | ast.Tuple) -> Kind | None:
+        kinds = [self.expression(item) for item in node.elts]
+        if None in kinds:
+            return None
+        if isinstance(node, ast.Tuple):
+            return ("tuple", tuple(kinds))
+        return ("sequence", (common_kind(kinds),))
 
     def dictionary(self, node: ast.Dict) -> str | None:
         return "value" if all(
@@ -203,28 +253,52 @@ class _ReadOnlyChecker:
             for key, value in zip(node.keys, node.values)
         ) else None
 
-    def subscript(self, node: ast.Subscript) -> str | None:
-        return "value" if self.expression(node.value) is not None and self.slice(node.slice) else None
+    def subscript(self, node: ast.Subscript) -> Kind | None:
+        kind = self.expression(node.value)
+        if kind is None or not self.slice(node.slice):
+            return None
+        return kind if isinstance(node.slice, ast.Slice) else item_kind(kind) or "value"
 
     def joined_string(self, node: ast.JoinedStr) -> str | None:
-        return "value" if all(self.formatted_value(value) for value in node.values) else None
+        return "text" if all(self.formatted_value(value) for value in node.values) else None
 
     def unary(self, node: ast.UnaryOp) -> str | None:
         return "value" if self.expression(node.operand) is not None else None
 
-    def binary(self, node: ast.BinOp | ast.BoolOp) -> str | None:
+    def binary(self, node: ast.BinOp | ast.BoolOp) -> Kind | None:
         values = node.values if isinstance(node, ast.BoolOp) else (node.left, node.right)
-        return "value" if all(self.expression(value) is not None for value in values) else None
+        kinds = [self.expression(value) for value in values]
+        if None in kinds:
+            return None
+        if isinstance(node.op, ast.Div) and "path" in kinds and all(kind in {"path", "text"} for kind in kinds):
+            return "path"
+        if isinstance(node.op, (ast.Add, ast.And, ast.Or)):
+            return common_kind(kinds)
+        return "value"
 
     def compare(self, node: ast.Compare) -> str | None:
         values = (node.left, *node.comparators)
         return "value" if all(self.expression(value) is not None for value in values) else None
 
-    def conditional(self, node: ast.IfExp) -> str | None:
-        values = (node.test, node.body, node.orelse)
-        return "value" if all(self.expression(value) is not None for value in values) else None
+    def conditional(self, node: ast.IfExp) -> Kind | None:
+        kinds = [self.expression(value) for value in (node.test, node.body, node.orelse)]
+        return common_kind(kinds[1:]) if None not in kinds else None
 
-    def call(self, node: ast.Call) -> str | None:
+    def generator(self, node: ast.GeneratorExp) -> Kind | None:
+        previous = self.bindings.copy()
+        try:
+            for generator in node.generators:
+                kind = item_kind(self.expression(generator.iter))
+                if generator.is_async or not self.bind_target(generator.target, kind):
+                    return None
+                if not all(self.expression(condition) is not None for condition in generator.ifs):
+                    return None
+            kind = self.expression(node.elt)
+            return ("sequence", (kind,)) if assignable_kind(kind) else None
+        finally:
+            self.bindings = previous
+
+    def call(self, node: ast.Call) -> Kind | None:
         if not self.arguments(node.args, node.keywords):
             return None
         if isinstance(node.func, ast.Name):
@@ -233,7 +307,7 @@ class _ReadOnlyChecker:
             return self.attribute_call(node)
         return None
 
-    def named_call(self, node: ast.Call) -> str | None:
+    def named_call(self, node: ast.Call) -> Kind | None:
         func = node.func
         if not isinstance(func, ast.Name):
             return None
@@ -244,7 +318,24 @@ class _ReadOnlyChecker:
             return "file" if self.read_open(node.args, node.keywords) else None
         if kind in {"json_load", "json_loads"}:
             return self.json_call(kind, node)
-        return "value" if kind == "builtin" else None
+        return self.builtin_call(func.id, node) if kind == "builtin" else None
+
+    def builtin_call(self, name: str, node: ast.Call) -> Kind | None:
+        if name in {"str", "repr", "bytes"}:
+            return "bytes" if name == "bytes" else "text"
+        if name == "range":
+            return ("sequence", ("value",))
+        if name == "zip":
+            kinds = tuple(item_kind(self.expression(arg)) for arg in node.args)
+            return ("sequence", (("tuple", kinds),)) if None not in kinds else None
+        if name in {"enumerate", "list", "tuple", "set", "sorted"} and node.args:
+            kind = item_kind(self.expression(node.args[0]))
+            if kind is None:
+                return None
+            if name == "enumerate":
+                kind = ("tuple", ("value", kind))
+            return ("sequence", (kind,))
+        return "value"
 
     def json_call(self, kind: str, node: ast.Call) -> str | None:
         if len(node.args) != 1 or node.keywords:
@@ -254,7 +345,7 @@ class _ReadOnlyChecker:
             return "value" if source_kind == "file" else None
         return "value" if source_kind in {"text", "bytes", "value"} else None
 
-    def attribute_call(self, node: ast.Call) -> str | None:
+    def attribute_call(self, node: ast.Call) -> Kind | None:
         if not isinstance(node.func, ast.Attribute):
             return None
         method = self.attribute(node.func)
@@ -264,7 +355,10 @@ class _ReadOnlyChecker:
             return self.json_call(method, node)
         if method.startswith("path_"):
             return self.method_result(method[5:], node)
-        return "value" if method.startswith(("file_", "text_", "bytes_")) else None
+        base, _, name = method.partition("_")
+        if base in {"text", "bytes"}:
+            return text_method_result(base, name)
+        return FILE_METHODS.get(name) if base == "file" else None
 
     def attribute(self, node: ast.Attribute) -> str | None:
         base = self.expression(node.value)
@@ -282,7 +376,7 @@ class _ReadOnlyChecker:
             return None
         return f"{base}_{node.attr}"
 
-    def method_result(self, method: str, node: ast.Call) -> str | None:
+    def method_result(self, method: str, node: ast.Call) -> Kind | None:
         if not self.arguments(node.args, node.keywords):
             return None
         if method == "read_text":
@@ -320,6 +414,8 @@ class _ReadOnlyChecker:
         return self.expression(node) is not None
 
     def formatted_value(self, node: ast.expr) -> bool:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return True
         if not isinstance(node, ast.FormattedValue) or self.expression(node.value) is None:
             return False
         return node.format_spec is None or self.expression(node.format_spec) is not None
