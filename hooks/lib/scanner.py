@@ -243,6 +243,17 @@ def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _L
     )
 
 
+def _mask_hidden_ranges(text: str, hidden_ranges: tuple[tuple[int, int], ...]) -> str:
+    if not hidden_ranges:
+        return text
+    visible = list(text)
+    for start, end in hidden_ranges:
+        if not 0 <= start <= end <= len(text):
+            raise ValueError("hidden range falls outside the source text")
+        visible[start:end] = ["\n" if char == "\n" else " " for char in text[start:end]]
+    return "".join(visible)
+
+
 def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context: _ScanContext) -> list[dict]:
     findings: list[dict] = []
     if "punctuation" in context.active_families:
@@ -258,7 +269,13 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
     return findings
 
 
-def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
+def scan_all(
+    path: str,
+    text: str,
+    config: dict | None = None,
+    *,
+    hidden_ranges: tuple[tuple[int, int], ...] = (),
+) -> list[dict]:
     context = _scan_context(path, text, config)
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
@@ -267,6 +284,7 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     if _is_exempt(path, context.config):
         return findings
     masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
+    masked = _mask_hidden_ranges(masked, hidden_ranges)
     sources = _line_sources(context, masked, comment_source)
     if "clean_code" in context.active_families and context.code_file:
         findings.extend(_scan_clean_code_file(context, comment_source))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -17,10 +18,14 @@ from lib.reporting import record_findings, run_with_ledger, verdict_message
 from lib.scanner import file_length_findings, scan_all, scannable_text
 from lib.shell_parse import SEPARATORS
 
-# Suffixed so that scanner._is_prose treats the message as prose and the english family reaches it.
 COMMIT_MESSAGE_PATH = "commit_message.md"
+CONVENTIONAL_SUBJECT_RE = re.compile(
+    r"\A(?P<prefix>[A-Za-z][A-Za-z0-9_-]*(?:\([^()\r\n]+\))?!?:[ \t]+)"
+)
+TRAILER_PREFIX_RE = re.compile(
+    r"^(?P<prefix>(?:BREAKING CHANGE|[^\s:]+)[ \t]*:[ \t]*)"
+)
 
-# Because git reserves exit code 128 exclusively for "not a git repository", any other code means something else broke.
 NOT_A_REPOSITORY_EXIT_CODE = 128
 
 
@@ -172,14 +177,46 @@ def _head_text(repo: Path, path: str) -> str | None:
 
 def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
     """Scan the message the agent typed, because a commit's prose ships with the same authority as its code."""
-    # Blank line between parts, because git itself joins repeated -m values as paragraphs.
     text = "\n\n".join(_commit_messages(command))
     if not text:
         return []
     return [
         {**finding, "path": COMMIT_MESSAGE_PATH, "surface": SURFACE_COMMIT}
-        for finding in scan_all(COMMIT_MESSAGE_PATH, text, cfg)
+        for finding in scan_all(
+            COMMIT_MESSAGE_PATH, text, cfg, hidden_ranges=_commit_metadata_ranges(text)
+        )
     ]
+
+
+def _commit_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    subject = CONVENTIONAL_SUBJECT_RE.match(text)
+    ranges = [subject.span("prefix")] if subject else []
+    ranges.extend(_trailer_metadata_ranges(text))
+    return tuple(ranges)
+
+
+def _trailer_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    lines = text.splitlines(keepends=True)
+    end = len(lines) - 1
+    while end >= 0 and not lines[end].strip():
+        end -= 1
+    start = end
+    while start > 0 and lines[start - 1].strip():
+        start -= 1
+    if start <= 0:
+        return ()
+    offset = sum(len(line) for line in lines[:start])
+    ranges = []
+    saw_trailer = False
+    for line in lines[start:end + 1]:
+        match = TRAILER_PREFIX_RE.match(line)
+        if match:
+            ranges.append((offset + match.start("prefix"), offset + match.end("prefix")))
+            saw_trailer = True
+        elif not saw_trailer or not line.startswith((" ", "\t")):
+            return ()
+        offset += len(line)
+    return tuple(ranges)
 
 
 def _commit_messages(command: str | list[str]) -> list[str]:
@@ -450,7 +487,6 @@ def _resolve_cwd(cwd: Path, raw: str) -> Path:
     return path
 
 
-# Because a bad revision or a corrupt object also exits 128, only git's own no-repository message may stand for one.
 NOT_A_GIT_REPOSITORY_MESSAGE = "not a git repository"
 
 
