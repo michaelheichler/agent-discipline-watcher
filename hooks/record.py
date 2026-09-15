@@ -148,7 +148,9 @@ def _scan_open_file(
             _MAX_OPEN_SCAN_BYTES,
             max(0, scan_input.int_setting(cfg, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", _MAX_OPEN_SCAN_BYTES)),
         )
-        raw = os.read(descriptor, limit + 1)
+        raw = os.read(descriptor, max(scan_input.CONTENT_SAMPLE_BYTES, limit + 1))
+        if scan_input.is_binary_content(path, raw):
+            return [], []
         if len(raw) > limit or b"\0" in raw[:8192]:
             return _held_fallback(descriptor, path), []
         text = raw.decode("utf-8", errors="replace")

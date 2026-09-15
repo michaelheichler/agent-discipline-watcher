@@ -18,6 +18,57 @@ LEGACY_ENV_NAMES = {
 FILE_LENGTH_WARNING = 500
 FILE_LENGTH_CRITICAL = 750
 FILE_LENGTH_BLOCK = 1000
+CONTENT_SAMPLE_BYTES = 8192
+
+# An asset suffix alone must not exempt text stored under it.
+BINARY_ASSET_EXTS = frozenset({
+    ".png", ".jpg", ".jpeg", ".jpe", ".gif", ".webp", ".avif", ".heic", ".heif",
+    ".bmp", ".ico", ".icns", ".tif", ".tiff", ".psd", ".exr",
+    ".pdf", ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".mp3", ".mp4", ".m4a", ".m4v", ".mov", ".avi", ".mkv", ".webm",
+    ".wav", ".flac", ".ogg", ".opus", ".aac",
+    ".zip", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".tar",
+    ".jar", ".war", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".odt", ".ods", ".odp", ".epub",
+    ".sqlite", ".sqlite3", ".db", ".parquet", ".arrow", ".npy", ".npz",
+    ".bin", ".dat", ".wasm", ".pyc", ".pyo", ".class", ".o", ".a",
+    ".so", ".dylib", ".dll", ".exe", ".glb", ".pak",
+})
+ASSET_TEXT_HEADERS = {
+    ".pdf": ("%PDF-",),
+    ".gif": ("GIF87a", "GIF89a"),
+    ".woff": ("wOFF",),
+    ".woff2": ("wOF2",),
+    ".otf": ("OTTO",),
+    ".psd": ("8BPS",),
+    ".flac": ("fLaC",),
+    ".ogg": ("OggS",),
+    ".opus": ("OggS",),
+}
+
+
+def is_binary_content(path: str | Path, content: bytes | str) -> bool:
+    suffix = Path(path).suffix.lower()
+    if suffix not in BINARY_ASSET_EXTS:
+        return False
+    sample = content[:CONTENT_SAMPLE_BYTES]
+    if isinstance(sample, bytes):
+        if sample.startswith((b"\xff\xfe", b"\xfe\xff", b"\xef\xbb\xbf")):
+            return False
+        try:
+            sample = sample.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            if exc.reason != "unexpected end of data":
+                return True
+            sample = sample[:exc.start].decode("utf-8")
+    if sample.startswith("\ufeff"):
+        return False
+    if sample.startswith(ASSET_TEXT_HEADERS.get(suffix, ())):
+        return True
+    return any(
+        ord(char) < 32 and char not in "\t\n\r\f"
+        for char in sample
+    )
 
 
 def file_length_policy(count: int) -> tuple[str, str] | None:
@@ -44,6 +95,9 @@ def _count_open_file_lines(handle: BinaryIO) -> tuple[int, bool] | None:
 def file_line_count(path: Path) -> tuple[int, bool] | None:
     try:
         with path.open("rb") as handle:
+            if is_binary_content(path, handle.read(CONTENT_SAMPLE_BYTES)):
+                return None
+            handle.seek(0)
             return _count_open_file_lines(handle)
     except OSError:
         return None
@@ -75,7 +129,14 @@ def fallback_findings_from_count(path: Path, count: int, capped: bool = True) ->
 
 
 def fallback_findings(path: Path) -> list[dict]:
-    result = file_line_count(path)
+    try:
+        with path.open("rb") as handle:
+            if is_binary_content(path, handle.read(CONTENT_SAMPLE_BYTES)):
+                return []
+            handle.seek(0)
+            result = _count_open_file_lines(handle)
+    except OSError:
+        result = None
     if result is None:
         return fallback_findings_from_count(path, 0, capped=False)
     count, capped = result
@@ -90,7 +151,7 @@ def read_scannable(path: Path, config: dict) -> str | None:
         raw = path.read_bytes()
     except OSError:
         return None
-    if b"\0" in raw[:8192]:
+    if is_binary_content(path, raw) or b"\0" in raw[:CONTENT_SAMPLE_BYTES]:
         return None
     return raw.decode("utf-8", errors="replace")
 

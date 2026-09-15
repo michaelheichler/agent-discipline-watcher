@@ -259,6 +259,8 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
 
 
 def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
+    if scan_input.is_binary_content(path, text):
+        return []
     context = _scan_context(path, text, config)
     regions = extract_regions(path, text)
     mixed = PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS
@@ -301,6 +303,8 @@ def _is_config(path: str) -> bool:
 
 
 def _code_file(path: str, text: str) -> bool:
+    if scan_input.is_binary_content(path, text):
+        return False
     suffix = PurePath(path.lower()).suffix
     return (not _is_prose(path, text) and not _is_config(path)) or suffix in MIXED_LANGUAGE_EXTS
 

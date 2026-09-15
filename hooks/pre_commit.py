@@ -14,6 +14,7 @@ from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
 from lib.reporting import record_findings, run_with_ledger, verdict_message
+from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
 from lib.shell_parse import SEPARATORS
 
@@ -147,9 +148,12 @@ def _repo_findings_by_repo(
 def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
     findings = []
     for path in _staged(repo):
-        text = _staged_text(repo, path)
-        if text is None or scannable_text(text, cfg) is None:
-            findings.extend({**finding, "path": path} for finding in file_length_findings(path, text or ""))
+        raw = _staged_bytes(repo, path)
+        if is_binary_content(path, raw):
+            continue
+        text = raw.decode("utf-8", errors="replace")
+        if scannable_text(text, cfg) is None:
+            findings.extend({**finding, "path": path} for finding in file_length_findings(path, text))
             continue
         owned = strip_against(_head_text(repo, path), path, scan_all(path, text, cfg), cfg)
         for finding in owned:
@@ -480,10 +484,11 @@ def _staged(cwd: Path) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def _staged_text(repo: Path, path: str) -> str | None:
-    result = _run_git(["show", ":" + path], repo, "replace")
-    if result is None:
-        return None
+def _staged_bytes(repo: Path, path: str) -> bytes:
+    result = subprocess.run(
+        ["git", "show", ":" + path], cwd=repo,
+        capture_output=True, check=True, timeout=30,
+    )
     return result.stdout
 
 
