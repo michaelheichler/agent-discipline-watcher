@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.23**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.20.24**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -45,6 +45,8 @@ All three corpora rebuild byte for byte. See `evals/README.md`.
 Known mutations go through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
 Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
+
+Text rules do not apply to binary assets such as screenshots, PDFs, fonts, archives, and audio or video files. The scanner requires both a recognized asset extension and content evidence before skipping one. An image filename alone does not exempt code or text stored under it. Commit checks classify the staged bytes, not the working copy, and PostToolUse and Stop apply the same policy before counting lines. Missing files, unreadable source, unknown file types, SVG markup, prose, and commit messages retain their existing checks.
 
 The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
 
@@ -239,7 +241,9 @@ Set these in the `env` block of `~/.claude/settings.json`, because that block is
 | `ADW_EMBEDDING_URLS` | A comma separated list, tried in order. The first that answers wins. |
 | `ADW_EMBEDDING_MODEL` | Model name sent in the request body. Defaults to `LFM2.5-Embedding-350M`. |
 
-With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs, and it stops the process by pid when the last session ends.
+With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs.
+
+The managed worker is shared across projects and stays loaded while a live turn holds a lease. Stop and SessionEnd release that lease, even if embeddings were disabled after loading. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime, so a missed Stop no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
 
 ### Thresholds
 

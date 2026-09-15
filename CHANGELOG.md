@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.24 (2026-09-15)
+
+### Fixed
+
+- Binary screenshots and other recognized binary assets no longer receive source-length or unreadable-text findings during commit, post-write, and Stop checks. Text stored under an asset filename still receives its checks, and code, prose, markup, and commit-message enforcement is unchanged.
+- Embedding startup retains pending leases and cancels a late worker launch after demand ends. A single supervisor sweeps expired and dead-owner leases across projects, while Stop and SessionEnd release ownership even after embeddings are disabled. Shutdown waits for process exit and preserves the running record on failure.
+
 ## 0.20.23 (2026-09-11)
 
 ### Fixed
