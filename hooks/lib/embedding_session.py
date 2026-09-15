@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
 try:
     from .embedding_client import ensure_loaded, release
-    from .embedding_server import default_root, start_detached
+    from .embedding_server import default_root, running_url, start_detached
 except ImportError:
     from embedding_client import ensure_loaded, release
-    from embedding_server import default_root, start_detached
+    from embedding_server import default_root, running_url, start_detached
 
 ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
@@ -45,18 +46,20 @@ def open_turn(session_id: str, root: str | None) -> str | None:
         return None
     try:
         answered = ensure_loaded(session_id, time.time(), root, owner_pid())
-        if answered is None:
+        if answered is None or answered == running_url(default_root()):
             start_detached(default_root())
         return answered
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"agent-discipline-watcher: embedding startup failed: {exc}\n")
         return None
 
 
 def close_turn(session_id: str, root: str | None) -> bool:
-    """Swallows every failure because a lease left behind expires on its own TTL, while a raised hook costs the user the turn."""
-    if not session_id or not enabled():
+    """Report cleanup failures without preventing other end-of-turn gates."""
+    if not session_id:
         return False
     try:
         return release(session_id, time.time(), root)
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"agent-discipline-watcher: embedding cleanup failed: {exc}\n")
         return False

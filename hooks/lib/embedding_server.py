@@ -1,6 +1,7 @@
 """Owns the model process, because a release that expects a server to already be running on the machine is not standalone."""
 from __future__ import annotations
 
+import fcntl
 import ipaddress
 import json
 import math
@@ -10,18 +11,22 @@ import socket
 import subprocess
 import sys
 import stat
+import threading
 import time
 import urllib.error
 import urllib.request
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import NamedTuple
 
 try:
+    from .embedding_lease import has_live_leases
     from .model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from .model_store import ensure_runtime, ensure_weights, exclusive
     from .session_state import plugin_data_home
 except ImportError:
+    from embedding_lease import has_live_leases
     from model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from model_store import ensure_runtime, ensure_weights, exclusive
     from session_state import plugin_data_home
@@ -29,6 +34,8 @@ except ImportError:
 ROOT_DIRNAME = "embedding-server"
 RECORD_NAME = "server.json"
 LOCK_NAME = "server.lock"
+SUPERVISOR_LOCK_NAME = "supervisor.lock"
+LEASE_POLL_SECONDS = 5.0
 LOG_NAME = "server.log"
 READY_TIMEOUT_SECONDS = 180.0
 READY_POLL_SECONDS = 0.25
@@ -286,40 +293,85 @@ def command(entry: ModelPlatform, root: Path, port: int) -> tuple[str, ...]:
 
 def _spawn(arguments: tuple[str, ...], root: Path) -> subprocess.Popen:
     """Starts its own session because the hook that spawns it exits within the second and must not drag the model down with it."""
-    log = (root / LOG_NAME).open("ab")
-    return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+    with (root / LOG_NAME).open("ab") as log:
+        return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
 
 
-def start(entry: ModelPlatform, root: Path) -> ServerRecord:
-    """Start a worker, wait for loopback health, and persist its validated identity."""
-    root.mkdir(parents=True, exist_ok=True)
-    port = _free_port()
-    child = _spawn(command(entry, root, port), root)
+def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...]) -> tuple[subprocess.Popen, ServerRecord]:
+    """Publish ownership before readiness so Stop can terminate a worker still loading its weights."""
+    child = _spawn(arguments, root)
     if type(child.pid) is not int or child.pid <= 0:  # pylint: disable=unidiomatic-typecheck
         child.terminate()
         raise ValueError("embedding server returned an invalid process id")
-    health = f"http://127.0.0.1:{port}{HEALTH_PATH}"
-    _wait_ready(health, child, time.time() + READY_TIMEOUT_SECONDS)
     record = ServerRecord(
         child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time()
     )
-    _write_record(root, record)
+    try:
+        _write_record(root, record)
+    except Exception:
+        _terminate(child.pid)
+        raise
+    # Reap independently of the lifecycle lock, which a different hook holds while waiting for this child to exit.
+    threading.Thread(target=child.wait, daemon=True).start()
+    return child, record
+
+
+def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False) -> None:
+    try:
+        _wait_ready(
+            f"http://127.0.0.1:{record.port}{HEALTH_PATH}", child,
+            time.time() + READY_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        with nullcontext() if locked else exclusive(root / LOCK_NAME):
+            owned = read_record(root) == record
+            _terminate(child.pid)
+            if owned:
+                discard_record(root)
+        if not owned:
+            return
+        raise
+
+
+def start(entry: ModelPlatform, root: Path) -> ServerRecord:
+    """Start a worker and clean up both process and record on any readiness failure."""
+    root.mkdir(parents=True, exist_ok=True)
+    port = _free_port()
+    child, record = _launch(entry, root, port, command(entry, root, port))
+    _ready(child, record, root, locked=True)
     return record
 
 
-def stop(root: Path) -> bool:
-    """Waits on the pid rather than posting to a route, because unload has to mean the process is gone."""
-    record = read_record(root)
-    discard_record(root)
-    if record is None or not process_alive(record.pid):
+def _terminate(pid: int) -> bool:
+    """Confirm exit even after SIGKILL, and tolerate the process exiting between probe and signal."""
+    if not process_alive(pid):
         return False
-    os.kill(record.pid, signal.SIGTERM)
-    deadline = time.time() + STOP_GRACE_SECONDS
-    while time.time() < deadline and process_alive(record.pid):
-        time.sleep(STOP_POLL_SECONDS)
-    if process_alive(record.pid):
-        os.kill(record.pid, signal.SIGKILL)
-    return True
+    for termination_signal in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.kill(pid, termination_signal)
+        except ProcessLookupError:
+            return True
+        deadline = time.monotonic() + STOP_GRACE_SECONDS
+        while time.monotonic() < deadline:
+            if not process_alive(pid):
+                return True
+            time.sleep(STOP_POLL_SECONDS)
+    raise TimeoutError(f"embedding server process {pid} did not exit")
+
+
+def _stop(root: Path) -> bool:
+    record = read_record(root)
+    stopped = _terminate(record.pid) if record is not None else False
+    discard_record(root)
+    return stopped
+
+
+def stop(root: Path, *, idle_at: float | None = None) -> bool:
+    """Keep the record until exit is confirmed; serialize shutdown with startup and lease acquisition."""
+    with exclusive(root / LOCK_NAME):
+        if idle_at is not None and has_live_leases(root, idle_at):
+            return False
+        return _stop(root)
 
 
 def running_url(root: Path) -> str | None:
@@ -341,14 +393,45 @@ def ensure_running(entry: ModelPlatform, root: Path) -> str:
 
 
 def start_detached(root: Path) -> None:
-    """Detached because provisioning downloads most of a gigabyte and the prompt that triggers it must not wait."""
+    """The singleton supervisor outlives hooks to unload expired leases without waiting for another turn."""
     root.mkdir(parents=True, exist_ok=True)
-    log = (root / LOG_NAME).open("ab")
-    subprocess.Popen(
-        (sys.executable, str(Path(__file__).resolve()), str(root)),
-        stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True,
-    )
+    _spawn((sys.executable, str(Path(__file__).resolve()), str(root)), root)
+
+
+def _start_leased(entry: ModelPlatform, root: Path) -> None:
+    """Provision outside the lifecycle lock, then recheck demand before launching a model after a slow download."""
+    port = _free_port()
+    arguments = command(entry, root, port)
+    with exclusive(root / LOCK_NAME):
+        if not has_live_leases(root, time.time()) or running_url(root) is not None:
+            return
+        child, record = _launch(entry, root, port, arguments)
+    _ready(child, record, root)
+
+
+def supervise(entry: ModelPlatform, root: Path) -> None:
+    """Only one monitor may provision and sweep; relinquish its lock atomically with the final idle check."""
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / SUPERVISOR_LOCK_NAME).open("w", encoding="utf-8") as handle:
+        with exclusive(root / LOCK_NAME):
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return
+        try:
+            while True:
+                with exclusive(root / LOCK_NAME):
+                    if not has_live_leases(root, time.time()):
+                        _stop(root)
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                        return
+                    running = running_url(root) is not None
+                if not running:
+                    _start_leased(entry, root)
+                time.sleep(LEASE_POLL_SECONDS)
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":
-    ensure_running(current_platform(), Path(sys.argv[1]))
+    supervise(current_platform(), Path(sys.argv[1]))

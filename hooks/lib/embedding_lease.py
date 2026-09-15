@@ -1,7 +1,9 @@
 """Refcounted because loading the model per subagent would reload it thousands of times in one session."""
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 
@@ -12,6 +14,8 @@ except ImportError:
 
 LEASE_TTL_SECONDS = 900
 LEASE_SUFFIX = ".lease.json"
+ROOTS_DIRECTORY = "lease-roots"
+ROOT_SUFFIX = ".root"
 
 
 def lease_root(root: str | os.PathLike[str] | None) -> Path:
@@ -28,7 +32,12 @@ def _read_lease(path: Path) -> dict | None:
         row = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if not isinstance(row, dict) or not isinstance(row.get("renewed_at"), (int, float)):
+    if not isinstance(row, dict) or type(row.get("renewed_at")) not in (int, float):
+        return None
+    try:
+        if not math.isfinite(row["renewed_at"]):
+            return None
+    except OverflowError:
         return None
     return row
 
@@ -102,3 +111,27 @@ def may_unload(session_id: str, now: float, root: str | os.PathLike[str] | None)
     """Only the last live holder may unload, because another session mid-turn would lose the model underneath it."""
     release(session_id, root)
     return not live_sessions(now, root)
+
+
+def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> None:
+    """Track all project lease roots because they share one machine-wide worker; callers hold its lifecycle lock."""
+    directory = server_root / ROOTS_DIRECTORY
+    directory.mkdir(parents=True, exist_ok=True)
+    resolved = str(lease_root(root).resolve())
+    name = hashlib.sha256(resolved.encode("utf-8")).hexdigest()
+    registration = directory / (name + ROOT_SUFFIX)
+    temporary = registration.with_suffix(".tmp")
+    temporary.write_text(resolved, encoding="utf-8")
+    temporary.replace(registration)
+
+
+def has_live_leases(server_root: Path, now: float) -> bool:
+    """Sweep registered roots even without another hook; callers serialize this with lease acquisition."""
+    found = False
+    for registration in sorted((server_root / ROOTS_DIRECTORY).glob("*" + ROOT_SUFFIX)):
+        directory = registration.read_text(encoding="utf-8")
+        if live_sessions(now, directory):
+            found = True
+        else:
+            registration.unlink(missing_ok=True)
+    return found

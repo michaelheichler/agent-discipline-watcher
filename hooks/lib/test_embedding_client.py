@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from lib import embedding_client
+from lib import embedding_client, embedding_lease, embedding_server
 
 
 def _echo_body(payload: dict) -> dict:
@@ -133,7 +133,7 @@ def test_the_last_session_stops_the_server_and_the_others_do_not(server, tmp_pat
         stopped.append(root)
         return True
 
-    monkeypatch.setattr(embedding_client, "stop", _record_stop)
+    monkeypatch.setattr(embedding_server, "_stop", _record_stop)
 
     assert embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid()) is not None
     assert embedding_client.ensure_loaded("beta", 1000.0, tmp_path, os.getpid()) is not None
@@ -143,19 +143,46 @@ def test_the_last_session_stops_the_server_and_the_others_do_not(server, tmp_pat
 
 
 def test_a_session_that_never_loaded_stops_nothing(server, tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(embedding_client, "stop", lambda _root: False)
+    monkeypatch.setattr(embedding_server, "_stop", lambda _root: False)
     embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid())
 
     assert embedding_client.release("solo", 1001.0, tmp_path) is False
     assert not list(tmp_path.glob("*.lease.json"))
 
 
-def test_an_absent_server_does_not_leave_a_lease_behind(tmp_path, monkeypatch) -> None:
+def test_an_absent_server_keeps_the_lease_while_provisioning(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URL", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
     monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", ())
 
     assert embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid()) is None
-    assert not list(tmp_path.glob("*.lease.json"))
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ("solo",)
+
+
+def test_another_project_keeps_the_machine_wide_server_loaded(server, tmp_path, monkeypatch) -> None:
+    stopped = []
+    monkeypatch.setattr(embedding_server, "_stop", lambda root: stopped.append(root) or True)
+    embedding_client.ensure_loaded("alpha", 1000.0, tmp_path / "project-a", os.getpid())
+    embedding_client.ensure_loaded("beta", 1000.0, tmp_path / "project-b", os.getpid())
+
+    assert embedding_client.release("alpha", 1001.0, tmp_path / "project-a") is False
+    assert stopped == []
+    assert embedding_client.release("beta", 1002.0, tmp_path / "project-b") is True
+
+
+def test_a_new_lease_between_release_and_shutdown_cancels_unload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_client, "probe", lambda: None)
+    embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid())
+    original_stop = embedding_client.stop
+
+    def concurrent_open(root, *, idle_at):
+        embedding_client.ensure_loaded("beta", 1001.0, tmp_path, os.getpid())
+        return original_stop(root, idle_at=idle_at)
+
+    monkeypatch.setattr(embedding_client, "stop", concurrent_open)
+    monkeypatch.setattr(embedding_server, "_stop", lambda _root: pytest.fail("stopped a newly leased worker"))
+
+    assert embedding_client.release("alpha", 1001.0, tmp_path) is False
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ("beta",)
 
 
 @pytest.mark.parametrize("variable", ["ADW_EMBEDDING_URL", "ADW_EMBEDDING_URLS"])

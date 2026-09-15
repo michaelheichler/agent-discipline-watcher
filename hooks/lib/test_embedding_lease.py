@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from lib import embedding_lease
 
 
@@ -56,3 +58,25 @@ def test_renewal_keeps_one_lease_per_session(tmp_path: Path) -> None:
 
     assert len(list(tmp_path.glob("*" + embedding_lease.LEASE_SUFFIX))) == 1
     assert embedding_lease.live_sessions(1501.0, tmp_path) == ("solo",)
+
+
+@pytest.mark.parametrize("renewed_at", [float("nan"), float("inf"), float("-inf"), True, 10 ** 400])
+def test_invalid_timestamps_cannot_pin_the_worker_forever(tmp_path, renewed_at) -> None:
+    path = tmp_path / ("broken" + embedding_lease.LEASE_SUFFIX)
+    path.write_text(json.dumps({"pid": os.getpid(), "renewed_at": renewed_at}), encoding="utf-8")
+
+    assert embedding_lease.live_sessions(1000.0, tmp_path) == ()
+    assert not path.exists()
+
+
+def test_registered_roots_are_deduplicated_and_swept_when_idle(tmp_path) -> None:
+    server = tmp_path / "server"
+    leases = tmp_path / "leases"
+    embedding_lease.acquire("alpha", 1000.0, leases, os.getpid())
+    embedding_lease.register_root(server, leases)
+    embedding_lease.register_root(server, leases / ".")
+
+    assert len(list((server / embedding_lease.ROOTS_DIRECTORY).iterdir())) == 1
+    assert embedding_lease.has_live_leases(server, 1001.0)
+    assert not embedding_lease.has_live_leases(server, 1000.0 + embedding_lease.LEASE_TTL_SECONDS + 1)
+    assert not list((server / embedding_lease.ROOTS_DIRECTORY).iterdir())

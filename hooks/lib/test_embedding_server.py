@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import os
 import signal
+import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
 import pytest
 
-from lib import embedding_server
+from lib import embedding_client, embedding_lease, embedding_server, embedding_session
 from lib.model_artifacts import ModelPlatform, PythonRuntime
 
 STUB = """
@@ -32,6 +34,26 @@ ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
 """
 SILENT = "import time\ntime.sleep(60)\n"
 ENTRY = ModelPlatform("stub", "mlx", (), PythonRuntime(("nothing==0.0.0",)))
+SUPERVISOR = """
+import sys
+import time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from lib import embedding_server
+from lib.model_artifacts import ModelPlatform, PythonRuntime
+
+root = Path(sys.argv[2])
+def command(entry, directory, port):
+    if sys.argv[4] == "slow":
+        (root / "provisioning").touch()
+        while not (root / "continue").exists():
+            time.sleep(0.02)
+    return (sys.executable, sys.argv[3], str(port))
+
+embedding_server.command = command
+embedding_server.LEASE_POLL_SECONDS = 0.05
+embedding_server.supervise(ModelPlatform("stub", "mlx", (), PythonRuntime(())), root)
+"""
 
 
 @pytest.fixture(name="stub")
@@ -53,6 +75,42 @@ def _wait_gone(pid: int, deadline: float) -> bool:
     return False
 
 
+def _wait_until(predicate) -> None:
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError("embedding lifecycle condition did not become true")
+
+
+@pytest.fixture(name="supervisor")
+def _supervisor(stub, tmp_path, monkeypatch):
+    root = tmp_path / "server"
+    root.mkdir()
+    for module in (embedding_client, embedding_server, embedding_session):
+        monkeypatch.setattr(module, "default_root", lambda: root)
+    monkeypatch.setattr(embedding_client, "probe", lambda: None)
+    children = []
+
+    def launch(*, slow=False):
+        child = subprocess.Popen(
+            (sys.executable, "-c", SUPERVISOR, str(Path(__file__).parents[1]),
+             str(root), str(stub), "slow" if slow else "normal"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        children.append(child)
+        return child
+
+    yield root, launch
+    (root / "continue").touch()
+    for child in children:
+        if child.poll() is None:
+            child.terminate()
+        child.wait(timeout=10)
+    embedding_server.stop(root)
+
+
 def test_the_server_starts_on_a_free_port_and_records_it(stub, tmp_path) -> None:
     record = embedding_server.start(ENTRY, tmp_path)
     try:
@@ -71,6 +129,88 @@ def test_stopping_leaves_no_process_and_no_record(stub, tmp_path) -> None:
     assert _wait_gone(record.pid, time.time() + 15)
     assert embedding_server.read_record(tmp_path) is None
     assert embedding_server.running_url(tmp_path) is None
+
+
+def test_stopping_a_worker_that_ignores_sigterm_waits_for_sigkill(stub, tmp_path, monkeypatch) -> None:
+    stub.write_text("import signal\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n" + STUB, encoding="utf-8")
+    monkeypatch.setattr(embedding_server, "STOP_GRACE_SECONDS", 0.25)
+    record = embedding_server.start(ENTRY, tmp_path)
+
+    assert embedding_server.stop(tmp_path) is True
+    assert not embedding_server.process_alive(record.pid)
+    assert embedding_server.read_record(tmp_path) is None
+
+
+def test_stop_during_provisioning_cannot_leave_a_late_worker(supervisor, tmp_path) -> None:
+    root, launch = supervisor
+    leases = tmp_path / "leases"
+    embedding_client.ensure_loaded("alpha", time.time(), leases, os.getpid())
+    child = launch(slow=True)
+    _wait_until(lambda: (root / "provisioning").exists())
+
+    assert embedding_client.release("alpha", time.time(), leases) is False
+    (root / "continue").touch()
+
+    assert child.wait(timeout=10) == 0
+    assert embedding_server.read_record(root) is None
+    assert not (root / embedding_server.LOG_NAME).exists()
+
+
+def test_stop_can_terminate_a_worker_before_health_is_ready(supervisor, stub, tmp_path) -> None:
+    root, launch = supervisor
+    stub.write_text(SILENT, encoding="utf-8")
+    leases = tmp_path / "leases"
+    embedding_client.ensure_loaded("alpha", time.time(), leases, os.getpid())
+    child = launch()
+    _wait_until(lambda: embedding_server.read_record(root) is not None)
+    record = embedding_server.read_record(root)
+
+    assert embedding_client.release("alpha", time.time(), leases) is True
+
+    assert child.wait(timeout=10) == 0
+    assert not embedding_server.process_alive(record.pid)
+    assert embedding_server.read_record(root) is None
+
+
+@pytest.mark.parametrize("ending", ["stop", "expiry", "dead-owner"])
+def test_supervisor_unloads_without_requiring_another_prompt(supervisor, tmp_path, ending) -> None:
+    root, launch = supervisor
+    leases = tmp_path / "leases"
+    embedding_client.ensure_loaded("alpha", time.time(), leases, os.getpid())
+    child = launch()
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
+    record = embedding_server.read_record(root)
+    _wait_until(lambda: embedding_server._answers(f"http://127.0.0.1:{record.port}/health"))
+
+    if ending == "stop":
+        assert embedding_client.release("alpha", time.time(), leases) is True
+    else:
+        renewed = time.time() - embedding_lease.LEASE_TTL_SECONDS - 1 if ending == "expiry" else time.time()
+        pid = 2 ** 22 if ending == "dead-owner" else os.getpid()
+        embedding_lease.acquire("alpha", renewed, leases, pid)
+
+    assert child.wait(timeout=10) == 0
+    assert not embedding_server.process_alive(record.pid)
+    assert embedding_server.read_record(root) is None
+    assert embedding_lease.live_sessions(time.time(), leases) == ()
+
+
+def test_parallel_supervisors_reuse_one_worker_and_honor_other_projects(supervisor, tmp_path) -> None:
+    root, launch = supervisor
+    leases_a, leases_b = tmp_path / "a", tmp_path / "b"
+    embedding_client.ensure_loaded("alpha", time.time(), leases_a, os.getpid())
+    first = launch()
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
+    record = embedding_server.read_record(root)
+    embedding_client.ensure_loaded("beta", time.time(), leases_b, os.getpid())
+
+    assert launch().wait(timeout=10) == 0
+    assert embedding_client.release("alpha", time.time(), leases_a) is False
+    assert embedding_server.read_record(root) == record
+    assert embedding_server.process_alive(record.pid)
+    assert first.poll() is None
+    assert embedding_client.release("beta", time.time(), leases_b) is True
+    assert first.wait(timeout=10) == 0
 
 
 def test_a_second_caller_reuses_the_running_server(stub, tmp_path) -> None:
@@ -119,6 +259,28 @@ def test_a_runtime_that_exits_at_once_is_reported_with_its_status(tmp_path, monk
     assert "3" in str(raised.value)
 
 
+def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monkeypatch) -> None:
+    spawned = []
+    original_spawn = embedding_server._spawn
+
+    def spawn(arguments, root):
+        child = original_spawn(arguments, root)
+        spawned.append(child)
+        return child
+
+    def fail_record(_root, _record):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(embedding_server, "_spawn", spawn)
+    monkeypatch.setattr(embedding_server, "_write_record", fail_record)
+    with pytest.raises(OSError, match="disk full"):
+        embedding_server.start(ENTRY, tmp_path)
+
+    assert len(spawned) == 1
+    assert not embedding_server.process_alive(spawned[0].pid)
+    assert embedding_server.read_record(tmp_path) is None
+
+
 def test_the_record_survives_a_round_trip_through_disk(tmp_path) -> None:
     record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
     embedding_server._write_record(tmp_path, record)
@@ -131,6 +293,21 @@ def test_a_missing_record_reads_as_absent(tmp_path) -> None:
     assert embedding_server.read_record(tmp_path) is None
     assert embedding_server.running_url(tmp_path) is None
     assert embedding_server.stop(tmp_path) is False
+
+
+def test_a_failed_signal_preserves_the_record_for_a_later_cleanup(tmp_path, monkeypatch) -> None:
+    record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
+    embedding_server._write_record(tmp_path, record)
+    monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: True)
+
+    def denied(_pid, _signal):
+        raise PermissionError("cannot signal worker")
+
+    monkeypatch.setattr(os, "kill", denied)
+    with pytest.raises(PermissionError):
+        embedding_server.stop(tmp_path)
+
+    assert embedding_server.read_record(tmp_path) == record
 
 
 @pytest.mark.parametrize(

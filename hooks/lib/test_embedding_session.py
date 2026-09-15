@@ -38,9 +38,9 @@ def test_a_missing_session_id_never_takes_a_lease(tmp_path) -> None:
     assert not list(tmp_path.glob("*.lease.json"))
 
 
-def test_an_absent_server_leaves_no_lease_and_no_exception(absent_server, tmp_path) -> None:
+def test_an_absent_server_retains_demand_during_background_start(absent_server, tmp_path) -> None:
     assert embedding_session.open_turn("alpha", str(tmp_path)) is None
-    assert not list(tmp_path.glob("*.lease.json"))
+    assert len(list(tmp_path.glob("*.lease.json"))) == 1
 
 
 def test_an_unsafe_session_id_is_swallowed_rather_than_failing_the_turn(tmp_path) -> None:
@@ -70,3 +70,34 @@ def test_close_turn_releases_the_lease_the_turn_took(tmp_path) -> None:
     embedding_session.close_turn("alpha", str(tmp_path))
 
     assert embedding_lease.live_sessions(1001.0, tmp_path) == ()
+
+
+def test_disabling_embeddings_does_not_prevent_releasing_an_existing_lease(tmp_path, monkeypatch) -> None:
+    embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
+    monkeypatch.setenv(embedding_session.DISABLE_ENV, "1")
+
+    embedding_session.close_turn("alpha", str(tmp_path))
+
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ()
+
+
+@pytest.mark.parametrize("managed", [True, False])
+def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatch, managed) -> None:
+    url = "http://127.0.0.1:1234/v1/embeddings"
+    asked = []
+    monkeypatch.setattr(embedding_session, "ensure_loaded", lambda *_args: url)
+    monkeypatch.setattr(embedding_session, "running_url", lambda _root: url if managed else None)
+    monkeypatch.setattr(embedding_session, "start_detached", asked.append)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) == url
+    assert asked == ([embedding_session.default_root()] if managed else [])
+
+
+def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
+    def fail_release(*_args):
+        raise PermissionError("cannot signal worker")
+
+    monkeypatch.setattr(embedding_session, "release", fail_release)
+
+    assert embedding_session.close_turn("alpha", str(tmp_path)) is False
+    assert "embedding cleanup failed: cannot signal worker" in capsys.readouterr().err

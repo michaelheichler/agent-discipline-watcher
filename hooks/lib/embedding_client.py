@@ -11,13 +11,15 @@ import urllib.request
 from urllib.parse import urlsplit
 
 try:
-    from .embedding_lease import acquire, may_unload
+    from .embedding_lease import acquire, register_root
     from .embedding_lease import release as release_lease
-    from .embedding_server import default_root, running_url, stop
+    from .embedding_server import LOCK_NAME, default_root, running_url, stop
+    from .model_store import exclusive
 except ImportError:
-    from embedding_lease import acquire, may_unload
+    from embedding_lease import acquire, register_root
     from embedding_lease import release as release_lease
-    from embedding_server import default_root, running_url, stop
+    from embedding_server import LOCK_NAME, default_root, running_url, stop
+    from model_store import exclusive
 
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
 REQUEST_TIMEOUT_SECONDS = 30.0
@@ -312,16 +314,18 @@ def probe() -> str | None:
 def ensure_loaded(
     session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
 ) -> str | None:
-    """Takes the lease before the probe, because a session that unloads between the probe and the first real call would strand the caller."""
-    acquire(session_id, now, root, owner_pid)
-    answered = probe()
-    if answered is None:
-        release_lease(session_id, root)
-    return answered
+    """Retain demand through cold startup, and serialize acquisition with the last holder's unload."""
+    server_root = default_root()
+    with exclusive(server_root / LOCK_NAME):
+        register_root(server_root, root)
+        acquire(session_id, now, root, owner_pid)
+    return probe()
 
 
 def release(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Only the last live holder stops the server, because another session mid turn would lose the model underneath it."""
-    if not may_unload(session_id, now, root):
-        return False
-    return stop(default_root())
+    """Recheck every project's leases under the server lock so a concurrent opener cannot lose its worker."""
+    server_root = default_root()
+    with exclusive(server_root / LOCK_NAME):
+        register_root(server_root, root)
+        release_lease(session_id, root)
+    return stop(server_root, idle_at=now)
