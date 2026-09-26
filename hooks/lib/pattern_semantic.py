@@ -1,4 +1,4 @@
-"""Votes a sentence against one pattern's own two classes, because a single exemplar cosine measured topic and caught 1 sentence in 273."""
+"""Two classes per rule, because one cosine measured topic."""
 from __future__ import annotations
 
 import hashlib
@@ -36,7 +36,7 @@ MIN_SENTENCE_WORDS = 4
 MAX_SENTENCES = 200
 VIOLATING = "violating"
 CLEAN = "clean"
-# WHY: Measured precision after the judge, so a rule blocks only where the number earns it.
+# Blocks only here, because lower precision misfires.
 ENFORCE_PRECISION = 0.85
 
 
@@ -168,7 +168,7 @@ def _write_cache(path: Path, vectors: dict[str, Vector]) -> None:
 
 
 def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None) -> dict[str, Vector]:
-    """Cache exemplar vectors while applying the caller's source-egress policy to fresh embeddings."""
+    """Cached, because every scan reuses the same exemplars."""
     path = _cache_path(config)
     cached = _cached_vectors(path)
     wanted = tuple(sorted({row.text for row in exemplars} - set(cached)))
@@ -182,24 +182,34 @@ def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None
     return merged
 
 
-def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...]:
-    """Answers nothing when the server is absent or source egress is disabled."""
+def candidates(path: str, text: str, config: dict | None = None) -> dict[str, tuple[PatternCandidate, ...]]:
+    """Unjudged, because the Stop reviewer judges once per turn."""
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
-        return ()
+        return {}
     exemplars = load_exemplars()
-    manifest = load_manifest()
     cached = exemplar_vectors(exemplars) if config is None else exemplar_vectors(exemplars, config)
     current = _vectors(tuple({item.text for item in sentences})) if config is None else _vectors(
         tuple({item.text for item in sentences}), config
     )
     vectors = {**cached, **current}
     if not vectors:
+        return {}
+    voted = {
+        rule: candidates_for(rule, sentences, vectors, exemplars, path)
+        for rule in measured_rules(load_manifest())
+    }
+    return {rule: found for rule, found in voted.items() if found}
+
+
+def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...]:
+    """Kept because the evals measure the judged pipeline."""
+    voted = candidates(path, text, config)
+    if not voted:
         return ()
-    work = tuple(
-        (rule_prompt(rule, exemplars, manifest), candidates_for(rule, sentences, vectors, exemplars, path))
-        for rule in measured_rules(manifest)
-    )
+    exemplars = load_exemplars()
+    manifest = load_manifest()
+    work = tuple((rule_prompt(rule, exemplars, manifest), found) for rule, found in voted.items())
     blocking = blocking_rules(manifest)
     model = str((config.get("adw_model") if isinstance(config, dict) else None) or JUDGED_GATE_MODEL)
     return tuple(

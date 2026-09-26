@@ -182,3 +182,33 @@ def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work, _model: JudgedOutcome({}, (), ""))
 
     assert pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n") == ()
+
+
+def _voting_layer(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
+    monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
+    monkeypatch.setattr(
+        pattern_semantic, "load_manifest",
+        lambda: {"rules": {"ai_closer": {"action": "End when the answer is done.", "judge_precision": 1.0}}},
+    )
+    monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda _exemplars: VECTORS)
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
+
+
+def test_the_candidate_stage_votes_without_calling_a_judge(monkeypatch) -> None:
+    _voting_layer(monkeypatch)
+    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda *_args: pytest.fail("called the judge"))
+    text = "Feel free to ask me anything else.\n\nThe lease expires after 900 seconds.\n"
+
+    voted = pattern_semantic.candidates("a.md", text)
+
+    assert {rule: [(item.line, item.text) for item in found] for rule, found in voted.items()} == {
+        "ai_closer": [(1, "Feel free to ask me anything else.")],
+    }
+
+
+def test_the_candidate_stage_is_silent_until_the_reader_opts_in(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: False)
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: pytest.fail("embedded while switched off"))
+
+    assert pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n") == {}
