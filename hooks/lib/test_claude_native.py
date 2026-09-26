@@ -19,7 +19,7 @@ def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> No
     assert set(generated) == {"PostToolUse", "Stop"}
     post = generated["PostToolUse"][0]
     stop = generated["Stop"][0]
-    assert post["matcher"] == "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
+    assert post["matcher"] == "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion"
     assert post["hooks"][0]["type"] == "agent"
     assert post["hooks"][0]["model"] == "claude-haiku-4-5-20251001"
     assert stop["hooks"][0]["type"] == "agent"
@@ -186,13 +186,29 @@ def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkey
     assert journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
+MIXED_MODELS = {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
+
+
+def _agent_models(configured: dict) -> dict[str, str]:
+    return {
+        lifecycle: next(hook["model"] for hook in configured["hooks"][lifecycle][0]["hooks"] if hook.get("type") == "agent")
+        for lifecycle in ("PostToolUse", "Stop")
+    }
+
+
+def _managed_agents(configured: dict) -> list[dict]:
+    return [
+        hook
+        for groups in configured["hooks"].values()
+        for group in groups
+        for hook in group.get("hooks", [])
+        if isinstance(hook, dict) and claude_native.MANAGED_MARKER in str(hook.get("prompt", ""))
+    ]
+
+
 def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_unrelated_hooks() -> None:
-    old_agent = {
-        "type": "agent", "model": "haiku", "prompt": claude_native.MANAGED_MARKER,
-    }
-    old_command = {
-        "type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} /old-handler",
-    }
+    old_agent = {"type": "agent", "model": "haiku", "prompt": claude_native.MANAGED_MARKER}
+    old_command = {"type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} /old-handler"}
     managed_luna_command = {
         "type": "command",
         "command": f"ADW_CLAUDE_MANAGED={claude_native.MANAGED_MARKER} {claude_native.LUNA_HANDLER_PATH}",
@@ -203,11 +219,7 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
         {"hooks": {"PostToolUse": [{"hooks": [old_agent, old_command, managed_luna_command, unrelated_luna_command, unrelated]}]}}, "mixed",
     )
 
-    handlers = [
-        hook
-        for group in merged["hooks"]["PostToolUse"]
-        for hook in group["hooks"]
-    ]
+    handlers = [hook for group in merged["hooks"]["PostToolUse"] for hook in group["hooks"]]
     assert old_agent not in handlers
     assert old_command not in handlers
     assert managed_luna_command not in handlers
@@ -308,20 +320,8 @@ def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path:
     assert selected == "mixed"
     assert all(result["preset"] == selected for result in results)
     assert sum(result["switched"] is True for result in results) == 1
-    handlers = [
-        hook
-        for groups in configured["hooks"].values()
-        if isinstance(groups, list)
-        for group in groups
-        if isinstance(group, dict)
-        for hook in group.get("hooks", [])
-        if isinstance(hook, dict) and claude_native.MANAGED_MARKER in str(hook.get("prompt", ""))
-    ]
-    assert handlers
-    assert {
-        group_name: next(hook["model"] for hook in configured["hooks"][group_name][0]["hooks"] if hook.get("type") == "agent")
-        for group_name in ("PostToolUse", "Stop")
-    } == {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
+    assert _managed_agents(configured)
+    assert _agent_models(configured) == MIXED_MODELS
 
 
 def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -345,21 +345,10 @@ def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_
         )
     monkeypatch.setattr(claude_native, "_atomic_write", original)
 
-    status = claude_native.status(settings_path=settings, preset_path=preset)
-    assert status["preset"] == "mixed"
+    assert claude_native.status(settings_path=settings, preset_path=preset)["preset"] == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
-    managed = [
-        hook
-        for group in configured["hooks"].values()
-        for row in group
-        for hook in row.get("hooks", [])
-        if isinstance(hook, dict) and hook.get("type") == "agent"
-    ]
-    assert managed
-    assert {
-        lifecycle: next(hook["model"] for hook in configured["hooks"][lifecycle][0]["hooks"] if hook.get("type") == "agent")
-        for lifecycle in ("PostToolUse", "Stop")
-    } == {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
+    assert _managed_agents(configured)
+    assert _agent_models(configured) == MIXED_MODELS
     assert not preset.with_name(preset.name + ".txn").exists()
 
 

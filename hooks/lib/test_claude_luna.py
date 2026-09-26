@@ -15,6 +15,15 @@ from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_provider import LunaJudge
 from lib.luna_storage import LunaProviderFailure
 
+COMMENT = "# Counts the retries because the report header needs a total.\nvalue = 1\n"
+
+
+@pytest.fixture(autouse=True)
+def _open_data_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opened here, because the gate has its own test file."""
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
+    monkeypatch.setattr(claude_luna, "data_boundary_enabled", lambda _cfg: True)
+
 
 def _result(request: JudgeRequest, payload: dict) -> JudgeResult:
     return JudgeResult(
@@ -43,6 +52,18 @@ def _post_payload(path: Path) -> dict:
         "tool_input": {"file_path": str(path), "content": "raw host content"},
         "tool_response": {"filePath": str(path), "content": "raw response content"},
     }
+
+
+def _luna_preset(tmp_path: Path) -> tuple[Path, Path]:
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    return settings, preset
+
+
+def _started(target) -> threading.Thread:
+    thread = threading.Thread(target=target)
+    thread.start()
+    return thread
 
 
 def test_post_handler_extracts_the_just_written_candidate_without_waiting_for_journal(tmp_path: Path) -> None:
@@ -125,10 +146,8 @@ def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judgin
         "tool_name": "apply_patch", "tool_use_id": "tool-1", "tool_input": {"input": patch},
     }
     provider = Provider(lambda request: _result(request, {"items": []}))
+    settings, preset = _luna_preset(tmp_path)
 
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     claude_luna.run(
         payload, provider=provider, state_root=tmp_path / "state",
         settings_path=settings, preset_path=preset,
@@ -142,45 +161,49 @@ def test_post_handler_caps_huge_candidates_across_all_edited_files_before_judgin
     assert any("Tracks the cache" in item for item in request.candidates)
 
 
-def test_post_handler_bounds_paths_file_bytes_and_total_scan_before_extracting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claude_luna, "MAX_LIVE_PATHS", 2)
-    monkeypatch.setattr(claude_luna, "MAX_LIVE_FILE_BYTES", 100)
-    monkeypatch.setattr(claude_luna, "MAX_LIVE_SCAN_BYTES", 150)
-    first = tmp_path / "first.py"
-    second = tmp_path / "second.py"
-    last = tmp_path / "last.py"
-    first.write_text("value = 1\n", encoding="utf-8")
-    second.write_text("value = 2\n", encoding="utf-8")
-    last.write_text("# Counts the retries because the report header needs a total.\nvalue = 3\n", encoding="utf-8")
-    oversized = tmp_path / "oversized.py"
-    oversized.write_text("# " + ("x" * 200) + "\n# Counts the retries because the report header needs a total.\n", encoding="utf-8")
-    patch = "\n".join(f"*** Update File: {path.name}\n@@" for path in (first, second, last))
-    payload = {
+def _patch_payload(tmp_path: Path, names: tuple[str, ...]) -> dict:
+    return {
         "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
-        "tool_name": "apply_patch", "tool_use_id": "tool-1", "tool_input": {"input": patch},
+        "tool_name": "apply_patch", "tool_use_id": "tool-1",
+        "tool_input": {"input": "\n".join(f"*** Update File: {name}\n@@" for name in names)},
     }
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+
+
+def _bounded_scan_files(tmp_path: Path) -> tuple[str, ...]:
+    (tmp_path / "first.py").write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / "second.py").write_text("value = 2\n", encoding="utf-8")
+    (tmp_path / "last.py").write_text(COMMENT, encoding="utf-8")
+    return ("first.py", "second.py", "last.py")
+
+
+def test_post_handler_bounds_edited_paths_before_extracting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_PATHS", 2)
+    settings, preset = _luna_preset(tmp_path)
     provider = Provider(lambda request: _result(request, {"items": []}))
 
-    claude_luna.run(payload, provider=provider, settings_path=settings, preset_path=preset)
+    claude_luna.run(_patch_payload(tmp_path, _bounded_scan_files(tmp_path)), provider=provider, settings_path=settings, preset_path=preset)
 
     assert provider.requests == []
-    oversized_payload = {
-        **payload,
-        "tool_input": {"input": "*** Update File: oversized.py\n@@"},
-    }
-    claude_luna.run(oversized_payload, provider=provider, settings_path=settings, preset_path=preset)
+
+
+def test_post_handler_bounds_file_bytes_before_extracting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(claude_luna, "MAX_LIVE_FILE_BYTES", 100)
+    (tmp_path / "oversized.py").write_text("# " + ("x" * 200) + "\n" + COMMENT, encoding="utf-8")
+    settings, preset = _luna_preset(tmp_path)
+    provider = Provider(lambda request: _result(request, {"items": []}))
+
+    claude_luna.run(_patch_payload(tmp_path, ("oversized.py",)), provider=provider, settings_path=settings, preset_path=preset)
+
     assert provider.requests == []
 
-    monkeypatch.setattr(claude_luna, "MAX_LIVE_PATHS", 10)
+
+def test_post_handler_bounds_total_scan_before_extracting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(claude_luna, "MAX_LIVE_SCAN_BYTES", 25)
-    total_payload = {
-        **payload,
-        "tool_input": {"input": "\n".join(f"*** Update File: {path.name}\n@@" for path in (first, second, last))},
-    }
-    claude_luna.run(total_payload, provider=provider, settings_path=settings, preset_path=preset)
+    settings, preset = _luna_preset(tmp_path)
+    provider = Provider(lambda request: _result(request, {"items": []}))
+
+    claude_luna.run(_patch_payload(tmp_path, _bounded_scan_files(tmp_path)), provider=provider, settings_path=settings, preset_path=preset)
+
     assert provider.requests == []
 
 
@@ -285,90 +308,75 @@ def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypat
     assert claude_luna._read_candidates(_post_payload(source)) == ()
 
 
+class _FailFirstProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.lock = threading.Lock()
+        self.first_started = threading.Event()
+        self.release_first = threading.Event()
+        self.second_started = threading.Event()
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        with self.lock:
+            self.calls += 1
+            number = self.calls
+        if number == 1:
+            self.first_started.set()
+            assert self.release_first.wait(2)
+            raise LunaProviderFailure("subscription unavailable", category="authentication")
+        self.second_started.set()
+        return _result(request, {"items": []})
+
+
 def test_queued_luna_call_cannot_begin_provider_spend_after_failure_commits_mixed(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    settings, preset = _luna_preset(tmp_path)
     source = tmp_path / "candidate.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-    first_started = threading.Event()
-    release_first = threading.Event()
-    second_started = threading.Event()
-    calls = 0
-    calls_lock = threading.Lock()
-
-    class Provider:
-        def judge(self, request: JudgeRequest) -> JudgeResult:
-            nonlocal calls
-            with calls_lock:
-                calls += 1
-                number = calls
-            if number == 1:
-                first_started.set()
-                assert release_first.wait(2)
-                raise LunaProviderFailure("subscription unavailable", category="authentication")
-            second_started.set()
-            return _result(request, {"items": []})
-
-    provider = Provider()
-    responses: list[dict] = []
+    source.write_text(COMMENT, encoding="utf-8")
+    provider = _FailFirstProvider()
 
     def invoke() -> None:
-        responses.append(claude_luna.run(
-            _post_payload(source), provider=provider,
-            settings_path=settings, preset_path=preset,
-        ))
+        claude_luna.run(_post_payload(source), provider=provider, settings_path=settings, preset_path=preset)
 
-    first = threading.Thread(target=invoke)
-    first.start()
-    assert first_started.wait(2)
-    second = threading.Thread(target=invoke)
-    second.start()
-    release_first.set()
+    first = _started(invoke)
+    assert provider.first_started.wait(2)
+    second = _started(invoke)
+    provider.release_first.set()
     first.join(3)
     second.join(3)
 
     assert not first.is_alive() and not second.is_alive()
-    assert calls == 1
-    assert not second_started.is_set()
+    assert provider.calls == 1
+    assert not provider.second_started.is_set()
     assert claude_native.read_preset(preset) == "mixed"
 
 
+class _BlockingProvider:
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        self.started.set()
+        assert self.release.wait(2)
+        return _result(request, {"items": []})
+
+
 def test_luna_provider_does_not_hold_preset_lock_during_model_call(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    settings, preset = _luna_preset(tmp_path)
     source = tmp_path / "candidate.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-    started = threading.Event()
-    release = threading.Event()
-
-    class BlockingProvider:
-        def judge(self, request: JudgeRequest) -> JudgeResult:
-            started.set()
-            assert release.wait(2)
-            return _result(request, {"items": []})
-
-    provider = BlockingProvider()
-    thread = threading.Thread(target=lambda: claude_luna.run(
-        _post_payload(source), provider=provider, settings_path=settings, preset_path=preset,
-    ))
-    thread.start()
-    assert started.wait(2)
+    source.write_text(COMMENT, encoding="utf-8")
+    provider = _BlockingProvider()
+    paths = {"settings_path": settings, "preset_path": preset}
+    thread = _started(lambda: claude_luna.run(_post_payload(source), provider=provider, **paths))
+    assert provider.started.wait(2)
 
     status_result: list[dict] = []
-    status_thread = threading.Thread(target=lambda: status_result.append(
-        claude_native.status(settings_path=settings, preset_path=preset),
-    ))
-    status_thread.start()
+    status_thread = _started(lambda: status_result.append(claude_native.status(**paths)))
     status_thread.join(0.5)
     preset_result: list[str] = []
-    preset_thread = threading.Thread(target=lambda: preset_result.append(claude_native.set_preset(
-        "luna", settings_path=settings, preset_path=preset,
-    )))
-    preset_thread.start()
+    preset_thread = _started(lambda: preset_result.append(claude_native.set_preset("luna", **paths)))
     preset_thread.join(0.5)
-    release.set()
+    provider.release.set()
     thread.join(3)
 
     assert not status_thread.is_alive()
@@ -463,20 +471,8 @@ def test_live_luna_command_valid_event_success_has_production_response_shape(tmp
     assert json.loads(result.stdout) == {}
 
 
-def test_live_luna_command_uses_a_valid_cache_hit_for_success_without_spending_again(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    source = tmp_path / "candidate.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-    payload = {
-        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
-        "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
-    }
-    built = claude_luna.post_request(payload)
-    assert built is not None
-    request = built[0]
-    result = _result(request, {
-        "items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}],
-    })
+def _cache_hit(home: Path, request: JudgeRequest) -> None:
+    result = _result(request, {"items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}]})
     judge = LunaJudge(
         runtime_root=home / ".adw" / "runtime", cache_root=home / ".adw" / "cache" / "judges",
         auth_source=home / ".codex" / "auth.json",
@@ -484,28 +480,37 @@ def test_live_luna_command_uses_a_valid_cache_hit_for_success_without_spending_a
     cache_file = judge._cache_path(judge._cache_key(request))
     cache_file.parent.mkdir(parents=True)
     cache_file.write_text(json.dumps({**result.__dict__, "cached": False}), encoding="utf-8")
-    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=tmp_path / "preset")
+
+
+def test_live_luna_command_uses_a_valid_cache_hit_for_success_without_spending_again(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "candidate.py"
+    source.write_text(COMMENT, encoding="utf-8")
+    payload = {
+        "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
+        "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
+    }
+    built = claude_luna.post_request(payload)
+    assert built is not None
+    _cache_hit(home, built[0])
+    settings, preset = _luna_preset(tmp_path)
     command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
 
     process = subprocess.run(
         command, shell=True, input=json.dumps(payload),
-        env={
-            **os.environ, "HOME": str(home), "ADW_CLAUDE_SETTINGS": str(tmp_path / "settings.json"),
-            "ADW_CLAUDE_PRESET_FILE": str(tmp_path / "preset"),
-        }, capture_output=True, text=True, check=False,
+        env={**os.environ, "HOME": str(home), "ADW_CLAUDE_SETTINGS": str(settings), "ADW_CLAUDE_PRESET_FILE": str(preset)},
+        capture_output=True, text=True, check=False,
     )
 
     assert process.returncode == 0, process.stderr
     assert json.loads(process.stdout) == {}
-    assert claude_native.read_preset(tmp_path / "preset") == "luna"
+    assert claude_native.read_preset(preset) == "luna"
 
 
 def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    settings, preset = _luna_preset(tmp_path)
     source = tmp_path / "candidate.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    source.write_text(COMMENT, encoding="utf-8")
     command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
     result = subprocess.run(
         command, shell=True,
@@ -513,10 +518,8 @@ def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path
             "hook_event_name": "PostToolUse", "session_id": "session", "cwd": str(tmp_path),
             "tool_name": "Write", "tool_use_id": "tool-1", "tool_input": {"file_path": str(source)},
         }),
-        env={
-            **os.environ, "HOME": str(tmp_path / "home"), "ADW_CLAUDE_SETTINGS": str(settings),
-            "ADW_CLAUDE_PRESET_FILE": str(preset),
-        }, capture_output=True, text=True, check=False,
+        env={**os.environ, "HOME": str(tmp_path / "home"), "ADW_CLAUDE_SETTINGS": str(settings), "ADW_CLAUDE_PRESET_FILE": str(preset)},
+        capture_output=True, text=True, check=False,
     )
 
     assert result.returncode == 0, result.stderr

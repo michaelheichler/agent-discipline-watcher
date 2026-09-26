@@ -1,3 +1,4 @@
+# No host wires this, because agent hooks judge instead.
 from __future__ import annotations
 
 import json
@@ -24,6 +25,7 @@ WAKE_EXIT_CODE = 2
 MAX_CANDIDATES = 40
 SCRATCH_DIRNAME = "scratchpad"
 TEMP_ROOTS = (Path(tempfile.gettempdir()).resolve(), Path("/tmp"), Path("/private/tmp"))
+DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 
 
 def _is_session_scratch(path: Path) -> bool:
@@ -62,6 +64,36 @@ def _review_config(payload: object) -> dict | None:
     return config if isinstance(boundary, dict) and boundary.get("enabled") is True else None
 
 
+def _walk_to_parent(root_fd: int, parts: tuple[str, ...]) -> int:
+    descriptor = root_fd
+    try:
+        for part in parts:
+            child = os.open(part, DIRECTORY_FLAGS, dir_fd=descriptor)
+            if descriptor != root_fd:
+                os.close(descriptor)
+            descriptor = child
+    except OSError:
+        if descriptor != root_fd:
+            os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _read_leaf(descriptor: int, name: str) -> str | None:
+    leaf = os.open(name, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0), dir_fd=descriptor)
+    try:
+        metadata = os.fstat(leaf)
+        if not stat.S_ISREG(metadata.st_mode):
+            return None
+        raw = os.read(leaf, 1_000_001)
+        after = os.fstat(leaf)
+        if (metadata.st_dev, metadata.st_ino) != (after.st_dev, after.st_ino) or len(raw) > 1_000_000:
+            return None
+        return raw.decode("utf-8")
+    finally:
+        os.close(leaf)
+
+
 def _read(path: Path, _cwd: str) -> str | None:
     root_fd = -1
     descriptor = -1
@@ -69,30 +101,9 @@ def _read(path: Path, _cwd: str) -> str | None:
         target = path.resolve(strict=True)
         root = Path(target.anchor)
         relative = target.relative_to(root)
-        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-        root_fd = os.open(root, directory_flags)
-        descriptor = root_fd
-        for part in relative.parts[:-1]:
-            child = os.open(part, directory_flags, dir_fd=descriptor)
-            if descriptor != root_fd:
-                os.close(descriptor)
-            descriptor = child
-        leaf = os.open(
-            relative.parts[-1],
-            os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
-            dir_fd=descriptor,
-        )
-        try:
-            metadata = os.fstat(leaf)
-            if not stat.S_ISREG(metadata.st_mode):
-                return None
-            raw = os.read(leaf, 1_000_001)
-            after = os.fstat(leaf)
-            if (metadata.st_dev, metadata.st_ino) != (after.st_dev, after.st_ino) or len(raw) > 1_000_000:
-                return None
-            return raw.decode("utf-8")
-        finally:
-            os.close(leaf)
+        root_fd = os.open(root, DIRECTORY_FLAGS)
+        descriptor = _walk_to_parent(root_fd, relative.parts[:-1])
+        return _read_leaf(descriptor, relative.parts[-1])
     except (OSError, UnicodeDecodeError, RuntimeError, ValueError):
         return None
     finally:

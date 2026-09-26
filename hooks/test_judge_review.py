@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import shutil
 
 import pytest
@@ -17,6 +18,14 @@ NARRATING_SOURCE = (
 
 def _payload(path) -> dict:
     return {"cwd": str(path.parent), "tool_name": "Write", "tool_input": {"file_path": str(path)}}
+
+def test_the_route_says_no_host_wires_it() -> None:
+    hooks = Path(judge_review.__file__).parent
+    manifests = [hooks / "hooks.json", hooks / "codex-hooks.json"]
+
+    assert all("JudgeReview" not in manifest.read_text(encoding="utf-8") for manifest in manifests)
+    assert "No host wires" in Path(judge_review.__file__).read_text(encoding="utf-8").splitlines()[0]
+
 
 def test_a_broken_payload_wakes_nobody() -> None:
     assert judge_review.run(PARSE_FAILURE) == (0, "")

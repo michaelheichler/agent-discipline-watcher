@@ -54,6 +54,12 @@ def _document_work(path: str, text: str, config: dict) -> list[ReviewWork]:
     )]
 
 
+def _judged_blocks(rule: str, found: list[dict], config: dict) -> bool:
+    """Blocks once confirmed, because the reader removed the false hits."""
+    families = {str(item.get("family") or "english") for item in found if item.get("rule") == rule}
+    return all(gate_state(family, config) == "enforce" for family in families)
+
+
 def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
     found = scan_all(path, text, config)
     rules = judged_rules(config) & {str(item.get("rule")) for item in found}
@@ -65,10 +71,11 @@ def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
         if rule not in manifest["rules"]:
             raise ValueError(f"judged rule {rule} has no review rubric")
         selected = tuple(PatternCandidate(path, int(item.get("line") or 1), str(item.get("snippet") or "")) for item in found if item.get("rule") == rule)
+        blocking = _judged_blocks(rule, found, config)
         for start in range(0, len(selected), MAX_BATCH_CANDIDATES):
             batch = selected[start:start + MAX_BATCH_CANDIDATES]
             request = pattern_request(rule_prompt(rule, exemplars, manifest), batch)
-            work.append(ReviewWork(request, path, batch, blocking=False))
+            work.append(ReviewWork(request, path, batch, blocking=blocking))
     return work
 
 

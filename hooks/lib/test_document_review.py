@@ -108,3 +108,14 @@ def test_message_sanitizes_hostile_path_and_note_fields() -> None:
     assert "\u0085" not in rendered
     assert "\u202e" not in rendered
     assert "\n.md" not in rendered
+
+
+@pytest.mark.parametrize(("config", "expected"), (
+    ({"data_boundary": {"enabled": True}}, True),
+    ({"data_boundary": {"enabled": False}}, False),
+    ({"data_boundary": {"enabled": "yes"}}, False),
+    ({"data_boundary": True}, False),
+    ({}, False),
+))
+def test_the_data_boundary_opens_only_on_an_exact_true(config: dict, expected: bool) -> None:
+    assert document_review.data_boundary_enabled(config) is expected

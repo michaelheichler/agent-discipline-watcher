@@ -13,9 +13,14 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
+AGENT_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+MANIFEST_PATH = PLUGIN_ROOT / "hooks" / "hooks.json"
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
+SHIPPED_READER_PATH = "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/read_claude_journal.sh"
+SHIPPED_PRESET = "haiku"
+SUPERSEDED_FLAG = "--superseded"
 HANDLER_TIMEOUT = 120
 STRUCTURED_OUTPUT_CONTRACT = (
     "OUTPUT CONTRACT. Use the native StructuredOutput tool exactly once at the end of the review. "
@@ -47,39 +52,69 @@ def luna_command() -> str:
     return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(LUNA_HANDLER_PATH))}"
 
 
+def _numbered(steps: list[str]) -> str:
+    return "".join(f"{index}. {step}\n" for index, step in enumerate(steps, start=1))
+
+
+def _yield_steps(preset: str) -> list[str]:
+    """Only the shipped reviewer yields, because a preset entry is the replacement."""
+    if preset != SHIPPED_PRESET:
+        return []
+    return [
+        f"Run this exact helper with {SUPERSEDED_FLAG} as its only argument: {SHIPPED_READER_PATH}. "
+        "When it prints true, a configured preset replaces this reviewer, so skip every remaining step "
+        "and use the successful StructuredOutput shape."
+    ]
+
+
+def _reader_path(preset: str) -> str:
+    return SHIPPED_READER_PATH if preset == SHIPPED_PRESET else JOURNAL_READER_PATH
+
+
 def comment_prompt(preset: str) -> str:
-    validate_preset(preset)
+    steps = [
+        *_yield_steps(validate_preset(preset)),
+        "Read the named path.",
+        "Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent "
+        "behind a comment. Text a question puts to the user counts as reader-facing English.",
+        "Choose one output shape below.",
+    ]
     return (
         f"{MANAGED_MARKER}\n"
-        "You are ADW's post-write comment verifier.\n"
-        "Matching hooks run in parallel. Inspect only the just-written eligible file named by this raw host event; "
-        "do not expect another hook to have prepared context and do not duplicate the raw event content. "
-        "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
-        "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
-        "or has no ADW candidate, use the successful StructuredOutput shape.\n"
-        "Do not deny or undo the completed write.\n"
-        + STRUCTURED_OUTPUT_CONTRACT
-        + "Hook input: $ARGUMENTS"
+        "Review one completed write for reader-facing English and comment discipline.\n\n"
+        "SCOPE. Inspect only the path named in the hook input. Read only. Never edit a file, never change "
+        "a setting, never undo the write that already landed.\n\n"
+        "STEPS, in order.\n" + _numbered(steps) + "\n"
+        + STRUCTURED_OUTPUT_CONTRACT + "\n"
+        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. A reply that "
+        "opens with wording such as \"The answer is\" fails this hook and denies nothing, so it wastes the call. "
+        "When the input is empty, malformed, unrelated to a write, or carries no candidate, use the successful "
+        "StructuredOutput shape. When uncertain, use the successful StructuredOutput shape.\n\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
 def stop_prompt(preset: str) -> str:
-    validate_preset(preset)
+    selected = validate_preset(preset)
+    steps = [
+        "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
+        "successful StructuredOutput shape.",
+        *_yield_steps(selected),
+        "Run this exact helper with the session_id from the hook input as its only argument: "
+        + _reader_path(selected),
+        "Batch all prose and document candidates the helper returns into one judgement rather than one call each.",
+        "Choose one output shape below.",
+    ]
     return (
         f"{MANAGED_MARKER}\n"
-        "You are ADW's Stop verifier.\n"
-        "Check stop_hook_active before doing any work. If it is true, skip every remaining step and "
-        "use the successful StructuredOutput shape. "
-        f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
-        "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
-        "unrelated files, or read files not named by the helper output. "
-        "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
-        "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
-        "uses the successful StructuredOutput shape. A clean review uses the same shape. A failed review uses "
-        "the failure shape below.\n"
-        "Use the session_id from this hook input to locate only its journal.\n"
-        + STRUCTURED_OUTPUT_CONTRACT
-        + "Hook input: $ARGUMENTS"
+        "Review one finished turn for reader-facing English across every candidate it produced.\n\n"
+        "SCOPE. Read only what the journal helper names. Never open a state file directly, never read a path "
+        "the helper output does not list, never edit anything.\n\n"
+        "STEPS, in order.\n" + _numbered(steps) + "\n"
+        + STRUCTURED_OUTPUT_CONTRACT + "\n"
+        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. When the helper "
+        "returns nothing, when the input is malformed, or when uncertain, use the successful StructuredOutput shape.\n\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
@@ -134,6 +169,25 @@ def preset_managed_hash(preset: str | None) -> str:
     return managed_hash({"hooks": generated_hooks(preset) if preset in PRESETS else {}})
 
 
+def supersedes_plugin(settings: object) -> bool:
+    """Judged by the yield step, because an installer copy of the shipped entry carries it too."""
+    return any(
+        SUPERSEDED_FLAG not in str(hook.get("prompt") or hook.get("command") or "")
+        for entries in managed_hooks(settings).values()
+        for hook in entries
+        if isinstance(hook, dict)
+    )
+
+
+def plugin_superseded(settings_path: Path) -> bool:
+    """False on a bad read, because a skipped reviewer is worse than a doubled one."""
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return supersedes_plugin(settings)
+
+
 def _kept_group(group: object) -> object | None:
     if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
         return group
@@ -164,15 +218,49 @@ def _agent(model: str, prompt: str) -> dict[str, Any]:
     return {"type": "agent", "model": model, "timeout": HANDLER_TIMEOUT, "prompt": prompt}
 
 
-def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    selected = validate_preset(preset)
-    if selected == "luna":
+def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
+    if preset == "luna":
         handler = {"type": "command", "command": luna_command(), "timeout": HANDLER_TIMEOUT}
-        comment, document = handler, handler
+        comment, document, matcher = handler, handler, WRITE_MATCHER
     else:
-        comment = _agent(model_for(selected, "comment"), comment_prompt(selected))
-        document = _agent(model_for(selected, "document"), stop_prompt(selected))
+        comment = _agent(model_for(preset, "comment"), comment_prompt(preset))
+        document = _agent(model_for(preset, "document"), stop_prompt(preset))
+        matcher = AGENT_MATCHER
     return {
-        "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [comment]}],
+        "PostToolUse": [{"matcher": matcher, "hooks": [comment]}],
         "Stop": [{"hooks": [document]}],
     }
+
+
+def shipped_hooks() -> dict[str, list[dict[str, Any]]]:
+    return _preset_hooks(SHIPPED_PRESET)
+
+
+def _is_agent_group(group: object) -> bool:
+    entries = group.get("hooks") if isinstance(group, dict) else None
+    return isinstance(entries, list) and any(isinstance(entry, dict) and entry.get("type") == "agent" for entry in entries)
+
+
+def render_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Rendered from the preset, because a hand-kept copy drifted."""
+    hooks = dict(manifest["hooks"])
+    for lifecycle, groups in shipped_hooks().items():
+        kept = [group for group in hooks.get(lifecycle, []) if not _is_agent_group(group)]
+        hooks[lifecycle] = kept + groups
+    return {**manifest, "hooks": hooks}
+
+
+def main() -> int:
+    current = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    MANIFEST_PATH.write_text(json.dumps(render_manifest(current), indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
+    """Empty for the shipped preset, because the plugin manifest already runs it."""
+    selected = validate_preset(preset)
+    return {} if selected == SHIPPED_PRESET else _preset_hooks(selected)
