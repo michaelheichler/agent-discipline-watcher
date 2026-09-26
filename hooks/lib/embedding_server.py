@@ -20,7 +20,7 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 from typing import NamedTuple
 
 try:
@@ -52,7 +52,7 @@ EMBEDDINGS_PATH = "/v1/embeddings"
 WORKER_NAME = "embedding_worker.py"
 CONTEXT_TOKENS = "4096"
 MAX_RECORD_BYTES = 16 * 1024
-MAX_RECORD_URL_CHARS = 2048
+MAX_URL_CHARS = 2048
 MAX_PLATFORM_CHARS = 128
 MAX_PORT = 65_535
 LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -98,8 +98,8 @@ def _valid_port(value: object) -> bool:
     return type(value) is int and 1 <= value <= MAX_PORT  # pylint: disable=unidiomatic-typecheck
 
 
-def _is_loopback_host(hostname: object) -> bool:
-    """Recognize literal loopback addresses without resolving attacker-controlled DNS."""
+def is_loopback_host(hostname: object) -> bool:
+    """Literal match only, because DNS answers can be forged."""
     if not isinstance(hostname, str):
         return False
     normalized = hostname.rstrip(".").lower()
@@ -111,18 +111,17 @@ def _is_loopback_host(hostname: object) -> bool:
         return False
 
 
-def _loopback_url(url: object, *, port: int | None = None, path: str | None = None) -> bool:  # pylint: disable=too-many-return-statements
-    """Require a credential-free HTTP URL on literal loopback with optional exact fields."""
-    if not isinstance(url, str) or len(url) > MAX_RECORD_URL_CHARS:
-        return False
+def parse_endpoint(url: object) -> SplitResult | None:
+    """One parser, so that client and server refuse alike."""
+    if not isinstance(url, str) or len(url) > MAX_URL_CHARS:
+        return None
     if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in url):
-        return False
+        return None
     try:
         parsed = urlsplit(url)
-        hostname = parsed.hostname
-        parsed_port = parsed.port
+        port = parsed.port
     except ValueError:
-        return False
+        return None
     if (  # pylint: disable=too-many-boolean-expressions
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
@@ -130,11 +129,18 @@ def _loopback_url(url: object, *, port: int | None = None, path: str | None = No
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
-        or parsed_port is None
-        or not _is_loopback_host(hostname)
+        or (port is not None and not _valid_port(port))
+        or parsed.hostname is None
     ):
+        return None
+    return parsed
+
+
+def _loopback_url(url: object, *, port: int | None = None, path: str | None = None) -> bool:
+    parsed = parse_endpoint(url)
+    if parsed is None or parsed.port is None or not is_loopback_host(parsed.hostname):
         return False
-    if port is not None and parsed_port != port:
+    if port is not None and parsed.port != port:
         return False
     return path is None or parsed.path == path
 

@@ -8,17 +8,17 @@ import os
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import urlsplit
 
 try:
     from .embedding_lease import acquire, register_root
     from .embedding_lease import release as release_lease
-    from .embedding_server import LOCK_NAME, default_root, running_url
+    from .embedding_server import LOCK_NAME, default_root, is_loopback_host, parse_endpoint, running_url
     from .model_store import exclusive
 except ImportError:
     from embedding_lease import acquire, register_root
     from embedding_lease import release as release_lease
-    from embedding_server import LOCK_NAME, default_root, running_url
+    from embedding_server import LOCK_NAME, default_root, is_loopback_host, parse_endpoint, running_url
     from model_store import exclusive
 
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
@@ -31,7 +31,6 @@ MAX_REQUEST_BYTES = 1_048_576
 MAX_RESPONSE_BYTES = 4 * 1_048_576
 MAX_RESPONSE_ROWS = MAX_INPUTS
 MAX_VECTOR_DIMENSIONS = 4096
-MAX_URL_CHARS = 2048
 LOCAL_ONLY_ENV = "ADW_EMBEDDING_LOCAL_ONLY"
 APPROVED_HOSTS_ENV = "ADW_EMBEDDING_APPROVED_HOSTS"
 APPROVED_PROVIDERS_ENV = "ADW_EMBEDDING_APPROVED_PROVIDERS"
@@ -62,51 +61,13 @@ def _approved_hosts() -> frozenset[str]:
     return frozenset(part.strip().rstrip(".").lower() for part in listed.split(",") if part.strip())
 
 
-def _is_loopback_host(hostname: object) -> bool:
-    """Recognize literal loopback hosts without trusting DNS resolution."""
-    if not isinstance(hostname, str):
-        return False
-    normalized = hostname.rstrip(".").lower()
-    if normalized == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(normalized).is_loopback
-    except ValueError:
-        return False
-
-
-def _endpoint(url: object) -> SplitResult | None:
-    """Rejects credentials and odd parts before any policy check."""
-    if not isinstance(url, str) or len(url) > MAX_URL_CHARS:
-        return None
-    if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in url):
-        return None
-    try:
-        parsed = urlsplit(url)
-        port = parsed.port
-    except ValueError:
-        return None
-    if (  # pylint: disable=too-many-boolean-expressions
-        parsed.scheme not in {"http", "https"}
-        or not parsed.netloc
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or (port is not None and not 1 <= port <= 65_535)
-        or parsed.hostname is None
-    ):
-        return None
-    return parsed
-
-
 def _approved_url(url: object) -> bool:
     """Allow loopback endpoints or HTTPS hosts explicitly approved for remote egress."""
-    parsed = _endpoint(url)
+    parsed = parse_endpoint(url)
     if parsed is None:
         return False
     hostname = parsed.hostname
-    if _is_loopback_host(hostname):
+    if is_loopback_host(hostname):
         return True
     if _local_only() or parsed.scheme != "https":
         return False
@@ -142,7 +103,7 @@ def embeddings_urls(config: dict | None = None) -> tuple[str, ...]:
         if not _approved_url(url):
             continue
         hostname = urlsplit(url).hostname
-        if not _is_loopback_host(hostname) and not _allows_remote(config):
+        if not is_loopback_host(hostname) and not _allows_remote(config):
             continue
         approved.append(url)
     return tuple(approved)

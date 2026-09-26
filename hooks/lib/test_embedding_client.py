@@ -186,6 +186,27 @@ def test_oversized_input_is_rejected_before_network_io(server) -> None:
     assert server.received == []
 
 
+def test_client_and_server_share_one_url_validator() -> None:
+    assert embedding_client.parse_endpoint is embedding_server.parse_endpoint
+    assert embedding_client.is_loopback_host is embedding_server.is_loopback_host
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://user:secret@127.0.0.1:1234/v1/embeddings",
+        "http://127.0.0.1:1234/v1/embeddings?next=1",
+        "http://127.0.0.1:0/v1/embeddings",
+        "ftp://127.0.0.1:1234/v1/embeddings",
+        "http://127.0.0.1:1234/v1/em beddings",
+    ],
+)
+def test_a_malformed_url_is_refused_by_both_sides(url: str) -> None:
+    assert embedding_server.parse_endpoint(url) is None
+    assert not embedding_client._approved_url(url)
+    assert not embedding_server._loopback_url(url)
+
+
 def test_oversized_embedding_response_is_rejected(server) -> None:
     server.responses.append(
         (
