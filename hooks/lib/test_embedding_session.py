@@ -18,6 +18,24 @@ def _closed_port() -> int:
 def _opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set for this file because the bracket is off until a reader for the vectors exists."""
     monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", True)
+
+
+def test_without_a_consumer_a_prompt_never_loads_the_model(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", False)
+    monkeypatch.setattr(embedding_session, "ensure_loaded", lambda *_args: pytest.fail("loaded without a consumer"))
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert not list(tmp_path.glob("*.lease.json"))
+
+
+def test_without_a_consumer_close_turn_still_releases_a_stale_lease(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", False)
+    embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
+
+    embedding_session.close_turn("alpha", str(tmp_path))
+
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ()
 
 
 @pytest.fixture(name="absent_server")
@@ -94,7 +112,7 @@ def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatc
 
 
 def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
-    def fail_release(*_args):
+    def fail_release(*_args) -> None:
         raise PermissionError("cannot signal worker")
 
     monkeypatch.setattr(embedding_session, "release", fail_release)

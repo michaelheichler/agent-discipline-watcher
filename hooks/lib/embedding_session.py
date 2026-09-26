@@ -15,6 +15,7 @@ except ImportError:
 
 ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
+CONSUMER_REGISTERED = False
 
 
 def enabled() -> bool:
@@ -42,7 +43,7 @@ def owner_pid() -> int:
 
 def open_turn(session_id: str, root: str | None) -> str | None:
     """Provisions in the background and answers None for this turn, because a first install downloads most of a gigabyte."""
-    if not session_id or not enabled():
+    if not CONSUMER_REGISTERED or not session_id or not enabled():
         return None
     try:
         answered = ensure_loaded(session_id, time.time(), root, owner_pid())
@@ -55,7 +56,7 @@ def open_turn(session_id: str, root: str | None) -> str | None:
 
 
 def close_turn(session_id: str, root: str | None) -> bool:
-    """Report cleanup failures without preventing other end-of-turn gates."""
+    """Swallowed because a cleanup fault must not block gates."""
     if not session_id:
         return False
     try:
