@@ -32,6 +32,7 @@ MAX_MESSAGE_CHARS = 900
 MAX_REVIEW_REQUESTS = 8
 REVIEW_DEADLINE_SECONDS = max(1.0, JUDGE_TIMEOUT_SECONDS - 5)
 DOCUMENT_LABEL = "ADW current-session journal"
+UNRESOLVED_CATEGORIES = frozenset({"timeout", "malformed", "worker_protocol", "policy"})
 
 RESERVED = "reserved"
 ALREADY_RESERVED = "already_reserved"
@@ -417,6 +418,15 @@ def _outage_response(session_id: str, turn_id: str, state_root: str | Path | Non
     return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
 
 
+def _unresolved_block(session_id: str, turn_id: str, state_root: str | Path | None, exc: Exception) -> dict:
+    """Recorded as a failure, because only a successful retry releases it."""
+    _record_failure(session_id, turn_id, str(exc), state_root)
+    entry = _failure_entry(session_id, turn_id, state_root) or {}
+    blocked = _failure_block(exc, entry.get("attempts", 1))
+    feedback = exc.feedback if isinstance(exc, InterruptedReview) else ""
+    return stop_block(_bounded(f"{blocked['reason']} {feedback}")) if feedback else blocked
+
+
 def _boundary_open(payload: object) -> bool:
     """Closed on a bad config read, because source text would leave."""
     try:
@@ -452,8 +462,8 @@ def review(
     try:
         return _reviewed(payload, session_id, turn_id, state_root, provider)
     except LunaProviderFailure as exc:
-        return _outage_response(session_id, turn_id, state_root, exc)
+        if exc.category not in UNRESOLVED_CATEGORIES:
+            return _outage_response(session_id, turn_id, state_root, exc)
+        return _unresolved_block(session_id, turn_id, state_root, exc)
     except Exception as exc:
-        _record_failure(session_id, turn_id, str(exc), state_root)
-        attempts = _failure_entry(session_id, turn_id, state_root) or {}
-        return _failure_block(exc, attempts.get("attempts", 1))
+        return _unresolved_block(session_id, turn_id, state_root, exc)

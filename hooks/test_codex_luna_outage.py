@@ -30,7 +30,7 @@ def _turn(tmp_path: Path, turn_id: str = "turn-1") -> tuple[dict, dict]:
     return {"session_id": "outage", "turn_id": turn_id, "cwd": str(tmp_path)}, config
 
 
-@pytest.mark.parametrize("category", ["availability", "authentication", "configuration", "timeout", "provider"])
+@pytest.mark.parametrize("category", ["availability", "authentication", "configuration", "provider"])
 def test_provider_outage_does_not_create_a_stop_loop(tmp_path: Path, category: str) -> None:
     payload, config = _turn(tmp_path)
     provider = Provider(error=LunaProviderFailure("reviewer unavailable", category=category))
@@ -52,7 +52,7 @@ def test_provider_outage_does_not_create_a_stop_loop(tmp_path: Path, category: s
 def test_provider_retries_after_cooldown_on_a_new_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     payload, config = _turn(tmp_path)
     monkeypatch.setattr(codex_luna.time, "time", lambda: 1000.0)
-    failed = Provider(error=LunaProviderFailure("timed out", category="timeout"))
+    failed = Provider(error=LunaProviderFailure("reviewer unavailable", category="availability"))
     stop.run(payload, config, provider=failed)
     monkeypatch.setattr(codex_luna.time, "time", lambda: 1400.0)
     following, _ = _turn(tmp_path, "turn-2")
@@ -70,7 +70,7 @@ def test_legacy_retry_limit_does_not_trap_an_active_stop(tmp_path: Path) -> None
         codex_luna.FAILED_KEY: [{"turn_id": "turn-1", "attempts": 3, "reason": "Luna judge timed out"}],
         codex_luna.RETRY_KEY: "turn-1",
     }, config["state_root"])
-    provider = Provider(error=LunaProviderFailure("Luna judge timed out", category="timeout"))
+    provider = Provider(error=LunaProviderFailure("reviewer unavailable", category="availability"))
 
     first = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
     assert first.get("decision") != "block"
@@ -93,28 +93,46 @@ def test_provider_outage_preserves_deterministic_stop_blocks(tmp_path: Path) -> 
     assert len(provider.calls) == 1
 
 
-def test_invalid_provider_result_uses_the_outage_backoff(tmp_path: Path) -> None:
+def test_invalid_provider_result_blocks_until_a_retry_succeeds(tmp_path: Path) -> None:
     payload, config = _turn(tmp_path)
     provider = Provider(result="invalid")
 
     response = stop.run(payload, config, provider=provider)
+    retry = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
+    provider.result = _result(ReviewKind.DOCUMENT)
+    recovered = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
 
-    assert response.get("decision") != "block"
-    assert "invalid result" in response["systemMessage"]
-    assert stop.run({**payload, "stop_hook_active": True}, config, provider=provider) == {}
-    assert len(provider.calls) == 1
+    assert response["decision"] == "block"
+    assert "invalid result" in response["reason"]
+    assert retry["decision"] == "block"
+    assert recovered == {}
+    assert len(provider.calls) == 3
 
 
-def test_exhausted_review_deadline_uses_the_outage_backoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("category", ["timeout", "malformed"])
+def test_a_timeout_or_malformed_reply_keeps_the_turn_blocked(tmp_path: Path, category: str) -> None:
+    payload, config = _turn(tmp_path)
+    provider = Provider(error=LunaProviderFailure("Luna judge failed", category=category))
+
+    first = stop.run(payload, config, provider=provider)
+    retry = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
+
+    assert first["decision"] == "block"
+    assert retry["decision"] == "block"
+    assert len(provider.calls) == 2
+    assert not session_state.read_state("outage", config["state_root"]).get(codex_luna.STATE_KEY)
+
+
+def test_exhausted_review_deadline_blocks_the_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     payload, config = _turn(tmp_path)
     provider = Provider(_result(ReviewKind.DOCUMENT))
     monkeypatch.setattr(codex_luna, "REVIEW_DEADLINE_SECONDS", 0)
 
     response = stop.run(payload, config, provider=provider)
 
-    assert response.get("decision") != "block"
-    assert "deadline" in response["systemMessage"]
-    assert stop.run({**payload, "stop_hook_active": True}, config, provider=provider) == {}
+    assert response["decision"] == "block"
+    assert "deadline" in response["reason"]
+    assert stop.run({**payload, "stop_hook_active": True}, config, provider=provider)["decision"] == "block"
     assert provider.calls == []
 
 
