@@ -219,11 +219,9 @@ def _shell_c_literal_payload(segment: list[str]) -> str | None:
     return contents[0]
 
 
-def _producer_text(producer: str, args: list[str]) -> str | None:
+def _producer_words(args: list[str]) -> list[str] | None:
     words: list[str] = []
     skip = False
-    ending = "\n" if producer == "echo" else ""
-    expand = False
     for token in args:
         if skip:
             skip = False
@@ -234,17 +232,29 @@ def _producer_text(producer: str, args: list[str]) -> str | None:
             continue
         if DYNAMIC_RE.search(token) and not (token.startswith("'") and token.endswith("'")):
             return None
-        word = _bare(token)
-        if producer == "echo" and not words and re.fullmatch(r"-[neE]+", word):
-            for option in word[1:]:
-                if option == "n":
-                    ending = ""
-                else:
-                    expand = option == "e"
-            continue
-        words.append(word)
+        words.append(_bare(token))
+    return words
+
+
+def _echo_flags(flags: str, ending: str, expand: bool) -> tuple[str, bool]:
+    for option in flags[1:]:
+        if option == "n":
+            ending = ""
+        else:
+            expand = option == "e"
+    return ending, expand
+
+
+def _producer_text(producer: str, args: list[str]) -> str | None:
+    words = _producer_words(args)
+    if words is None:
+        return None
     if producer == "printf":
         return _printf_text(words)
+    ending = "\n" if producer == "echo" else ""
+    expand = False
+    while producer == "echo" and words and re.fullmatch(r"-[neE]+", words[0]):
+        ending, expand = _echo_flags(words.pop(0), ending, expand)
     text = " ".join(words)
     if expand:
         text = text.replace("\\n", "\n").replace("\\t", "\t")
@@ -312,22 +322,6 @@ def _group_heredoc_events(
             ))
         cursor += heredoc_count
     return events, cursor
-
-
-def _expanded_token_paths(token: str) -> list[str]:
-    paths: list[str] = []
-    for part in re.split(r"[<>|;&]+", _bare(token)):
-        expanded = _expand_home(part.strip())
-        if expanded:
-            paths.append(expanded)
-    return paths
-
-
-def _segment_paths(segment: list[str]) -> list[str]:
-    paths: list[str] = []
-    for token in segment:
-        paths.extend(_expanded_token_paths(token))
-    return paths
 
 
 def _expand_home(token: str) -> str:
