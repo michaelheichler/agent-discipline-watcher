@@ -117,7 +117,7 @@ class ResolveOutcomeTests(unittest.TestCase):
             "clean_code": False,
             "exempt_paths": ["a.py"],
         }
-        # Concatenated because the literal marker text in source trips the scanner on this file.
+        # Split because the whole marker would trip the scanner.
         marker = "craftsman" + "-ignore"
         text = f"# what the code does here\nx = 1  # {marker}: PY002\n"
         findings = scanner.scan_all("a.py", text, defeat)
@@ -365,6 +365,51 @@ class SchemaDefaultsTests(unittest.TestCase):
     def test_effective_config_merges_gate_overrides(self):
         cfg = config.effective_config({"gates": {"english": "observe"}})
         self.assertEqual(cfg["gates"]["english"], "observe")
+
+    def test_one_project_rule_gate_keeps_every_other_default_rule_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / config.CONFIG_NAME).write_text(
+                json.dumps({"rule_gates": {"ai_closer": "enforce"}}), encoding="utf-8",
+            )
+            cfg = config.effective_config(cwd=project)
+        expected = dict(config.DEFAULTS["rule_gates"], ai_closer="enforce")
+        self.assertEqual(cfg["rule_gates"], expected)
+
+    def test_injected_nested_maps_merge_over_project_and_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / config.CONFIG_NAME).write_text(
+                json.dumps({"gates": {"english": "observe"}, "exempt_families": {"a/*": ["english"]}}),
+                encoding="utf-8",
+            )
+            cfg = config.effective_config(
+                {"gates": {"punctuation": "off"}, "exempt_families": {"b/*": ["punctuation"]},
+                 "rule_gates": {"hedge_stack": "off"}},
+                cwd=project,
+            )
+        self.assertEqual(cfg["gates"], {"english": "observe", "punctuation": "off"})
+        self.assertEqual(cfg["exempt_families"], {"a/*": ["english"], "b/*": ["punctuation"]})
+        self.assertEqual(cfg["rule_gates"]["hedge_stack"], "off")
+        self.assertEqual(cfg["rule_gates"]["ai_closer"], "observe")
+        self.assertEqual(cfg["data_boundary"], {"enabled": False})
+
+    def test_three_item_list_precision_agrees_with_the_exemplar_manifest(self):
+        manifest = json.loads((Path(config.__file__).with_name("pattern_exemplars.json")).read_text(encoding="utf-8"))
+        recorded = manifest["rules"]["three_item_list"]["judge_precision"]
+        self.assertEqual(config.RULE_CALIBRATIONS["three_item_list"].precision, recorded)
+        self.assertIn("unmeasured precision", config.calibration_detail("three_item_list"))
+
+    def test_caller_data_boundary_replaces_the_project_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / config.CONFIG_NAME).write_text(
+                json.dumps({"data_boundary": {"enabled": True, "mode": "strict"}}), encoding="utf-8",
+            )
+            self.assertEqual(
+                config.effective_config(cwd=project)["data_boundary"], {"enabled": True, "mode": "strict"},
+            )
+            self.assertEqual(config.effective_config({"data_boundary": {}}, cwd=project)["data_boundary"], {})
 
 
 class ProductionImportPathTests(unittest.TestCase):

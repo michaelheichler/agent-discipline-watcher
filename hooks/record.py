@@ -11,7 +11,7 @@ from typing import cast
 
 from failure import _config_roots, normalize_payload, record_success
 from lib import blocker_state, journal, payloads, scan_input
-from lib.config import effective_config, effective_hook_config
+from lib.config import effective_config
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
@@ -26,7 +26,7 @@ from lib.reporting import (
 )
 from lib.scanner import scan_all
 
-UNDECIDABLE_KEY = "<record-error>"
+UNDECIDABLE_KEY = blocker_state.RECORD_ERROR_KEY
 UNDECIDABLE = (
     "agent-discipline-watcher could not evaluate this edit. Treat the turn as unscanned and rerun the check "
     "after repairing the gate config. Cause: "
@@ -61,35 +61,40 @@ def edited_paths(payload: object) -> list[str]:
     return list(payloads.edited_paths(payload))
 
 
-def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
-    stamp = now_iso()
-    for path in edits.paths:
-        append_row(
-            {
-                "ts": stamp,
-                "session_id": edits.payload["session_id"],
-                "hook": "record",
-                "event": "edit",
-                "family": "",
-                "rule": "",
-                "path": path,
-                "tool": edits.payload["tool_name"],
-                "tool_use_id": edits.payload["tool_use_id"],
-                "turn_id": turn_id,
-                "outcome": "",
-            },
-            edits.root,
+def _edit_row_template(edits: _EditJournal, turn_id: str) -> dict:
+    return {
+        "ts": now_iso(),
+        "session_id": edits.payload["session_id"],
+        "hook": "record",
+        "event": "edit",
+        "family": "",
+        "rule": "",
+        "path": "",
+        "tool": edits.payload["tool_name"],
+        "tool_use_id": edits.payload["tool_use_id"],
+        "turn_id": turn_id,
+        "outcome": "",
+    }
+
+
+def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
+    try:
+        journal.record_edit(
+            edits.payload["session_id"], turn_id,
+            edits.payload["tool_use_id"],
+            payloads.resolved_path(path, Path(edits.payload["cwd"] or ".")),
+            state_root=edits.state_root,
         )
+    except Exception as exc:
+        sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
+
+
+def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
+    template = _edit_row_template(edits, turn_id)
+    for path in edits.paths:
+        append_row({**template, "path": path}, edits.root)
         if edits.payload["session_id"]:
-            try:
-                journal.record_edit(
-                    edits.payload["session_id"], turn_id,
-                    edits.payload["tool_use_id"],
-                    payloads.resolved_path(path, Path(edits.payload["cwd"] or ".")),
-                    state_root=edits.state_root,
-                )
-            except Exception as exc:
-                sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
+            _journal_candidate(edits, path, turn_id)
 
 
 def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) -> list[dict]:
@@ -132,6 +137,27 @@ def _held_fallback(descriptor: int, path: Path) -> list[dict]:
     count, capped = result
     return scan_input.fallback_findings_from_count(path, count, capped)
 
+def _close_quietly(descriptor: int | None) -> None:
+    if descriptor is None:
+        return
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+def _scan_descriptor(descriptor: int, path: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
+    limit = min(
+        _MAX_OPEN_SCAN_BYTES,
+        max(0, scan_input.int_setting(cfg, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", _MAX_OPEN_SCAN_BYTES)),
+    )
+    raw = os.read(descriptor, max(scan_input.CONTENT_SAMPLE_BYTES, limit + 1))
+    if scan_input.is_binary_content(path, raw):
+        return [], []
+    if len(raw) > limit or b"\0" in raw[:8192]:
+        return _held_fallback(descriptor, path), []
+    text = raw.decode("utf-8", errors="replace")
+    return split_committed(path, scan_all(str(path), text, cfg), cfg)
+
 def _scan_open_file(
     path: Path, identity: tuple[int, int], cfg: dict
 ) -> tuple[list[dict], list[dict]] | None:
@@ -144,25 +170,11 @@ def _scan_open_file(
         metadata = os.fstat(descriptor)
         if (metadata.st_dev, metadata.st_ino) != identity or not stat.S_ISREG(metadata.st_mode):
             return None
-        limit = min(
-            _MAX_OPEN_SCAN_BYTES,
-            max(0, scan_input.int_setting(cfg, "max_scan_bytes", "ADW_MAX_SCAN_BYTES", _MAX_OPEN_SCAN_BYTES)),
-        )
-        raw = os.read(descriptor, max(scan_input.CONTENT_SAMPLE_BYTES, limit + 1))
-        if scan_input.is_binary_content(path, raw):
-            return [], []
-        if len(raw) > limit or b"\0" in raw[:8192]:
-            return _held_fallback(descriptor, path), []
-        text = raw.decode("utf-8", errors="replace")
-        return split_committed(path, scan_all(str(path), text, cfg), cfg)
+        return _scan_descriptor(descriptor, path, cfg)
     except (OSError, ValueError):
         return None
     finally:
-        if descriptor is not None:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+        _close_quietly(descriptor)
 
 
 def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
@@ -238,27 +250,26 @@ def _clear_blocker_state(
             blocker_state.clear_pending(scope, path)
 
 
+def _ledger_decisions(context: _RecordGateContext, owned: list[dict], turn_id: str, started: float) -> list:
+    projected = context.journal.payload
+    return record_findings(
+        session_id=projected["session_id"], hook="record",
+        event="PostToolUse", findings=owned, turn_id=turn_id,
+        tool_use_id=projected["tool_use_id"],
+        duration_ms=int((time.monotonic() - started) * 1000),
+        root=context.journal.root, config=context.config,
+    )
+
+
 def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
         projected = context.journal.payload
         if projected["session_id"]:
             _journal_edits(context.journal, turn_id)
-        owned, inherited = _scan_paths(
-            context.scan_paths, context.cwd, context.config
-        )
-        decisions = record_findings(
-            session_id=projected["session_id"], hook="record",
-            event="PostToolUse", findings=owned, turn_id=turn_id,
-            tool_use_id=projected["tool_use_id"],
-            duration_ms=int((time.monotonic() - started) * 1000),
-            root=context.journal.root, config=context.config,
-        )
-        report_cfg = {
-            **context.config,
-            "session_id": projected["session_id"],
-            "turn_id": turn_id,
-        }
+        owned, inherited = _scan_paths(context.scan_paths, context.cwd, context.config)
+        decisions = _ledger_decisions(context, owned, turn_id, started)
+        report_cfg = {**context.config, "session_id": projected["session_id"], "turn_id": turn_id}
         kind, reason = verdict_message(decisions, report_cfg)
         verdict = _RecordVerdict(VerdictKind(kind), reason)
         response = _response(verdict, inherited, report_cfg)
@@ -325,28 +336,13 @@ def _gate_context_for(
     )
 
 
-def _record_undecidable_blocker(
-    payload: dict, config: dict | None, reason: str
-) -> None:
-    session_id = payloads.session_id(payload)
-    if not session_id:
-        return
-    try:
-        root = effective_hook_config(config, payloads.cwd(payload) or None).get("state_root")
-        blocker_state.set_pending(
-            session_id, blocker_state.scope(payload), UNDECIDABLE_KEY, reason, root,
-        )
-    except Exception as state_exc:
-        sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
-
-
 def run(payload: dict, config: dict | None = None) -> dict:
     """Block on failure here, mirroring batch.py, because returning {} let a broken gate silently release the turn."""
     try:
         return _run_record(payload, config)
     except Exception as exc:
         reason = UNDECIDABLE + str(exc)
-        _record_undecidable_blocker(payload, config, reason)
+        blocker_state.hold_undecidable(payload, config, UNDECIDABLE_KEY, reason)
         return {"decision": "block", "reason": reason}
 
 

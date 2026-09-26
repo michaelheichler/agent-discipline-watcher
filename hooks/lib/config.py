@@ -135,7 +135,7 @@ class RuleCalibration(NamedTuple):
     corpus: str
     sample_size: int
     true_positive: int
-    precision: float
+    precision: float | None
     sample_kind: str
 
 
@@ -144,7 +144,7 @@ RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
     "formulaic_opener": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "formulaic_filler": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
-    "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, 1.0000, JUDGED_STATE),
+    "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, None, JUDGED_STATE),
 }
 
 
@@ -328,13 +328,29 @@ def _project_settings(cwd: str | os.PathLike[str]) -> dict:
         return {}
 
 
+NESTED_SETTING_MAPS = frozenset({"rule_gates", "gates", "kill_switches", "exempt_families", "data_boundary"})
+# Because a caller map must never inherit a project opt-in.
+CALLER_OWNED_MAPS = frozenset({"data_boundary"})
+
+
+def _merge_settings_keeping_nested_defaults(merged: dict, overrides: dict, nested: frozenset[str]) -> None:
+    for key, value in overrides.items():
+        base = merged.get(key)
+        if key in nested and operator.is_(type(base), dict) and operator.is_(type(value), dict):
+            merged[key] = {**base, **copy.deepcopy(value)}
+        else:
+            merged[key] = value
+
+
 def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> dict:
     """Deep-copied here so that a caller mutating the merged result never corrupts the shared DEFAULTS dict for every other caller."""
     merged = copy.deepcopy(DEFAULTS)
     if cwd is not None:
-        merged.update(_project_settings(cwd))
+        _merge_settings_keeping_nested_defaults(merged, _project_settings(cwd), NESTED_SETTING_MAPS)
     if config is not None:
-        merged.update(_safe_settings(config))
+        _merge_settings_keeping_nested_defaults(
+            merged, _safe_settings(config), NESTED_SETTING_MAPS - CALLER_OWNED_MAPS,
+        )
     return merged
 
 
@@ -409,9 +425,10 @@ def calibration_detail(rule: str) -> str | None:
     calibration = RULE_CALIBRATIONS.get(rule)
     if calibration is None:
         return None
+    precision = "unmeasured" if calibration.precision is None else f"{calibration.precision:.4f}"
     return (
         "Calibration: "
-        f"{calibration.precision:.4f} precision, {calibration.true_positive} true positives, "
+        f"{precision} precision, {calibration.true_positive} true positives, "
         f"{calibration.corpus}, n={calibration.sample_size}, {calibration.sample_kind}."
     )
 

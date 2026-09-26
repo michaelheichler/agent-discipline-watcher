@@ -18,10 +18,10 @@ from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
 from lib.shell_parse import SEPARATORS
 
-# Suffixed so that scanner._is_prose treats the message as prose and the english family reaches it.
+# Suffixed .md because prose rules key off the suffix.
 COMMIT_MESSAGE_PATH = "commit_message.md"
 
-# Because git reserves exit code 128 exclusively for "not a git repository", any other code means something else broke.
+# Named because git exits 128 when it finds no repository.
 NOT_A_REPOSITORY_EXIT_CODE = 128
 
 
@@ -176,7 +176,7 @@ def _head_text(repo: Path, path: str) -> str | None:
 
 def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
     """Scan the message the agent typed, because a commit's prose ships with the same authority as its code."""
-    # Blank line between parts, because git itself joins repeated -m values as paragraphs.
+    # Because git joins repeated -m values as paragraphs.
     text = "\n\n".join(_commit_messages(command))
     if not text:
         return []
@@ -454,7 +454,7 @@ def _resolve_cwd(cwd: Path, raw: str) -> Path:
     return path
 
 
-# Because a bad revision or a corrupt object also exits 128, only git's own no-repository message may stand for one.
+# Because a bad revision also exits 128.
 NOT_A_GIT_REPOSITORY_MESSAGE = "not a git repository"
 
 
@@ -478,10 +478,10 @@ def _repo_root(cwd: Path) -> Path | None:
 
 
 def _staged(cwd: Path) -> list[str]:
-    result = _run_git(["diff", "--cached", "--name-only", "--diff-filter=ACM"], cwd, "strict")
+    result = _run_git(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"], cwd, "strict")
     if result is None:
         return []
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [path for path in result.stdout.split("\0") if path]
 
 
 def _staged_bytes(repo: Path, path: str) -> bytes:

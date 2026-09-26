@@ -103,7 +103,7 @@ def _scope_reason(payload: dict, cfg: dict, agent_id: str) -> str:
     path_keys = set(paths)
     cleared = [key for key in pending if key in path_keys or key in stale]
     if paths:
-        cleared.append("<batch>")
+        cleared.extend(["<batch>", *blocker_state.RESCAN_RELEASED_KEYS])
     blocker_state.reconcile(session_id, agent_id, revision, cleared, paths, root)
     return _remaining_reason(session_id, agent_id, root)
 
