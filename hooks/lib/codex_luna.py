@@ -11,9 +11,12 @@ from .config import effective_hook_config
 from .document_review import data_boundary_enabled, document_work
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
+from .luna_feedback import pattern_feedback as _pattern_feedback
 from .hookio import stop_block, system_message
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from .pattern_judge import PatternCandidate, request_for as pattern_request
+from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
 from .luna_storage import LunaProviderFailure
 from .turn_retry import (
@@ -223,7 +226,7 @@ def _reject_overflow(overflow: list[dict[str, Any]]) -> None:
 def _unique_turn_rows(rows: list[dict[str, Any]], turn_id: str) -> list[dict[str, Any]]:
     unique: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
     for row in rows:
-        if row.get("turn_id") in {"", turn_id} and row.get("role") in {"comment", "document"}:
+        if row.get("turn_id") in {"", turn_id} and row.get("role") in {"comment", "document", "pattern"}:
             unique.setdefault(journal.candidate_key(row), row)
     if len(unique) > MAX_COMMENT_ROWS:
         raise LunaReviewFailure(
@@ -251,6 +254,24 @@ def _journal_rows(
     return _unique_turn_rows(rows, turn_id)
 
 
+def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:
+    """One request per rule, because each carries its examples."""
+    grouped: dict[str, list[PatternCandidate]] = {}
+    for row in rows:
+        if row.get("role") == "pattern":
+            line = row.get("line") if isinstance(row.get("line"), int) else 1
+            candidate = PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
+            grouped.setdefault(str(row.get("rule")), []).append(candidate)
+    if not grouped:
+        return []
+    exemplars, manifest = load_exemplars(), load_manifest()
+    return [
+        (pattern_request(rule_prompt(rule, exemplars, manifest), tuple(found)), found)
+        for rule, found in sorted(grouped.items())
+        if rule in manifest["rules"]
+    ]
+
+
 def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, list[Any]], ...] | None:
     work = document_work(rows, MAX_SOURCE_CHARS, DOCUMENT_LABEL)
     comments = [
@@ -264,6 +285,7 @@ def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, li
     ]
     if comments:
         work.append((comment_request(tuple(comments)), comments))
+    work.extend(_pattern_work(rows))
     if len(work) > MAX_REVIEW_REQUESTS:
         raise LunaReviewFailure(
             f"the current-turn Luna review needs {len(work)} requests, above the limit of {MAX_REVIEW_REQUESTS}; shorten documents or reduce edited files before retrying"
@@ -286,6 +308,8 @@ def _validate_row(row: dict[str, Any]) -> None:
         raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
     if role == "comment" and row.get("text_truncated") is True:
         raise LunaReviewFailure("the current-session journal truncated a comment candidate; shorten the comment before reviewing")
+    if role == "pattern" and not all(_filled(row, field) for field in ("path", "text", "rule")):
+        raise LunaReviewFailure("the current-session journal has an incomplete pattern candidate")
 
 
 def _review_work(
@@ -324,6 +348,14 @@ def _reserve_review(
     return None, _failure_block(reason, attempts + 1)
 
 
+def _feedback(request: JudgeRequest, result: JudgeResult, sources: list[Any]) -> str:
+    if request.review_kind is ReviewKind.COMMENT:
+        return _comment_feedback(result, tuple(sources))
+    if request.review_kind is ReviewKind.PATTERN:
+        return _pattern_feedback(result, tuple(sources), request.rule_action)
+    return _document_feedback(result, sources)
+
+
 def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> str:
     feedback_rows: list[str] = []
     confirmed: list[dict] = []
@@ -341,10 +373,7 @@ def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[An
         if not isinstance(result, JudgeResult):
             cause = LunaProviderFailure("Luna provider returned an invalid result", category="worker_protocol")
             raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
-        if request.review_kind is ReviewKind.COMMENT:
-            feedback = _comment_feedback(result, tuple(candidates_or_rows))
-        else:
-            feedback = _document_feedback(result, candidates_or_rows)
+        feedback = _feedback(request, result, candidates_or_rows)
         if feedback:
             feedback_rows.append(feedback)
             if request.review_kind is ReviewKind.DOCUMENT:

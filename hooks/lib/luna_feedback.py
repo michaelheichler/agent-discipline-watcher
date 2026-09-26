@@ -10,6 +10,7 @@ MAX_FEEDBACK_CHARS = 900
 MAX_LISTED_ROWS = 5
 COMMENT_LEAD = "ADW Luna comment review:"
 DOCUMENT_LEAD = "ADW Luna document review:"
+PATTERN_LEAD = "ADW Luna pattern review:"
 COMMENT_ACTION = "Rewrite the comment to say why the code exists, or delete it."
 DOCUMENT_ACTION = "Fix the named document issue."
 
@@ -31,23 +32,33 @@ def _listing(lead: str, rows: list[str]) -> str:
     return body[:max(MAX_FEEDBACK_CHARS - len(tail) - 1, 0)] + "\n" + tail
 
 
-def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
+def _item_rows(result: Any, found: tuple[Any, ...], verdict: str, action: str) -> list[str]:
     """Drop a row whose index misses because a stray index would name the wrong line."""
     rows = result.payload.get("items")
     if not isinstance(rows, list):
-        return ""
+        return []
     feedback = []
     for row in rows:
-        if not isinstance(row, dict) or row.get("verdict") != "describes_code":
+        if not isinstance(row, dict) or row.get("verdict") != verdict:
             continue
         index = row.get("index")
         if type(index) is not int or not 0 <= index < len(found):
             continue
         candidate = found[index]
-        reason = bounded(row.get("reason", "The comment restates the code."))
-        note = ReviewNote(f"{candidate.path}:{candidate.line}", bounded(candidate.text), reason, COMMENT_ACTION)
+        reason = bounded(row.get("reason", "The judge named no reason."))
+        note = ReviewNote(f"{candidate.path}:{candidate.line}", bounded(candidate.text), reason, action)
         feedback.append(review_row(note))
+    return feedback
+
+
+def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
+    feedback = _item_rows(result, found, "describes_code", COMMENT_ACTION)
     return _listing(COMMENT_LEAD, feedback) if feedback else ""
+
+
+def pattern_feedback(result: Any, found: tuple[Any, ...], action: str) -> str:
+    feedback = _item_rows(result, found, "violating", bounded(action))
+    return _listing(PATTERN_LEAD, feedback) if feedback else ""
 
 
 def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
