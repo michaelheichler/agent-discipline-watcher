@@ -93,7 +93,6 @@ def test_ordinary_git_and_shell_work_passes(command):
 
 @pytest.mark.parametrize("command", [
     "CLEANCODER_FUNC_BLOCK_LINES=500 python3 -m pytest -q",
-    "CLEANCODER_FILE_BLOCK_LINES=9000 pytest",
     "ADW_MAX_SCAN_BYTES=1 pytest",
     "ADW_SENTENCE_WORD_CAP=500 pytest",
     "ADW_LIST_ITEM_CAP=500 pytest",
@@ -101,6 +100,14 @@ def test_ordinary_git_and_shell_work_passes(command):
 ])
 def test_cap_and_escape_overrides_block(command):
     assert rules(command) == ["cap_override"]
+
+
+@pytest.mark.parametrize("command", [
+    "ADW_FILE_BLOCK_LINES=9000 pytest",
+    "CLEANCODER_FILE_BLOCK_LINES=9000 pytest",
+])
+def test_file_block_line_names_without_a_reader_do_not_block(command):
+    assert rules(command) == []
 
 
 @pytest.mark.parametrize("command", [

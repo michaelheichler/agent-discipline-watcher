@@ -38,8 +38,7 @@ INSTALLER_NAMES = frozenset({
     "install.sh", "merge-claude-settings.py", "merge-codex-config.py", "merge-codex-hooks.py",
 })
 CAP_VARS = frozenset({
-    "CLEANCODER_FUNC_BLOCK_LINES", "CLEANCODER_FILE_BLOCK_LINES",
-    "ADW_FUNC_BLOCK_LINES", "ADW_FILE_BLOCK_LINES",
+    "CLEANCODER_FUNC_BLOCK_LINES", "ADW_FUNC_BLOCK_LINES",
     "ADW_SENTENCE_WORD_CAP", "ADW_LIST_ITEM_CAP",
     "ADW_MAX_SCAN_BYTES", "ADW_ALLOW_PROTECTED_EDIT",
 })
