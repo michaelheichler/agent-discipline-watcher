@@ -8,9 +8,11 @@ from pathlib import Path
 
 try:
     from .embedding_client import ensure_loaded, release
+    from .embedding_lease import renew
     from .embedding_server import default_root, running_url, start_detached
 except ImportError:
     from embedding_client import ensure_loaded, release
+    from embedding_lease import renew
     from embedding_server import default_root, running_url, start_detached
 
 ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
@@ -53,6 +55,17 @@ def open_turn(session_id: str, root: str | None) -> str | None:
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: embedding startup failed: {exc}\n")
         return None
+
+
+def renew_turn(session_id: str, root: str | None) -> bool:
+    """Public for record.py, because a turn past the TTL loses the model."""
+    if not session_id:
+        return False
+    try:
+        return renew(session_id, time.time(), root)
+    except Exception as exc:
+        sys.stderr.write(f"agent-discipline-watcher: embedding renewal failed: {exc}\n")
+        return False
 
 
 def close_turn(session_id: str, root: str | None) -> bool:

@@ -80,3 +80,26 @@ def test_registered_roots_are_deduplicated_and_swept_when_idle(tmp_path) -> None
     assert embedding_lease.has_live_leases(server, 1001.0)
     assert not embedding_lease.has_live_leases(server, 1000.0 + embedding_lease.LEASE_TTL_SECONDS + 1)
     assert not list((server / embedding_lease.ROOTS_DIRECTORY).iterdir())
+
+
+def test_renewal_extends_a_lease_past_its_first_ttl(tmp_path: Path) -> None:
+    embedding_lease.acquire("long", 1000.0, tmp_path, os.getpid())
+    later = 1000.0 + embedding_lease.LEASE_TTL_SECONDS
+
+    assert embedding_lease.renew("long", later, tmp_path) is True
+    assert embedding_lease.live_sessions(later + 10.0, tmp_path) == ("long",)
+
+
+def test_renewal_keeps_the_original_owner_pid(tmp_path: Path) -> None:
+    embedding_lease.acquire("owned", 1000.0, tmp_path, os.getpid())
+
+    embedding_lease.renew("owned", 1100.0, tmp_path)
+    row = json.loads((tmp_path / ("owned" + embedding_lease.LEASE_SUFFIX)).read_text(encoding="utf-8"))
+
+    assert row["pid"] == os.getpid()
+    assert row["renewed_at"] == 1100.0
+
+
+def test_renewal_never_creates_a_lease_the_turn_did_not_take(tmp_path: Path) -> None:
+    assert embedding_lease.renew("absent", 1000.0, tmp_path) is False
+    assert not list(tmp_path.glob("*" + embedding_lease.LEASE_SUFFIX))

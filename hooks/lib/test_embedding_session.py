@@ -1,5 +1,6 @@
 import os
 import socket
+import time
 
 import pytest
 
@@ -119,3 +120,19 @@ def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsy
 
     assert embedding_session.close_turn("alpha", str(tmp_path)) is False
     assert "embedding cleanup failed: cannot signal worker" in capsys.readouterr().err
+
+
+def test_renew_turn_keeps_a_long_turn_holding_the_model(tmp_path) -> None:
+    embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
+
+    assert embedding_session.renew_turn("alpha", str(tmp_path)) is True
+    assert embedding_lease.live_sessions(time.time(), tmp_path) == ("alpha",)
+
+
+def test_renew_turn_without_a_session_does_nothing(tmp_path) -> None:
+    assert embedding_session.renew_turn("", str(tmp_path)) is False
+
+
+def test_renew_turn_reports_a_failure_without_raising(tmp_path, capsys) -> None:
+    assert embedding_session.renew_turn("../escape", str(tmp_path)) is False
+    assert "embedding renewal failed" in capsys.readouterr().err
