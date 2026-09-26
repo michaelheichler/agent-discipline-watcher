@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,26 +23,29 @@ def _open_data_boundary(tmp_path: Path) -> None:
     (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
 
 
-class Provider:
-    def __init__(self) -> None:
-        self.calls: list[JudgeRequest] = []
+VERDICTS = {
+    ReviewKind.COMMENT: {"items": [{"index": 0, "verdict": "states_why", "reason": "Names a constraint."}]},
+    ReviewKind.PATTERN: {"items": [{"index": 0, "verdict": "violating", "reason": "Stock closer."}]},
+    ReviewKind.DOCUMENT: {"notes": []},
+}
 
-    def judge(self, request: JudgeRequest) -> JudgeResult:
-        self.calls.append(request)
-        verdict = {
-            ReviewKind.COMMENT: {"items": [{"index": 0, "verdict": "states_why", "reason": "Names a constraint."}]},
-            ReviewKind.PATTERN: {"items": [{"index": 0, "verdict": "violating", "reason": "Stock closer."}]},
-            ReviewKind.DOCUMENT: {"notes": []},
-        }[request.review_kind]
+
+def _provider() -> SimpleNamespace:
+    calls: list[JudgeRequest] = []
+
+    def judge(request: JudgeRequest) -> JudgeResult:
+        calls.append(request)
         return JudgeResult(
-            payload=verdict, provider="openai-codex", model="gpt-5.6-luna", effort="high",
+            payload=VERDICTS[request.review_kind], provider="openai-codex", model="gpt-5.6-luna", effort="high",
             rubric_version="adw-rubric-v1", usage={"total_tokens": 1},
         )
 
+    return SimpleNamespace(calls=calls, judge=judge)
 
-def _review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -> tuple[dict, Provider]:
+
+def _review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -> tuple[dict, SimpleNamespace]:
     monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
-    provider = Provider()
+    provider = _provider()
     response = stop.run(
         {"session_id": "patterns", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)},
         {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")},
