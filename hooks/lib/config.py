@@ -328,13 +328,25 @@ def _project_settings(cwd: str | os.PathLike[str]) -> dict:
         return {}
 
 
+NESTED_SETTING_MAPS = frozenset({"rule_gates", "gates", "kill_switches", "exempt_families", "data_boundary"})
+
+
+def _merge_settings_keeping_nested_defaults(merged: dict, overrides: dict) -> None:
+    for key, value in overrides.items():
+        base = merged.get(key)
+        if key in NESTED_SETTING_MAPS and operator.is_(type(base), dict) and operator.is_(type(value), dict):
+            merged[key] = {**base, **copy.deepcopy(value)}
+        else:
+            merged[key] = value
+
+
 def effective_config(config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> dict:
     """Deep-copied here so that a caller mutating the merged result never corrupts the shared DEFAULTS dict for every other caller."""
     merged = copy.deepcopy(DEFAULTS)
     if cwd is not None:
-        merged.update(_project_settings(cwd))
+        _merge_settings_keeping_nested_defaults(merged, _project_settings(cwd))
     if config is not None:
-        merged.update(_safe_settings(config))
+        _merge_settings_keeping_nested_defaults(merged, _safe_settings(config))
     return merged
 
 
