@@ -165,21 +165,15 @@ OMITTED_STRUCTURE_RULES: dict[str, str] = {}
 
 
 def _line_findings(path: str, line_number: int, line: str) -> list[FindingDict]:
-    return [
-        cast(
-            FindingDict,
-            _finding(
-                "english",
-                rule.name,
-                line_number,
-                rule.detail + " in " + path,
-                line,
-                rule.action,
-            ),
-        )
-        for rule in STRUCTURE_RULES
-        if rule.pattern.search(line)
-    ]
+    findings: list[FindingDict] = []
+    for rule in STRUCTURE_RULES:
+        found = rule.pattern.search(line)
+        if found:
+            findings.append(cast(FindingDict, _finding(
+                "english", rule.name, line_number, rule.detail + " in " + path,
+                line, rule.action, match=found.group(0),
+            )))
+    return findings
 
 
 def _scan_slop_structure(path: str, text: str) -> list[FindingDict]:

@@ -332,15 +332,25 @@ def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> 
     prose_part = _punctuation_prose_part(source_line.path, clean, prose)
     semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
     texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
-    rows = [
-        _finding(
-            "punctuation", rule, source_line.number,
-            detail + source_line.path, source_line.text, action,
-        )
-        for target, regexes, rule, detail, action in PUNCTUATION_RULES
-        if texts[target] and any(regex.search(texts[target]) for regex in regexes)
-    ]
+    rows = []
+    for target, regexes, rule, detail, action in PUNCTUATION_RULES:
+        found = _first_match(regexes, texts[target])
+        if found is not None:
+            rows.append(_finding(
+                "punctuation", rule, source_line.number,
+                detail + source_line.path, source_line.text, action, match=found,
+            ))
     return rows
+
+
+def _first_match(regexes: tuple[re.Pattern[str], ...], text: str) -> str | None:
+    if not text:
+        return None
+    for regex in regexes:
+        found = regex.search(text)
+        if found:
+            return found.group(0)
+    return None
 
 
 def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
@@ -349,7 +359,8 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
         return rows
     scan_line = _strip_quoted(_strip_inline_code(scan_line))
     for pattern, rule, action in ENGLISH_RULES:
-        if pattern.search(scan_line):
+        found = pattern.search(scan_line)
+        if found:
             rows.append(_finding(
                 "english",
                 rule,
@@ -357,6 +368,7 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
                 "Plain English rule in " + source_line.path,
                 source_line.text,
                 action,
+                match=found.group(0),
             ))
     return rows
 
