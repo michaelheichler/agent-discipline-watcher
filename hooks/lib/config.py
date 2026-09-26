@@ -135,7 +135,7 @@ class RuleCalibration(NamedTuple):
     corpus: str
     sample_size: int
     true_positive: int
-    precision: float
+    precision: float | None
     sample_kind: str
 
 
@@ -144,7 +144,7 @@ RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
     "formulaic_opener": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "formulaic_filler": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
-    "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, 1.0000, JUDGED_STATE),
+    "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, None, JUDGED_STATE),
 }
 
 
@@ -425,9 +425,10 @@ def calibration_detail(rule: str) -> str | None:
     calibration = RULE_CALIBRATIONS.get(rule)
     if calibration is None:
         return None
+    precision = "unmeasured" if calibration.precision is None else f"{calibration.precision:.4f}"
     return (
         "Calibration: "
-        f"{calibration.precision:.4f} precision, {calibration.true_positive} true positives, "
+        f"{precision} precision, {calibration.true_positive} true positives, "
         f"{calibration.corpus}, n={calibration.sample_size}, {calibration.sample_kind}."
     )
 

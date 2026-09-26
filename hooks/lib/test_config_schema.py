@@ -394,6 +394,12 @@ class SchemaDefaultsTests(unittest.TestCase):
         self.assertEqual(cfg["rule_gates"]["ai_closer"], "observe")
         self.assertEqual(cfg["data_boundary"], {"enabled": False})
 
+    def test_three_item_list_precision_agrees_with_the_exemplar_manifest(self):
+        manifest = json.loads((Path(config.__file__).with_name("pattern_exemplars.json")).read_text(encoding="utf-8"))
+        recorded = manifest["rules"]["three_item_list"]["judge_precision"]
+        self.assertEqual(config.RULE_CALIBRATIONS["three_item_list"].precision, recorded)
+        self.assertIn("unmeasured precision", config.calibration_detail("three_item_list"))
+
     def test_caller_data_boundary_replaces_the_project_opt_in(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
