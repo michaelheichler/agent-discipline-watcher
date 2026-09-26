@@ -72,7 +72,7 @@ def merged_watcher_hooks(skill_dir: str) -> dict:
 class PluginManifestTests(unittest.TestCase):
     def test_default_agent_models_match_generated_haiku_preset(self):
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        generated = claude_presets.generated_hooks("haiku")
+        generated = claude_presets.shipped_hooks()
         installed = {
             event: next(
                 entry["model"]
@@ -87,6 +87,18 @@ class PluginManifestTests(unittest.TestCase):
         }
 
         self.assertEqual(installed, expected)
+
+    def test_shipped_reviewers_are_rendered_from_the_haiku_preset(self) -> None:
+        """Rendered because a hand-kept copy drifted in matcher, timeout, and prompt."""
+        on_disk = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+        self.assertEqual(on_disk, claude_presets.render_manifest(on_disk))
+        shipped = claude_presets.shipped_hooks()
+        for event in ("PostToolUse", "Stop"):
+            agent_groups = [
+                group for group in on_disk["hooks"][event]
+                if any(entry.get("type") == "agent" for entry in group["hooks"])
+            ]
+            self.assertEqual(agent_groups, shipped[event])
 
     def test_session_end_releases_the_active_session_lease(self):
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
