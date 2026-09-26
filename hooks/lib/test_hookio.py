@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 from lib import hookio
 
@@ -137,6 +138,14 @@ def test_fail_closed_names_the_config_path_for_other_failures(tmp_path, monkeypa
     assert str(tmp_path.resolve() / ".agent-discipline.json") in reason
     assert "gate config" in reason
     assert reason.endswith("Cause: bad gate map")
+
+
+def test_contract_and_skill_do_not_claim_a_reply_scan() -> None:
+    skill = Path(__file__).resolve().parents[2] / "skills" / "agent-discipline-watcher" / "SKILL.md"
+    for text in (hookio.CONTRACT, skill.read_text(encoding="utf-8")):
+        lowered = " ".join(text.lower().split())
+        for claim in ("reply text", "final prose", "final reply"):
+            assert claim not in lowered
 
 
 def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:
