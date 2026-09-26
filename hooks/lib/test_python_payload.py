@@ -40,3 +40,37 @@ def test_known_read_only_python_is_accepted(payload: str) -> None:
 ])
 def test_unknown_or_write_capable_python_is_rejected(payload: str) -> None:
     assert not is_known_read_only_python(payload)
+
+
+@pytest.mark.parametrize("payload", [
+    "import json; d = json.load(open('x.json')); print(d.get('name'))",
+    "import json; d = json.load(open('x.json')); print(d.get('name', 'none'))",
+    "import json; d = json.loads('{}'); print(sorted(d.keys()))",
+    "import json; d = json.load(open('x.json')); print([k for k, v in d.items()])",
+    "import json; d = json.load(open('x.json')); print({v for v in d.values()})",
+    "import json; d = json.load(open('x.json')); print({k: v for k, v in d.items() if v})",
+    "import json; d = json.load(open('x.json')); print(d['hooks']['Stop'][0].get('command'))",
+    "print([n * 2 for n in range(3)])",
+    "import sys",
+    "import json, sys; print(json.load(sys.stdin).get('tool_name'))",
+    "import sys; print(sys.stdin.read())",
+])
+def test_json_reads_comprehensions_and_sys_are_accepted(payload: str) -> None:
+    assert is_known_read_only_python(payload)
+
+
+@pytest.mark.parametrize("payload", [
+    "import json; d = json.load(open('x.json')); d.update({})",
+    "import json; d = json.load(open('x.json')); d.clear()",
+    "import json; d = json.load(open('x.json')); d.pop('x')",
+    "import json; d = json.load(open('x.json')); d.get('x').write('y')",
+    "import json, os",
+    "import sys; sys.stdout.write('x')",
+    "import sys; sys.exit(1)",
+    "import sys; sys.modules",
+    "import sys as s",
+    "print([open('x', 'w') for n in range(3)])",
+    "print({k: open('x', 'w') for k in range(3)})",
+])
+def test_json_and_sys_stay_read_only(payload: str) -> None:
+    assert not is_known_read_only_python(payload)
