@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { hashlineEdits } from "./hashline";
 
 const MAX_RUNNER_INPUT_BYTES = 1_000_000;
 const MAX_RUNNER_OUTPUT_BYTES = 64 * 1024;
@@ -198,34 +199,8 @@ export function canonicalPath(rawPath: unknown, cwd?: string): string | undefine
 }
 
 export function hashlinePaths(patch: string): string[] {
-  if (typeof patch !== "string" || !patch) {
-    return [];
-  }
-  const paths = new Set<string>();
-  const bounded = clipUtf8(patch, MAX_RESULT_BYTES);
-  const add = (rawPath: string | undefined) => {
-    const path = rawPath?.trim().replace(/^["']|["']$/g, "");
-    if (path && paths.size < MAX_RESULT_PATHS) {
-      paths.add(path);
-    }
-  };
-  const headerRe = /^\[([^#\]]+)#[^\]]+\]/gm;
-  const moveRe = /^MV\s+(.+)$/gm;
-  for (const match of bounded.matchAll(headerRe)) {
-    add(match[1]);
-    if (paths.size >= MAX_RESULT_PATHS) {
-      break;
-    }
-  }
-  if (paths.size < MAX_RESULT_PATHS) {
-    for (const match of bounded.matchAll(moveRe)) {
-      add(match[1]);
-      if (paths.size >= MAX_RESULT_PATHS) {
-        break;
-      }
-    }
-  }
-  return [...paths];
+  const edits = hashlineEdits(clipUtf8(patch, MAX_RESULT_BYTES)) ?? [];
+  return edits.map(edit => edit.path);
 }
 
 function resultText(content?: Array<{ type: string; text?: string }>): string {

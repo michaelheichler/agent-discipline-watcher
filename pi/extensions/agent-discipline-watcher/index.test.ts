@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { decodeAdwPolicy, sanitizeDisplay, type AdwBridgeRunner } from "./adw-config";
 
+import { hashlineEdits } from "./hashline";
 import { createExtension } from "./index";
 import {
   canonicalPath,
@@ -249,6 +250,12 @@ describe("watcher helpers", () => {
   test("extracts hashline edit paths from patch headers", () => {
     const patch = "[src/a.ts#A1B2]\nPUT 1.=1:\n+ok\nMV lib/b.ts";
     expect(hashlinePaths(patch)).toEqual(["src/a.ts", "lib/b.ts"]);
+  });
+
+  test("hashline paths match the pre-gate parser on trailing text and order", () => {
+    const patch = "MV lib/b.ts\n[src/a.ts#A1B2] trailing\n+x\n[src/c.ts#C3D4]  \n+y\n";
+    expect(hashlinePaths(patch)).toEqual(["lib/b.ts", "src/c.ts"]);
+    expect(hashlinePaths(patch)).toEqual((hashlineEdits(patch) ?? []).map(edit => edit.path));
   });
 
   test("ignores unverified resolvedPath for post-tool scans", () => {
