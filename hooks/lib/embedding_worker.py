@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ MAX_BODY_BYTES = 1_048_576
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 NOT_FOUND = {"error": "not found"}
+NONCE_ENV = "ADW_EMBEDDING_NONCE"
 _LOCK = threading.Lock()
 
 
@@ -130,7 +132,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path != HEALTH_PATH:
             self._send(404, NOT_FOUND)
             return
-        self._send(200, {"status": "ok"})
+        self._send(200, {"status": "ok", "nonce": os.environ.get(NONCE_ENV, "")})
 
     def _embeddings(self) -> dict:
         """Parse and encode one bounded JSON request."""

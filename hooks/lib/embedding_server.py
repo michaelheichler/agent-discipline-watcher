@@ -6,6 +6,7 @@ import ipaddress
 import json
 import math
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -44,6 +45,8 @@ READY_POLL_SECONDS = 0.25
 READY_PROBE_TIMEOUT = 1.0
 STOP_GRACE_SECONDS = 10.0
 STOP_POLL_SECONDS = 0.1
+PS_TIMEOUT_SECONDS = 2.0
+NONCE_ENV = "ADW_EMBEDDING_NONCE"
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 WORKER_NAME = "embedding_worker.py"
@@ -80,6 +83,14 @@ class ServerRecord(NamedTuple):
     url: str
     platform: str
     started_at: float
+    process_start: str
+    nonce: str
+
+
+def _plain_text(value: object, *, required: bool) -> bool:
+    if not isinstance(value, str) or len(value) > MAX_PLATFORM_CHARS or (required and not value):
+        return False
+    return not any(ord(character) < 32 or ord(character) == 127 for character in value)
 
 
 def _valid_port(value: object) -> bool:
@@ -138,12 +149,9 @@ def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-ret
         return False
     if not _loopback_url(record.url, port=record.port, path=EMBEDDINGS_PATH):
         return False
-    if (
-        not isinstance(record.platform, str)
-        or not record.platform
-        or len(record.platform) > MAX_PLATFORM_CHARS
-        or any(ord(character) < 32 or ord(character) == 127 for character in record.platform)
-    ):
+    if not _plain_text(record.platform, required=True) or not _plain_text(record.process_start, required=True):
+        return False
+    if not _plain_text(record.nonce, required=False):
         return False
     if type(record.started_at) not in (int, float):  # pylint: disable=unidiomatic-typecheck
         return False
@@ -187,12 +195,9 @@ def read_record(root: Path) -> ServerRecord | None:
         return None
     if not isinstance(row, dict):
         return None
-    fields = {"pid", "port", "url", "platform", "started_at"}
-    if set(row) != fields:
+    if set(row) != set(ServerRecord._fields):
         return None
-    record = ServerRecord(
-        row["pid"], row["port"], row["url"], row["platform"], row["started_at"]
-    )
+    record = ServerRecord(**row)
     return record if _valid_record(record) else None
 
 
@@ -230,13 +235,43 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def _answers(url: str) -> bool:
-    """Probe only the worker's validated loopback health endpoint."""
+def process_start(pid: int) -> str | None:
+    """Paired with the pid, because the kernel reuses pids."""
+    try:
+        listed = subprocess.run(
+            ("ps", "-o", "lstart=", "-p", str(pid)), capture_output=True, text=True,
+            timeout=PS_TIMEOUT_SECONDS, env={**os.environ, "LC_ALL": "C"}, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return listed.stdout.strip() or None
+
+
+def _owned(record: ServerRecord) -> bool:
+    return process_alive(record.pid) and process_start(record.pid) == record.process_start
+
+
+def _echoes(raw: bytes, nonce: str) -> bool:
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return False
+    return isinstance(body, dict) and body.get("nonce") == nonce
+
+
+def _healthy(response, nonce: str) -> bool:
+    if response.status >= 500:
+        return False
+    return not nonce or _echoes(response.read(MAX_RECORD_BYTES), nonce)
+
+
+def _answers(url: str, nonce: str = "") -> bool:
+    """Nonce checked because another process may hold the port."""
     if not _loopback_url(url, path=HEALTH_PATH):
         return False
     try:
         with urllib.request.urlopen(url, timeout=READY_PROBE_TIMEOUT) as response:
-            return response.status < 500
+            return _healthy(response, nonce)
     except (urllib.error.URLError, OSError, ValueError):
         return False
 
@@ -249,15 +284,13 @@ def _always_wanted() -> bool:
     return True
 
 
-def _wait_ready(health: str, child: subprocess.Popen, deadline: float, wanted: Callable[[], bool] = _always_wanted) -> None:
+def _wait_ready(child: subprocess.Popen, record: ServerRecord, deadline: float, wanted: Callable[[], bool]) -> None:
     """Watches demand, because only the supervisor ends workers."""
-    if not _loopback_url(health, path=HEALTH_PATH):
-        child.terminate()
-        raise ValueError("embedding server health URL is not a loopback endpoint")
+    health = f"http://127.0.0.1:{record.port}{HEALTH_PATH}"
     while time.time() < deadline:
         if child.poll() is not None:
             raise ValueError(f"embedding server exited with {child.returncode} before answering {health}")
-        if _answers(health):
+        if _answers(health, record.nonce):
             return
         if not wanted():
             raise _Unwanted
@@ -303,20 +336,28 @@ def command(entry: ModelPlatform, root: Path, port: int) -> tuple[str, ...]:
     return _python_command(runtime, weights, port)
 
 
-def _spawn(arguments: tuple[str, ...], root: Path) -> subprocess.Popen:
+def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "") -> subprocess.Popen:
     """Starts its own session because the hook that spawns it exits within the second and must not drag the model down with it."""
+    environment = {**os.environ, NONCE_ENV: nonce}
     with (root / LOG_NAME).open("ab") as log:
-        return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+        return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True, env=environment)
+
+
+def _launch_nonce(entry: ModelPlatform) -> str:
+    """Empty for llama-server, because its /health cannot echo one."""
+    return "" if isinstance(entry.runtime, ArchiveRuntime) else secrets.token_hex(16)
 
 
 def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...]) -> tuple[subprocess.Popen, ServerRecord]:
     """Publish ownership before readiness so Stop can terminate a worker still loading its weights."""
-    child = _spawn(arguments, root)
-    if type(child.pid) is not int or child.pid <= 0:  # pylint: disable=unidiomatic-typecheck
+    nonce = _launch_nonce(entry)
+    child = _spawn(arguments, root, nonce)
+    started = process_start(child.pid) if type(child.pid) is int and child.pid > 0 else None  # pylint: disable=unidiomatic-typecheck
+    if started is None:
         child.terminate()
         raise ValueError("embedding server returned an invalid process id")
     record = ServerRecord(
-        child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time()
+        child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time(), started, nonce
     )
     try:
         _write_record(root, record)
@@ -338,9 +379,8 @@ def _discard_unready(child: subprocess.Popen, record: ServerRecord, root: Path, 
 
 
 def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False, wanted: Callable[[], bool] = _always_wanted) -> None:
-    health = f"http://127.0.0.1:{record.port}{HEALTH_PATH}"
     try:
-        _wait_ready(health, child, time.time() + READY_TIMEOUT_SECONDS, wanted)
+        _wait_ready(child, record, time.time() + READY_TIMEOUT_SECONDS, wanted)
     except _Unwanted:
         _discard_unready(child, record, root, locked)
     except Exception:
@@ -376,7 +416,7 @@ def _terminate(pid: int) -> bool:
 
 def _stop(root: Path) -> bool:
     record = read_record(root)
-    stopped = _terminate(record.pid) if record is not None else False
+    stopped = _terminate(record.pid) if record is not None and _owned(record) else False
     discard_record(root)
     return stopped
 
@@ -389,7 +429,7 @@ def stop(root: Path) -> bool:
 
 def running_url(root: Path) -> str | None:
     record = read_record(root)
-    if record is None or not process_alive(record.pid):
+    if record is None or not _owned(record):
         return None
     return record.url
 

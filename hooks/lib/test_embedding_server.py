@@ -15,16 +15,19 @@ from lib import embedding_client, embedding_lease, embedding_server, embedding_s
 from lib.model_artifacts import ModelPlatform, PythonRuntime
 
 STUB = """
+import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        body = json.dumps({"status": "ok", "nonce": os.environ.get("ADW_EMBEDDING_NONCE", "")}).encode()
         self.send_response(200)
-        self.send_header("Content-Length", "2")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(b"ok")
+        self.wfile.write(body)
 
     def log_message(self, template, *args):
         return
@@ -264,8 +267,8 @@ def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monke
     spawned = []
     original_spawn = embedding_server._spawn
 
-    def spawn(arguments, root):
-        child = original_spawn(arguments, root)
+    def spawn(arguments, root, nonce) -> subprocess.Popen:
+        child = original_spawn(arguments, root, nonce)
         spawned.append(child)
         return child
 
@@ -282,12 +285,45 @@ def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monke
     assert embedding_server.read_record(tmp_path) is None
 
 
+def _own_record(process_start: str | None = None) -> embedding_server.ServerRecord:
+    started = process_start or embedding_server.process_start(os.getpid())
+    return embedding_server.ServerRecord(
+        os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0, started, "nonce"
+    )
+
+
 def test_the_record_survives_a_round_trip_through_disk(tmp_path) -> None:
-    record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
+    record = _own_record()
     embedding_server._write_record(tmp_path, record)
 
     assert embedding_server.read_record(tmp_path) == record
     assert embedding_server.running_url(tmp_path) == record.url
+
+
+def test_a_reused_pid_is_never_signalled_or_contacted(tmp_path, monkeypatch) -> None:
+    embedding_server._write_record(tmp_path, _own_record("Thu Jan  1 00:00:00 1970"))
+    real_kill = os.kill
+
+    def only_probe(pid: int, sent: int) -> None:
+        if sent != 0:
+            pytest.fail("signalled a foreign process")
+        real_kill(pid, sent)
+
+    monkeypatch.setattr(os, "kill", only_probe)
+
+    assert embedding_server.running_url(tmp_path) is None
+    assert embedding_server.stop(tmp_path) is False
+    assert embedding_server.read_record(tmp_path) is None
+
+
+def test_a_listener_without_the_launch_nonce_is_not_ready(stub, tmp_path, monkeypatch) -> None:
+    stub.write_text(STUB.replace('os.environ.get("ADW_EMBEDDING_NONCE", "")', '"foreign"'), encoding="utf-8")
+    monkeypatch.setattr(embedding_server, "READY_TIMEOUT_SECONDS", 1.0)
+
+    with pytest.raises(ValueError):
+        embedding_server.start(ENTRY, tmp_path)
+
+    assert embedding_server.read_record(tmp_path) is None
 
 
 def test_a_missing_record_reads_as_absent(tmp_path) -> None:
@@ -297,7 +333,7 @@ def test_a_missing_record_reads_as_absent(tmp_path) -> None:
 
 
 def test_a_failed_signal_preserves_the_record_for_a_later_cleanup(tmp_path, monkeypatch) -> None:
-    record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
+    record = _own_record()
     embedding_server._write_record(tmp_path, record)
     monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: True)
 
@@ -328,6 +364,8 @@ def test_a_malformed_record_is_ignored_before_kill_or_network(
         "url": url,
         "platform": "stub",
         "started_at": 5.0,
+        "process_start": "Thu Jan  1 00:00:00 1970",
+        "nonce": "nonce",
     }
     embedding_server.record_path(tmp_path).write_text(json.dumps(row), encoding="utf-8")
     monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: pytest.fail("probed malformed pid"))
