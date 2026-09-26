@@ -394,6 +394,17 @@ class SchemaDefaultsTests(unittest.TestCase):
         self.assertEqual(cfg["rule_gates"]["ai_closer"], "observe")
         self.assertEqual(cfg["data_boundary"], {"enabled": False})
 
+    def test_caller_data_boundary_replaces_the_project_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            (project / config.CONFIG_NAME).write_text(
+                json.dumps({"data_boundary": {"enabled": True, "mode": "strict"}}), encoding="utf-8",
+            )
+            self.assertEqual(
+                config.effective_config(cwd=project)["data_boundary"], {"enabled": True, "mode": "strict"},
+            )
+            self.assertEqual(config.effective_config({"data_boundary": {}}, cwd=project)["data_boundary"], {})
+
 
 class ProductionImportPathTests(unittest.TestCase):
     """Exercised separately here because hook entry scripts import this module as lib.config, so a bug limited to that import path would still pass every test that imports config directly."""
