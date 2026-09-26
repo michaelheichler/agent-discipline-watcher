@@ -325,15 +325,13 @@ def _python_command(interpreter: Path, weights: Path, port: int) -> tuple[str, .
     return (str(interpreter), str(Path(__file__).parent / WORKER_NAME), str(weights), str(port))
 
 
-def command(entry: ModelPlatform, root: Path, port: int) -> tuple[str, ...]:
-    """Resolve artifacts only after accepting a valid loopback listen port."""
-    if not _valid_port(port):
-        raise ValueError("port must be between 1 and 65535")
+def provision(entry: ModelPlatform, root: Path) -> Callable[[int], tuple[str, ...]]:
+    """Port left open, because a download can outlast a free port."""
     weights = ensure_weights(entry, root)
     runtime = ensure_runtime(entry, root)
     if isinstance(entry.runtime, ArchiveRuntime):
-        return _archive_command(runtime, weights, entry, port)
-    return _python_command(runtime, weights, port)
+        return partial(_archive_command, runtime, weights, entry)
+    return partial(_python_command, runtime, weights)
 
 
 def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "") -> subprocess.Popen:
@@ -391,8 +389,9 @@ def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked:
 def start(entry: ModelPlatform, root: Path) -> ServerRecord:
     """Start a worker and clean up both process and record on any readiness failure."""
     root.mkdir(parents=True, exist_ok=True)
+    arguments = provision(entry, root)
     port = _free_port()
-    child, record = _launch(entry, root, port, command(entry, root, port))
+    child, record = _launch(entry, root, port, arguments(port))
     _ready(child, record, root, locked=True)
     return record
 
@@ -453,12 +452,12 @@ def start_detached(root: Path) -> None:
 
 def _start_leased(entry: ModelPlatform, root: Path) -> None:
     """Provision outside the lifecycle lock, then recheck demand before launching a model after a slow download."""
-    port = _free_port()
-    arguments = command(entry, root, port)
+    arguments = provision(entry, root)
     with exclusive(root / LOCK_NAME):
         if not has_live_leases(root, time.time()) or running_url(root) is not None:
             return
-        child, record = _launch(entry, root, port, arguments)
+        port = _free_port()
+        child, record = _launch(entry, root, port, arguments(port))
     _ready(child, record, root, wanted=partial(_demanded, root))
 
 
