@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import session_state
+from . import payloads, session_state
 
 KEY = "unresolved_blockers"
 REPORT_LINE_RE = re.compile(r"\nFull report: .*?(?=\n|$)")
+RECORD_ERROR_KEY = "<record-error>"
+BATCH_ERROR_KEY = "<batch-error>"
+# Clean Stop rescan frees it, since it rereads the lost write.
+RESCAN_RELEASED_KEYS = frozenset({RECORD_ERROR_KEY})
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +132,26 @@ def touch_paths(scope: BlockerScope | str, *values: object) -> None:
         return {**bucket, "paths": existing}
 
     _update(scope, mutate)
+
+
+def _unscanned_paths(payload: dict) -> list[str]:
+    cwd = Path(payloads.cwd(payload) or ".")
+    return [str(payloads.resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]
+
+
+def hold_undecidable(payload: object, config: object, key: str, reason: str) -> None:
+    """Held because a failed gate left the write unscanned."""
+    fields = payloads.exact_string_dict(payload)
+    session_id = payloads.session_id(fields)
+    if not session_id:
+        return
+    root = payloads.exact_string_dict(config).get("state_root")
+    target = BlockerScope(session_id, scope(fields), root if isinstance(root, str) else None)
+    try:
+        set_pending(target, key, reason)
+        touch_paths(target, _unscanned_paths(fields))
+    except Exception as state_exc:
+        sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
 
 
 def details(session_id: str, agent_id: str, root=None) -> tuple[dict[str, str], list[str], int]:
