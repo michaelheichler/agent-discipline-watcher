@@ -75,12 +75,26 @@ def test_the_lease_root_follows_the_configured_state_root(tmp_path) -> None:
     assert embedding_session.lease_root_for({}) is None
 
 
-def test_an_absent_server_provisions_in_the_background(absent_server, tmp_path, monkeypatch) -> None:
+def test_an_absent_server_provisions_in_the_background(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
     asked = []
     monkeypatch.setattr(embedding_session, "start_detached", asked.append)
 
     assert embedding_session.open_turn("alpha", str(tmp_path)) is None
     assert asked == [embedding_session.default_root()]
+
+
+@pytest.mark.parametrize("variable", ["ADW_EMBEDDING_URL", "ADW_EMBEDDING_URLS"])
+def test_an_unreachable_user_server_never_provisions_a_local_model(tmp_path, monkeypatch, variable) -> None:
+    monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
+    monkeypatch.setenv(variable, f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
+    asked = []
+    monkeypatch.setattr(embedding_session, "start_detached", asked.append)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert asked == []
 
 
 def test_close_turn_releases_the_lease_the_turn_took(tmp_path) -> None:
