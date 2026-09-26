@@ -66,7 +66,7 @@ def test_the_stop_helper_serves_an_earlier_document_once(tmp_path: Path) -> None
 
     def read() -> str:
         result = subprocess.run(
-            [str(reader), "session"], env={**os.environ, "HOME": str(tmp_path)},
+            [str(reader), "--documents", "session"], env={**os.environ, "HOME": str(tmp_path)},
             capture_output=True, text=True, check=True,
         )
         return result.stdout

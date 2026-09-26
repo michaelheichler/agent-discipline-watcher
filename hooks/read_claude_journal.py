@@ -34,6 +34,7 @@ def _rule_entries(rows: list[dict]) -> list[dict]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="read_claude_journal")
     parser.add_argument(claude_presets.SUPERSEDED_FLAG, dest="superseded", action="store_true")
+    parser.add_argument(claude_presets.DOCUMENTS_FLAG, dest="documents", action="store_true")
     parser.add_argument("session_id", nargs="?")
     args = parser.parse_args(argv)
     if args.superseded:
@@ -43,9 +44,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.session_id:
         parser.error("a session id is required")
     try:
-        rows = read_for_stop(args.session_id)
+        stored = read_for_stop(args.session_id)
     except ValueError as exc:
         parser.error(str(exc))
+    rows = [row for row in stored if args.documents or row.get("role") != "document"]
     served = rows + _rule_entries(rows)
     sys.stdout.write(json.dumps(served, ensure_ascii=True, separators=(",", ":")) + "\n")
     mark_reviewed(args.session_id, rows)

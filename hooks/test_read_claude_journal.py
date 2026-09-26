@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
 import read_claude_journal
-from lib import pattern_semantic
+from lib import claude_presets, pattern_semantic
 
 PATTERN = {
     "role": "pattern", "path": "/work/notes.md", "content_hash": "abc", "rule": "ai_closer",
@@ -62,10 +65,22 @@ def test_a_rule_without_a_rubric_is_served_without_examples(monkeypatch, capsys,
     assert served == [[unknown]]
 
 
-def test_document_rows_pass_through_unchanged(monkeypatch, capsys, served) -> None:
+def test_document_rows_arrive_only_when_asked_for(monkeypatch, capsys, served) -> None:
     monkeypatch.setattr(read_claude_journal, "read_for_stop", lambda _session: [DOCUMENT])
 
     read_claude_journal.main(["session"])
+    read_claude_journal.main([claude_presets.DOCUMENTS_FLAG, "session"])
 
-    assert _output(capsys) == [DOCUMENT]
-    assert served == [[DOCUMENT]]
+    lines = capsys.readouterr().out.splitlines()
+    assert [json.loads(line) for line in lines] == [[], [DOCUMENT]]
+    assert served == [[], [DOCUMENT]]
+
+
+def test_the_shell_helper_passes_the_documents_flag_through(tmp_path) -> None:
+    reader = Path(read_claude_journal.__file__).with_name("read_claude_journal.sh")
+    result = subprocess.run(
+        [str(reader), claude_presets.DOCUMENTS_FLAG, "session"], env={**os.environ, "HOME": str(tmp_path)},
+        capture_output=True, text=True, check=True,
+    )
+
+    assert result.stdout.strip() == "[]"

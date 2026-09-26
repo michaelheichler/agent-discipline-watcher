@@ -539,7 +539,7 @@ def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_pat
     journal.record_edit("session", "turn", "tool", document, state_root=state_root)
     reader = Path(__file__).parents[1] / "read_claude_journal.sh"
     result = subprocess.run(
-        [str(reader), "session"], env={**os.environ, "HOME": str(tmp_path)},
+        [str(reader), "--documents", "session"], env={**os.environ, "HOME": str(tmp_path)},
         capture_output=True, text=True, check=False,
     )
 

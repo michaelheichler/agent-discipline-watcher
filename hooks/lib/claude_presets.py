@@ -7,6 +7,11 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+try:
+    from .judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+except ImportError:
+    from judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
 CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
@@ -21,6 +26,7 @@ JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journ
 SHIPPED_READER_PATH = "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/read_claude_journal.sh"
 SHIPPED_PRESET = "haiku"
 SUPERSEDED_FLAG = "--superseded"
+DOCUMENTS_FLAG = "--documents"
 HANDLER_TIMEOUT = 120
 STRUCTURED_OUTPUT_CONTRACT = (
     "OUTPUT CONTRACT. Use the native StructuredOutput tool exactly once at the end of the review. "
@@ -94,22 +100,39 @@ def comment_prompt(preset: str) -> str:
     )
 
 
+def _reader_steps(preset: str) -> list[str]:
+    """Documents only on mixed, because a whole file costs the most."""
+    if preset != "mixed":
+        return [
+            "Run this exact helper with the session_id from the hook input as its only argument: "
+            + _reader_path(preset),
+        ]
+    return [
+        f"Run this exact helper with {DOCUMENTS_FLAG} and then the session_id from the hook input as its two "
+        "arguments: " + _reader_path(preset),
+        f"Judge each document row as one whole document. {DOCUMENT_RUBRIC}",
+    ]
+
+
 def stop_prompt(preset: str) -> str:
     selected = validate_preset(preset)
     steps = [
         "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
         "successful StructuredOutput shape.",
         *_yield_steps(selected),
-        "Run this exact helper with the session_id from the hook input as its only argument: "
-        + _reader_path(selected),
-        "Batch all prose and document candidates the helper returns into one judgement rather than one call each.",
+        *_reader_steps(selected),
+        "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
+        "asks for and four violating and four clean examples. Decide whether the row text is violating or "
+        f"clean for that rule alone. {PATTERN_RUBRIC}",
+        "Batch all rows the helper returns into one judgement rather than one call each.",
+        "When any row fails, name its path, line, and rule in the reason.",
         "Choose one output shape below.",
     ]
     return (
         f"{MANAGED_MARKER}\n"
-        "Review one finished turn for reader-facing English across every candidate it produced.\n\n"
-        "SCOPE. Read only what the journal helper names. Never open a state file directly, never read a path "
-        "the helper output does not list, never edit anything.\n\n"
+        "Review one finished turn for reader-facing English across every row the journal helper prints.\n\n"
+        "SCOPE. Judge only the rows the journal helper prints. Never open a file, never open a state file, "
+        "never edit anything.\n\n"
         "STEPS, in order.\n" + _numbered(steps) + "\n"
         + STRUCTURED_OUTPUT_CONTRACT + "\n"
         "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. When the helper "

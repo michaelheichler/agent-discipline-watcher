@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from lib import claude_presets
+from lib.judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
 
 
 def test_the_roster_is_exactly_the_four_the_user_chose() -> None:
@@ -120,3 +121,39 @@ def test_every_shipped_reviewer_checks_for_a_superseding_preset_first() -> None:
         prompt = generated[event][0]["hooks"][0]["prompt"]
         assert claude_presets.SUPERSEDED_FLAG in prompt
         assert prompt.index(claude_presets.SUPERSEDED_FLAG) < prompt.index("OUTPUT CONTRACT")
+
+
+@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
+def test_every_stop_reviewer_judges_pattern_rows_against_their_examples(preset: str) -> None:
+    """Pinned, because a rubric-free judge drifted to taste."""
+    prompt = claude_presets.stop_prompt(preset)
+
+    assert PATTERN_RUBRIC in prompt
+    assert "rule entry" in prompt
+    assert "four violating and four clean" in prompt
+    assert prompt.index(PATTERN_RUBRIC) < prompt.index("OUTPUT CONTRACT")
+
+
+@pytest.mark.parametrize("preset", ("haiku", "luna-native"))
+def test_only_mixed_asks_for_document_rows(preset: str) -> None:
+    """Opt in, because a whole document costs the most tokens."""
+    prompt = claude_presets.stop_prompt(preset)
+
+    assert claude_presets.DOCUMENTS_FLAG not in prompt
+    assert DOCUMENT_RUBRIC not in prompt
+
+
+def test_mixed_judges_document_rows_as_whole_documents() -> None:
+    prompt = claude_presets.stop_prompt("mixed")
+
+    assert f"{claude_presets.DOCUMENTS_FLAG} " in prompt
+    assert DOCUMENT_RUBRIC in prompt
+
+
+@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
+def test_no_stop_reviewer_opens_a_file(preset: str) -> None:
+    """Rows carry the text, because a file read costs the whole file."""
+    prompt = claude_presets.stop_prompt(preset)
+
+    assert "Never open a file" in prompt
+    assert "Read the named path" not in prompt
