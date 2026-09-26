@@ -30,6 +30,13 @@ def test_pretool_blocks_dynamic_python_write_even_with_a_literal_target() -> Non
     assert "Write or Edit" in response["reason"]
 
 
+def test_python_denial_names_the_rejected_node_instead_of_startup_flags() -> None:
+    response = pre_tool.run(_payload("from pathlib import Path; Path('x.txt').write_text('body')"))
+
+    assert "Path('x.txt').write_text('body')\" on line 1" in response["reason"]
+    assert "-I -S" not in response["reason"]
+
+
 def test_pretool_blocks_unknown_python_code() -> None:
     response = pre_tool.run(_payload("run_user_supplied_code()"))
 

@@ -12,8 +12,8 @@ from lib.shell_parse import (
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
-from lib.python_payload import is_known_read_only_python
-from lib.python_shell import isolated_python, startup_finding, trusted_python_startup
+from lib.python_payload import python_rejection
+from lib.python_shell import isolated_python, rejection_finding, startup_finding, trusted_python_startup
 from lib.update_policy import _segment_contexts
 
 FindingFactory = Callable[[str], dict]
@@ -24,6 +24,13 @@ RecurseFn = Callable[[str], list[dict]]
 class InterpreterStage:
     producers: tuple[tuple[str, ...], ...]
     consumer: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class InterpreterRun:
+    name: str
+    payload: str | None
+    trusted_startup: bool
 
 
 WRITE_CAPABLE_TOKEN_RE = re.compile(
@@ -97,10 +104,19 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
     )
 
 
-def _payload_is_write_capable(interpreter: str, payload: str) -> bool:
-    if PYTHON_INTERPRETER_RE.fullmatch(interpreter):
-        return not is_known_read_only_python(payload, isolated=True)
+def _payload_is_write_capable(payload: str) -> bool:
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
+
+
+def _run_findings(run: InterpreterRun, make_finding: FindingFactory, rule: str) -> list[dict]:
+    if not PYTHON_INTERPRETER_RE.fullmatch(run.name):
+        return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.payload) else []
+    rejection = "" if run.payload is None else python_rejection(run.payload, isolated=True)
+    if rejection:
+        return [rejection_finding(make_finding, rule, rejection, run.trusted_startup)]
+    if not run.trusted_startup:
+        return [startup_finding(make_finding, rule)]
+    return [make_finding(rule)] if run.payload is None else []
 
 
 DECODE_FLAGS: dict[str, frozenset[str]] = {
@@ -183,29 +199,24 @@ def _trusted_startup(segment: list[str] | tuple[str, ...], contexts: dict[tuple[
     return bool(directories) and all(trusted_python_startup(segment, directory) for directory in directories)
 
 
-def inline_interpreter_findings(
-    command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None,
-) -> list[dict]:
+def _interpreter_run(name: str, payload: str | None, segment: list[str] | tuple[str, ...], contexts: dict[tuple[str, ...], list[str]]) -> InterpreterRun:
+    trusted = not PYTHON_INTERPRETER_RE.fullmatch(name) or _trusted_startup(segment, contexts)
+    return InterpreterRun(name, payload, trusted)
+
+
+def inline_interpreter_findings(command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     findings = []
     contexts = _execution_contexts(command, cwd)
     for segment in _segments(command):
         invocation = interpreter_invocation(segment)
         if invocation is None or invocation.interpreter in SHELL_C_INTERPRETERS:
             continue
-        if PYTHON_INTERPRETER_RE.fullmatch(invocation.interpreter) and not _trusted_startup(segment, contexts):
-            findings.append(startup_finding(make_finding, "inline_interpreter_write"))
-            continue
-        if (
-            invocation.payload is None
-            or _payload_is_write_capable(invocation.interpreter, invocation.payload)
-        ):
-            findings.append(make_finding("inline_interpreter_write"))
+        run = _interpreter_run(invocation.interpreter, invocation.payload, segment, contexts)
+        findings.extend(_run_findings(run, make_finding, "inline_interpreter_write"))
     return findings
 
 
-def interpreter_stdin_findings(
-    command: str, make_finding: FindingFactory, recurse: RecurseFn, *, cwd: str | os.PathLike[str] | None = None,
-) -> list[dict]:
+def interpreter_stdin_findings(command: str, make_finding: FindingFactory, recurse: RecurseFn, *, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     findings = []
     contexts = _execution_contexts(command, cwd)
     for event in heredoc_events(command):
@@ -228,11 +239,8 @@ def _heredoc_stdin_findings(
         if event.dynamic:
             return [make_finding("interpreter_heredoc_write")]
         return recurse(event.body)
-    if PYTHON_INTERPRETER_RE.fullmatch(name) and not _trusted_startup(event.consumer_segment, contexts):
-        return [startup_finding(make_finding, "interpreter_heredoc_write")]
-    if event.dynamic or _payload_is_write_capable(name, event.body):
-        return [make_finding("interpreter_heredoc_write")]
-    return []
+    run = _interpreter_run(name, None if event.dynamic else event.body, event.consumer_segment, contexts)
+    return _run_findings(run, make_finding, "interpreter_heredoc_write")
 
 
 def _pipe_interpreter_findings(
@@ -266,11 +274,9 @@ def _stage_interpreter_findings(
     if _bare_interpreter_name(list(stage.consumer)) in SHELL_C_INTERPRETERS:
         return recurse(joined)
     name = _bare_interpreter_name(list(stage.consumer))
-    if name is not None and PYTHON_INTERPRETER_RE.fullmatch(name) and not _trusted_startup(stage.consumer, contexts):
-        return [startup_finding(make_finding, "interpreter_heredoc_write")]
-    if name is not None and _payload_is_write_capable(name, joined):
-        return [make_finding("interpreter_heredoc_write")]
-    return []
+    if name is None:
+        return []
+    return _run_findings(_interpreter_run(name, joined, stage.consumer, contexts), make_finding, "interpreter_heredoc_write")
 
 
 def dynamic_heredoc_findings(command: str, make_finding: FindingFactory) -> list[dict]:

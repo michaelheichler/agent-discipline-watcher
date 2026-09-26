@@ -108,11 +108,28 @@ def text_method_result(base: str, method: str) -> Kind:
 
 
 def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: bool = False) -> bool:
+    return not python_rejection(source, cwd=cwd, isolated=isolated)
+
+
+def python_rejection(source: str, *, cwd: str | None = None, isolated: bool = False) -> str:
     try:
         tree = ast.parse(source, mode="exec")
     except (MemoryError, RecursionError, SyntaxError, TypeError, ValueError):
-        return False
-    return _ReadOnlyChecker().statements(tree.body) and (isolated or imports_are_trusted(cwd))
+        return "code that does not parse"
+    checker = _ReadOnlyChecker()
+    if not checker.statements(tree.body):
+        return describe_node(checker.rejected) if checker.rejected else "an unsupported construct"
+    if not (isolated or imports_are_trusted(cwd)):
+        return "a project module that shadows a standard library import"
+    return ""
+
+
+def describe_node(node: ast.AST) -> str:
+    try:
+        text = " ".join(ast.unparse(node).split())
+    except (RecursionError, ValueError):
+        text = ""
+    return f"{type(node).__name__} \"{text[:80]}\" on line {getattr(node, 'lineno', '?')}"
 
 
 class _ExpressionKinds:
@@ -122,6 +139,12 @@ class _ExpressionKinds:
         }
         self.bindings["open"] = "open"
         self.protected_names = set(self.bindings) | set(SAFE_IMPORTS) | {"Path"}
+        self.rejected: ast.AST | None = None
+
+    def noted(self, node: ast.AST, result: Kind | bool | None) -> Kind | bool | None:
+        if not result and self.rejected is None:
+            self.rejected = node
+        return result
 
     def bind_target(self, node: ast.expr, kind: Kind | None) -> bool:
         if not assignable_kind(kind):
@@ -153,8 +176,8 @@ class _ExpressionKinds:
         )
         for node_type, handler in handlers:
             if isinstance(node, node_type):
-                return handler(node)
-        return None
+                return self.noted(node, handler(node))
+        return self.noted(node, None)
 
     def constant(self, node: ast.Constant) -> str | None:
         if isinstance(node.value, (str, bytes)):
@@ -378,8 +401,8 @@ class _ReadOnlyChecker(_ExpressionKinds):
         )
         for node_type, handler in handlers:
             if isinstance(node, node_type):
-                return handler(node)
-        return False
+                return bool(self.noted(node, handler(node)))
+        return bool(self.noted(node, False))
 
     def expression_statement(self, node: ast.Expr) -> bool:
         return self.expression(node.value) is not None and not self.suspicious_bare_literal(node.value)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lib.python_payload import is_known_read_only_python
+from lib.python_payload import is_known_read_only_python, python_rejection
 
 
 @pytest.mark.parametrize("payload", [
@@ -74,3 +74,18 @@ def test_json_reads_comprehensions_and_sys_are_accepted(payload: str) -> None:
 ])
 def test_json_and_sys_stay_read_only(payload: str) -> None:
     assert not is_known_read_only_python(payload)
+
+
+@pytest.mark.parametrize(("payload", "named"), [
+    ("from pathlib import Path; Path('x.txt').write_text('body')", "Path('x.txt').write_text('body')\" on line 1"),
+    ("print(1)\nopen('x.txt', 'w').write('y')", "Call \"open('x.txt', 'w')\" on line 2"),
+    ("x = 1\nimport os", "Import \"import os\" on line 2"),
+    ("run_user_supplied_code()", "Call \"run_user_supplied_code()\" on line 1"),
+    ("print(secret)", "Name \"secret\" on line 1"),
+])
+def test_rejection_names_the_first_rejected_node(payload: str, named: str) -> None:
+    assert named in python_rejection(payload, isolated=True)
+
+
+def test_read_only_python_has_no_rejection() -> None:
+    assert python_rejection("print(1)", isolated=True) == ""
