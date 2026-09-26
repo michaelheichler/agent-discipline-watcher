@@ -221,6 +221,33 @@ class OpenAICodexSdk:
         return retry_on_overload(operation, max_attempts=max_attempts)
 
 
+def _normalized_timeout(timeout_seconds: object) -> float | None:
+    if timeout_seconds is None:
+        return None
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+        raise ValueError("timeout_seconds must be finite, positive, and bounded")
+    try:
+        normalized = float(timeout_seconds)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("timeout_seconds must be finite, positive, and bounded") from exc
+    if not math.isfinite(normalized) or not 0 < normalized <= MAX_TIMEOUT_SECONDS:
+        raise ValueError("timeout_seconds must be finite, positive, and bounded")
+    return normalized
+
+
+def _spawn_worker(worker_python: Path, launch: SdkLaunch) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [str(worker_python), "-m", "lib.luna_worker"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        env=_child_environment(Path("../home"), Path(__file__).parents[1]),
+        start_new_session=True,
+        pass_fds=(launch.call_fd, launch.codex_home_fd, launch.cwd_fd),
+    )
+
+
 class LunaJudge:
     def __init__(
         self,
@@ -238,18 +265,7 @@ class LunaJudge:
         self._runtime_root = Path(runtime_root) if runtime_root is not None else Path.home() / ".adw" / "runtime"
         self._cache_root = Path(cache_root) if cache_root is not None else Path.home() / ".adw" / "cache" / "judges"
         self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
-        if timeout_seconds is None:
-            self._timeout_seconds = None
-        else:
-            if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
-                raise ValueError("timeout_seconds must be finite, positive, and bounded")
-            try:
-                normalized_timeout = float(timeout_seconds)
-            except (OverflowError, ValueError) as exc:
-                raise ValueError("timeout_seconds must be finite, positive, and bounded") from exc
-            if not math.isfinite(normalized_timeout) or not 0 < normalized_timeout <= MAX_TIMEOUT_SECONDS:
-                raise ValueError("timeout_seconds must be finite, positive, and bounded")
-            self._timeout_seconds = normalized_timeout
+        self._timeout_seconds = _normalized_timeout(timeout_seconds)
 
     @property
     def timeout_seconds(self) -> float | None:
@@ -282,6 +298,12 @@ class LunaJudge:
             self._write_cache(storage, key, result)
             return result
 
+    def _worker_python(self) -> Path:
+        try:
+            return require_runtime() if self._default_storage else Path(sys.executable)
+        except RuntimeError as exc:
+            raise LunaProviderFailure(str(exc), category="configuration") from exc
+
     def _run_worker(self, request: JudgeRequest, launch: SdkLaunch) -> JudgeResult:
         if not _launch_is_pinned(launch):
             raise LunaProviderFailure(
@@ -289,40 +311,24 @@ class LunaJudge:
             )
         timeout_seconds = self._timeout_seconds or JUDGE_TIMEOUT_SECONDS
         deadline = time.monotonic() + timeout_seconds
-        try:
-            worker_python = require_runtime() if self._default_storage else Path(sys.executable)
-        except RuntimeError as exc:
-            raise LunaProviderFailure(str(exc), category="configuration") from exc
-        payload = request_payload(request, launch)
-        process: subprocess.Popen[str] | None = None
+        worker_python = self._worker_python()
+        payload = json.dumps(request_payload(request, launch))
+        process = _spawn_worker(worker_python, launch)
         successful = False
         try:
-            process = subprocess.Popen(
-                [str(worker_python), "-m", "lib.luna_worker"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                env=_child_environment(Path("../home"), Path(__file__).parents[1]),
-                start_new_session=True,
-                pass_fds=(launch.call_fd, launch.codex_home_fd, launch.cwd_fd),
-            )
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(process.args, timeout_seconds)
-            communication = cast(tuple[str | None, str | None], process.communicate(json.dumps(payload), timeout=remaining))
-            result = response_result(process.returncode, next(iter(communication)))
-            value = self._validate_worker_result(request, result)
+            communication = cast(tuple[str | None, str | None], process.communicate(payload, timeout=remaining))
+            value = self._validate_worker_result(request, response_result(process.returncode, next(iter(communication))))
             successful = True
             return value
         except subprocess.TimeoutExpired as exc:
             raise LunaProviderFailure("Luna judge timed out", category="timeout") from exc
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise LunaProviderFailure(
-                "Luna worker returned malformed output", category="worker_protocol",
-            ) from exc
+            raise LunaProviderFailure("Luna worker returned malformed output", category="worker_protocol") from exc
         finally:
-            if process is not None and not successful:
+            if not successful:
                 _terminate_process_group(process)
 
     @staticmethod
@@ -376,31 +382,27 @@ def run_sdk_request(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> 
     )
 
 
-def _run_sdk_once(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> JudgeResult:
-    session = sdk.open(launch)
-    try:
-        account = session.account()
-        if account is None or account.root_type != "chatgpt":
-            raise LunaProviderFailure(
-                "Luna judging requires a ChatGPT subscription session. Complete Codex ChatGPT browser login or device-code login, then retry.",
-                category="authentication",
-            )
-        _validate_luna(session.models(include_hidden=True))
-        thread = session.thread_start(SdkThreadStart(
-            model=LUNA_MODEL, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
-            approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
-            developer_instructions=DEVELOPER_INSTRUCTIONS,
-        ))
-        raw = thread.run(SdkTurn(
-            prompt=build_prompt(request), model=LUNA_MODEL, effort=LUNA_EFFORT,
-            sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
-            output_schema=output_schema(request),
-        ))
-    finally:
-        close = getattr(session, "close", None)
-        if callable(close):
-            close()
-    _reject_tool_items(raw.items)
+def _run_turn(session: SdkSession, request: JudgeRequest, launch: SdkLaunch) -> SdkRunResult:
+    account = session.account()
+    if account is None or account.root_type != "chatgpt":
+        raise LunaProviderFailure(
+            "Luna judging requires a ChatGPT subscription session. Complete Codex ChatGPT browser login or device-code login, then retry.",
+            category="authentication",
+        )
+    _validate_luna(session.models(include_hidden=True))
+    thread = session.thread_start(SdkThreadStart(
+        model=LUNA_MODEL, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
+        approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
+        developer_instructions=DEVELOPER_INSTRUCTIONS,
+    ))
+    return thread.run(SdkTurn(
+        prompt=build_prompt(request), model=LUNA_MODEL, effort=LUNA_EFFORT,
+        sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
+        output_schema=output_schema(request),
+    ))
+
+
+def _parsed_payload(request: JudgeRequest, raw: SdkRunResult) -> dict[str, Any]:
     try:
         if not raw.final_response or not raw.final_response.strip():
             raise ValueError("empty final response")
@@ -410,8 +412,20 @@ def _run_sdk_once(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> Ju
         raise LunaProviderFailure(
             f"Luna judge returned malformed structured output: {exc}", category="malformed",
         ) from exc
+    return payload
+
+
+def _run_sdk_once(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> JudgeResult:
+    session = sdk.open(launch)
+    try:
+        raw = _run_turn(session, request, launch)
+    finally:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+    _reject_tool_items(raw.items)
     return JudgeResult(
-        payload=payload, provider=PROVIDER_NAME, model=LUNA_MODEL, effort=LUNA_EFFORT,
+        payload=_parsed_payload(request, raw), provider=PROVIDER_NAME, model=LUNA_MODEL, effort=LUNA_EFFORT,
         rubric_version=request.rubric_version, usage=raw.usage,
     )
 
