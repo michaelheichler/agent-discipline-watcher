@@ -57,7 +57,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate('git commit -m "docs(x): add notes"')
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("notes.md:1 punctuation/banned_dash", result["reason"])
+        self.assertIn("notes.md:1 Dash character", result["reason"])
 
     def test_clean_staged_tree_is_allowed(self):
         stage(self.repo, "notes.md", CLEAN)
@@ -90,7 +90,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/prose_semicolon", result["reason"])
+        self.assertIn("commit_message.md:1 Semicolon in prose", result["reason"])
         self.assertNotIn("updatedInput", result["hookSpecificOutput"])
         self.assertEqual(pre_commit._commit_messages(command), ["we ship it; it works"])
 
@@ -100,7 +100,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/prose_semicolon", result["reason"])
+        self.assertIn("commit_message.md:1 Semicolon in prose", result["reason"])
         self.assertEqual(pre_commit._commit_messages(command), ["we can't; it works"])
 
     def test_list_ansi_c_commit_message_with_escaped_apostrophe_is_scanned(self):
@@ -109,7 +109,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/pronoun_apostrophe", result["reason"])
+        self.assertIn("commit_message.md:1 Apostrophe on a pronoun", result["reason"])
         self.assertEqual(pre_commit._commit_messages(command), ["your's"])
 
     def test_git_off_path_fails_closed_instead_of_allowing(self):
@@ -197,7 +197,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertNotIn("decision", response)
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertIn("banned_dash", response["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertIn("Dash character", response["hookSpecificOutput"]["permissionDecisionReason"])
 
 
 if __name__ == "__main__":

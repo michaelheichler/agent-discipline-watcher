@@ -4,9 +4,13 @@ import re
 from pathlib import Path
 
 try:
+    from . import catalog
     from .findings import Finding
 except ImportError:
+    import catalog
     from findings import Finding
+
+MAX_MATCH_BYTES = 80
 
 
 def safe_component(value: object, fallback: str) -> str:
@@ -72,12 +76,18 @@ def clip(value: object, limit: int) -> str:
     return encoded[:max(limit - 3, 0)].decode("utf-8", errors="ignore") + "..."
 
 
+def _one_line(value: object) -> str:
+    return safe_text(value).replace("\n", " ")
+
+
 def format_row(item: dict) -> str:
-    path = safe_text(item.get("path") or item.get("file") or "<pending>").replace("\n", " ")
-    status = safe_text(item.get("status")).replace("\n", " ") if item.get("status") else ""
+    """Show the catalog title and matched words, because a raw rule id tells the reader nothing to act on."""
+    path = _one_line(item.get("path") or item.get("file") or "<pending>")
+    status = _one_line(item.get("status")) if item.get("status") else ""
     prefix = f"[{status}] " if status else ""
-    family = safe_text(item.get("family")).replace("\n", " ")
-    rule = safe_text(item.get("rule")).replace("\n", " ")
-    line = safe_text(item.get("line")).replace("\n", " ")
-    action = safe_text(item.get("action")).replace("\n", " ")
-    return f"{prefix}{path}:{line} {family}/{rule}: {action}"
+    title = _one_line(catalog.rule_entry(str(item.get("rule") or "")).title)
+    match = item.get("match")
+    quoted = f' "{clip(_one_line(match), MAX_MATCH_BYTES)}"' if isinstance(match, str) and match.strip() else ""
+    line = _one_line(item.get("line"))
+    action = _one_line(item.get("action"))
+    return f"{prefix}{path}:{line} {title}{quoted}. {action}"

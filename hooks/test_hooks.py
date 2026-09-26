@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lib import protected
+from lib import catalog, protected
 from lib.config import CONFIG_NAME
 import pre_commit
 import pre_write
@@ -21,8 +21,7 @@ def _style_advice(response: dict) -> str:
 
 def _assert_style_row(response: dict, path: str | Path, line: int, rule: str) -> None:
     advice = _style_advice(response)
-    assert f"{path}:{line}" in advice
-    assert f"/{rule}:" in advice
+    assert f"{path}:{line} {catalog.rule_entry(rule).title}" in advice
 
 
 def test_pre_write_advises_a_forced_pending_write():
@@ -107,11 +106,11 @@ def test_pre_write_reminds_at_500_and_750_then_blocks_at_1000_lines():
     critical = response(750)
     blocked = response(1000)
     assert "decision" not in warning
-    assert "file_length_warning" in warning["hookSpecificOutput"]["additionalContext"]
+    assert catalog.rule_entry("file_length_warning").title in warning["hookSpecificOutput"]["additionalContext"]
     assert "decision" not in critical
-    assert "file_length_critical" in critical["hookSpecificOutput"]["additionalContext"]
+    assert catalog.rule_entry("file_length_critical").title in critical["hookSpecificOutput"]["additionalContext"]
     assert blocked["decision"] == "block"
-    assert "file_too_long" in blocked["reason"]
+    assert catalog.rule_entry("file_too_long").title in blocked["reason"]
 
 
 def test_pre_write_edit_blocks_self_grant_hidden_behind_a_mismatched_new_source(tmp_path):
@@ -125,7 +124,7 @@ def test_pre_write_edit_blocks_self_grant_hidden_behind_a_mismatched_new_source(
     }
     response = pre_write.run({"tool_input": tool_input}, _edit_config())
     assert response.get("decision") == "block"
-    assert "self_protection/config_seal" in response.get("reason", "")
+    assert "Config edit routes around a gate" in response.get("reason", "")
 
 
 def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
@@ -452,7 +451,7 @@ def test_run_sh_blocks_forced_posttooluse(tmp_path):
     assert result.returncode == 0
     response = json.loads(result.stdout)
     assert "decision" not in response
-    assert f"{target}:1 punctuation/banned_dash" in response["hookSpecificOutput"]["additionalContext"]
+    assert f"{target}:1 Dash character" in response["hookSpecificOutput"]["additionalContext"]
 
 
 def test_read_payload_parses_good_input():
@@ -525,7 +524,7 @@ def test_run_sh_routes_pretooluse_and_still_denies_a_security_finding():
     response = json.loads(result.stdout)
     assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "suppression_escape_hatch" in response["hookSpecificOutput"]["permissionDecisionReason"]
+    assert catalog.rule_entry("suppression_escape_hatch").title in response["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_run_sh_routes_pretooluse_non_commit_bash():

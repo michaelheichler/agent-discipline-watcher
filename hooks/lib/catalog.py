@@ -243,6 +243,29 @@ RULES: dict[str, Entry] = {
     ),
 }
 
+UNGATED_RULES: dict[str, Entry] = {
+    "banned_dash": Entry("Dash character", "Blocks em dash, en dash, and their look-alikes"),
+    "dash_break": Entry("Double hyphen as a dash", "Blocks a double hyphen used as a clause break"),
+    "spaced_hyphen": Entry("Spaced hyphen as a dash", "Blocks a hyphen with spaces standing in for a dash"),
+    "prose_semicolon": Entry("Semicolon in prose", "Blocks a semicolon joining two clauses"),
+    "prose_colon": Entry("Colon inside a sentence", "Blocks a colon in the middle of a prose sentence"),
+    "pronoun_apostrophe": Entry("Apostrophe on a pronoun", "Blocks an apostrophe on a possessive pronoun"),
+    "decade_apostrophe": Entry("Apostrophe on a decade", "Blocks a decade written as a possessive"),
+    "dead_metaphor": Entry("Worn-out metaphor", "Cuts a stock image that names nothing concrete"),
+    "filler": Entry("Filler phrase", "Cuts a phrase that adds words and no meaning"),
+    "throat_clearing": Entry("Throat clearing", "Cuts an opener that delays the point"),
+    "filler_opener": Entry("Stock opener", "Cuts an opening that sets a scene instead of stating the point"),
+    "ai_tell": Entry("Generated-text phrase", "Cuts a phrase typical of generated prose"),
+    "inflated_diction": Entry("Inflated word", "Cuts a grand word where a plain one works"),
+    "utilize": Entry("Long word for use", "Cuts utilize and its forms"),
+    "wordiness": Entry("Wordy phrase", "Cuts a long phrase with a short equivalent"),
+    "vague_quantity": Entry("Vague quantity", "Cuts a phrase that hides the real number"),
+    "expletive_there": Entry("There-is opening", "Cuts a there-is opening that hides the subject"),
+    "empty_intensifier": Entry("Empty intensifier", "Cuts a modifier that adds emphasis and no meaning"),
+    "function_too_long": Entry("Function too long", "Blocks a function over the configured line count"),
+    "hollow_test": Entry("Test without an assertion", "Blocks a test that cannot fail"),
+}
+
 LOCKED_RULES = frozenset(config.ALWAYS_BLOCKING_RULES)
 
 FAMILIES: dict[str, Entry] = {
@@ -311,7 +334,7 @@ def _derived(name: str) -> Entry:
 
 def rule_entry(name: str) -> Entry:
     """Derive a title because a rule added later must not break the screen."""
-    return RULES.get(name) or _derived(name)
+    return RULES.get(name) or UNGATED_RULES.get(name) or _derived(name)
 
 
 def family_entry(name: str) -> Entry:
