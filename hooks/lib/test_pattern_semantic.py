@@ -129,6 +129,39 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
     assert [(item.rule, item.blocking) for item in findings] == [("ai_closer", True)]
 
 
+@pytest.fixture(name="cache_root")
+def _cache_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(pattern_semantic, "exemplar_cache_root", lambda: tmp_path)
+    monkeypatch.setenv("ADW_EMBEDDING_URL", "http://127.0.0.1:1111/v1/embeddings")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [("ADW_EMBEDDING_MODEL", "another-model"), ("ADW_EMBEDDING_URL", "http://127.0.0.1:2222/v1/embeddings")],
+)
+def test_the_cache_key_changes_with_model_and_endpoint(cache_root, monkeypatch, variable, value) -> None:
+    before = pattern_semantic._cache_path(None)
+    monkeypatch.setenv(variable, value)
+
+    assert pattern_semantic._cache_path(None) != before
+
+
+def test_a_failed_cache_write_leaves_the_old_cache_whole(cache_root, monkeypatch) -> None:
+    path = pattern_semantic._cache_path(None)
+    path.write_text('[["old", [1.0]]]', encoding="utf-8")
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda texts, config=None: {text: (0.5,) for text in texts})
+
+    def interrupted(_source, _target) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pattern_semantic.os, "replace", interrupted)
+    with pytest.raises(OSError):
+        pattern_semantic.exemplar_vectors(EXEMPLARS)
+
+    assert path.read_text(encoding="utf-8") == '[["old", [1.0]]]'
+
+
 def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
     monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
