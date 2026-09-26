@@ -33,11 +33,17 @@ function fixture(complete: CompleteSimple, enabled = true, timeoutMs = 30_000) {
   } as unknown as OmpReviewContext;
   const pi = { on: (name: string, handler: Handler) => handlers.set(name, handler), registerCommand() {}, sendMessage() {} };
   createExtension(pi as never, () => ({}), undefined, createOmpReviewer({ complete, timeoutMs }));
+  const review = (target: string) =>
+    handlers.get("tool_result")!({ toolName: "write", input: { path: target }, content: [{ type: "text", text: "Saved" }] }, ctx);
   return {
-    ctx, path,
-    result: () => handlers.get("tool_result")!({ toolName: "write", input: { path }, content: [{ type: "text", text: "Saved" }] }, ctx),
+    ctx, path, review,
+    result: () => review(path),
     stop: () => handlers.get("session_stop")!({}, ctx),
   };
+}
+
+function notes(items: Array<{ quote: string; problem: string; fix: string }>): AssistantMessage {
+  return { content: [{ type: "text", text: JSON.stringify({ notes: items }) }], stopReason: "stop" } as AssistantMessage;
 }
 
 function answer(items: unknown[]): AssistantMessage {
@@ -144,4 +150,29 @@ test("source changed during review stays pending until the fresh source is judge
   expect(calls).toBe(1);
   expect(await harness.stop()).toBeUndefined();
   expect(calls).toBe(2);
+});
+
+test("an ambiguous document quote drops only that note and names the cause without a retry", async () => {
+  let calls = 0;
+  const harness = fixture(async () => {
+    calls += 1;
+    return notes([
+      { quote: "Repeated line.", problem: "Repeats itself.", fix: "Cut one copy." },
+      { quote: "Unique closing sentence.", problem: "Vague ending.", fix: "Name the next step." },
+    ]);
+  });
+  const document = join(harness.ctx.cwd, "guide.md");
+  writeFileSync(document, "Repeated line.\nRepeated line.\nUnique closing sentence.\n");
+  const text = JSON.stringify(await harness.review(document));
+  expect(calls).toBe(1);
+  expect(text).toContain("Vague ending.");
+  expect(text).toContain("quote is ambiguous");
+  expect(text).not.toContain("OMP review incomplete");
+});
+
+test("a rejected model output names the bridge cause instead of the login", async () => {
+  const harness = fixture(async () => answer([verdict(0)]));
+  const text = JSON.stringify(await harness.result());
+  expect(text).toContain("review must answer every candidate exactly once");
+  expect(text).not.toContain("OMP login");
 });
