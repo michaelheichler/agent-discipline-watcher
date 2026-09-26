@@ -276,6 +276,16 @@ describe("OMP tool adapter", () => {
     expect(mutationKind("mcp__files__read", { path: "a.md", operation: "read" })).toBe("other");
   });
 
+  test("reads MCP path keys the same way as hooks/lib/mcp_paths.py", () => {
+    const listed = adaptToolCall({
+      toolName: "mcp__files__write",
+      input: { destination: ["a.md"], source: " ", paths: ["b.md", " "], content: "body" },
+    });
+    expect(listed.targetPaths).toEqual([" ", "b.md"]);
+    const bare = adaptToolCall({ toolName: "mcp__files__write", input: { paths: "c.md", file_path: "d.md", content: "body" } });
+    expect(bare.targetPaths).toEqual(["d.md"]);
+  });
+
   test.each([
     "append_file", "create_file", "delete_file", "edit_file", "move_file", "patch_file",
     "remove_file", "rename_file", "update_file", "write_file", "writeFile", "batch_write_files",

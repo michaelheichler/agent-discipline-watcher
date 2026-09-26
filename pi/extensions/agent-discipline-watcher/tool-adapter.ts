@@ -112,16 +112,13 @@ function unique(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
-function stringList(value: unknown): string[] {
-  if (typeof value === "string") return value.trim() ? [value] : [];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function mcpTargetPaths(input: Record<string, unknown>): string[] {
-  const paths: string[] = [];
-  for (const key of MCP_PATH_KEYS) paths.push(...stringList(input[key]));
-  paths.push(...stringList(input.paths));
+  const paths = MCP_PATH_KEYS.map(key => input[key]).filter(nonEmptyString);
+  if (Array.isArray(input.paths)) paths.push(...input.paths.filter(nonEmptyString));
   return unique(paths);
 }
 
