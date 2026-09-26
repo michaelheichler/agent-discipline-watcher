@@ -23,6 +23,7 @@ MAX_STOP_TOTAL_CHARS = 48_000
 REVIEWED_KEY = "claude_candidate_journal_reviewed"
 MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
+MAX_PATTERN_ROWS_PER_FILE = 40
 MAX_FILE_BYTES = 128 * 1024
 MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
@@ -177,9 +178,15 @@ def _path_status(identity: str) -> str:
     return "available" if stat.S_ISREG(metadata.st_mode) else "missing"
 
 
+def _kind(row: dict[str, Any]) -> str:
+    """Rule included, because two rules may flag one sentence."""
+    role = str(row.get("role", ""))
+    return f"{role}:{row.get('rule', '')}" if role == "pattern" else role
+
+
 def candidate_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     return (
-        str(row.get("role", "")), _row_identity(row), str(row.get("content_hash", "")),
+        _kind(row), _row_identity(row), str(row.get("content_hash", "")),
         str(row.get("line", "")), str(row.get("text", "")),
     )
 
@@ -411,6 +418,43 @@ def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Pat
     fresh = _candidate_rows(target, digest, text, turn_id, tool_use_id)
     added: list[dict[str, Any]] = []
     session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, added), state_root)
+    return added
+
+
+def current_source(path: str | Path) -> tuple[str, str] | None:
+    """Shared with record_edit, because both hashes must agree."""
+    outcome = _read_content(_canonical_path(path))
+    return outcome.value if outcome.status == "available" else None
+
+
+def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{
+        "role": "pattern",
+        "rule": str(row["rule"]),
+        "path": str(target),
+        "path_identity": str(target),
+        "line": int(row["line"]),
+        "text": str(row["text"])[:MAX_CANDIDATE_CHARS],
+        "text_truncated": len(str(row["text"])) > MAX_CANDIDATE_CHARS,
+        "content_hash": digest,
+        "turn_id": turn_id,
+    } for row in rows[:MAX_PATTERN_ROWS_PER_FILE]]
+
+
+def record_patterns(
+    session_id: str, turn_id: str, path: str | Path, rows: list[dict[str, Any]], *,
+    content_hash: str, state_root: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Hash compared, because the vote may have read older text."""
+    if not isinstance(session_id, str) or not session_id:
+        return []
+    target = _canonical_path(path)
+    source = current_source(target)
+    if source is None or source[0] != content_hash:
+        return []
+    fresh = _pattern_rows(target, content_hash, turn_id, rows)
+    added: list[dict[str, Any]] = []
+    session_state.update_state(session_id, _refresher(str(target), content_hash, turn_id, fresh, added), state_root)
     return added
 
 
