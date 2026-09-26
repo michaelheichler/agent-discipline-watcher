@@ -19,6 +19,9 @@ MAX_ROWS = 120
 MAX_OVERFLOW_MARKERS = max(1, MAX_ROWS)
 MAX_STOP_ROWS = 24
 MAX_STOP_DOCUMENT_CHARS = 24_000
+MAX_STOP_TOTAL_CHARS = 48_000
+REVIEWED_KEY = "claude_candidate_journal_reviewed"
+MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
 MAX_FILE_BYTES = 128 * 1024
 MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
@@ -428,20 +431,61 @@ def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> l
     return list(_stored_overflow(state).values())
 
 
-def read_stop(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
-    """Bounded because an unbounded journal would blow the Stop payload."""
-    rows = read(session_id, state_root=state_root)
-    bounded: list[dict[str, Any]] = []
-    for row in rows:
+def _reviewed_key(row: dict[str, Any]) -> str:
+    return f"{row.get('path', '')}\n{row.get('content_hash', '')}"
+
+
+def _reviewed(state: dict) -> list[str]:
+    stored = state.get(REVIEWED_KEY)
+    return [key for key in stored if isinstance(key, str)] if isinstance(stored, list) else []
+
+
+def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "role": "document",
+        "path": str(row.get("path", ""))[:512],
+        "content_hash": str(row.get("content_hash", ""))[:64],
+        "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
+    }
+
+
+def _within_budget(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Whole rows only, because a cut document reads as a finished one."""
+    kept: list[dict[str, Any]] = []
+    total = 0
+    for row in rows[:MAX_STOP_ROWS]:
+        total += len(row["source_context"])
+        if total > MAX_STOP_TOTAL_CHARS and kept:
+            break
+        kept.append(row)
+    return kept
+
+
+def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Current turn or unreviewed, because a failed Stop must not drop work."""
+    state = session_state.read_state(session_id, state_root)
+    reviewed = set(_reviewed(state))
+    current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
+    latest: dict[str, tuple[dict[str, Any], bool]] = {}
+    for row in read(session_id, state_root=state_root):
         if row.get("role") != "document":
             continue
-        bounded.append({
-            "role": "document",
-            "path": str(row.get("path", ""))[:512],
-            "content_hash": str(row.get("content_hash", ""))[:64],
-            "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
-        })
-    return bounded[-MAX_STOP_ROWS:]
+        identity = _row_identity(row)
+        latest.pop(identity, None)
+        latest[identity] = (_stop_row(row), bool(current) and row.get("turn_id") == current)
+    due = [row for row, in_turn in latest.values() if in_turn or _reviewed_key(row) not in reviewed]
+    return _within_budget(due)
+
+
+def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:
+    """Keyed by digest, because an edited document needs a new review."""
+    keys = [_reviewed_key(row) for row in rows]
+
+    def update(state: dict) -> dict:
+        merged = [key for key in _reviewed(state) if key not in keys] + keys
+        return {**state, REVIEWED_KEY: merged[-MAX_REVIEWED_DIGESTS:]}
+
+    session_state.update_state(session_id, update, state_root)
 
 
 read_for_stop = read_stop

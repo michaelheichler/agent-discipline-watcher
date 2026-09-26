@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib import claude_native, claude_presets  # noqa: E402  # pylint: disable=wrong-import-position
-from lib.journal import read_for_stop  # noqa: E402  # pylint: disable=wrong-import-position
+from lib.journal import mark_reviewed, read_for_stop  # noqa: E402  # pylint: disable=wrong-import-position
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     sys.stdout.write(json.dumps(rows, ensure_ascii=True, separators=(",", ":")) + "\n")
+    mark_reviewed(args.session_id, rows)
     return 0
 
 
