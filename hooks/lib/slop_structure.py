@@ -66,7 +66,7 @@ _NARRATOR_DISTANCE_RE = re.compile(
 # Listed because an ed or en suffix test is blind to the irregular participles, which carried 10 of 13 real passives in a tracked sample.
 _IRREGULAR_PARTICIPLES = (
     "built", "sent", "kept", "lost", "told", "caught", "taught", "brought", "bought",
-    "thought", "sought", "set", "read", "held", "made", "put", "cut", "split", "shut",
+    "thought", "sought", "set", "held", "made", "put", "cut", "split", "shut",
     "hit", "let", "left", "found", "met", "paid", "said", "sold", "spent", "won",
     "hurt", "felt", "dealt", "meant", "heard", "led", "fed", "run", "understood",
 )

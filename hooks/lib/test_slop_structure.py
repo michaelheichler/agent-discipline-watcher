@@ -14,7 +14,6 @@ IRREGULAR_PASSIVES = (
     "We were told the queue had drained.",
     "The regression was caught by the smoke test.",
     "The cap is set to forty words.",
-    "The manifest is read at startup.",
     "The lease is held by another session.",
     "The cache was rebuilt after the deploy.",
 )
@@ -88,6 +87,14 @@ def test_passive_voice_catches_irregular_participles() -> None:
 
 def test_passive_voice_leaves_active_sentences_alone() -> None:
     assert all(not _PASSIVE_VOICE_RE.search(text) for text in ACTIVE_CONTROLS)
+
+
+def test_passive_voice_leaves_read_only_prose_alone() -> None:
+    prose = (
+        "Both caches are read-only in safe mode.",
+        "The mounted volumes are read only until the lock clears.",
+    )
+    assert all(not _PASSIVE_VOICE_RE.search(text) for text in prose)
 
 
 def test_omitted_categories_record_their_measurement_reason() -> None:
