@@ -68,7 +68,7 @@ test("does not clear a failed target when another target scans successfully", as
     }
     return {};
   });
-  await handlers.get("tool_result")!(
+  const failed = await handlers.get("tool_result")!(
     { toolName: "write", input: { path: "a.md", content: "saved" }, content: [{ type: "text", text: "saved" }] },
     ctx,
   );
@@ -77,9 +77,10 @@ test("does not clear a failed target when another target scans successfully", as
     ctx,
   );
 
+  expect(JSON.stringify(failed)).toContain("PostToolUse watcher could not verify the completed tool result: a is still unverified");
   expect(await handlers.get("session_stop")!({}, ctx)).toEqual({
     decision: "block",
-    reason: "agent-discipline-watcher could not verify every mutating tool result. Re-verify the touched file before stopping.",
+    reason: "PostToolUse watcher could not verify the completed tool result: a is still unverified",
   });
   expect(events.some(event => event.startsWith("Stop:"))).toBe(false);
 });

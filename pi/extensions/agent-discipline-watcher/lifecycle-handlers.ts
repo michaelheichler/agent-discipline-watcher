@@ -64,6 +64,7 @@ const UNDECODABLE_EDIT =
   "agent-discipline-watcher could not decode this edit patch, so nothing was scanned. Split it into fewer sections and retry.";
 const UNRESOLVED_EDIT_TARGET =
   "agent-discipline-watcher could not resolve a valid edit target for scanning, so nothing was scanned.";
+const UNVERIFIED_POST_TOOL = "PostToolUse watcher could not verify the completed tool result";
 const UNRESOLVED_NATIVE_EDIT =
   "OMP edit expects hashline input beginning with [path#hash] and anchored operations. Read the file for its current hashline, then use PUT, INS, or DEL.";
 
@@ -410,9 +411,13 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, rev
         observer.acknowledge(session, filePath);
         const tool = observed ? "Write" : adapted.hookToolName;
         const result = run("PostToolUse", watcherPayload(ctx.cwd, session, tool, { file_path: filePath }, event.toolCallId));
-        if (result.decision === "block" || blockReason(result)) {
-          ledger.markPending(session, filePath);
-          messages.push("PostToolUse watcher could not verify the completed tool result.");
+        const postReason = blockReason(result);
+        if (result.decision === "block" || postReason) {
+          const reason = postReason
+            ? `${UNVERIFIED_POST_TOOL}: ${sanitizeDisplay(postReason, 16 * 1024)}`
+            : `${UNVERIFIED_POST_TOOL}.`;
+          ledger.markPending(session, filePath, reason);
+          messages.push(reason);
           continue;
         }
         const message = feedbackMessage(result);
