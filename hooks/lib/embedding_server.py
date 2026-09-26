@@ -15,7 +15,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import NamedTuple
@@ -239,8 +241,16 @@ def _answers(url: str) -> bool:
         return False
 
 
-def _wait_ready(health: str, child: subprocess.Popen, deadline: float) -> None:
-    """Wait for a bounded loopback health probe or terminate the unready child."""
+class _Unwanted(Exception):
+    """Its own type, since lost demand is not a launch failure."""
+
+
+def _always_wanted() -> bool:
+    return True
+
+
+def _wait_ready(health: str, child: subprocess.Popen, deadline: float, wanted: Callable[[], bool] = _always_wanted) -> None:
+    """Watches demand, because only the supervisor ends workers."""
     if not _loopback_url(health, path=HEALTH_PATH):
         child.terminate()
         raise ValueError("embedding server health URL is not a loopback endpoint")
@@ -249,6 +259,8 @@ def _wait_ready(health: str, child: subprocess.Popen, deadline: float) -> None:
             raise ValueError(f"embedding server exited with {child.returncode} before answering {health}")
         if _answers(health):
             return
+        if not wanted():
+            raise _Unwanted
         time.sleep(READY_POLL_SECONDS)
     child.terminate()
     raise ValueError(f"embedding server did not answer {health} within {READY_TIMEOUT_SECONDS} seconds")
@@ -316,21 +328,24 @@ def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, .
     return child, record
 
 
-def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False) -> None:
+def _discard_unready(child: subprocess.Popen, record: ServerRecord, root: Path, locked: bool) -> bool:
+    with nullcontext() if locked else exclusive(root / LOCK_NAME):
+        owned = read_record(root) == record
+        _terminate(child.pid)
+        if owned:
+            discard_record(root)
+    return owned
+
+
+def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False, wanted: Callable[[], bool] = _always_wanted) -> None:
+    health = f"http://127.0.0.1:{record.port}{HEALTH_PATH}"
     try:
-        _wait_ready(
-            f"http://127.0.0.1:{record.port}{HEALTH_PATH}", child,
-            time.time() + READY_TIMEOUT_SECONDS,
-        )
+        _wait_ready(health, child, time.time() + READY_TIMEOUT_SECONDS, wanted)
+    except _Unwanted:
+        _discard_unready(child, record, root, locked)
     except Exception:
-        with nullcontext() if locked else exclusive(root / LOCK_NAME):
-            owned = read_record(root) == record
-            _terminate(child.pid)
-            if owned:
-                discard_record(root)
-        if not owned:
-            return
-        raise
+        if _discard_unready(child, record, root, locked):
+            raise
 
 
 def start(entry: ModelPlatform, root: Path) -> ServerRecord:
@@ -366,11 +381,9 @@ def _stop(root: Path) -> bool:
     return stopped
 
 
-def stop(root: Path, *, idle_at: float | None = None) -> bool:
-    """Keep the record until exit is confirmed; serialize shutdown with startup and lease acquisition."""
+def stop(root: Path) -> bool:
+    """Locked, because a shutdown must not race a launch."""
     with exclusive(root / LOCK_NAME):
-        if idle_at is not None and has_live_leases(root, idle_at):
-            return False
         return _stop(root)
 
 
@@ -406,7 +419,12 @@ def _start_leased(entry: ModelPlatform, root: Path) -> None:
         if not has_live_leases(root, time.time()) or running_url(root) is not None:
             return
         child, record = _launch(entry, root, port, arguments)
-    _ready(child, record, root)
+    _ready(child, record, root, wanted=partial(_demanded, root))
+
+
+def _demanded(root: Path) -> bool:
+    with exclusive(root / LOCK_NAME):
+        return has_live_leases(root, time.time())
 
 
 def supervise(entry: ModelPlatform, root: Path) -> None:

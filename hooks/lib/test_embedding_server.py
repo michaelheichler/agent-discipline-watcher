@@ -148,7 +148,7 @@ def test_stop_during_provisioning_cannot_leave_a_late_worker(supervisor, tmp_pat
     child = launch(slow=True)
     _wait_until(lambda: (root / "provisioning").exists())
 
-    assert embedding_client.release("alpha", time.time(), leases) is False
+    assert embedding_client.release("alpha", leases) is True
     (root / "continue").touch()
 
     assert child.wait(timeout=10) == 0
@@ -165,7 +165,7 @@ def test_stop_can_terminate_a_worker_before_health_is_ready(supervisor, stub, tm
     _wait_until(lambda: embedding_server.read_record(root) is not None)
     record = embedding_server.read_record(root)
 
-    assert embedding_client.release("alpha", time.time(), leases) is True
+    assert embedding_client.release("alpha", leases) is True
 
     assert child.wait(timeout=10) == 0
     assert not embedding_server.process_alive(record.pid)
@@ -183,7 +183,7 @@ def test_supervisor_unloads_without_requiring_another_prompt(supervisor, tmp_pat
     _wait_until(lambda: embedding_server._answers(f"http://127.0.0.1:{record.port}/health"))
 
     if ending == "stop":
-        assert embedding_client.release("alpha", time.time(), leases) is True
+        assert embedding_client.release("alpha", leases) is True
     else:
         renewed = time.time() - embedding_lease.LEASE_TTL_SECONDS - 1 if ending == "expiry" else time.time()
         pid = 2 ** 22 if ending == "dead-owner" else os.getpid()
@@ -205,11 +205,12 @@ def test_parallel_supervisors_reuse_one_worker_and_honor_other_projects(supervis
     embedding_client.ensure_loaded("beta", time.time(), leases_b, os.getpid())
 
     assert launch().wait(timeout=10) == 0
-    assert embedding_client.release("alpha", time.time(), leases_a) is False
+    assert embedding_client.release("alpha", leases_a) is True
+    time.sleep(0.2)
     assert embedding_server.read_record(root) == record
     assert embedding_server.process_alive(record.pid)
     assert first.poll() is None
-    assert embedding_client.release("beta", time.time(), leases_b) is True
+    assert embedding_client.release("beta", leases_b) is True
     assert first.wait(timeout=10) == 0
 
 

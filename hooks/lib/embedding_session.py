@@ -73,7 +73,7 @@ def close_turn(session_id: str, root: str | None) -> bool:
     if not session_id:
         return False
     try:
-        return release(session_id, time.time(), root)
+        return release(session_id, root)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: embedding cleanup failed: {exc}\n")
         return False

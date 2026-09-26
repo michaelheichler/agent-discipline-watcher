@@ -86,9 +86,13 @@ def renew(session_id: str, now: float, root: str | os.PathLike[str] | None) -> b
     return True
 
 
-def release(session_id: str, root: str | os.PathLike[str] | None) -> None:
+def release(session_id: str, root: str | os.PathLike[str] | None) -> bool:
     path = _lease_path(lease_root(root), session_id)
-    path.unlink(missing_ok=True)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _discard(path: Path) -> None:

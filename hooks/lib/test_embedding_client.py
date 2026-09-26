@@ -126,28 +126,19 @@ def test_a_response_without_a_data_list_raises(server) -> None:
         embedding_client.embed(("alpha",))
 
 
-def test_the_last_session_stops_the_server_and_the_others_do_not(server, tmp_path, monkeypatch) -> None:
-    stopped = []
-
-    def _record_stop(root) -> bool:
-        stopped.append(root)
-        return True
-
-    monkeypatch.setattr(embedding_server, "_stop", _record_stop)
-
+def test_release_drops_the_lease_and_leaves_the_worker_to_the_supervisor(server, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_server, "_stop", lambda _root: pytest.fail("release terminated the worker"))
     assert embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid()) is not None
     assert embedding_client.ensure_loaded("beta", 1000.0, tmp_path, os.getpid()) is not None
-    assert embedding_client.release("alpha", 1001.0, tmp_path) is False
-    assert embedding_client.release("beta", 1002.0, tmp_path) is True
-    assert stopped == [embedding_client.default_root()]
 
-
-def test_a_session_that_never_loaded_stops_nothing(server, tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(embedding_server, "_stop", lambda _root: False)
-    embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid())
-
-    assert embedding_client.release("solo", 1001.0, tmp_path) is False
+    assert embedding_client.release("alpha", tmp_path) is True
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ("beta",)
+    assert embedding_client.release("beta", tmp_path) is True
     assert not list(tmp_path.glob("*.lease.json"))
+
+
+def test_releasing_a_lease_never_taken_reports_false(tmp_path) -> None:
+    assert embedding_client.release("solo", tmp_path) is False
 
 
 def test_an_absent_server_keeps_the_lease_while_provisioning(tmp_path, monkeypatch) -> None:
@@ -158,37 +149,19 @@ def test_an_absent_server_keeps_the_lease_while_provisioning(tmp_path, monkeypat
     assert embedding_lease.live_sessions(1001.0, tmp_path) == ("solo",)
 
 
-def test_another_project_keeps_the_machine_wide_server_loaded(server, tmp_path, monkeypatch) -> None:
-    stopped = []
-    monkeypatch.setattr(embedding_server, "_stop", lambda root: stopped.append(root) or True)
+def test_another_project_keeps_the_machine_wide_server_loaded(server, tmp_path) -> None:
     embedding_client.ensure_loaded("alpha", 1000.0, tmp_path / "project-a", os.getpid())
     embedding_client.ensure_loaded("beta", 1000.0, tmp_path / "project-b", os.getpid())
 
-    assert embedding_client.release("alpha", 1001.0, tmp_path / "project-a") is False
-    assert stopped == []
-    assert embedding_client.release("beta", 1002.0, tmp_path / "project-b") is True
+    embedding_client.release("alpha", tmp_path / "project-a")
 
-
-def test_a_new_lease_between_release_and_shutdown_cancels_unload(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(embedding_client, "probe", lambda: None)
-    embedding_client.ensure_loaded("alpha", 1000.0, tmp_path, os.getpid())
-    original_stop = embedding_client.stop
-
-    def concurrent_open(root, *, idle_at):
-        embedding_client.ensure_loaded("beta", 1001.0, tmp_path, os.getpid())
-        return original_stop(root, idle_at=idle_at)
-
-    monkeypatch.setattr(embedding_client, "stop", concurrent_open)
-    monkeypatch.setattr(embedding_server, "_stop", lambda _root: pytest.fail("stopped a newly leased worker"))
-
-    assert embedding_client.release("alpha", 1001.0, tmp_path) is False
-    assert embedding_lease.live_sessions(1001.0, tmp_path) == ("beta",)
+    assert embedding_lease.has_live_leases(embedding_client.default_root(), 1001.0)
+    embedding_client.release("beta", tmp_path / "project-b")
+    assert not embedding_lease.has_live_leases(embedding_client.default_root(), 1001.0)
 
 
 @pytest.mark.parametrize("variable", ["ADW_EMBEDDING_URL", "ADW_EMBEDDING_URLS"])
-def test_an_unapproved_embedding_url_never_receives_private_text(
-    server, monkeypatch: pytest.MonkeyPatch, variable: str
-) -> None:
+def test_an_unapproved_embedding_url_never_receives_private_text(server, monkeypatch: pytest.MonkeyPatch, variable: str) -> None:
     monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
     monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
     monkeypatch.setenv(variable, "https://unapproved.example/v1/embeddings")
@@ -196,8 +169,8 @@ def test_an_unapproved_embedding_url_never_receives_private_text(
     assert embedding_client.embed(("PRIVATE-SOURCE",)) is None
     assert server.received == []
 
+
 def test_disabled_project_boundary_blocks_remote_source_egress(server, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A project boundary disabled for source egress blocks remote embeddings before network I/O."""
     monkeypatch.setenv("ADW_EMBEDDING_LOCAL_ONLY", "0")
     monkeypatch.setenv("ADW_EMBEDDING_APPROVED_HOSTS", "approved.example")
     monkeypatch.setenv("ADW_EMBEDDING_URL", "https://approved.example/v1/embeddings")

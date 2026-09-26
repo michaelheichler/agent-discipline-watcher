@@ -8,17 +8,17 @@ import os
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 try:
     from .embedding_lease import acquire, register_root
     from .embedding_lease import release as release_lease
-    from .embedding_server import LOCK_NAME, default_root, running_url, stop
+    from .embedding_server import LOCK_NAME, default_root, running_url
     from .model_store import exclusive
 except ImportError:
     from embedding_lease import acquire, register_root
     from embedding_lease import release as release_lease
-    from embedding_server import LOCK_NAME, default_root, running_url, stop
+    from embedding_server import LOCK_NAME, default_root, running_url
     from model_store import exclusive
 
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
@@ -75,18 +75,17 @@ def _is_loopback_host(hostname: object) -> bool:
         return False
 
 
-def _approved_url(url: object) -> bool:  # pylint: disable=too-many-return-statements
-    """Allow loopback endpoints or HTTPS hosts explicitly approved for remote egress."""
+def _endpoint(url: object) -> SplitResult | None:
+    """Rejects credentials and odd parts before any policy check."""
     if not isinstance(url, str) or len(url) > MAX_URL_CHARS:
-        return False
+        return None
     if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in url):
-        return False
+        return None
     try:
         parsed = urlsplit(url)
-        hostname = parsed.hostname
         port = parsed.port
     except ValueError:
-        return False
+        return None
     if (  # pylint: disable=too-many-boolean-expressions
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
@@ -95,9 +94,18 @@ def _approved_url(url: object) -> bool:  # pylint: disable=too-many-return-state
         or parsed.query
         or parsed.fragment
         or (port is not None and not 1 <= port <= 65_535)
-        or hostname is None
+        or parsed.hostname is None
     ):
+        return None
+    return parsed
+
+
+def _approved_url(url: object) -> bool:
+    """Allow loopback endpoints or HTTPS hosts explicitly approved for remote egress."""
+    parsed = _endpoint(url)
+    if parsed is None:
         return False
+    hostname = parsed.hostname
     if _is_loopback_host(hostname):
         return True
     if _local_only() or parsed.scheme != "https":
@@ -147,7 +155,7 @@ def model_name() -> str:
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Prevent an approved endpoint from forwarding source text elsewhere."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
         return None
 
 
@@ -311,9 +319,7 @@ def probe() -> str | None:
     return None
 
 
-def ensure_loaded(
-    session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
-) -> str | None:
+def ensure_loaded(session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int) -> str | None:
     """Retain demand through cold startup, and serialize acquisition with the last holder's unload."""
     server_root = default_root()
     with exclusive(server_root / LOCK_NAME):
@@ -322,10 +328,9 @@ def ensure_loaded(
     return probe()
 
 
-def release(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Recheck every project's leases under the server lock so a concurrent opener cannot lose its worker."""
+def release(session_id: str, root: str | os.PathLike[str] | None) -> bool:
+    """Lease only, since a worker kill outlasts the 10 s Stop hook."""
     server_root = default_root()
     with exclusive(server_root / LOCK_NAME):
         register_root(server_root, root)
-        release_lease(session_id, root)
-    return stop(server_root, idle_at=now)
+        return release_lease(session_id, root)

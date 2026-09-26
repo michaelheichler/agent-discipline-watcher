@@ -113,7 +113,7 @@ def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatc
 
 
 def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
-    def fail_release(*_args) -> None:
+    def fail_release(*_args) -> bool:
         raise PermissionError("cannot signal worker")
 
     monkeypatch.setattr(embedding_session, "release", fail_release)
