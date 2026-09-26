@@ -61,7 +61,11 @@ def open_turn(session_id: str, root: str | None) -> str | None:
             start_detached(default_root())
         return answered
     except Exception as exc:
-        sys.stderr.write(f"agent-discipline-watcher: embedding startup failed: {exc}\n")
+        sys.stderr.write(
+            f"ADW could not start optional meaning checks: {exc}\n"
+            "Regex checks remain active.\n"
+            "Fix the local embedding service before retrying meaning checks.\n"
+        )
         return None
 
 

@@ -126,6 +126,20 @@ def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatc
     assert asked == ([embedding_session.default_root()] if managed else [])
 
 
+def test_a_startup_failure_names_the_cause_and_the_next_step(tmp_path, monkeypatch, capsys) -> None:
+    def fail_load(*_args) -> str:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(embedding_session, "ensure_loaded", fail_load)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert capsys.readouterr().err.splitlines() == [
+        "ADW could not start optional meaning checks: disk full",
+        "Regex checks remain active.",
+        "Fix the local embedding service before retrying meaning checks.",
+    ]
+
+
 def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
     def fail_release(*_args) -> bool:
         raise PermissionError("cannot signal worker")
