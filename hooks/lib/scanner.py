@@ -41,6 +41,7 @@ try:
         extract_regions,
         render_regions,
     )
+    from .brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from .prose_structure import _next_fence, _scan_prose_structure
     from .slop_phrase import scan_slop_phrases
     from .slop_structure import _scan_slop_structure, mask_quoted
@@ -78,6 +79,7 @@ except ImportError:
         extract_regions,
         render_regions,
     )
+    from brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from prose_structure import _next_fence, _scan_prose_structure
     from slop_phrase import scan_slop_phrases
     from slop_structure import _scan_slop_structure, mask_quoted
@@ -392,23 +394,29 @@ def _long_functions(tree, func_limit: int) -> Iterator[ast.FunctionDef | ast.Asy
             continue
         yield node
 
-def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
-    if tree is None:
-        return []
-    func_limit = _int_setting(config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
+def _long_function_rows(context: _ScanContext) -> list[tuple[int, str]]:
+    func_limit = _int_setting(context.config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
+    if context.tree is not None:
+        return [(node.lineno, node.name) for node in _long_functions(context.tree, func_limit)]
+    if PurePath(context.path.lower()).suffix in BRACE_LANGUAGE_EXTS:
+        return [(line, name) for line, name, _span in long_brace_functions(context.text, func_limit)]
+    return []
+
+
+def _function_length_findings(context: _ScanContext) -> list[dict]:
     return [
         _finding(
-            "clean_code", "function_too_long", node.lineno,
-            "Function is over the length cap in " + path,
-            node.name, "Extract helpers until each function does one thing.",
+            "clean_code", "function_too_long", line,
+            "Function is over the length cap in " + context.path,
+            name, "Extract helpers until each function does one thing.",
         )
-        for node in _long_functions(tree, func_limit)
+        for line, name in _long_function_rows(context)
     ]
 
 
 def _scan_clean_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
-    findings = _function_length_findings(context.path, context.config, context.tree)
+    findings = _function_length_findings(context)
     findings.extend(_scan_hollow_test_blocks(context.path, lines))
     return findings
 
