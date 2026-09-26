@@ -164,10 +164,26 @@ STRUCTURE_RULES: tuple[StructureRule, ...] = STRUCTURE_CANDIDATES
 OMITTED_STRUCTURE_RULES: dict[str, str] = {}
 
 
+_QUOTED_RE = re.compile(
+    "\"[^\"\\n]*\"|\u201c[^\u201d\\n]*\u201d|(?<!\\w)'[^'\\n]*'(?!\\w)|(?<!\\w)\u2018[^\u2019\\n]*\u2019(?!\\w)"
+)
+
+
+def _blank_inside(found: re.Match[str]) -> str:
+    text = found.group(0)
+    return text[0] + " " * (len(text) - 2) + text[-1]
+
+
+def mask_quoted(text: str) -> str:
+    """Blank quoted words but keep delimiters and length, because quoted text is cited, not written, and a contraction must not open a quote."""
+    return _QUOTED_RE.sub(_blank_inside, text)
+
+
 def _line_findings(path: str, line_number: int, line: str) -> list[FindingDict]:
     findings: list[FindingDict] = []
+    candidate = mask_quoted(line)
     for rule in STRUCTURE_RULES:
-        found = rule.pattern.search(line)
+        found = rule.pattern.search(candidate)
         if found:
             findings.append(cast(FindingDict, _finding(
                 "english", rule.name, line_number, rule.detail + " in " + path,

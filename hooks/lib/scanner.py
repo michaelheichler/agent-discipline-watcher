@@ -43,7 +43,7 @@ try:
     )
     from .prose_structure import _next_fence, _scan_prose_structure
     from .slop_phrase import scan_slop_phrases
-    from .slop_structure import _scan_slop_structure
+    from .slop_structure import _scan_slop_structure, mask_quoted
 except ImportError:
     import scan_input
     from comment_rules import (
@@ -80,7 +80,7 @@ except ImportError:
     )
     from prose_structure import _next_fence, _scan_prose_structure
     from slop_phrase import scan_slop_phrases
-    from slop_structure import _scan_slop_structure
+    from slop_structure import _scan_slop_structure, mask_quoted
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
@@ -328,7 +328,7 @@ PUNCTUATION_RULES = (
 
 
 def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> list[dict]:
-    clean = _strip_inline_code(scan_line)
+    clean = mask_quoted(_strip_inline_code(scan_line))
     prose_part = _punctuation_prose_part(source_line.path, clean, prose)
     semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
     texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
@@ -357,7 +357,7 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
     rows = []
     if source_line.text.lstrip().startswith(">"):
         return rows
-    scan_line = _strip_quoted(_strip_inline_code(scan_line))
+    scan_line = mask_quoted(_strip_inline_code(scan_line))
     for pattern, rule, action in ENGLISH_RULES:
         found = pattern.search(scan_line)
         if found:
@@ -507,11 +507,6 @@ def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -
         hidden = marker or fence or _is_table_separator_row(line)
         visible.append("" if hidden else line)
     return "\n".join(visible)
-
-
-def _strip_quoted(text: str) -> str:
-    text = re.sub(r'"[^"]*"', "  ", text)
-    return re.sub(r"'[^']*'", "  ", text)
 
 
 def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
