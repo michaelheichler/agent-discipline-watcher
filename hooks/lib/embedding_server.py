@@ -165,7 +165,6 @@ def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-ret
         return math.isfinite(record.started_at) and record.started_at >= 0
     except (OverflowError, TypeError):
         return False
-    return True
 
 
 def _read_record_bytes(path: Path) -> bytes | None:
@@ -437,17 +436,6 @@ def running_url(root: Path) -> str | None:
     if record is None or not _owned(record):
         return None
     return record.url
-
-
-def ensure_running(entry: ModelPlatform, root: Path) -> str:
-    """Sweeps a record whose process is gone, because a crashed server has to be respawned rather than reported absent forever."""
-    root.mkdir(parents=True, exist_ok=True)
-    with exclusive(root / LOCK_NAME):
-        url = running_url(root)
-        if url is not None:
-            return url
-        discard_record(root)
-        return start(entry, root).url
 
 
 def start_detached(root: Path) -> None:

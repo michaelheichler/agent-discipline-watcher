@@ -123,12 +123,6 @@ def live_sessions(now: float, root: str | os.PathLike[str] | None) -> tuple[str,
     return tuple(name for name in found if name is not None)
 
 
-def may_unload(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Only the last live holder may unload, because another session mid-turn would lose the model underneath it."""
-    release(session_id, root)
-    return not live_sessions(now, root)
-
-
 def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> None:
     """Track all project lease roots because they share one machine-wide worker; callers hold its lifecycle lock."""
     directory = server_root / ROOTS_DIRECTORY

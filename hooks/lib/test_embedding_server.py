@@ -227,25 +227,23 @@ def test_parallel_supervisors_reuse_one_worker_and_honor_other_projects(supervis
     assert first.wait(timeout=10) == 0
 
 
-def test_a_second_caller_reuses_the_running_server(stub, tmp_path) -> None:
-    first = embedding_server.ensure_running(ENTRY, tmp_path)
-    try:
-        assert embedding_server.ensure_running(ENTRY, tmp_path) == first
-    finally:
-        embedding_server.stop(tmp_path)
+def test_the_supervisor_respawns_a_crashed_worker(supervisor, tmp_path) -> None:
+    root, launch = supervisor
+    leases = tmp_path / "leases"
+    embedding_client.ensure_loaded("alpha", time.time(), leases, os.getpid())
+    child = launch()
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
+    first = embedding_server.read_record(root)
+    _wait_until(lambda: embedding_server._answers(f"http://127.0.0.1:{first.port}/health", first.nonce))
+    time.sleep(4 * embedding_server.READY_POLL_SECONDS)
 
-
-def test_a_crashed_server_is_respawned_rather_than_reported_absent(stub, tmp_path) -> None:
-    first = embedding_server.start(ENTRY, tmp_path)
     os.kill(first.pid, signal.SIGKILL)
     assert _wait_gone(first.pid, time.time() + 15)
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
 
-    assert embedding_server.running_url(tmp_path) is None
-    second = embedding_server.ensure_running(ENTRY, tmp_path)
-    try:
-        assert second != first.url
-    finally:
-        embedding_server.stop(tmp_path)
+    assert embedding_server.read_record(root).pid != first.pid
+    embedding_client.release("alpha", leases)
+    assert child.wait(timeout=10) == 0
 
 
 def test_a_server_that_never_answers_health_raises_and_records_nothing(tmp_path, monkeypatch) -> None:

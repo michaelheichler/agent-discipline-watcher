@@ -11,9 +11,10 @@ def test_a_second_session_prevents_the_first_from_unloading(tmp_path: Path) -> N
     embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
     embedding_lease.acquire("beta", 1000.0, tmp_path, os.getpid())
 
-    assert embedding_lease.may_unload("alpha", 1001.0, tmp_path) is False
+    embedding_lease.release("alpha", tmp_path)
     assert embedding_lease.live_sessions(1001.0, tmp_path) == ("beta",)
-    assert embedding_lease.may_unload("beta", 1002.0, tmp_path) is True
+    embedding_lease.release("beta", tmp_path)
+    assert embedding_lease.live_sessions(1002.0, tmp_path) == ()
 
 
 def test_an_expired_lease_stops_pinning_the_model(tmp_path: Path) -> None:

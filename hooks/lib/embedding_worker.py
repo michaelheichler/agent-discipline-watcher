@@ -16,7 +16,6 @@ from transformers import AutoTokenizer
 MODULE_NAME = "lfm2_bidirectional"
 MAX_LENGTH = 8192
 MAX_BATCH = 32
-MAX_INPUTS = 8192
 MAX_TEXT_CHARS = 16_384
 MAX_BODY_BYTES = 1_048_576
 HEALTH_PATH = "/health"
@@ -61,8 +60,6 @@ def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
     """Encode a bounded collection in fixed-size tokenizer batches."""
-    if len(texts) > MAX_INPUTS:
-        raise ValueError(f"input contains more than {MAX_INPUTS} texts")
     if any(not isinstance(text, str) for text in texts):
         raise ValueError("input must contain only strings")
     if any(len(text) > MAX_TEXT_CHARS for text in texts):
