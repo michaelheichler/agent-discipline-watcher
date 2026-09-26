@@ -55,7 +55,8 @@ def test_validate_reuses_the_journal_without_voting_again(document: Path, monkey
 
     result = _request(document, "validate", digest=prepared["digest"], request_id=request["id"], output=output)
 
-    assert "Stock closer." in result["systemMessage"], "ai_closer ships at observe"
+    assert result["decision"] == "block"
+    assert "Stock closer." in result["reason"]
 
 
 def test_a_journal_change_after_prepare_invalidates_the_digest(document: Path) -> None:

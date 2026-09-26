@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import journal
-from .config import JUDGED_STATE, gate_state, rule_state
+from .config import gate_state
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, output_schema
 from .narration_candidates import candidates
@@ -105,21 +105,19 @@ def _journal_candidates(path: str, text: str, config: dict) -> dict[str, tuple[P
     return {rule: tuple(found) for rule, found in grouped.items()}
 
 
-def _voted_state(rule: str, config: dict) -> str:
-    return rule_state(rule, config) or gate_state("english", config)
-
-
 def _voted_work(path: str, text: str, config: dict, exemplars: tuple) -> list[ReviewWork]:
-    """Journal rows, because the vote already ran after the write."""
+    """Gated by precision, because a regex rule shares the name."""
     manifest = load_manifest()
     blocking = blocking_rules(manifest)
+    english = gate_state("english", config)
+    if english == "off":
+        return []
     work = []
     for rule, found in sorted(_journal_candidates(path, text, config).items()):
-        state = _voted_state(rule, config)
-        if rule not in manifest["rules"] or state == "off":
+        if rule not in manifest["rules"]:
             continue
         prompt = rule_prompt(rule, exemplars, manifest)
-        blocks = state in {"enforce", JUDGED_STATE} and rule in blocking
+        blocks = english == "enforce" and rule in blocking
         work.extend(ReviewWork(pattern_request(prompt, batch), path, batch, blocking=blocks) for batch in _batches(found))
     return work
 

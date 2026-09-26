@@ -43,7 +43,7 @@ def test_pattern_work_comes_from_the_journal_rows_for_the_path(tmp_path: Path) -
     assert item.request.rule_name == "ai_closer"
     assert [(candidate.line, candidate.text) for candidate in item.candidates] == [(1, CLOSER)]
     assert len(item.request.violating_examples) == len(item.request.clean_examples) == 4
-    assert not item.blocking, "ai_closer ships at observe"
+    assert item.blocking
 
 
 def test_rows_for_other_text_never_become_work(tmp_path: Path) -> None:
@@ -55,9 +55,13 @@ def test_rows_for_other_text_never_become_work(tmp_path: Path) -> None:
     assert _pattern_work(build_work(path, "The cache holds 4096 entries.\n", config)) == []
 
 
-@pytest.mark.parametrize(("gate", "expected"), (("enforce", [True]), ("observe", [False]), ("off", [])))
-def test_a_voted_rule_follows_its_rule_gate(tmp_path: Path, gate: str, expected: list[bool]) -> None:
-    path, config = _journaled(tmp_path, {"rule_gates": {"ai_closer": gate}})
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({"rule_gates": {"ai_closer": "observe"}}, [True]),
+    ({"gates": {"english": "observe"}}, [False]),
+    ({"gates": {"english": "off"}}, []),
+))
+def test_a_voted_rule_follows_its_measurement_and_family(tmp_path: Path, gates: dict, expected: list[bool]) -> None:
+    path, config = _journaled(tmp_path, gates)
 
     work = _pattern_work(build_work(path, path.read_text(encoding="utf-8"), config))
 
