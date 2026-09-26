@@ -52,7 +52,7 @@ def test_luna_refuses_a_native_model_because_it_runs_a_command() -> None:
 @pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
 def test_every_agent_preset_registers_a_reviewer_on_both_events(preset: str) -> None:
     """Cover both because a write check alone leaves the finished turn unreviewed."""
-    generated = claude_presets.generated_hooks(preset)
+    generated = claude_presets.generated_hooks(preset) or claude_presets.shipped_hooks()
 
     for event in ("PostToolUse", "Stop"):
         entry = generated[event][0]["hooks"][0]
@@ -89,3 +89,34 @@ def test_every_generated_handler_carries_the_managed_marker(preset: str) -> None
     for entry in entries:
         carrier = entry.get("prompt") or entry.get("command")
         assert claude_presets.MANAGED_MARKER in carrier
+
+
+def test_the_haiku_preset_writes_no_settings_entry_because_the_plugin_ships_it() -> None:
+    """Write nothing because a settings copy of the shipped reviewer runs a second Haiku agent."""
+    assert not claude_presets.generated_hooks("haiku")
+
+
+@pytest.mark.parametrize("preset", ("mixed", "luna", "luna-native"))
+def test_a_written_preset_supersedes_the_shipped_reviewer(preset: str) -> None:
+    """Yield the plugin entries because the host cannot switch off one plugin hook."""
+    settings = {"hooks": claude_presets.generated_hooks(preset)}
+
+    assert claude_presets.supersedes_plugin(settings)
+
+
+def test_a_legacy_copy_of_the_shipped_reviewer_does_not_supersede_itself() -> None:
+    """Keep it running because an installer copy of the plugin entry is the only reviewer there."""
+    legacy = {"hooks": claude_presets.shipped_hooks()}
+
+    assert not claude_presets.supersedes_plugin(legacy)
+    assert not claude_presets.supersedes_plugin({})
+
+
+def test_every_shipped_reviewer_checks_for_a_superseding_preset_first() -> None:
+    """Check first because a skipped reviewer must spend no review work."""
+    generated = claude_presets.shipped_hooks()
+
+    for event in ("PostToolUse", "Stop"):
+        prompt = generated[event][0]["hooks"][0]["prompt"]
+        assert claude_presets.SUPERSEDED_FLAG in prompt
+        assert prompt.index(claude_presets.SUPERSEDED_FLAG) < prompt.index("OUTPUT CONTRACT")
