@@ -50,3 +50,11 @@ def _never_touch_the_real_model(monkeypatch: pytest.MonkeyPatch, tmp_path_factor
     monkeypatch.setattr(embedding_session, "default_root", lambda: root)
     monkeypatch.setattr(embedding_session, "start_detached", lambda _root: None)
     monkeypatch.delenv(embedding_session.ENABLE_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_claude_settings(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
+    """Isolated, because SessionStart may write a preset."""
+    root = tmp_path_factory.mktemp("claude-settings")
+    monkeypatch.setenv("ADW_CLAUDE_SETTINGS", str(root / "settings.json"))
+    monkeypatch.setenv("ADW_CLAUDE_PRESET_FILE", str(root / "preset"))
