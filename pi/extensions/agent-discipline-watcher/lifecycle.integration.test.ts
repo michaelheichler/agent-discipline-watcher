@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createExtension } from "./index";
 import { MAX_REJECTED_TOOLS } from "./lifecycle";
+import { registerLifecycleHandlers } from "./lifecycle-handlers";
 import { type WatcherResult } from "./watcher";
 
 type Handler = (event: unknown, ctx?: unknown) => Promise<unknown>;
@@ -130,6 +131,24 @@ test("scans an ordinary Bash write target resolved by the shared hook parser", a
   expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
   expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
   expect(scannedPaths).toEqual([FIXTURE_A]);
+});
+
+test("resolves Bash targets once per tool call across call and result", async () => {
+  let bridgeCalls = 0;
+  const handlers = new Map<string, Handler>();
+  const pi = { on: (name: string, handler: Handler) => handlers.set(name, handler) };
+  const targets = () => {
+    bridgeCalls += 1;
+    return { paths: ["lifecycle.ts"] };
+  };
+  registerLifecycleHandlers(pi as never, () => ({}), async () => ({}), targets);
+  const input = { command: "printf body > lifecycle.ts", cwd: import.meta.dir };
+  await handlers.get("tool_call")!({ toolName: "bash", toolCallId: "bash-once", input }, ctx);
+  await handlers.get("tool_result")!(
+    { toolName: "bash", toolCallId: "bash-once", input, content: [{ type: "text", text: "written" }] },
+    ctx,
+  );
+  expect(bridgeCalls).toBe(1);
 });
 
 test("blocks a relative Bash target after a working-directory change", async () => {

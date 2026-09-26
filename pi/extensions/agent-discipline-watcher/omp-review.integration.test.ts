@@ -170,6 +170,25 @@ test("an ambiguous document quote drops only that note and names the cause witho
   expect(text).not.toContain("OMP review incomplete");
 });
 
+test("a multi-request review prepares once and re-prepares only before a retry", async () => {
+  const operations: string[] = [];
+  const request = (id: number) => ({ id, prompt: `request ${id}`, schema: {} });
+  const bridge = (call: Record<string, unknown>) => {
+    operations.push(String(call.operation));
+    if (call.operation === "prepare") {
+      return { enabled: true, model: "anthropic/claude-haiku", path: "a.py", digest: "d", requests: [request(0), request(1)] };
+    }
+    if (call.request_id === 1 && operations.filter(item => item === "validate").length === 2) throw new Error("try again");
+    return {};
+  };
+  let calls = 0;
+  const reviewer = createOmpReviewer({ bridge, complete: async () => { calls += 1; return answer([]); } });
+  const { ctx } = fixture(async () => answer([]));
+  expect(await reviewer(ctx, { tool_name: "Write" })).toEqual({});
+  expect(calls).toBe(3);
+  expect(operations).toEqual(["prepare", "validate", "validate", "prepare", "validate"]);
+});
+
 test("a rejected model output names the bridge cause instead of the login", async () => {
   const harness = fixture(async () => answer([verdict(0)]));
   const text = JSON.stringify(await harness.result());

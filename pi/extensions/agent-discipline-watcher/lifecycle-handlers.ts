@@ -7,7 +7,7 @@ import { hashlineEdits, hashlinePatchSource, type HashlineEdit } from "./hashlin
 import { VerificationLedger } from "./lifecycle";
 import { WorkspaceObserver } from "./workspace-observer";
 import type { OmpReviewContext, OmpReviewRun } from "./omp-review";
-import { runReviewBridge, validatedTargetPaths } from "./omp-review-bridge";
+import { runReviewBridge, validatedTargetPaths, type ReviewBridge } from "./omp-review-bridge";
 import {
   adaptPythonEvent,
   adaptToolCall,
@@ -64,6 +64,7 @@ const UNDECODABLE_EDIT =
   "agent-discipline-watcher could not decode this edit patch, so nothing was scanned. Split it into fewer sections and retry.";
 const UNRESOLVED_EDIT_TARGET =
   "agent-discipline-watcher could not resolve a valid edit target for scanning, so nothing was scanned.";
+const MAX_CACHED_BASH_TARGETS = 256;
 const UNVERIFIED_POST_TOOL = "PostToolUse watcher could not verify the completed tool result";
 const UNRESOLVED_NATIVE_EDIT =
   "OMP edit expects hashline input beginning with [path#hash] and anchored operations. Read the file for its current hashline, then use PUT, INS, or DEL.";
@@ -223,18 +224,34 @@ export function preGatePayloads(
   });
 }
 
-export function registerLifecycleHandlers(pi: ExtensionAPI, run: WatcherRun, review: OmpReviewRun): void {
+export function registerLifecycleHandlers(
+  pi: ExtensionAPI,
+  run: WatcherRun,
+  review: OmpReviewRun,
+  targetsBridge: ReviewBridge = runReviewBridge,
+): void {
   const ledger = new VerificationLedger();
   const observer = new WorkspaceObserver();
+  const bashTargets = new Map<string, readonly string[]>();
+  const bridgedBashTargets = (ctx: ExtensionContext, input: Record<string, unknown>, toolCallId?: string): readonly string[] => {
+    const paths = validatedTargetPaths(targetsBridge({
+      operation: "targets",
+      payload: watcherPayload(ctx.cwd, sessionId(ctx), "Bash", input, toolCallId),
+    }));
+    const cwd = bashWorkingDirectory(ctx, input);
+    return paths.map(path => isAbsolute(path) || path.startsWith("~") ? path : resolve(cwd, path));
+  };
   const resolveBashTargets = (ctx: ExtensionContext, event: ToolCallEvent | ToolResultEvent) =>
     (toolName: string, input: Record<string, unknown>): readonly string[] => {
       if (toolName.toLowerCase() !== "bash" || typeof input.command !== "string") return [];
-      const paths = validatedTargetPaths(runReviewBridge({
-        operation: "targets",
-        payload: watcherPayload(ctx.cwd, sessionId(ctx), "Bash", input, event.toolCallId),
-      }));
-      const cwd = bashWorkingDirectory(ctx, input);
-      return paths.map(path => isAbsolute(path) || path.startsWith("~") ? path : resolve(cwd, path));
+      if (!event.toolCallId) return bridgedBashTargets(ctx, input);
+      const key = JSON.stringify([sessionId(ctx), event.toolCallId, input.command, input.cwd ?? null]);
+      const cached = bashTargets.get(key);
+      if (cached) return cached;
+      const resolved = bridgedBashTargets(ctx, input, event.toolCallId);
+      bashTargets.set(key, resolved);
+      if (bashTargets.size > MAX_CACHED_BASH_TARGETS) bashTargets.delete(bashTargets.keys().next().value ?? "");
+      return resolved;
     };
 
   pi.on("session_start", async (_event, ctx: ExtensionContext) => {

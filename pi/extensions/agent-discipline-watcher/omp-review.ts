@@ -6,7 +6,7 @@ export type OmpReviewContext = OmpContext & { cwd: string };
 export type OmpReviewRun = (ctx: OmpReviewContext, payload: Record<string, unknown>, signal?: AbortSignal) => Promise<WatcherResult>;
 const MAX_DOCUMENT_NOTES = 6;
 const LOGIN_CATEGORIES = ["model", "authentication", "provider"];
-type ReviewOptions ={ bridge?: ReviewBridge; complete?: CompleteSimple; timeoutMs?: number; deadlineMs?: number };
+type ReviewOptions = { bridge?: ReviewBridge; complete?: CompleteSimple; timeoutMs?: number; deadlineMs?: number };
 type ReviewJob = {
   ctx: OmpReviewContext;
   payload: Record<string, unknown>;
@@ -83,11 +83,15 @@ function reviewedOutput(job: ReviewJob, request: ReviewRequest, output: string):
   }
 }
 
+function assertUnchanged(job: ReviewJob): void {
+  const current = prepareReview(job.bridge({ operation: "prepare", payload: job.payload }));
+  if (!current.enabled) throw new OmpProviderFailure("OMP review was disabled by policy", "disabled");
+  if (current.digest !== job.prepared.digest) throw new OmpProviderFailure("source or policy changed during OMP review; retry the file", "stale");
+}
+
 async function reviewRequest(job: ReviewJob, request: ReviewRequest): Promise<WatcherResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const current = prepareReview(job.bridge({ operation: "prepare", payload: job.payload }));
-    if (!current.enabled) throw new OmpProviderFailure("OMP review was disabled by policy", "disabled");
-    if (current.digest !== job.prepared.digest) throw new OmpProviderFailure("source or policy changed during OMP review; retry the file", "stale");
+    if (attempt > 0) assertUnchanged(job);
     const remaining = job.deadline - Date.now();
     if (remaining <= 0) throw new OmpProviderFailure("OMP review deadline expired before every candidate was reviewed", "timeout");
     try {
