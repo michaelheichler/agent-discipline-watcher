@@ -334,10 +334,10 @@ def provision(entry: ModelPlatform, root: Path) -> Callable[[int], tuple[str, ..
     return partial(_python_command, runtime, weights)
 
 
-def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "") -> subprocess.Popen:
+def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "", *, fresh_log: bool = False) -> subprocess.Popen:
     """Starts its own session because the hook that spawns it exits within the second and must not drag the model down with it."""
     environment = {**os.environ, NONCE_ENV: nonce}
-    with (root / LOG_NAME).open("ab") as log:
+    with (root / LOG_NAME).open("wb" if fresh_log else "ab") as log:
         return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True, env=environment)
 
 
@@ -349,7 +349,7 @@ def _launch_nonce(entry: ModelPlatform) -> str:
 def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...]) -> tuple[subprocess.Popen, ServerRecord]:
     """Publish ownership before readiness so Stop can terminate a worker still loading its weights."""
     nonce = _launch_nonce(entry)
-    child = _spawn(arguments, root, nonce)
+    child = _spawn(arguments, root, nonce, fresh_log=True)
     started = process_start(child.pid) if type(child.pid) is int and child.pid > 0 else None  # pylint: disable=unidiomatic-typecheck
     if started is None:
         child.terminate()

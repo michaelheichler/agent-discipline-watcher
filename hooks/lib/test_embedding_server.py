@@ -125,6 +125,16 @@ def test_the_server_starts_on_a_free_port_and_records_it(stub, tmp_path) -> None
         embedding_server.stop(tmp_path)
 
 
+def test_each_worker_launch_starts_a_fresh_log(stub, tmp_path) -> None:
+    (tmp_path / embedding_server.LOG_NAME).write_text("previous launch output\n", encoding="utf-8")
+
+    embedding_server.start(ENTRY, tmp_path)
+    try:
+        assert "previous launch output" not in (tmp_path / embedding_server.LOG_NAME).read_text(encoding="utf-8")
+    finally:
+        embedding_server.stop(tmp_path)
+
+
 def test_stopping_leaves_no_process_and_no_record(stub, tmp_path) -> None:
     record = embedding_server.start(ENTRY, tmp_path)
 
@@ -267,8 +277,8 @@ def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monke
     spawned = []
     original_spawn = embedding_server._spawn
 
-    def spawn(arguments, root, nonce) -> subprocess.Popen:
-        child = original_spawn(arguments, root, nonce)
+    def spawn(arguments, root, nonce, **options) -> subprocess.Popen:
+        child = original_spawn(arguments, root, nonce, **options)
         spawned.append(child)
         return child
 
