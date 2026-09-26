@@ -3,12 +3,32 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import reporting
+from .finding_output import ReviewNote, review_row
+
 MAX_FEEDBACK_CHARS = 900
+MAX_LISTED_ROWS = 5
+COMMENT_LEAD = "ADW Luna comment review:"
+DOCUMENT_LEAD = "ADW Luna document review:"
+COMMENT_ACTION = "Rewrite the comment to say why the code exists, or delete it."
+DOCUMENT_ACTION = "Fix the named document issue."
 
 
 def bounded(value: object) -> str:
     """Collapse and cut because an unbounded reason would flood the surface that shows it."""
     return " ".join(str(value).split())[:MAX_FEEDBACK_CHARS]
+
+
+def _listing(lead: str, rows: list[str]) -> str:
+    """Write the full report when rows are cut, because the reader needs a path to every finding."""
+    listed = rows[:MAX_LISTED_ROWS]
+    body = "\n".join([lead, *(f"{number}. {row}" for number, row in enumerate(listed, 1))])
+    extra = len(rows) - len(listed)
+    if not extra and len(body) <= MAX_FEEDBACK_CHARS:
+        return body
+    report = reporting.write_full_report([{"message": row} for row in rows])
+    tail = f"{extra} more findings: {report}" if extra else f"Full report: {report}"
+    return body[:max(MAX_FEEDBACK_CHARS - len(tail) - 1, 0)] + "\n" + tail
 
 
 def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
@@ -23,8 +43,19 @@ def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
         index = row.get("index")
         if type(index) is not int or not 0 <= index < len(found):
             continue
-        feedback.append(f"{found[index].path}:{found[index].line}: {bounded(row.get('reason', 'Rewrite this comment.'))}")
-    return bounded("ADW Luna comment review: " + " | ".join(feedback)) if feedback else ""
+        candidate = found[index]
+        reason = bounded(row.get("reason", "The comment restates the code."))
+        note = ReviewNote(f"{candidate.path}:{candidate.line}", bounded(candidate.text), reason, COMMENT_ACTION)
+        feedback.append(review_row(note))
+    return _listing(COMMENT_LEAD, feedback) if feedback else ""
+
+
+def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        source = str(row.get("source_context", "")) if isinstance(row, dict) else ""
+        if quote and quote in source:
+            return f"{row.get('path', '')}:{source[:source.index(quote)].count(chr(10)) + 1}"
+    return "document"
 
 
 def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
@@ -37,7 +68,7 @@ def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
         if not isinstance(row, dict) or not row.get("problem"):
             continue
         quote = bounded(row.get("quote", ""))
-        problem = bounded(row.get("problem", ""))
-        fix = bounded(row.get("fix", "Fix the named document issue."))
-        feedback.append(f"{quote}: {problem} Fix: {fix}")
-    return bounded("ADW Luna document review: " + " | ".join(feedback)) if feedback else ""
+        location = _quote_location(str(row.get("quote", "")), rows)
+        note = ReviewNote(location, quote, bounded(row["problem"]), bounded(row.get("fix", DOCUMENT_ACTION)))
+        feedback.append(review_row(note))
+    return _listing(DOCUMENT_LEAD, feedback) if feedback else ""

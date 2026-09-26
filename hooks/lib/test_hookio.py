@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 from lib import hookio
 
@@ -111,6 +112,40 @@ def test_fail_closed_denies_naming_the_subject_and_cause_on_exception() -> None:
     assert response["decision"] == "block"
     assert "this write" in response["reason"]
     assert "Cause: bad state" in response["reason"]
+
+
+def test_fail_closed_tells_the_reader_to_retry_an_unreadable_payload() -> None:
+    def _raise() -> dict:
+        raise ValueError(hookio.UNREADABLE_PAYLOAD)
+
+    reason = hookio.fail_closed("write", _raise)["reason"]
+
+    assert reason == (
+        "agent-discipline-watcher could not read the tool call and blocked it. Retry once. "
+        "If it repeats, the cause was: unreadable hook payload"
+    )
+    assert "config" not in reason
+
+
+def test_fail_closed_names_the_config_path_for_other_failures(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def _raise() -> dict:
+        raise ValueError("bad gate map")
+
+    reason = hookio.fail_closed("write", _raise)["reason"]
+
+    assert str(tmp_path.resolve() / ".agent-discipline.json") in reason
+    assert "gate config" in reason
+    assert reason.endswith("Cause: bad gate map")
+
+
+def test_contract_and_skill_do_not_claim_a_reply_scan() -> None:
+    skill = Path(__file__).resolve().parents[2] / "skills" / "agent-discipline-watcher" / "SKILL.md"
+    for text in (hookio.CONTRACT, skill.read_text(encoding="utf-8")):
+        lowered = " ".join(text.lower().split())
+        for claim in ("reply text", "final prose", "final reply"):
+            assert claim not in lowered
 
 
 def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:

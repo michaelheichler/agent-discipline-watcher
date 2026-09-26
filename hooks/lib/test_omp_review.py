@@ -146,7 +146,8 @@ def test_every_comment_is_reviewed_and_bound_to_its_line(tmp_path, suffix, prefi
         {"index": 1, "verdict": "describes_code", "reason": "Describes the returned value."},
     ]})
     assert result["decision"] == "block"
-    assert f"{path}:2:" in result["reason"]
+    assert f'{path}:2 Found "{COMMENT}". Problem: Describes the returned value. Action: ' in result["reason"]
+    assert "Rewrite:" not in result["reason"]
 
 
 def test_missing_candidate_verdict_is_a_failure(tmp_path):
@@ -198,7 +199,7 @@ def test_large_finding_batch_keeps_every_row_in_a_report(tmp_path, monkeypatch):
     assert str(report) in result["reason"]
     rows = json.loads(report.read_text(encoding="utf-8"))
     assert len(rows) == 40
-    assert f"{path}:40:" in rows[-1]["message"]
+    assert f"{path}:40 Found " in rows[-1]["message"]
 
 
 def test_fabricated_document_quote_is_rejected(tmp_path):
@@ -214,7 +215,7 @@ def test_document_finding_includes_the_reviewed_quote(tmp_path):
     path.write_text("The release ships on Friday.", encoding="utf-8")
     prepared = prepare(path)
     result = validate(path, prepared, {"notes": [{"quote": "on Friday", "problem": "Unclear date.", "fix": "Give the date."}]})
-    assert "Quote: on Friday" in result["reason"]
+    assert f'{path}:1 Found "on Friday". Problem: Unclear date. Action: Give the date.' in result["reason"]
 
 
 def test_observed_finding_notice_reserves_room_for_policy_suffix(tmp_path, monkeypatch):

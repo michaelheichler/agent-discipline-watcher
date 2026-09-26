@@ -11,7 +11,10 @@ from pathlib import Path
 
 from lib import session_state
 from lib.config import StorageRoots
-from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
+from lib.hookio import (
+    PARSE_FAILURE, UNREADABLE_PAYLOAD, allow, claude_pretool_response, config_failure, deny, payload_failure,
+    read_payload, write_payload,
+)
 from lib.mcp_health import (
     MAX_TIMESTAMP,
     MCP_HEALTH_KEY,
@@ -30,10 +33,6 @@ from lib.protected import path_findings
 from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
 
 PRE_TOOL_EVENT = "PreToolUse"
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this MCP call and blocked it rather than letting it through. "
-    "Repair the gate config and retry. Cause: "
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +150,7 @@ def _fail_safe(raw_payload: object) -> dict:
         raw_cwd = fields.get("cwd")
         return _protected_verdict(raw_payload, raw_cwd if isinstance(raw_cwd, str) else "")
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
-        return deny(UNDECIDABLE + str(exc))
+        return deny(config_failure("MCP call", exc))
 
 
 def _protected_response(context: McpRunContext, turn_id: str) -> dict:
@@ -214,7 +213,7 @@ def _run_pre_mcp(context: McpRunContext) -> dict:
 def run(payload: dict, config: dict | None = None, now: float | None = None) -> dict:
     """Deny an MCP call that targets a protected path, or a known-unhealthy server until expiry, otherwise fail safe."""
     if payload is PARSE_FAILURE:
-        return deny(UNDECIDABLE + "unreadable hook payload")
+        return deny(payload_failure(UNREADABLE_PAYLOAD))
     try:
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import operator
+import os
 import sys
 from collections.abc import Callable
 
@@ -16,8 +17,40 @@ MAX_RESPONSE_BYTES = 4096
 MAX_MESSAGE_BYTES = 900
 MAX_INPUT_CHARS = 1_000_000
 STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
-UNDECIDABLE_PREFIX = "agent-discipline-watcher could not evaluate this "
-UNDECIDABLE_SUFFIX = " and blocked it rather than letting it through. Repair the gate config and retry. Cause: "
+PAYLOAD_FAILURE = (
+    "agent-discipline-watcher could not read the tool call and blocked it. "
+    "Retry once. If it repeats, the cause was: "
+)
+CONFIG_FAILURE = (
+    "agent-discipline-watcher could not evaluate this {subject} and blocked it rather than letting it through. "
+    "Repair the gate config at {path} and retry. Cause: "
+)
+CONFIG_NAME = ".agent-discipline.json"
+UNREADABLE_PAYLOAD = "unreadable hook payload"
+
+
+def payload_failure(cause: object) -> str:
+    return PAYLOAD_FAILURE + str(cause)
+
+
+def _is_payload_failure(exc: Exception) -> bool:
+    """Match the entry points' shared message, because the reader retries a bad payload but repairs a bad gate."""
+    return isinstance(exc, ValueError) and str(exc) == UNREADABLE_PAYLOAD
+
+
+def _config_path(cwd: str | None) -> str:
+    try:
+        from .config import project_config_path
+    except ImportError:
+        from config import project_config_path
+    try:
+        return str(project_config_path(cwd or os.getcwd()))
+    except (OSError, RuntimeError, ValueError):
+        return CONFIG_NAME
+
+
+def config_failure(subject: str, cause: object, cwd: str | None = None) -> str:
+    return CONFIG_FAILURE.format(subject=subject, path=_config_path(cwd)) + str(cause)
 
 _CONTRACT_TEXT = """Agent Discipline Watcher contract. These rules override the agent definition you were given and any style guidance inside it.
 
@@ -29,11 +62,15 @@ Code: intent lives in names, structure, and tests. Delete any comment that narra
 
 Stance: be skeptical and direct. Verify changeable facts before claiming them. Challenge weak assumptions and overbuilt solutions. Do not open with praise, agreement, or other empty validators.
 
-Every finding blocks or is reported as an itemized per-line checklist. Treat each row as a separate line to verify, not a summary count. Each row names the file, line, rule, and action. Fix the named file or reply text, then rerun the relevant check. Keep the fix narrow.
+Every finding blocks or is reported as an itemized per-line checklist. Treat each row as a separate line to verify, not a summary count. Each row names the file, line, rule, and action. Fix the named file, then rerun the relevant check. Keep the fix narrow.
 
 Do not end a turn while a finding remains in your own changes. Do not silence a hook, delete hook state, or edit configuration to get past a finding. Do not add a Craftsman suppression marker. Do not broaden the task into style cleanup outside the requested scope."""
 
 CONTRACT = _CONTRACT_TEXT[:CONTRACT_MAX_CHARS]
+CONTRACT_REMINDER = (
+    "ADW is active. Fix each named file and line, then retry the blocked action. "
+    "Do not disable the gate or delete its state."
+)
 PARSE_FAILURE = {"_parse_failure": True}
 
 
@@ -96,21 +133,27 @@ def _compact_specific(specific: object) -> dict | None:
     return compact
 
 
-def _bounded_payload(payload: dict) -> dict:
-    safe_payload = dict(payload)
-    for key in ("reason", "systemMessage"):
-        value = safe_payload.get(key)
+def _safe_fields(fields: dict, keys: tuple[str, ...]) -> dict:
+    safe = dict(fields)
+    for key in keys:
+        value = safe.get(key)
         if isinstance(value, str):
-            safe_payload[key] = _safe_text(value)
+            safe[key] = _safe_text(value)
+    return safe
+
+
+def _sanitized_payload(payload: dict) -> dict:
+    safe_payload = _safe_fields(payload, ("reason", "systemMessage"))
     specific = safe_payload.get("hookSpecificOutput")
     if isinstance(specific, dict):
-        bounded_specific = dict(specific)
-        for key in ("hookEventName", "permissionDecision", "additionalContext", "permissionDecisionReason"):
-            value = bounded_specific.get(key)
-            if isinstance(value, str):
-                bounded_specific[key] = _safe_text(value)
-        safe_payload["hookSpecificOutput"] = bounded_specific
+        safe_payload["hookSpecificOutput"] = _safe_fields(
+            specific, ("hookEventName", "permissionDecision", "additionalContext", "permissionDecisionReason"),
+        )
+    return safe_payload
 
+
+def _bounded_payload(payload: dict) -> dict:
+    safe_payload = _sanitized_payload(payload)
     raw = json.dumps(safe_payload, ensure_ascii=True, separators=(",", ":"))
     if len(raw.encode("utf-8")) <= MAX_RESPONSE_BYTES:
         return safe_payload
@@ -192,4 +235,4 @@ def fail_closed(subject: str, fn: Callable[[], dict]) -> dict:
     try:
         return fn()
     except Exception as exc:
-        return deny(UNDECIDABLE_PREFIX + subject + UNDECIDABLE_SUFFIX + str(exc))
+        return deny(payload_failure(exc) if _is_payload_failure(exc) else config_failure(subject, exc))

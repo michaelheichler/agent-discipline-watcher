@@ -13,11 +13,12 @@ import pre_bash
 import pre_mcp
 import pre_tool
 import pre_write
-from lib import protected
+from lib import catalog, protected
 from lib.config import CONFIG_NAME
 from lib.scanner import scan_all
 
 HOOKS = Path(__file__).resolve().parent
+CONFIG_SEAL_TITLE = catalog.rule_entry("config_seal").title
 GRANT = json.dumps({protected.AUTH_KEY: True})
 DOWNGRADE = json.dumps({"rule_gates": {"suppression_escape_hatch": "off"}})
 ATTACK = json.dumps({
@@ -89,15 +90,15 @@ class SelfGrantChainTests(unittest.TestCase):
 
     def test_a_heredoc_that_grants_the_escape_is_blocked(self):
         command = "cat > " + str(self.config) + " <<'JE'\n" + GRANT + "\nJE\n"
-        self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command)))
 
     def test_an_echo_redirect_that_grants_the_escape_is_blocked(self):
         command = "echo '" + GRANT + "' > " + str(self.config)
-        self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command)))
 
     def test_a_heredoc_that_downgrades_an_always_blocking_rule_is_blocked(self):
         command = "cat > " + str(self.config) + " <<'JE'\n" + DOWNGRADE + "\nJE\n"
-        self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command)))
 
     def test_a_heredoc_that_downgrades_a_bash_write_rule_is_blocked(self):
         for rule in (
@@ -107,25 +108,25 @@ class SelfGrantChainTests(unittest.TestCase):
             with self.subTest(rule=rule):
                 downgrade = json.dumps({"rule_gates": {rule: "off"}})
                 command = "cat > " + str(self.config) + " <<'JE'\n" + downgrade + "\nJE\n"
-                self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+                self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command)))
 
     def test_a_write_that_grants_the_escape_is_blocked_before_the_file_exists(self):
-        self.assertIn("self_protection/config_seal", self._blocked(self._write(GRANT)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._write(GRANT)))
         self.assertFalse(self.config.exists())
 
     def test_an_attack_config_cannot_be_created_without_a_finding(self):
-        self.assertIn("self_protection/config_seal", self._blocked(self._write(ATTACK)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._write(ATTACK)))
         self.assertFalse(self.config.exists())
 
     def test_an_opaque_shell_write_to_an_existing_config_is_blocked(self):
         self.config.write_text("{}", encoding="utf-8")
         command = "cp /tmp/other.json " + str(self.config)
-        self.assertIn("self_protection/config_seal", self._blocked(self._bash(command)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command)))
 
     def test_a_delete_file_patch_against_a_protected_path_is_blocked(self):
         self.config.write_text("{}", encoding="utf-8")
         patch = "*** Begin Patch\n*** Delete File: " + str(self.config) + "\n*** End Patch"
-        self.assertIn("self_protection/config_seal", self._blocked(self._apply_patch(patch)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._apply_patch(patch)))
 
     def test_a_deletion_only_update_patch_against_a_protected_path_is_blocked(self):
         self.config.write_text("{}", encoding="utf-8")
@@ -133,7 +134,7 @@ class SelfGrantChainTests(unittest.TestCase):
             "*** Begin Patch\n*** Update File: " + str(self.config) + "\n"
             "@@\n-{}\n*** End Patch"
         )
-        self.assertIn("self_protection/config_seal", self._blocked(self._apply_patch(patch)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._apply_patch(patch)))
 
     def test_an_ordinary_apply_patch_is_unaffected(self):
         target = self.root / "ok.py"
@@ -143,9 +144,9 @@ class SelfGrantChainTests(unittest.TestCase):
     def test_a_landed_grant_cannot_authorize_the_next_grant(self):
         self.config.write_text(GRANT, encoding="utf-8")
         granted = {protected.AUTH_KEY: True}
-        self.assertIn("self_protection/config_seal", self._blocked(self._write(GRANT, granted)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._write(GRANT, granted)))
         command = "cat > " + str(self.config) + " <<'JE'\n" + GRANT + "\nJE\n"
-        self.assertIn("self_protection/config_seal", self._blocked(self._bash(command, granted)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command, granted)))
 
     def test_a_landed_grant_is_inert_against_the_rest_of_the_family(self):
         self.config.write_text(GRANT, encoding="utf-8")
@@ -155,11 +156,11 @@ class SelfGrantChainTests(unittest.TestCase):
             ("rm -f " + str(self.config), "state_deletion"),
         ):
             with self.subTest(command=command):
-                self.assertIn("self_protection/" + rule, self._blocked(self._bash(command, granted)))
+                self.assertIn(catalog.rule_entry(rule).title,self._blocked(self._bash(command, granted)))
 
     def test_setting_the_escape_variable_inline_is_still_a_cap_override(self):
         command = protected.AUTH_ENV + "=1 python3 build.py"
-        self.assertIn("self_protection/cap_override", self._blocked(self._bash(command)))
+        self.assertIn(catalog.rule_entry("cap_override").title, self._blocked(self._bash(command)))
 
     def test_a_shell_write_to_the_watcher_install_is_blocked_by_path(self):
         target = self.root / "home" / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"
@@ -184,40 +185,40 @@ class SelfGrantChainTests(unittest.TestCase):
 
     def test_an_mcp_write_to_an_existing_gate_config_is_blocked_via_path(self):
         self.config.write_text("{}", encoding="utf-8")
-        self.assertIn("self_protection/config_seal", self._blocked(self._mcp({"path": str(self.config)})))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._mcp({"path": str(self.config)})))
         self.assertEqual(self.config.read_text(encoding="utf-8"), "{}")
 
     def test_an_mcp_write_to_an_existing_gate_config_is_blocked_via_file_path(self):
         self.config.write_text("{}", encoding="utf-8")
         self.assertIn(
-            "self_protection/config_seal", self._blocked(self._mcp({"file_path": str(self.config)}))
+            CONFIG_SEAL_TITLE, self._blocked(self._mcp({"file_path": str(self.config)}))
         )
 
     def test_an_mcp_write_using_relative_path_resolves_against_cwd(self):
         self.config.write_text("{}", encoding="utf-8")
         self.assertIn(
-            "self_protection/config_seal", self._blocked(self._mcp({"relative_path": CONFIG_NAME}))
+            CONFIG_SEAL_TITLE, self._blocked(self._mcp({"relative_path": CONFIG_NAME}))
         )
 
     def test_an_mcp_write_targeting_a_paths_list_is_blocked(self):
         self.config.write_text("{}", encoding="utf-8")
         other = self.root / "ok.py"
         response = self._mcp({"paths": [str(other), str(self.config)]})
-        self.assertIn("self_protection/config_seal", self._blocked(response))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(response))
 
     def test_an_mcp_write_to_watcher_state_is_blocked(self):
         target = Path.home() / ".adw" / "state" / "s1" / "state.json"
-        self.assertIn("self_protection/state_mutation", self._blocked(self._mcp({"path": str(target)})))
+        self.assertIn(catalog.rule_entry("state_mutation").title, self._blocked(self._mcp({"path": str(target)})))
 
     def test_an_mcp_write_to_the_legacy_state_home_is_blocked(self):
         """The legacy root stays guarded because an unmigrated machine still keeps its state there."""
         target = Path.home() / ".agent-discipline" / "state" / "s1" / "state.json"
-        self.assertIn("self_protection/state_mutation", self._blocked(self._mcp({"path": str(target)})))
+        self.assertIn(catalog.rule_entry("state_mutation").title, self._blocked(self._mcp({"path": str(target)})))
 
     def test_an_mcp_write_to_the_watcher_install_is_blocked_by_path(self):
         target = Path.home() / ".claude" / "skills" / "agent-discipline-watcher" / "SKILL.md"
         self.assertIn(
-            "self_protection/watcher_install_surface", self._blocked(self._mcp({"path": str(target)}))
+            catalog.rule_entry("watcher_install_surface").title, self._blocked(self._mcp({"path": str(target)}))
         )
 
     def test_an_ordinary_mcp_write_stays_allowed(self):
@@ -245,7 +246,7 @@ class SelfGrantChainTests(unittest.TestCase):
     def test_an_mcp_write_planting_an_escape_config_is_blocked_by_content(self):
         target = self.root / "sub" / CONFIG_NAME
         response = self._mcp({"path": str(target), "content": '{"state_root": "/tmp/steal"}'})
-        self.assertIn("self_protection", self._blocked(response))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(response))
 
     def test_a_decoy_field_does_not_hide_an_escape_payload_in_another_field(self):
         target = self.root / "sub" / CONFIG_NAME
@@ -254,7 +255,7 @@ class SelfGrantChainTests(unittest.TestCase):
             "text": "not json at all",
             "content": '{"state_root": "/tmp/steal"}',
         })
-        self.assertIn("self_protection", self._blocked(response))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(response))
 
     def test_an_mcp_write_to_the_gate_config_is_blocked_through_the_pretool_dispatcher(self):
         self.config.write_text("{}", encoding="utf-8")
@@ -262,7 +263,7 @@ class SelfGrantChainTests(unittest.TestCase):
             "session_id": "s1", "cwd": str(self.root), "tool_name": "mcp__fs__write_file",
             "tool_input": {"path": str(self.config)},
         }
-        self.assertIn("self_protection/config_seal", self._blocked(pre_tool.run(payload, self.cfg)))
+        self.assertIn(CONFIG_SEAL_TITLE, self._blocked(pre_tool.run(payload, self.cfg)))
 
 
 class MalformedConfigFailClosedTests(unittest.TestCase):
@@ -297,7 +298,7 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         response = json.loads(result.stdout)
         self.assertNotIn("decision", response)
-        self.assertIn("deferred_work_comment", response["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Deferred work comment", response["hookSpecificOutput"]["additionalContext"])
 
     def test_no_entry_point_dies_on_a_malformed_gate_map(self):
         for malformed in MALFORMED:

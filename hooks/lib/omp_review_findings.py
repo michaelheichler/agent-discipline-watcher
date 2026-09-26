@@ -5,8 +5,10 @@ import json
 from .judge_contracts import ReviewKind, output_schema, validate_payload
 from .omp_review_requests import ReviewWork
 from . import reporting
+from .finding_output import ReviewNote, review_row
 
 MAX_FEEDBACK_BYTES = 900
+COMMENT_ACTION = "Rewrite the comment to say why the code exists, or delete it."
 
 
 def _text(value: str) -> str:
@@ -25,8 +27,8 @@ def _candidate_findings(work: ReviewWork, payload: dict) -> list[str]:
         if row["verdict"] != violating:
             continue
         candidate = work.candidates[row["index"]]
-        rule = work.request.rule_name or "comment_narration"
-        findings.append(f"{_text(work.path)}:{candidate.line}: {rule}: {_text(row['reason'])} Rewrite: {_text(candidate.text)}")
+        location = f"{_text(work.path)}:{candidate.line}"
+        findings.append(review_row(ReviewNote(location, _text(candidate.text), _text(row["reason"]), COMMENT_ACTION)))
     return findings
 
 
@@ -44,7 +46,8 @@ def _document_findings(work: ReviewWork, payload: dict) -> list[str]:
         if not note["problem"].strip() or not note["fix"].strip():
             raise ValueError("document review note has no problem or fix")
         line = source[:source.index(quote)].count("\n") + 1
-        findings.append(f"{_text(work.path)}:{line}: Quote: {_text(quote)} Problem: {_text(note['problem'])} Fix: {_text(note['fix'])}")
+        note_row = ReviewNote(f"{_text(work.path)}:{line}", _text(quote), _text(note["problem"]), _text(note["fix"]))
+        findings.append(review_row(note_row))
     return findings
 
 

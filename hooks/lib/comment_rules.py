@@ -86,11 +86,11 @@ DIRECTIVE_COMMENT_RE = re.compile(
 TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)
 
 
-def _finding(finding: Finding | str, *values: object) -> dict:
-    return finding.to_dict() if isinstance(finding, Finding) else _legacy_finding(finding, values)
+def _finding(finding: Finding | str, *values: object, match: str | None = None) -> dict:
+    return finding.to_dict() if isinstance(finding, Finding) else _legacy_finding(finding, values, match)
 
 
-def _legacy_finding(family: str, values: tuple[object, ...]) -> dict:
+def _legacy_finding(family: str, values: tuple[object, ...], match: str | None = None) -> dict:
     if len(values) != 5:
         raise TypeError("finding requires family, rule, line, detail, snippet, and action")
     rule, line, detail, snippet, action = values
@@ -109,6 +109,7 @@ def _legacy_finding(family: str, values: tuple[object, ...]) -> dict:
         path=None,
         severity=None,
         tool_use_id=None,
+        match=match[:180] if match is not None else None,
     ).to_dict()
 
 

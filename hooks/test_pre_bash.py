@@ -340,7 +340,7 @@ def test_pre_bash_entry_denies_malformed_stdin() -> None:
     response = json.loads(result.stdout)
     assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload")
+    assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("the cause was: unreadable hook payload")
 
 
 def test_pre_bash_entry_denies_empty_stdin_because_it_carries_no_command() -> None:

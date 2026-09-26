@@ -402,7 +402,7 @@ class CompactBlockRegressionTests(unittest.TestCase):
     def test_max_rows_still_caps_the_listing(self):
         findings = [{**self._finding(), "line": line} for line in range(1, 6)]
         reason, _ = reporting.compact_block(findings, {"max_rows": 2}, lead="x:")
-        self.assertIn("... 3 more", reason)
+        self.assertIn("\n3 more findings: ", reason)
 
     def test_compact_block_has_a_hard_utf8_bound(self):
         finding = self._finding()
@@ -431,7 +431,7 @@ class VerdictMessageTests(unittest.TestCase):
         )
         self.assertEqual(kind, "block")
         self.assertIn("blocked findings:", message)
-        self.assertNotIn("a.py:1 clean_code/a:", message)
+        self.assertNotIn("a.py:1 A.", message)
 
     def test_an_observed_decision_uses_the_observe_lead(self):
         kind, message = reporting.verdict_message([(self._row("a"), "would_block")], {})
@@ -455,14 +455,14 @@ class InheritedAdviceTests(unittest.TestCase):
     def test_it_counts_the_inherited_findings(self):
         message = reporting.inherited_advice([self._row(1), self._row(2)], {})
         self.assertIn("already carried 2 findings you did not write", message)
-        self.assertIn("old.py:1 clean_code/what_comment", message)
+        self.assertIn("old.py:1 Comment restates the code", message)
 
     def test_an_empty_list_says_nothing(self):
         self.assertEqual(reporting.inherited_advice([], {}), "")
 
     def test_max_rows_keeps_a_legacy_file_from_flooding_the_response(self):
         message = reporting.inherited_advice([self._row(line) for line in range(1, 13)], {"max_rows": 3})
-        self.assertIn("... 9 more", message)
+        self.assertIn("\n9 more findings: ", message)
         self.assertEqual(sum(f"old.py:{line}" in message for line in range(1, 13)), 3)
 
 
@@ -551,7 +551,7 @@ def test_verdict_message_block_wins_over_observe() -> None:
 
     assert kind == "block"
     assert message.startswith(reporting.BLOCK_LEAD)
-    assert "blocked.py:1 protected/live_surface" in message
+    assert "blocked.py:1 Live surface" in message
 
 
 def test_format_row_status_prefix_is_optional() -> None:
@@ -564,9 +564,9 @@ def test_format_row_status_prefix_is_optional() -> None:
     untagged = reporting.format_row(finding)
 
     assert tagged.startswith("[removed] ")
-    assert "a.py:4 clean_code/what_comment: fix" in tagged
+    assert "a.py:4 Comment restates the code. fix" in tagged
     assert not untagged.startswith("[")
-    assert untagged == "a.py:4 clean_code/what_comment: fix"
+    assert untagged == "a.py:4 Comment restates the code. fix (what_comment)"
 
 def test_format_row_sanitizes_hostile_fields() -> None:
     finding = {
@@ -594,7 +594,7 @@ def test_compact_block_deduplicates_path_line_and_rule() -> None:
 
     message, _report = reporting.compact_block([finding, dict(finding)], {})
 
-    assert message.count("a.py:1 punctuation/banned_dash") == 1
+    assert message.count("a.py:1 Dash character") == 1
 
 
 class WriteFullReportTests(unittest.TestCase):

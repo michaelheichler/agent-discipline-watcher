@@ -20,7 +20,7 @@ WIRED_SETTINGS = json.dumps({
 
 def _rules(response: dict) -> list[str]:
     reason = response.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
-    return [part.split(": ")[0].split("/")[-1] for part in reason.splitlines() if "/" in part]
+    return [part.rsplit("(", 1)[1].rstrip(")") for part in reason.splitlines() if part.endswith(")")]
 
 
 class ProtectedEditScopeTests(unittest.TestCase):

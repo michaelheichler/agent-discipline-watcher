@@ -79,7 +79,7 @@ def test_pretool_entrypoint_denial_returns_feedback_without_ending_turn() -> Non
     response = json.loads(result.stdout)
     assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "what_comment" in response["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Comment restates the code" in response["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_payload_without_tool_name_is_rejected() -> None:
@@ -143,5 +143,5 @@ def test_bash_commit_message_violation_blocks_without_rewriting(tmp_path) -> Non
     })
 
     assert response["decision"] == "block"
-    assert "commit_message.md:1 punctuation/prose_semicolon" in response["reason"]
+    assert "commit_message.md:1 Semicolon in prose" in response["reason"]
     assert "updatedInput" not in response["hookSpecificOutput"]
