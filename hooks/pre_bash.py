@@ -1,6 +1,7 @@
 """Bash command policy: block shell routes around the discipline gates before the command runs."""
 from __future__ import annotations
 
+import operator
 import os
 import re
 import time
@@ -133,27 +134,27 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if not command:
         return allow()
     cwd = payload.get("cwd") or "."
-    findings = (
-        command_findings(command, cfg, cwd=cwd)
-        + target_findings(command, cfg)
-        + opaque_write_findings(command, cfg, cwd=cwd)
-    )
+    findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
     if findings:
         reason, _ = compact_block(findings, cfg)
         _record(payload, cfg, turn_id, findings, started)
         return deny(reason)
-    scan_targets = (
-        [command] + _literal_shell_c_payloads(command)
-        + _literal_shell_stdin_payloads(command) + _literal_shell_pipe_payloads(command)
-    )
+    scan_targets = _scan_targets(command)
     size = _largest_oversize(scan_targets)
     if size is not None:
         return deny(OVERSIZE_WRITE.format(size=size, cap=BASH_WRITE_CAP))
-    owned, inherited = _write_shape_totals(scan_targets, cfg, Path(payload.get("cwd") or "."))
+    owned, inherited = _write_shape_totals(scan_targets, cfg, Path(cwd))
     if not owned and not inherited:
         return allow()
     decisions = _record(payload, cfg, turn_id, owned, started) if owned else []
     return _verdict(decisions, cfg, inherited)
+
+
+def _scan_targets(command: str) -> list[str]:
+    return (
+        [command] + _literal_shell_c_payloads(command)
+        + _literal_shell_stdin_payloads(command) + _literal_shell_pipe_payloads(command)
+    )
 
 
 def _write_shape_totals(scan_targets: list[str], cfg: dict, cwd: Path) -> tuple[list[dict], list[dict]]:
@@ -187,12 +188,7 @@ def _verdict(decisions: list[tuple[dict, str]], cfg: dict, inherited: list[dict]
     return {"systemMessage": notice} if notice else allow()
 
 
-def command_findings(
-    command: str,
-    config: dict | None = None,
-    home: str | os.PathLike[str] | None = None,
-    cwd: str | os.PathLike[str] | None = None,
-) -> list[dict]:
+def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     """Judge shell segments independently because an allowed segment must not hide a prohibited sibling."""
     if not command or authorized(config):
         return []
@@ -236,11 +232,7 @@ def _shell_targets(command: str) -> dict[str, str | None]:
     return targets
 
 
-def opaque_write_findings(
-    command: str,
-    config: dict | None = None,
-    cwd: str | os.PathLike[str] | None = None,
-) -> list[dict]:
+def opaque_write_findings(command: str, config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     """Hard block here, because a write route the scanner cannot read through cannot be judged any other way."""
     return _opaque_findings(command, config, 0, cwd)
 
@@ -375,9 +367,7 @@ def _mutation_paths(command: str) -> list[str]:
     return [path for segment in _segments(command) if _is_mutating(segment) for path in mutation_targets(segment)]
 
 
-def write_findings(
-    command: str, config: dict | None = None, cwd: str | os.PathLike[str] | None = None,
-) -> list[dict]:
+def write_findings(command: str, config: dict | None = None, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     """Scan literal shell writes, because PostToolUse never matches Bash and this content would otherwise land unread."""
     return shaped_write_findings(command, config, cwd)[0]
 
@@ -457,10 +447,10 @@ def _finding(rule: str, command: str) -> dict:
 
 def _command(payload: dict) -> str:
     tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
-    command = tool_input.get("command") or tool_input.get("cmd") or ""
-    if isinstance(command, list):
-        return " ".join(str(part) for part in command)
-    return str(command)
+    command = tool_input.get("command") if operator.is_(type(tool_input), dict) else None
+    if not operator.is_(type(command), str):
+        raise ValueError("Bash tool_input.command must be a string")
+    return command
 
 
 if __name__ == "__main__":

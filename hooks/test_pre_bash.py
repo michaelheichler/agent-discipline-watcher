@@ -279,6 +279,15 @@ def test_empty_command_is_allowed():
     assert rules("") == []
 
 
+@pytest.mark.parametrize("tool_input", [
+    {}, {"description": "x"}, {"command": None}, {"command": ["ls"]}, {"cmd": "ls"},
+])
+def test_run_denies_a_payload_without_a_string_command(tool_input):
+    result = pre_bash.run({"tool_input": tool_input})
+    assert result["decision"] == "block"
+    assert "could not evaluate this command" in result["reason"]
+
+
 def test_run_denies_and_allows_through_the_hook_contract(tmp_path):
     denied = pre_bash.run({"tool_input": {"command": "./install.sh -y"}})
     assert denied.get("decision") == "block"
@@ -327,9 +336,9 @@ def test_pre_bash_entry_denies_malformed_stdin() -> None:
     assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload")
 
 
-def test_pre_bash_entry_allows_empty_stdin() -> None:
+def test_pre_bash_entry_denies_empty_stdin_because_it_carries_no_command() -> None:
     result = subprocess.run(
         [sys.executable, "pre_bash.py"], input="", text=True,
         capture_output=True, cwd=str(Path(__file__).parent), check=False,
     )
-    assert json.loads(result.stdout) == {}
+    assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"

@@ -29,12 +29,17 @@ def _invalid_payload(payload: object) -> bool:
         return True
     if name not in DIRECT_WRITERS and name not in PYTHON_TOOLS and name != "Bash":
         return False
-    fields = exact_string_dict(payload)
+    tool_input = _first_tool_input(exact_string_dict(payload))
+    if not operator.is_(type(tool_input), dict) or not tool_input:
+        return True
+    return name == "Bash" and not operator.is_(type(tool_input.get("command")), str)
+
+
+def _first_tool_input(fields: dict) -> object:
     for key in ("tool_input", "toolInput", "input"):
         if key in fields:
-            value = fields[key]
-            return not operator.is_(type(value), dict) or not value
-    return True
+            return fields[key]
+    return None
 
 
 def _is_denial(response: dict) -> bool:
