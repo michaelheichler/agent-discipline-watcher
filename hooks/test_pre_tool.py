@@ -101,7 +101,7 @@ def test_bash_without_a_string_command_is_denied_before_dispatch(tool_input: dic
 
     bash_gate.assert_not_called()
     assert response["decision"] == "block"
-    assert response["reason"] == pre_tool.UNDECIDABLE + "unreadable hook payload"
+    assert response["reason"] == pre_tool.payload_failure(pre_tool.UNREADABLE_PAYLOAD)
 
 
 def test_known_writer_with_malformed_tool_input_is_rejected() -> None:

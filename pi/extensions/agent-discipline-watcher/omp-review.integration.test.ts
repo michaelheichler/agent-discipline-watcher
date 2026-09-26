@@ -57,7 +57,7 @@ function verdict(index: number, narrates = false) {
 test("native findings block Stop until the repaired source receives a clean review", async () => {
   let calls = 0;
   const harness = fixture(async () => answer([verdict(0), verdict(1, ++calls === 1)]));
-  expect(JSON.stringify(await harness.result())).toContain(`${harness.path}:2:`);
+  expect(JSON.stringify(await harness.result())).toContain(`${harness.path}:2 Found`);
   expect(await harness.stop()).toMatchObject({ decision: "block", reason: expect.stringContaining("Describes the returned value") });
   expect(calls).toBe(1);
 

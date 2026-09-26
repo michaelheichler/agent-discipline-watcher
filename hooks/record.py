@@ -9,8 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from failure import _config_roots, normalize_payload, record_success
+from failure import normalize_payload, record_success
 from lib import blocker_state, journal, payloads, scan_input
+from lib.mcp_health import config_roots
 from lib.config import effective_config
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
@@ -283,7 +284,7 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
 def _run_record(payload: dict, config: dict | None) -> dict:
     projected = _projected_payload(payload)
     trusted_config = exact_string_dict(config)
-    roots = _config_roots(trusted_config)
+    roots = config_roots(trusted_config)
     state_root = cast(str | Path | None, roots.state)
     ledger_root = cast(str | Path | None, roots.ledger)
     cwd_text = projected["cwd"]
