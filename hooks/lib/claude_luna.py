@@ -194,10 +194,9 @@ def _live_path(raw_path: object, cwd: Path) -> Path | None:
     if not isinstance(raw_path, str) or len(raw_path) > MAX_LIVE_PATH_CHARS:
         return None
     try:
-        path = payloads.resolved_path(raw_path, cwd)
+        return payloads.resolved_path(raw_path, cwd)
     except (OSError, RuntimeError, TypeError, ValueError):
         return None
-    return path if path.suffix.lower() == ".py" else None
 
 
 def _file_candidates(path: Path, text: str) -> list[Candidate]:
