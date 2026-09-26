@@ -7,8 +7,8 @@ import stat
 from typing import Any
 
 from . import journal, claude_native, payloads
+from .codex_luna_documents import document_work
 from .config import effective_hook_config
-from .document_review import request_for as document_request
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -28,6 +28,8 @@ MAX_LIVE_PATH_CHARS = 4096
 MAX_LIVE_FILE_BYTES = 128 * 1024
 MAX_LIVE_SCAN_BYTES = 512 * 1024
 MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
+STOP_LABEL = "ADW current-session journal"
+Work = tuple[JudgeRequest, Any]
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
@@ -247,19 +249,9 @@ def _stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str,
         return []
 
 
-def stop_request(payload: object, state_root: str | Path | None) -> tuple[JudgeRequest, list[dict[str, Any]]] | None:
-    rows = _stop_rows(payload, state_root)
-    if not rows:
-        return None
-    documents = [
-        f"Path: {row['path']}\n\n{row['source_context']}"
-        for row in rows
-        if row.get("path") and row.get("source_context")
-    ]
-    source = "\n\n".join(documents)[:MAX_DOCUMENT_CHARS]
-    if not source.strip():
-        return None
-    return document_request("ADW current-session journal", source), rows
+def stop_request(payload: object, state_root: str | Path | None) -> list[Work] | None:
+    """Split across requests, because a cut document reads as reviewed."""
+    return document_work(_stop_rows(payload, state_root), MAX_DOCUMENT_CHARS, STOP_LABEL) or None
 
 
 def _state_root(payload: object, explicit: str | Path | None) -> str | Path | None:
@@ -299,10 +291,11 @@ def _failure(
     return stop_block(message)
 
 
-def _built(event: str, payload: object, state_root: str | Path | None) -> tuple[JudgeRequest, Any] | None:
+def _built(event: str, payload: object, state_root: str | Path | None) -> list[Work] | None:
     if event == "PostToolUse":
-        return post_request(payload)
-    return stop_request(payload, _state_root(payload, state_root))
+        built = post_request(payload)
+        return [built] if built else None
+    return stop_request(payload, state_root)
 
 
 def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> JudgeResult | None:
@@ -315,27 +308,45 @@ def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> J
     return result
 
 
-def _response(event: str, request: JudgeRequest, result: JudgeResult, sources: Any) -> dict:
+def _feedback(request: JudgeRequest, result: JudgeResult, sources: Any) -> str:
     if request.review_kind is ReviewKind.COMMENT:
-        feedback = _comment_feedback(result, sources)
-        return context(feedback, event) if feedback else {}
-    feedback = _document_feedback(result, sources)
-    return stop_block(feedback) if feedback else {}
+        return _comment_feedback(result, sources)
+    return _document_feedback(result, sources)
 
 
-def _judged(event: str, built: tuple[JudgeRequest, Any], provider: object | None, paths: dict[str, Any]) -> dict:
+def _judge_all(operation: Any, provider: object | None, work: list[Work]) -> list[str] | None:
+    """None when Luna is no longer selected, because another preset owns the turn."""
+    feedback = []
+    for request, sources in work:
+        result = _invoke(operation, provider, request)
+        if result is None:
+            return None
+        feedback.append(_feedback(request, result, sources))
+    return [text for text in feedback if text]
+
+
+def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[str] | dict:
     role = "comment" if event == "PostToolUse" else "document"
     try:
         with claude_native.luna_operation(**paths) as operation:
             if operation is None:
                 return {}
             try:
-                result = _invoke(operation, provider, built[0])
+                feedback = _judge_all(operation, provider, work)
+                return {} if feedback is None else feedback
             except Exception as exc:
                 return _failure(event, role, exc, **paths)
     except (OSError, ValueError) as exc:
         return _failure(event, role, exc, **paths)
-    return {} if result is None else _response(event, built[0], result, built[1])
+
+
+def _mark_reviewed(payload: object, work: list[Work], state_root: str | Path | None) -> None:
+    """Best effort, because a lost mark only costs one more review."""
+    rows = [row for _request, sources in work for row in sources]
+    try:
+        journal.mark_reviewed(payloads.session_id(payload), rows, state_root=state_root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        pass
 
 
 def run(
@@ -349,10 +360,17 @@ def run(
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
     if event not in {"PostToolUse", "Stop"}:
         return {}
-    built = _built(event, payload, state_root)
-    if built is None:
+    root = None if event == "PostToolUse" else _state_root(payload, state_root)
+    work = _built(event, payload, root)
+    if work is None:
         return {}
-    return _judged(event, built, provider, {"settings_path": settings_path, "preset_path": preset_path})
+    outcome = _judged(event, work, provider, {"settings_path": settings_path, "preset_path": preset_path})
+    if isinstance(outcome, dict):
+        return outcome
+    if event == "PostToolUse":
+        return context(_bounded("\n\n".join(outcome)), event) if outcome else {}
+    _mark_reviewed(payload, work, root)
+    return stop_block(_bounded("\n\n".join(outcome))) if outcome else {}
 
 
 def main() -> int:
