@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TypedDict, TypeGuard, cast
 
 from lib import session_state
-from lib.config import StorageRoots, effective_config
+from lib.config import StorageRoots
 from lib.hookio import read_payload, system_message, write_payload
 from lib.payloads import FailurePayload, exact_string_dict, failure_payload
 from lib.reporting import record_decision, run_with_ledger
@@ -358,8 +358,6 @@ def record_success(payload: dict, config: dict | None = None) -> None:
         if not session_id:
             return
         trusted_config = _safe_config(config)
-        cwd = str(trusted_payload["cwd"]) or None
-        effective_config(trusted_config, cwd)
         roots = _config_roots(trusted_config)
         session_state.update_state_strict(
             session_id,
@@ -472,8 +470,6 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         if not trusted_payload["session_id"]:
             return {}
         trusted_config = _safe_config(config)
-        cwd = str(trusted_payload["cwd"]) or None
-        effective_config(trusted_config, cwd)
         roots = _config_roots(trusted_config)
         clock = time.time() if now is None else now
         context = FailureRunContext(trusted_payload, roots, _valid_now(clock))

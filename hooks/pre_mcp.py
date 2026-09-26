@@ -22,7 +22,7 @@ from failure import (
     parse_mcp_tool,
 )
 from lib import session_state
-from lib.config import StorageRoots, effective_config
+from lib.config import StorageRoots
 from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.mcp_paths import mcp_target_paths, mcp_write_contents
 from lib.payloads import exact_string_dict
@@ -220,8 +220,6 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         if not trusted_payload["session_id"]:
             return _protected_verdict(payload, trusted_payload["cwd"])
         trusted_config = _safe_config(config)
-        cwd = str(trusted_payload["cwd"]) or None
-        effective_config(trusted_config, cwd)
         roots = _config_roots(trusted_config)
         clock = time.time() if now is None else now
         context = McpRunContext(

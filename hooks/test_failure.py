@@ -284,21 +284,14 @@ class FailureHookTests(HookTestCase):
         )
         self.assertEqual(HostileDict.calls, 0)
 
-    def test_invalid_cwd_is_empty_before_effective_config(self):
-        invalid = (
-            "/work\x00escape",
-            "/work\nother",
-            "x" * 4097,
-            HostileString("/work"),
-        )
-        for cwd in invalid:
-            payload = self.payload(session="safe-cwd")
-            payload["cwd"] = cwd
-            with mock.patch.object(
-                failure, "effective_config", wraps=failure.effective_config
-            ) as effective:
-                failure.run(payload, self.cfg, now=1.0)
-            self.assertIsNone(effective.call_args.args[1])
+    def test_failure_hooks_never_read_project_config(self):
+        payload = {**self.payload(), "cwd": str(self.root)}
+        mcp_payload = {**self.payload(tool="mcp__srv__write"), "cwd": str(self.root)}
+        with mock.patch("lib.config._project_settings") as project:
+            failure.run(payload, self.cfg, now=1.0)
+            failure.record_success(payload, self.cfg)
+            pre_mcp.run(mcp_payload, self.cfg, now=1.0)
+        project.assert_not_called()
 
     def test_oversized_tool_is_not_a_state_key(self):
         failure.run(self.payload(tool="x" * 264), self.cfg, now=1.0)
@@ -397,13 +390,13 @@ class FailureHookTests(HookTestCase):
     def test_invalid_session_stops_before_config_and_ledger_wrapper(self):
         for session in (".", ".."):
             with (
-                mock.patch.object(failure, "effective_config") as effective,
+                mock.patch.object(failure, "_safe_config") as safe_config,
                 mock.patch.object(failure, "run_with_ledger") as ledger,
             ):
                 self.assertEqual(
                     failure.run(self.payload(session=session), self.cfg, now=1.0), {}
                 )
-            effective.assert_not_called()
+            safe_config.assert_not_called()
             ledger.assert_not_called()
 
     EXPECTED_DECISION_ROW = {
@@ -593,11 +586,11 @@ class SuccessResetTests(HookTestCase):
     def test_invalid_success_helper_session_stops_before_config_and_state(self):
         for session in (".", ".."):
             with (
-                mock.patch.object(failure, "effective_config") as effective,
+                mock.patch.object(failure, "_safe_config") as safe_config,
                 mock.patch.object(failure.session_state, "update_state") as update,
             ):
                 failure.record_success(self.payload(session=session), self.cfg)
-            effective.assert_not_called()
+            safe_config.assert_not_called()
             update.assert_not_called()
 
 
