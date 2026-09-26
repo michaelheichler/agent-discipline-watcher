@@ -20,6 +20,7 @@ MAX_OVERFLOW_MARKERS = max(1, MAX_ROWS)
 MAX_STOP_ROWS = 24
 MAX_STOP_DOCUMENT_CHARS = 24_000
 MAX_STOP_TOTAL_CHARS = 48_000
+MAX_DOCUMENT_ROUNDS = 2
 REVIEWED_KEY = "claude_candidate_journal_reviewed"
 MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
@@ -466,7 +467,7 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     return [
         _migrate_row(row)
         for row in rows
-        if isinstance(row, dict) and row.get("role") in {"comment", "document"}
+        if isinstance(row, dict) and row.get("role") in {"comment", "document", "pattern"}
     ]
 
 
@@ -476,7 +477,9 @@ def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> l
 
 
 def _reviewed_key(row: dict[str, Any]) -> str:
-    return f"{row.get('path', '')}\n{row.get('content_hash', '')}"
+    """Pattern keys apart, because a vote can land after its review."""
+    key = f"{row.get('path', '')}\n{row.get('content_hash', '')}"
+    return f"pattern\n{key}" if row.get("role") == "pattern" else key
 
 
 def _reviewed(state: dict) -> list[str]:
@@ -485,6 +488,16 @@ def _reviewed(state: dict) -> list[str]:
 
 
 def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
+    if row.get("role") == "pattern":
+        line = row.get("line")
+        return {
+            "role": "pattern",
+            "path": str(row.get("path", ""))[:512],
+            "content_hash": str(row.get("content_hash", ""))[:64],
+            "rule": str(row.get("rule", ""))[:64],
+            "line": line if isinstance(line, int) and not isinstance(line, bool) else 1,
+            "text": str(row.get("text", ""))[:MAX_CANDIDATE_CHARS],
+        }
     return {
         "role": "document",
         "path": str(row.get("path", ""))[:512],
@@ -497,12 +510,29 @@ def _within_budget(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Whole rows only, because a cut document reads as a finished one."""
     kept: list[dict[str, Any]] = []
     total = 0
-    for row in rows[:MAX_STOP_ROWS]:
-        total += len(row["source_context"])
+    for row in rows:
+        total += len(row.get("source_context") or row.get("text") or "")
         if total > MAX_STOP_TOTAL_CHARS and kept:
             break
         kept.append(row)
     return kept
+
+
+def _latest_documents(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("role") == "document":
+            identity = _row_identity(row)
+            latest.pop(identity, None)
+            latest[identity] = row
+    return list(latest.values())
+
+
+def _rounds_left(row: dict[str, Any], reviewed: set[str]) -> bool:
+    """Two rounds, because a third rewrite rarely converges."""
+    key = _reviewed_key(row)
+    prefix = f"{row.get('path', '')}\n"
+    return key in reviewed or sum(1 for seen in reviewed if seen.startswith(prefix)) < MAX_DOCUMENT_ROUNDS
 
 
 def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None) -> list[dict[str, Any]]:
@@ -510,20 +540,21 @@ def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | 
     state = session_state.read_state(session_id, state_root)
     reviewed = set(_reviewed(state))
     current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
-    latest: dict[str, tuple[dict[str, Any], bool]] = {}
-    for row in read(session_id, state_root=state_root):
-        if row.get("role") != "document":
-            continue
-        identity = _row_identity(row)
-        latest.pop(identity, None)
-        latest[identity] = (_stop_row(row), bool(current) and row.get("turn_id") == current)
-    due = [row for row, in_turn in latest.values() if in_turn or _reviewed_key(row) not in reviewed]
-    return _within_budget(due)
+    rows = read(session_id, state_root=state_root)
+
+    def due(row: dict[str, Any]) -> bool:
+        return (bool(current) and row.get("turn_id") == current) or _reviewed_key(row) not in reviewed
+
+    patterns = [_stop_row(row) for row in rows if row.get("role") == "pattern" and due(row)]
+    documents = [
+        _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed)
+    ]
+    return _within_budget(patterns + documents[:MAX_STOP_ROWS])
 
 
 def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:
     """Keyed by digest, because an edited document needs a new review."""
-    keys = [_reviewed_key(row) for row in rows]
+    keys = list(dict.fromkeys(_reviewed_key(row) for row in rows))
 
     def update(state: dict) -> dict:
         merged = [key for key in _reviewed(state) if key not in keys] + keys

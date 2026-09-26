@@ -86,3 +86,71 @@ def test_stop_read_skips_a_reviewed_digest_until_the_content_changes(tmp_path: P
         "session", lambda state: {**state, journal.STATE_KEY: [_document(doc, "second")]}, state_root,
     )
     assert [row["content_hash"] for row in journal.read_stop("session", state_root=state_root)] == ["second"]
+
+
+def _pattern(path: Path, digest: str, line: int, turn_id: str = "") -> dict:
+    return {
+        "role": "pattern", "rule": "ai_closer", "path": str(path), "path_identity": str(path),
+        "line": line, "text": f"Feel free to ask me anything else {line}.", "content_hash": digest,
+        "turn_id": turn_id,
+    }
+
+
+def test_stop_read_serves_pattern_rows_ahead_of_documents(tmp_path: Path) -> None:
+    doc = tmp_path / "a.md"
+    state_root = _store(tmp_path, [_document(doc, "one"), _pattern(doc, "one", 3)])
+
+    rows = journal.read_stop("session", state_root=state_root)
+
+    assert [row["role"] for row in rows] == ["pattern", "document"]
+    assert rows[0] == {
+        "role": "pattern", "path": str(doc), "content_hash": "one", "rule": "ai_closer",
+        "line": 3, "text": "Feel free to ask me anything else 3.",
+    }
+
+
+def test_pattern_rows_count_against_the_same_character_budget(tmp_path: Path) -> None:
+    documents = [
+        {**_document(tmp_path / f"{index}.md", str(index)), "source_context": "x" * 20_000}
+        for index in range(3)
+    ]
+    patterns = [_pattern(tmp_path / "p.md", "p", line) for line in range(30)]
+    state_root = _store(tmp_path, [*documents, *patterns])
+
+    rows = journal.read_stop("session", state_root=state_root)
+
+    assert [row["role"] for row in rows].count("pattern") == 30
+    assert sum(len(row.get("source_context", row.get("text", ""))) for row in rows) <= journal.MAX_STOP_TOTAL_CHARS
+
+
+def test_a_vote_that_lands_after_its_document_was_reviewed_is_still_served(tmp_path: Path) -> None:
+    doc = tmp_path / "a.md"
+    state_root = _store(tmp_path, [_document(doc, "one", "turn-1")])
+    journal.mark_reviewed("session", journal.read_stop("session", state_root=state_root), state_root=state_root)
+    session_state.update_state(
+        "session",
+        lambda state: {**state, "turn_id": "turn-2", journal.STATE_KEY: [*state[journal.STATE_KEY], _pattern(doc, "one", 1, "turn-1")]},
+        state_root,
+    )
+
+    rows = journal.read_stop("session", state_root=state_root)
+    journal.mark_reviewed("session", rows, state_root=state_root)
+
+    assert [row["role"] for row in rows] == ["pattern"]
+    assert journal.read_stop("session", state_root=state_root) == []
+
+
+def test_a_document_gets_two_review_rounds_at_most(tmp_path: Path) -> None:
+    doc = tmp_path / "a.md"
+    state_root = _store(tmp_path, [])
+    served = []
+    for digest in ("first", "second", "third"):
+        session_state.update_state(
+            "session", lambda state, digest=digest: {**state, journal.STATE_KEY: [_document(doc, digest)]}, state_root,
+        )
+        rows = journal.read_stop("session", state_root=state_root)
+        journal.mark_reviewed("session", rows, state_root=state_root)
+        served.extend(row["content_hash"] for row in rows)
+
+    assert served == ["first", "second"]
+    assert journal.MAX_DOCUMENT_ROUNDS == 2
