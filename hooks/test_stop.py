@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 import stop
-from lib import blocker_state, reporting, session_state
+from lib import blocker_state, embedding_lease, embedding_server, embedding_session, reporting, session_state
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -160,3 +164,14 @@ def test_stop_blocks_corrupt_state_without_replacing_it(tmp_path: Path) -> None:
     response = stop.run(_payload(), config)
     assert response["decision"] == "block"
     assert state_file.read_text(encoding="utf-8") == "not-json"
+
+
+def test_stop_releases_the_embedding_lease_without_terminating_the_worker(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    root = embedding_session.lease_root_for(config)
+    embedding_lease.acquire("s1", time.time(), root, os.getpid())
+    monkeypatch.setattr(embedding_server, "_stop", lambda _root: pytest.fail("Stop terminated the worker"))
+
+    assert stop.run(_payload(), config) == {}
+
+    assert embedding_lease.live_sessions(time.time(), root) == ()

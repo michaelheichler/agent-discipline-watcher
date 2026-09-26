@@ -1,5 +1,6 @@
 import os
 import socket
+import time
 
 import pytest
 
@@ -18,6 +19,24 @@ def _closed_port() -> int:
 def _opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set for this file because the bracket is off until a reader for the vectors exists."""
     monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", True)
+
+
+def test_without_a_consumer_a_prompt_never_loads_the_model(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", False)
+    monkeypatch.setattr(embedding_session, "ensure_loaded", lambda *_args: pytest.fail("loaded without a consumer"))
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert not list(tmp_path.glob("*.lease.json"))
+
+
+def test_without_a_consumer_close_turn_still_releases_a_stale_lease(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", False)
+    embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
+
+    embedding_session.close_turn("alpha", str(tmp_path))
+
+    assert embedding_lease.live_sessions(1001.0, tmp_path) == ()
 
 
 @pytest.fixture(name="absent_server")
@@ -56,12 +75,26 @@ def test_the_lease_root_follows_the_configured_state_root(tmp_path) -> None:
     assert embedding_session.lease_root_for({}) is None
 
 
-def test_an_absent_server_provisions_in_the_background(absent_server, tmp_path, monkeypatch) -> None:
+def test_an_absent_server_provisions_in_the_background(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
     asked = []
     monkeypatch.setattr(embedding_session, "start_detached", asked.append)
 
     assert embedding_session.open_turn("alpha", str(tmp_path)) is None
     assert asked == [embedding_session.default_root()]
+
+
+@pytest.mark.parametrize("variable", ["ADW_EMBEDDING_URL", "ADW_EMBEDDING_URLS"])
+def test_an_unreachable_user_server_never_provisions_a_local_model(tmp_path, monkeypatch, variable) -> None:
+    monkeypatch.delenv("ADW_EMBEDDING_URL", raising=False)
+    monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
+    monkeypatch.setenv(variable, f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
+    asked = []
+    monkeypatch.setattr(embedding_session, "start_detached", asked.append)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert asked == []
 
 
 def test_close_turn_releases_the_lease_the_turn_took(tmp_path) -> None:
@@ -93,11 +126,41 @@ def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatc
     assert asked == ([embedding_session.default_root()] if managed else [])
 
 
+def test_a_startup_failure_names_the_cause_and_the_next_step(tmp_path, monkeypatch, capsys) -> None:
+    def fail_load(*_args) -> str:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(embedding_session, "ensure_loaded", fail_load)
+
+    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert capsys.readouterr().err.splitlines() == [
+        "ADW could not start optional meaning checks: disk full",
+        "Regex checks remain active.",
+        "Fix the local embedding service before retrying meaning checks.",
+    ]
+
+
 def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
-    def fail_release(*_args):
+    def fail_release(*_args) -> bool:
         raise PermissionError("cannot signal worker")
 
     monkeypatch.setattr(embedding_session, "release", fail_release)
 
     assert embedding_session.close_turn("alpha", str(tmp_path)) is False
     assert "embedding cleanup failed: cannot signal worker" in capsys.readouterr().err
+
+
+def test_renew_turn_keeps_a_long_turn_holding_the_model(tmp_path) -> None:
+    embedding_lease.acquire("alpha", 1000.0, tmp_path, os.getpid())
+
+    assert embedding_session.renew_turn("alpha", str(tmp_path)) is True
+    assert embedding_lease.live_sessions(time.time(), tmp_path) == ("alpha",)
+
+
+def test_renew_turn_without_a_session_does_nothing(tmp_path) -> None:
+    assert embedding_session.renew_turn("", str(tmp_path)) is False
+
+
+def test_renew_turn_reports_a_failure_without_raising(tmp_path, capsys) -> None:
+    assert embedding_session.renew_turn("../escape", str(tmp_path)) is False
+    assert "embedding renewal failed" in capsys.readouterr().err

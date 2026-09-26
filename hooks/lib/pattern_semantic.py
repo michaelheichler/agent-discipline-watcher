@@ -3,19 +3,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from collections import Counter
 from pathlib import Path, PurePath
 from typing import NamedTuple
 
 try:
-    from .embedding_client import Vector, embed
+    from .embedding_client import Vector, embed, embeddings_urls, model_name
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
-    from embedding_client import Vector, embed
+    from embedding_client import Vector, embed, embeddings_urls, model_name
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
@@ -118,10 +120,11 @@ def rule_prompt(rule: str, exemplars: tuple[Exemplar, ...], manifest: dict) -> P
     return PatternRule(rule, manifest["rules"][rule]["action"], sides[VIOLATING], sides[CLEAN])
 
 
-def candidates_for(
-    rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str
-) -> tuple[PatternCandidate, ...]:
+def candidates_for(rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str) -> tuple[PatternCandidate, ...]:
     neighbours = [(row.label, vectors[row.text]) for row in exemplars if row.rule == rule and row.text in vectors]
+    if not neighbours:
+        sys.stderr.write(f"agent-discipline-watcher: skipped {rule}, no exemplar vectors\n")
+        return ()
     return tuple(
         PatternCandidate(path, sentence.line, sentence.text)
         for sentence in sentences
@@ -134,25 +137,40 @@ def _vectors(texts: tuple[str, ...], config: dict | None = None) -> dict[str, Ve
     return dict(zip(texts, answered)) if answered else {}
 
 
-def _cache_path() -> Path:
-    return exemplar_cache_root() / f"{EXEMPLAR_PATH.name}.{_exemplar_digest()}.json"
+def _cache_path(config: dict | None) -> Path:
+    return exemplar_cache_root() / f"{EXEMPLAR_PATH.name}.{_cache_digest(config)}.json"
 
 
-def _exemplar_digest() -> str:
-    return hashlib.sha256(EXEMPLAR_PATH.read_bytes()).hexdigest()[:16]
+def _cache_digest(config: dict | None) -> str:
+    """Keyed on model and endpoint, because each yields other vectors."""
+    digest = hashlib.sha256(EXEMPLAR_PATH.read_bytes())
+    digest.update(json.dumps([model_name(), embeddings_urls(config)]).encode("utf-8"))
+    return digest.hexdigest()[:16]
 
 
-def _cached_vectors() -> dict[str, Vector]:
+def _cached_vectors(path: Path) -> dict[str, Vector]:
     try:
-        rows = json.loads(_cache_path().read_text(encoding="utf-8"))
+        rows = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {text: tuple(vector) for text, vector in rows}
 
 
+def _write_cache(path: Path, vectors: dict[str, Vector]) -> None:
+    """Replaced whole, because a torn cache would poison later scans."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps([[text, list(vector)] for text, vector in vectors.items()]), encoding="utf-8")
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None) -> dict[str, Vector]:
     """Cache exemplar vectors while applying the caller's source-egress policy to fresh embeddings."""
-    cached = _cached_vectors()
+    path = _cache_path(config)
+    cached = _cached_vectors(path)
     wanted = tuple(sorted({row.text for row in exemplars} - set(cached)))
     if not wanted:
         return cached
@@ -160,9 +178,7 @@ def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None
     if not fresh:
         return cached
     merged = {**cached, **fresh}
-    path = _cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([[text, list(vector)] for text, vector in merged.items()]), encoding="utf-8")
+    _write_cache(path, merged)
     return merged
 
 

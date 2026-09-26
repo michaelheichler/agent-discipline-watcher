@@ -86,6 +86,14 @@ def test_a_sentence_without_a_vector_is_never_flagged() -> None:
     assert pattern_semantic.candidates_for("ai_closer", sentences, VECTORS, EXEMPLARS, "a.md") == ()
 
 
+def test_a_rule_without_exemplar_vectors_is_skipped_with_one_notice(capsys) -> None:
+    sentences = (Sentence(3, "Feel free to ask me anything else."), Sentence(4, "The lease expires after 900 seconds."))
+    only_sentences = {text: VECTORS[text] for _line, text in sentences}
+
+    assert pattern_semantic.candidates_for("ai_closer", sentences, only_sentences, EXEMPLARS, "a.md") == ()
+    assert capsys.readouterr().err.count("ai_closer") == 1
+
+
 def test_an_absent_server_yields_no_finding_rather_than_a_clean_verdict(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "embed", lambda _texts: None)
 
@@ -127,6 +135,39 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
     findings = pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n")
 
     assert [(item.rule, item.blocking) for item in findings] == [("ai_closer", True)]
+
+
+@pytest.fixture(name="cache_root")
+def _cache_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(pattern_semantic, "exemplar_cache_root", lambda: tmp_path)
+    monkeypatch.setenv("ADW_EMBEDDING_URL", "http://127.0.0.1:1111/v1/embeddings")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [("ADW_EMBEDDING_MODEL", "another-model"), ("ADW_EMBEDDING_URL", "http://127.0.0.1:2222/v1/embeddings")],
+)
+def test_the_cache_key_changes_with_model_and_endpoint(cache_root, monkeypatch, variable, value) -> None:
+    before = pattern_semantic._cache_path(None)
+    monkeypatch.setenv(variable, value)
+
+    assert pattern_semantic._cache_path(None) != before
+
+
+def test_a_failed_cache_write_leaves_the_old_cache_whole(cache_root, monkeypatch) -> None:
+    path = pattern_semantic._cache_path(None)
+    path.write_text('[["old", [1.0]]]', encoding="utf-8")
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda texts, config=None: {text: (0.5,) for text in texts})
+
+    def interrupted(_source, _target) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pattern_semantic.os, "replace", interrupted)
+    with pytest.raises(OSError):
+        pattern_semantic.exemplar_vectors(EXEMPLARS)
+
+    assert path.read_text(encoding="utf-8") == '[["old", [1.0]]]'
 
 
 def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
