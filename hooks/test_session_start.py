@@ -54,5 +54,25 @@ class SessionStartLifecycleTests(unittest.TestCase):
             self.assertEqual(session_start.session_state.live_session_ids(config["state_root"]), frozenset({"s1"}))
 
 
+def _context(source: str | None) -> str:
+    payload = {} if source is None else {"source": source}
+    return session_start.run(payload)["hookSpecificOutput"]["additionalContext"]
+
+
+class SessionStartContractTests(unittest.TestCase):
+    def test_startup_and_an_unknown_source_get_the_full_contract(self) -> None:
+        for source in ("startup", None, "unexpected"):
+            with self.subTest(source=source):
+                self.assertEqual(_context(source), session_start.CONTRACT)
+
+    def test_resume_clear_and_compact_get_one_line(self) -> None:
+        for source in ("resume", "clear", "compact"):
+            with self.subTest(source=source):
+                self.assertEqual(_context(source), (
+                    "ADW is active. Fix each named file and line, then retry the blocked action. "
+                    "Do not disable the gate or delete its state."
+                ))
+
+
 if __name__ == "__main__":
     unittest.main()

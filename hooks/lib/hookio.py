@@ -67,6 +67,10 @@ Every finding blocks or is reported as an itemized per-line checklist. Treat eac
 Do not end a turn while a finding remains in your own changes. Do not silence a hook, delete hook state, or edit configuration to get past a finding. Do not add a Craftsman suppression marker. Do not broaden the task into style cleanup outside the requested scope."""
 
 CONTRACT = _CONTRACT_TEXT[:CONTRACT_MAX_CHARS]
+CONTRACT_REMINDER = (
+    "ADW is active. Fix each named file and line, then retry the blocked action. "
+    "Do not disable the gate or delete its state."
+)
 PARSE_FAILURE = {"_parse_failure": True}
 
 
