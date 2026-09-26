@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 import judge_review
-from lib import embedding_session, host, journal, pattern_judge, session_state
+from lib import embedding_session, host, journal, pattern_judge, pattern_vote, session_state
 from lib.hookio import PARSE_FAILURE
 from lib.pattern_judge import PatternCandidate
 
@@ -36,12 +36,12 @@ class Route:
 
     def vote_closers(self) -> None:
         self.monkeypatch.setattr(
-            judge_review, "candidates",
+            pattern_vote, "candidates",
             lambda path, text, _config: {"ai_closer": (PatternCandidate(path, 1, text.strip()),)},
         )
 
     def forbid_vote(self) -> None:
-        self.monkeypatch.setattr(judge_review, "candidates", lambda *_args: pytest.fail("voted"))
+        self.monkeypatch.setattr(pattern_vote, "candidates", lambda *_args: pytest.fail("voted"))
 
     def feed(self, payload: dict) -> None:
         self.monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
@@ -58,7 +58,7 @@ def _route(tmp_path, monkeypatch) -> Route:
         embedding_session, "open_turn", lambda session, _root: calls.append(f"open:{session}") or WARM_URL,
     )
     monkeypatch.setattr(embedding_session, "renew_turn", lambda session, _root: calls.append(f"renew:{session}"))
-    monkeypatch.setattr(judge_review.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(pattern_vote.time, "sleep", lambda _seconds: None)
     return Route(root, tmp_path / "work", calls, monkeypatch)
 
 
@@ -104,7 +104,7 @@ def test_a_prose_write_keeps_the_embedding_lease(route: Route) -> None:
 def test_a_cold_model_is_awaited_before_the_vote(route: Route) -> None:
     answers = iter([None, None, WARM_URL])
     route.monkeypatch.setattr(embedding_session, "open_turn", lambda *_args: None)
-    route.monkeypatch.setattr(judge_review, "probe", lambda: next(answers))
+    route.monkeypatch.setattr(pattern_vote, "probe", lambda: next(answers))
     route.vote_closers()
 
     judge_review.run(_payload(route.write("notes.md")))
@@ -114,7 +114,7 @@ def test_a_cold_model_is_awaited_before_the_vote(route: Route) -> None:
 
 def test_a_model_that_never_answers_skips_the_vote(route: Route) -> None:
     route.monkeypatch.setattr(embedding_session, "open_turn", lambda *_args: None)
-    route.monkeypatch.setattr(judge_review, "probe", lambda: None)
+    route.monkeypatch.setattr(pattern_vote, "probe", lambda: None)
     route.monkeypatch.setattr(judge_review, "READY_WAIT_SECONDS", 0.0)
     route.forbid_vote()
 
@@ -222,7 +222,7 @@ def test_a_failed_vote_still_exits_cleanly(route: Route, capsys) -> None:
     def broken(*_args) -> dict:
         raise ValueError("embedding server returned 1 vectors for 2 inputs")
 
-    route.monkeypatch.setattr(judge_review, "candidates", broken)
+    route.monkeypatch.setattr(pattern_vote, "candidates", broken)
     route.feed(_payload(route.write("notes.md")))
 
     assert judge_review.main() == 0

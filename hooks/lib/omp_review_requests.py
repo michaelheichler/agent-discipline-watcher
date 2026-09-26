@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import gate_state
+from . import journal
+from .config import JUDGED_STATE, gate_state, rule_state
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, output_schema
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
-from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
+from .pattern_semantic import blocking_rules, load_exemplars, load_manifest, rule_prompt
 from .regex_judge import judged_rules
 from .scanner import PROSE_EXTS, _exempt_families, _is_exempt, scan_all
 
@@ -60,23 +62,71 @@ def _judged_blocks(rule: str, found: list[dict], config: dict) -> bool:
     return all(gate_state(family, config) == "enforce" for family in families)
 
 
-def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
+def _batches(found: tuple[PatternCandidate, ...]) -> list[tuple[PatternCandidate, ...]]:
+    return [found[start:start + MAX_BATCH_CANDIDATES] for start in range(0, len(found), MAX_BATCH_CANDIDATES)]
+
+
+def _regex_work(path: str, text: str, config: dict, exemplars: tuple) -> list[ReviewWork]:
+    """Only rules without exemplars, because the vote covers the rest."""
     found = scan_all(path, text, config)
-    rules = judged_rules(config) & {str(item.get("rule")) for item in found}
-    if not rules:
-        return []
-    exemplars, manifest = load_exemplars(), load_manifest()
+    voted = {row.rule for row in exemplars}
+    rules = (judged_rules(config) - voted) & {str(item.get("rule")) for item in found}
+    manifest = load_manifest()
     work = []
     for rule in sorted(rules):
         if rule not in manifest["rules"]:
             raise ValueError(f"judged rule {rule} has no review rubric")
         selected = tuple(PatternCandidate(path, int(item.get("line") or 1), str(item.get("snippet") or "")) for item in found if item.get("rule") == rule)
         blocking = _judged_blocks(rule, found, config)
-        for start in range(0, len(selected), MAX_BATCH_CANDIDATES):
-            batch = selected[start:start + MAX_BATCH_CANDIDATES]
-            request = pattern_request(rule_prompt(rule, exemplars, manifest), batch)
-            work.append(ReviewWork(request, path, batch, blocking=blocking))
+        prompt = rule_prompt(rule, exemplars, manifest)
+        work.extend(ReviewWork(pattern_request(prompt, batch), path, batch, blocking=blocking) for batch in _batches(selected))
     return work
+
+
+def _journal_rows(config: dict) -> list[dict]:
+    """Empty on a bad session id, because no journal can exist."""
+    session_id = config.get("session_id")
+    state_root = config.get("state_root")
+    if not isinstance(session_id, str) or not session_id:
+        return []
+    try:
+        return journal.read(session_id, state_root=state_root if isinstance(state_root, str) else None)
+    except ValueError:
+        return []
+
+
+def _journal_candidates(path: str, text: str, config: dict) -> dict[str, tuple[PatternCandidate, ...]]:
+    identity = str(Path(path).expanduser().resolve())
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    grouped: dict[str, list[PatternCandidate]] = {}
+    for row in _journal_rows(config):
+        if row.get("role") == "pattern" and row.get("path_identity") == identity and row.get("content_hash") == digest:
+            grouped.setdefault(str(row.get("rule")), []).append(PatternCandidate(path, int(row["line"]), str(row["text"])))
+    return {rule: tuple(found) for rule, found in grouped.items()}
+
+
+def _voted_state(rule: str, config: dict) -> str:
+    return rule_state(rule, config) or gate_state("english", config)
+
+
+def _voted_work(path: str, text: str, config: dict, exemplars: tuple) -> list[ReviewWork]:
+    """Journal rows, because the vote already ran after the write."""
+    manifest = load_manifest()
+    blocking = blocking_rules(manifest)
+    work = []
+    for rule, found in sorted(_journal_candidates(path, text, config).items()):
+        state = _voted_state(rule, config)
+        if rule not in manifest["rules"] or state == "off":
+            continue
+        prompt = rule_prompt(rule, exemplars, manifest)
+        blocks = state in {"enforce", JUDGED_STATE} and rule in blocking
+        work.extend(ReviewWork(pattern_request(prompt, batch), path, batch, blocking=blocks) for batch in _batches(found))
+    return work
+
+
+def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
+    exemplars = load_exemplars()
+    return _voted_work(path, text, config, exemplars) + _regex_work(path, text, config, exemplars)
 
 
 def build_work(path: Path, text: str, config: dict) -> tuple[ReviewWork, ...]:

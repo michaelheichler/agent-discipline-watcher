@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pre_bash
-from . import payloads
+from . import embedding_session, payloads, pattern_vote
 from .config import effective_hook_config
 from .document_review import data_boundary_enabled
 from .journal import _read_regular_content
+from .judge_contracts import content_hash
 from .narration_candidates import COMMENTABLE_EXTS
 from .omp_review_findings import validated_findings
-from .omp_review_requests import build_work, wire_request
+from .omp_review_requests import ReviewWork, build_work, wire_request
 from .scanner import PROSE_EXTS
 
 REVIEW_SUFFIXES = COMMENTABLE_EXTS | PROSE_EXTS | {".py"}
+BRIDGE_TIMEOUT_SECONDS = 30.0
+VOTE_READY_SECONDS = BRIDGE_TIMEOUT_SECONDS / 3
 MAX_TARGET_PATHS = 32
 MAX_TARGET_BYTES = 64 * 1024
 MAX_TARGET_DEPTH = 2
@@ -36,8 +40,10 @@ def _target(payload: dict) -> Path:
     return (target if target.is_absolute() else Path(cwd) / target).resolve()
 
 
-def _digest(path: Path, source: str, config: dict) -> str:
-    data = json.dumps([str(path), source, config], sort_keys=True, ensure_ascii=True)
+def _digest(path: Path, source: str, config: dict, work: tuple[ReviewWork, ...]) -> str:
+    """Hashed with the work, because journal rows can change."""
+    requests = [[content_hash(item.request), item.blocking] for item in work]
+    data = json.dumps([str(path), source, config, requests], sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
@@ -131,6 +137,18 @@ def _targets(payload: dict) -> dict:
     return {"paths": list(dict.fromkeys(paths))}
 
 
+def _vote(payload: dict, target: Path, cfg: dict) -> None:
+    """Inline, because OMP has no async route to vote on."""
+    if target.suffix.lower() not in PROSE_EXTS or not embedding_session.enabled() or not payloads.session_id(payload):
+        return
+    try:
+        turn = pattern_vote.turn_for(payload, cfg)
+        if pattern_vote.model_ready(turn, VOTE_READY_SECONDS):
+            pattern_vote.vote(turn, target)
+    except Exception as exc:
+        sys.stderr.write(f"agent-discipline-watcher: pattern vote skipped: {exc}\n")
+
+
 def _review(request: dict, payload: dict, config: dict | None) -> dict:
     cfg = effective_hook_config(config, payloads.cwd(payload) or None)
     if not data_boundary_enabled(cfg):
@@ -139,8 +157,10 @@ def _review(request: dict, payload: dict, config: dict | None) -> dict:
     if target.suffix.lower() not in REVIEW_SUFFIXES:
         return {"enabled": True, "requests": []}
     source = read_source(target)
-    digest = _digest(target, source, cfg)
-    work = build_work(target, source, cfg)
+    if request.get("operation") == "prepare":
+        _vote(payload, target, cfg)
+    work = build_work(target, source, {**cfg, "session_id": payloads.session_id(payload)})
+    digest = _digest(target, source, cfg, work)
     if request.get("operation") == "prepare":
         return {
             "enabled": True, "model": str(cfg.get("adw_model") or ""),

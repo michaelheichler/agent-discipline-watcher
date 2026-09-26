@@ -49,3 +49,4 @@ def _never_touch_the_real_model(monkeypatch: pytest.MonkeyPatch, tmp_path_factor
     monkeypatch.setattr(embedding_client, "default_root", lambda: root)
     monkeypatch.setattr(embedding_session, "default_root", lambda: root)
     monkeypatch.setattr(embedding_session, "start_detached", lambda _root: None)
+    monkeypatch.delenv(embedding_session.ENABLE_ENV, raising=False)
