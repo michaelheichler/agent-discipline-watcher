@@ -7,6 +7,7 @@ from pathlib import Path
 import pre_bash
 from . import payloads
 from .config import effective_hook_config
+from .document_review import data_boundary_enabled
 from .journal import _read_regular_content
 from .narration_candidates import COMMENTABLE_EXTS
 from .omp_review_findings import validated_findings
@@ -17,6 +18,7 @@ REVIEW_SUFFIXES = COMMENTABLE_EXTS | PROSE_EXTS | {".py"}
 MAX_TARGET_PATHS = 32
 MAX_TARGET_BYTES = 64 * 1024
 MAX_TARGET_DEPTH = 2
+__all__ = ["data_boundary_enabled", "read_source", "run"]
 
 
 def read_source(path: Path) -> str:
@@ -63,22 +65,23 @@ def _bash_changes_directory(command: str) -> bool:
     return False
 
 
-def _bash_target_paths(payload: dict) -> list[str]:
-    fields = payloads.exact_string_dict(payload)
-    tool_input = payloads._tool_input_from(fields)
-    command = tool_input.get("command")
-    if not isinstance(command, str) or len(command.encode("utf-8")) > MAX_TARGET_BYTES:
-        raise ValueError("OMP target bridge needs a bounded Bash command")
-    paths: list[str] = list(payloads.edited_paths(payload))
-    queue: list[tuple[str, int]] = [(command, 0)]
-    seen: set[str] = set()
-    aggregate_bytes = len(command.encode("utf-8"))
-    directory_changed = _bash_changes_directory(command)
-    extractors = (
+def _nested_payloads(source: str) -> list[str]:
+    nested: list[str] = []
+    for extractor in (
         pre_bash._literal_shell_c_payloads,
         pre_bash._literal_shell_stdin_payloads,
         pre_bash._literal_shell_pipe_payloads,
-    )
+    ):
+        nested.extend(extractor(source))
+    return nested
+
+
+def _walk_bash(command: str, paths: list[str]) -> bool:
+    """Bounded by depth and bytes, because nested shells can recurse."""
+    queue: list[tuple[str, int]] = [(command, 0)]
+    seen: set[str] = set()
+    aggregate_bytes = len(command.encode("utf-8"))
+    directory_changed = False
     while queue:
         source, depth = queue.pop(0)
         if source in seen:
@@ -89,9 +92,7 @@ def _bash_target_paths(payload: dict) -> list[str]:
             paths.extend(pre_bash.write_paths(source))
             if len(paths) > MAX_TARGET_PATHS:
                 raise ValueError("OMP target bridge returned too many Bash targets")
-        nested: list[str] = []
-        for extractor in extractors:
-            nested.extend(extractor(source))
+        nested = _nested_payloads(source)
         if nested and depth >= MAX_TARGET_DEPTH:
             raise ValueError("OMP target bridge cannot prove a nested Bash write")
         for child in nested:
@@ -99,6 +100,16 @@ def _bash_target_paths(payload: dict) -> list[str]:
             if aggregate_bytes > MAX_TARGET_BYTES:
                 raise ValueError("OMP target bridge nested Bash input exceeds its size limit")
             queue.append((child, depth + 1))
+    return directory_changed
+
+
+def _bash_target_paths(payload: dict) -> list[str]:
+    tool_input = payloads._tool_input_from(payloads.exact_string_dict(payload))
+    command = tool_input.get("command")
+    if not isinstance(command, str) or len(command.encode("utf-8")) > MAX_TARGET_BYTES:
+        raise ValueError("OMP target bridge needs a bounded Bash command")
+    paths: list[str] = list(payloads.edited_paths(payload))
+    directory_changed = _walk_bash(command, paths)
     if any(path.startswith("~") and path != "~" and not path.startswith("~/") for path in paths):
         raise ValueError("OMP target bridge cannot resolve named home paths. Use an absolute path.")
     if directory_changed and any(
@@ -108,25 +119,21 @@ def _bash_target_paths(payload: dict) -> list[str]:
     return list(dict.fromkeys(paths))
 
 
-def run(request: object, config: dict | None = None) -> dict:
-    if not isinstance(request, dict) or not isinstance(request.get("payload"), dict):
-        raise ValueError("invalid OMP review bridge request")
-    operation, payload = request.get("operation"), request["payload"]
-    if operation == "targets":
-        if payloads.tool_name(payload).lower() != "bash":
-            raise ValueError("OMP target bridge only supports Bash calls")
-        paths = _bash_target_paths(payload)
-        if len(paths) > MAX_TARGET_PATHS or any(
-            not isinstance(path, str) or not path or len(path) > 4096 or any(char in path for char in "\"'\\")
-            for path in paths
-        ):
-            raise ValueError("OMP target bridge returned invalid paths")
-        return {"paths": list(dict.fromkeys(paths))}
-    if operation not in {"prepare", "validate"}:
-        raise ValueError("unknown OMP review bridge operation")
+def _targets(payload: dict) -> dict:
+    if payloads.tool_name(payload).lower() != "bash":
+        raise ValueError("OMP target bridge only supports Bash calls")
+    paths = _bash_target_paths(payload)
+    if len(paths) > MAX_TARGET_PATHS or any(
+        not isinstance(path, str) or not path or len(path) > 4096 or any(char in path for char in "\"'\\")
+        for path in paths
+    ):
+        raise ValueError("OMP target bridge returned invalid paths")
+    return {"paths": list(dict.fromkeys(paths))}
+
+
+def _review(request: dict, payload: dict, config: dict | None) -> dict:
     cfg = effective_hook_config(config, payloads.cwd(payload) or None)
-    boundary = cfg.get("data_boundary")
-    if not isinstance(boundary, dict) or boundary.get("enabled") is not True:
+    if not data_boundary_enabled(cfg):
         return {"enabled": False, "requests": []}
     target = _target(payload)
     if target.suffix.lower() not in REVIEW_SUFFIXES:
@@ -134,7 +141,7 @@ def run(request: object, config: dict | None = None) -> dict:
     source = read_source(target)
     digest = _digest(target, source, cfg)
     work = build_work(target, source, cfg)
-    if operation == "prepare":
+    if request.get("operation") == "prepare":
         return {
             "enabled": True, "model": str(cfg.get("adw_model") or ""),
             "path": str(target), "digest": digest,
@@ -146,3 +153,14 @@ def run(request: object, config: dict | None = None) -> dict:
     if type(index) is not int or not 0 <= index < len(work):
         raise ValueError("invalid OMP review request index")
     return validated_findings(work[index], request.get("output"), {**cfg, "session_id": payloads.session_id(payload)})
+
+
+def run(request: object, config: dict | None = None) -> dict:
+    if not isinstance(request, dict) or not isinstance(request.get("payload"), dict):
+        raise ValueError("invalid OMP review bridge request")
+    operation, payload = request.get("operation"), request["payload"]
+    if operation == "targets":
+        return _targets(payload)
+    if operation not in {"prepare", "validate"}:
+        raise ValueError("unknown OMP review bridge operation")
+    return _review(request, payload, config)

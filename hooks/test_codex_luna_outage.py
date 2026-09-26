@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,12 @@ from test_task4_codex import MixedProvider, Provider, _result
 @pytest.fixture(autouse=True)
 def isolated_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
+
+
+@pytest.fixture(autouse=True)
+def _open_data_boundary(tmp_path: Path) -> None:
+    """Opened here, because the gate has its own test file."""
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
 
 
 def _turn(tmp_path: Path, turn_id: str = "turn-1") -> tuple[dict, dict]:
@@ -201,9 +208,7 @@ def test_transient_source_read_failure_keeps_confirmed_feedback(tmp_path: Path, 
 
 @pytest.mark.parametrize("operation", ["repair", "delete"])
 @pytest.mark.parametrize("retry_turn", ["turn-1", "older-turn"])
-def test_provider_outage_clears_only_its_legacy_retry_failure(
-    tmp_path: Path, operation: str, retry_turn: str, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_provider_outage_clears_only_its_legacy_retry_failure(tmp_path: Path, operation: str, retry_turn: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(codex_luna.time, "time", lambda: 1000.0)
     payload, config = _turn(tmp_path)
     historical = {"turn_id": "older-turn", "attempts": 1, "reason": "invalid journal"}

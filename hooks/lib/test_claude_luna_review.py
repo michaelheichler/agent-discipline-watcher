@@ -9,6 +9,12 @@ from lib import claude_luna, claude_native, journal
 from lib.judge_contracts import JudgeRequest, JudgeResult
 
 
+@pytest.fixture(autouse=True)
+def _open_data_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opened here, because the gate has its own test file."""
+    monkeypatch.setattr(claude_luna, "data_boundary_enabled", lambda _cfg: True)
+
+
 class Provider:  # pylint: disable=too-few-public-methods
     def __init__(self) -> None:
         self.requests: list[JudgeRequest] = []

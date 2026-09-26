@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 try:
     from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
@@ -94,15 +94,68 @@ def request_for(path: str, text: str) -> JudgeRequest:
         source_context=f"Document: {path}\n\n{text[:MAX_REVIEW_CHARS]}",
     )
 
+
+def _document_entries(rows: list[dict[str, Any]], content_limit: int) -> list[tuple[str, dict]]:
+    entries = []
+    for row in rows:
+        if row.get("role") != "document" or not row.get("path") or not row.get("source_context"):
+            continue
+        path = str(row.get("path", ""))[:512]
+        source = str(row.get("source_context", ""))
+        if not source.strip():
+            continue
+        prefix = f"Path: {path}\n\n"[:max(0, content_limit - 1)]
+        body_limit = max(1, content_limit - len(prefix))
+        contexts = (prefix + source[offset:offset + body_limit] for offset in range(0, len(source), body_limit))
+        entries.extend((context, row) for context in contexts if context.strip())
+    return entries
+
+
+def _pack_document_entries(entries: list[tuple[str, dict]], content_limit: int) -> list[tuple[str, list[dict]]]:
+    packed = []
+    current = ""
+    sources: list[dict] = []
+    for entry, row in entries:
+        if current and len(current) + 2 + len(entry) > content_limit:
+            packed.append((current, sources))
+            current, sources = "", []
+        current = entry if not current else f"{current}\n\n{entry}"
+        if row not in sources:
+            sources.append(row)
+    if current:
+        packed.append((current, sources))
+    return packed
+
+
+def document_work(rows: list[dict[str, Any]], maximum: int, label: str) -> list[tuple[JudgeRequest, list[Any]]]:
+    """Split across requests, because a cut document reads as reviewed."""
+    limit = max(1, maximum)
+    header = f"Document: {label}\n\n"
+    use_document_request = len(header) < limit
+    content_limit = limit - len(header) if use_document_request else limit
+    contexts = _pack_document_entries(_document_entries(rows, content_limit), content_limit)
+    return [
+        (
+            request_for(label, context) if use_document_request
+            else JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=context),
+            sources,
+        )
+        for context, sources in contexts
+    ]
+
+
+def data_boundary_enabled(cfg: dict) -> bool:
+    """Exact True only, because source text leaves the machine."""
+    boundary = cfg.get("data_boundary")
+    return isinstance(boundary, dict) and boundary.get("enabled") is True
+
+
 def build_prompt(path: str, text: str) -> str:
     return build_judge_prompt(request_for(path, text))
 
 def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]:
     """No model review without a data boundary, because source text would leave the machine."""
-    if config is None:
-        return ()
-    boundary = config.get("data_boundary")
-    if not isinstance(boundary, dict) or boundary.get("enabled") is not True:
+    if config is None or not data_boundary_enabled(config):
         return ()
     if not text.strip() or not available():
         return ()

@@ -7,8 +7,8 @@ import stat
 from typing import Any
 
 from . import journal, claude_native, payloads
-from .codex_luna_documents import document_work
 from .config import effective_hook_config
+from .document_review import data_boundary_enabled, document_work
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -254,14 +254,12 @@ def stop_request(payload: object, state_root: str | Path | None) -> list[Work] |
     return document_work(_stop_rows(payload, state_root), MAX_DOCUMENT_CHARS, STOP_LABEL) or None
 
 
-def _state_root(payload: object, explicit: str | Path | None) -> str | Path | None:
-    if explicit is not None:
-        return explicit
+def _hook_config(payload: object) -> dict:
     cwd = payloads.cwd(payload) if type(payload) is dict else ""
     try:
-        return effective_hook_config({}, cwd or None).get("state_root")
+        return effective_hook_config({}, cwd or None)
     except (OSError, RuntimeError, TypeError, ValueError):
-        return None
+        return {}
 
 
 def _failure(
@@ -358,9 +356,10 @@ def run(
     preset_path: str | Path | None = None,
 ) -> dict:
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
-    if event not in {"PostToolUse", "Stop"}:
+    cfg = _hook_config(payload)
+    if event not in {"PostToolUse", "Stop"} or not data_boundary_enabled(cfg):
         return {}
-    root = None if event == "PostToolUse" else _state_root(payload, state_root)
+    root = state_root if state_root is not None else cfg.get("state_root")
     work = _built(event, payload, root)
     if work is None:
         return {}
