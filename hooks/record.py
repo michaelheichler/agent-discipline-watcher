@@ -13,6 +13,7 @@ from failure import normalize_payload, record_success
 from lib import blocker_state, journal, payloads, scan_input
 from lib.mcp_health import config_roots
 from lib.config import effective_config
+from lib.embedding_session import lease_root_for, renew_turn
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
@@ -293,6 +294,7 @@ def _run_record(payload: dict, config: dict | None) -> dict:
     if projected["session_id"]:
         cfg["session_id"] = projected["session_id"]
         _note_success(projected, trusted_config)
+        renew_turn(projected["session_id"], lease_root_for(cfg))
     gate_context = _gate_context_for(payload, projected, cfg, state_root, ledger_root)
     return run_with_ledger(
         hook="record",
