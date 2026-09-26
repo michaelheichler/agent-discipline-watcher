@@ -81,13 +81,14 @@ def _one_line(value: object) -> str:
 
 
 def format_row(item: dict) -> str:
-    """Show the catalog title and matched words, because a raw rule id tells the reader nothing to act on."""
+    """Lead with the catalog title and matched words, because a raw rule id tells the reader nothing to act on."""
     path = _one_line(item.get("path") or item.get("file") or "<pending>")
     status = _one_line(item.get("status")) if item.get("status") else ""
     prefix = f"[{status}] " if status else ""
-    title = _one_line(catalog.rule_entry(str(item.get("rule") or "")).title)
+    rule = _one_line(item.get("rule") or "")
+    title = _one_line(catalog.rule_entry(rule).title)
     match = item.get("match")
     quoted = f' "{clip(_one_line(match), MAX_MATCH_BYTES)}"' if isinstance(match, str) and match.strip() else ""
     line = _one_line(item.get("line"))
     action = _one_line(item.get("action"))
-    return f"{prefix}{path}:{line} {title}{quoted}. {action}"
+    return f"{prefix}{path}:{line} {title}{quoted}. {action} ({rule})"

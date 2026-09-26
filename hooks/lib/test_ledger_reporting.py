@@ -402,7 +402,7 @@ class CompactBlockRegressionTests(unittest.TestCase):
     def test_max_rows_still_caps_the_listing(self):
         findings = [{**self._finding(), "line": line} for line in range(1, 6)]
         reason, _ = reporting.compact_block(findings, {"max_rows": 2}, lead="x:")
-        self.assertIn("... 3 more", reason)
+        self.assertIn("\n3 more findings: ", reason)
 
     def test_compact_block_has_a_hard_utf8_bound(self):
         finding = self._finding()
@@ -462,7 +462,7 @@ class InheritedAdviceTests(unittest.TestCase):
 
     def test_max_rows_keeps_a_legacy_file_from_flooding_the_response(self):
         message = reporting.inherited_advice([self._row(line) for line in range(1, 13)], {"max_rows": 3})
-        self.assertIn("... 9 more", message)
+        self.assertIn("\n9 more findings: ", message)
         self.assertEqual(sum(f"old.py:{line}" in message for line in range(1, 13)), 3)
 
 
@@ -566,7 +566,7 @@ def test_format_row_status_prefix_is_optional() -> None:
     assert tagged.startswith("[removed] ")
     assert "a.py:4 Comment restates the code. fix" in tagged
     assert not untagged.startswith("[")
-    assert untagged == "a.py:4 Comment restates the code. fix"
+    assert untagged == "a.py:4 Comment restates the code. fix (what_comment)"
 
 def test_format_row_sanitizes_hostile_fields() -> None:
     finding = {

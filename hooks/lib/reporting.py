@@ -34,6 +34,7 @@ REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
+MAX_LISTED_ROWS = 5
 MAX_CURRENT_LEDGER_BYTES = 256 * 1024
 MAX_CURRENT_LEDGER_ROWS = 512
 
@@ -120,18 +121,21 @@ def compact_block(
     config: dict | None = None,
     lead: str = BLOCK_LEAD,
 ) -> tuple[str, str]:
-    max_rows = int((config or {}).get("max_rows", 8))
+    """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
+    max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
     unique = _deduplicated(findings, config)
     report = write_full_report(unique, config)
-    rows = [format_row(item) for item in unique[:max_rows]]
-    extra = len(unique) - len(rows)
-    if extra > 0:
-        rows.append(f"... {extra} more")
+    listed = unique[:max(max_rows, 1)]
+    extra = len(unique) - len(listed)
+    report_text = _clip(report, MAX_COMPACT_FIELD_BYTES)
+    tail = f"{extra} more findings: {report_text}" if extra > 0 else f"Full report: {report_text}"
     lines = [_clip(lead, MAX_COMPACT_FIELD_BYTES)]
-    lines.extend(_clip(row, MAX_COMPACT_FIELD_BYTES) for row in rows)
-    lines.append("Full report: " + _clip(report, MAX_COMPACT_FIELD_BYTES))
-    reason = _clip("\n".join(lines), MAX_COMPACT_BYTES)
-    return reason, report
+    lines.extend(
+        _clip(f"{number}. {format_row(item)}", MAX_COMPACT_FIELD_BYTES)
+        for number, item in enumerate(listed, 1)
+    )
+    body_budget = MAX_COMPACT_BYTES - len(tail.encode("utf-8")) - 1
+    return _clip("\n".join(lines), body_budget) + "\n" + tail, report
 
 
 def verdict_message(
@@ -307,11 +311,9 @@ def record_findings(
     if session_id:
         for value, _finding, outcome in evaluated:
             record_decision(
-                session_id=session_id, hook=hook, event=event,
-                family=value.family, rule=value.rule,
-                path=value.path or "", tool_use_id=tool_use_id,
-                outcome=outcome, duration_ms=duration_ms,
-                turn_id=turn_id, root=root,
+                session_id=session_id, hook=hook, event=event, family=value.family, rule=value.rule,
+                path=value.path or "", tool_use_id=tool_use_id, outcome=outcome,
+                duration_ms=duration_ms, turn_id=turn_id, root=root,
             )
     return [(finding, outcome) for _value, finding, outcome in evaluated]
 
@@ -365,39 +367,29 @@ def run_with_ledger(*values: object, **fields: object) -> dict:
             )
 
 
+def _json_row(line: str) -> dict | None:
+    if not line.strip():
+        return None
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return row if isinstance(row, dict) else None
+
+
 def read_jsonl(filename: str, root: str | os.PathLike[str] | None = None) -> list[dict]:
     path = _ledger_dir(root) / filename
     if not path.exists():
         return []
-    rows: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(row, dict):
-            rows.append(row)
-    return rows
+    rows = (_json_row(line) for line in path.read_text(encoding="utf-8").splitlines())
+    return [row for row in rows if row is not None]
 
 
 _read_jsonl = read_jsonl
 
 
-def read_session_turn(
-    session_id: str,
-    turn_id: str,
-    root: str | os.PathLike[str] | None = None,
-    *,
-    max_bytes: int = MAX_CURRENT_LEDGER_BYTES,
-    max_rows: int = MAX_CURRENT_LEDGER_ROWS,
-) -> list[dict]:
-    if (
-        not isinstance(session_id, str) or not session_id
-        or not isinstance(turn_id, str) or not turn_id
-    ):
-        return []
+def _ledger_tail_lines(root: str | os.PathLike[str] | None, max_bytes: int) -> list[str]:
+    """Drop the first partial line, because a byte window can start mid-row."""
     path = _ledger_dir(root) / LEDGER_FILENAME
     try:
         with path.open("rb") as handle:
@@ -411,26 +403,27 @@ def read_session_turn(
     if size > len(data):
         newline = data.find(b"\n")
         data = data[newline + 1:] if newline >= 0 else b""
-    try:
-        lines = data.decode("utf-8").splitlines()
-    except UnicodeDecodeError:
-        lines = data.decode("utf-8", errors="ignore").splitlines()
+    return data.decode("utf-8", errors="ignore").splitlines()
+
+
+def read_session_turn(
+    session_id: str,
+    turn_id: str,
+    root: str | os.PathLike[str] | None = None,
+    *,
+    max_bytes: int = MAX_CURRENT_LEDGER_BYTES,
+    max_rows: int = MAX_CURRENT_LEDGER_ROWS,
+) -> list[dict]:
+    if not (isinstance(session_id, str) and session_id and isinstance(turn_id, str) and turn_id):
+        return []
     rows: list[dict] = []
-    for line in reversed(lines):
-        if not line.strip():
+    for line in reversed(_ledger_tail_lines(root, max_bytes)):
+        row = _json_row(line)
+        if row is None or row.get("session_id") != session_id:
             continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(row, dict):
-            continue
-        if row.get("session_id") == session_id and row.get("turn_id") != turn_id:
+        if row.get("turn_id") != turn_id or len(rows) >= max(1, int(max_rows)):
             break
-        if row.get("session_id") == session_id and row.get("turn_id") == turn_id:
-            rows.append(row)
-            if len(rows) >= max(1, int(max_rows)):
-                break
+        rows.append(row)
     rows.reverse()
     return rows
 

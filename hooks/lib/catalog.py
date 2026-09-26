@@ -286,7 +286,7 @@ FAMILIES: dict[str, Entry] = {
 THRESHOLDS: dict[str, Entry] = {
     "max_rows": Entry(
         "Findings shown per file",
-        "How many rows one report lists before it truncates. Default 8",
+        "How many rows one report lists before it points to the full report. At most 5",
     ),
     "sentence_word_cap": Entry(
         "Sentence word limit",
