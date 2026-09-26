@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from collections import Counter
 from pathlib import Path, PurePath
 from typing import NamedTuple
@@ -119,10 +120,11 @@ def rule_prompt(rule: str, exemplars: tuple[Exemplar, ...], manifest: dict) -> P
     return PatternRule(rule, manifest["rules"][rule]["action"], sides[VIOLATING], sides[CLEAN])
 
 
-def candidates_for(
-    rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str
-) -> tuple[PatternCandidate, ...]:
+def candidates_for(rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str) -> tuple[PatternCandidate, ...]:
     neighbours = [(row.label, vectors[row.text]) for row in exemplars if row.rule == rule and row.text in vectors]
+    if not neighbours:
+        sys.stderr.write(f"agent-discipline-watcher: skipped {rule}, no exemplar vectors\n")
+        return ()
     return tuple(
         PatternCandidate(path, sentence.line, sentence.text)
         for sentence in sentences

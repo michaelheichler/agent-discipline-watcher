@@ -86,6 +86,14 @@ def test_a_sentence_without_a_vector_is_never_flagged() -> None:
     assert pattern_semantic.candidates_for("ai_closer", sentences, VECTORS, EXEMPLARS, "a.md") == ()
 
 
+def test_a_rule_without_exemplar_vectors_is_skipped_with_one_notice(capsys) -> None:
+    sentences = (Sentence(3, "Feel free to ask me anything else."), Sentence(4, "The lease expires after 900 seconds."))
+    only_sentences = {text: VECTORS[text] for _line, text in sentences}
+
+    assert pattern_semantic.candidates_for("ai_closer", sentences, only_sentences, EXEMPLARS, "a.md") == ()
+    assert capsys.readouterr().err.count("ai_closer") == 1
+
+
 def test_an_absent_server_yields_no_finding_rather_than_a_clean_verdict(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "embed", lambda _texts: None)
 
