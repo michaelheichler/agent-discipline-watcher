@@ -207,6 +207,25 @@ def test_the_candidate_stage_votes_without_calling_a_judge(monkeypatch) -> None:
     }
 
 
+def test_the_vote_embeds_only_the_exemplars_a_measured_rule_needs(monkeypatch) -> None:
+    _voting_layer(monkeypatch)
+    unmeasured = Exemplar("unmeasured", "violating", "This exemplar belongs to a silent rule.")
+    monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: (*EXEMPLARS, unmeasured))
+    monkeypatch.setattr(
+        pattern_semantic, "load_manifest",
+        lambda: {"rules": {
+            "ai_closer": {"action": "End when the answer is done.", "judge_precision": 1.0},
+            "unmeasured": {"action": "Say it plainly.", "judge_precision": None},
+        }},
+    )
+    embedded: list[tuple[Exemplar, ...]] = []
+    monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda rows: embedded.append(rows) or VECTORS)
+
+    pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n")
+
+    assert {row.rule for row in embedded[0]} == {"ai_closer"}
+
+
 def test_the_candidate_stage_is_silent_until_the_reader_opts_in(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "enabled", lambda: False)
     monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: pytest.fail("embedded while switched off"))

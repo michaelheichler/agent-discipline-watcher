@@ -132,8 +132,8 @@ class MergeConfigTests(unittest.TestCase):
             twice = settings.read_text()
         assert once == twice, "a second merge from the same skill dir must not duplicate entries"
         merged = json.loads(twice)
-        # Two because each reviewer prompt names the helper path.
-        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 2, "Stop": 2}
+        # Agent groups match, because their prompts name the helper.
+        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 3, "Stop": 2}
         for lifecycle, expected in expected_counts.items():
             groups = merged["hooks"][lifecycle]
             watcher_groups = [group for group in groups if SKILL_DIR in json.dumps(group)]
@@ -368,7 +368,9 @@ def _watcher_hook_entries(merged: dict) -> list[dict]:
 def assert_no_async_flags(merged: dict) -> None:
     entries = _watcher_hook_entries(merged)
     assert entries, "watcher groups must be present before the async guard runs"
-    for hook in entries:
+    detached = [hook for hook in entries if str(hook.get("command", "")).endswith(" JudgeReview")]
+    assert [hook.get("async") for hook in detached] == [True], "only the vote route returns no decision"
+    for hook in (hook for hook in entries if hook not in detached):
         assert "async" not in hook, (
             "async detaches a deny-capable watcher entry so it cannot block: "
             f"{hook['command']}"

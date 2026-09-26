@@ -47,6 +47,17 @@
         ]
       },
       {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh JudgeReview",
+            "async": true,
+            "timeout": 180
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion",
         "hooks": [
           {

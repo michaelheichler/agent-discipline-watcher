@@ -189,7 +189,7 @@ class PluginHookRegistrationTests(unittest.TestCase):
 
     def test_every_dispatch_route_is_registered_or_a_compatibility_alias(self):
         registered = {route_of(entry) for _, entry in hook_commands(self.config)}
-        aliases = {"PreCommit", "Configure", "JudgeReview", "OmpReview"}
+        aliases = {"PreCommit", "Configure", "OmpReview"}
         self.assertEqual(set(self.dispatch) - aliases, registered)
         self.assertEqual(self.dispatch["PreCommit"], self.dispatch["PreToolUse"])
 

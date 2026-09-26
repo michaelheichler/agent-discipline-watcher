@@ -4,18 +4,21 @@ import io
 import json
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 import judge_review
-from lib import embedding_session, journal, pattern_judge, session_state
+from lib import embedding_session, host, journal, pattern_judge, session_state
 from lib.hookio import PARSE_FAILURE
 from lib.pattern_judge import PatternCandidate
 
 CLOSER = "Feel free to ask me anything else."
 WARM_URL = "http://127.0.0.1:1/v1/embeddings"
+ROUTE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch"
 
 
 @dataclass
@@ -172,6 +175,47 @@ def test_the_route_exits_cleanly_and_prints_nothing(route: Route, capsys) -> Non
 
     assert capsys.readouterr().out == ""
     assert _patterns("vote")
+
+
+def _route_entries(manifest: str) -> list[tuple[str, dict]]:
+    config = json.loads((Path(judge_review.__file__).parent / manifest).read_text(encoding="utf-8"))
+    return [
+        (group.get("matcher", ""), hook)
+        for group in config["hooks"]["PostToolUse"]
+        for hook in group["hooks"]
+        if str(hook.get("command", "")).endswith(" JudgeReview")
+    ]
+
+
+def test_claude_runs_the_vote_detached_after_each_write() -> None:
+    [(matcher, hook)] = _route_entries("hooks.json")
+
+    assert matcher == ROUTE_MATCHER
+    assert (hook["async"], hook["timeout"]) == (True, 180)
+    assert "asyncRewake" not in hook
+
+
+def test_codex_runs_the_vote_inline_because_it_ignores_async() -> None:
+    [(matcher, hook)] = _route_entries("codex-hooks.json")
+
+    assert matcher == ROUTE_MATCHER
+    assert hook["timeout"] == judge_review.CODEX_HOOK_TIMEOUT_SECONDS == 10
+    assert "async" not in hook
+
+
+def test_the_codex_budget_ends_the_route_before_its_hook_timeout(route: Route) -> None:
+    release = threading.Event()
+    route.monkeypatch.setenv(host.CODEX_ENV, "1")
+    route.monkeypatch.setattr(judge_review, "CODEX_BUDGET_SECONDS", 0.05)
+    route.monkeypatch.setattr(judge_review, "run", lambda _payload: release.wait(5))
+    route.feed({})
+    started = time.monotonic()
+
+    assert judge_review.main() == 0
+
+    assert time.monotonic() - started < 1
+    assert judge_review.CODEX_BUDGET_SECONDS < judge_review.CODEX_HOOK_TIMEOUT_SECONDS
+    release.set()
 
 
 def test_a_failed_vote_still_exits_cleanly(route: Route, capsys) -> None:

@@ -24,6 +24,13 @@ type = "command"
 command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" PostToolUse"
 timeout = 30
 
+[[hooks.PostToolUse]]
+matcher = "Write|Edit|MultiEdit|NotebookEdit|apply_patch"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" JudgeReview"
+timeout = 10
+
 [[hooks.SubagentStart]]
 [[hooks.SubagentStart.hooks]]
 type = "command"

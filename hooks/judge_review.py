@@ -1,8 +1,10 @@
 """Runs after the write, because an embedding vote is slow."""
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import NamedTuple
@@ -11,12 +13,15 @@ from lib import embedding_session, journal, payloads, session_state
 from lib.config import effective_hook_config
 from lib.embedding_client import probe
 from lib.hookio import PARSE_FAILURE, read_payload
+from lib.host import CODEX_ENV
 from lib.pattern_semantic import candidates
 from lib.scanner import PROSE_EXTS
 
 embedding_session.CONSUMER_REGISTERED = True
 
 HOOK_TIMEOUT_SECONDS = 180.0
+CODEX_HOOK_TIMEOUT_SECONDS = 10
+CODEX_BUDGET_SECONDS = CODEX_HOOK_TIMEOUT_SECONDS - 1.0
 VOTE_SECONDS = 60.0
 READY_WAIT_SECONDS = HOOK_TIMEOUT_SECONDS - VOTE_SECONDS
 READY_POLL_SECONDS = 1.0
@@ -100,12 +105,23 @@ def run(payload: object) -> None:
         _vote(turn, path)
 
 
-def main() -> int:
-    """Always 0, because a failed vote must never block."""
+def _run_quietly(payload: object) -> None:
+    """Swallowed, because a failed vote must never block."""
     try:
-        run(read_payload())
+        run(payload)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: pattern vote skipped: {exc}\n")
+
+
+def _budget() -> float:
+    """Codex runs this inline, because it ignores async hooks."""
+    return CODEX_BUDGET_SECONDS if os.environ.get(CODEX_ENV) else HOOK_TIMEOUT_SECONDS
+
+
+def main() -> int:
+    worker = threading.Thread(target=_run_quietly, args=(read_payload(),), daemon=True)
+    worker.start()
+    worker.join(_budget())
     return 0
 
 

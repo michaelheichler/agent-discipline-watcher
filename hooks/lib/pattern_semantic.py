@@ -187,7 +187,8 @@ def candidates(path: str, text: str, config: dict | None = None) -> dict[str, tu
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
         return {}
-    exemplars = load_exemplars()
+    rules = measured_rules(load_manifest())
+    exemplars = tuple(row for row in load_exemplars() if row.rule in rules)
     cached = exemplar_vectors(exemplars) if config is None else exemplar_vectors(exemplars, config)
     current = _vectors(tuple({item.text for item in sentences})) if config is None else _vectors(
         tuple({item.text for item in sentences}), config
@@ -195,10 +196,7 @@ def candidates(path: str, text: str, config: dict | None = None) -> dict[str, tu
     vectors = {**cached, **current}
     if not vectors:
         return {}
-    voted = {
-        rule: candidates_for(rule, sentences, vectors, exemplars, path)
-        for rule in measured_rules(load_manifest())
-    }
+    voted = {rule: candidates_for(rule, sentences, vectors, exemplars, path) for rule in rules}
     return {rule: found for rule, found in voted.items() if found}
 
 
