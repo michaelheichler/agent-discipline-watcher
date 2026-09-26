@@ -315,9 +315,7 @@ class _ExpressionKinds:
         base, _, name = method.partition("_")
         if base in {"text", "bytes"}:
             return text_method_result(base, name)
-        if base == "json":
-            return JSON_METHODS.get(name)
-        return FILE_METHODS.get(name) if base == "file" else None
+        return {"json": JSON_METHODS, "file": FILE_METHODS}.get(base, {}).get(name)
 
     def attribute(self, node: ast.Attribute) -> Kind | None:
         base = self.expression(node.value)
