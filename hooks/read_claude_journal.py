@@ -12,6 +12,23 @@ if str(ROOT) not in sys.path:
 
 from lib import claude_native, claude_presets  # noqa: E402  # pylint: disable=wrong-import-position
 from lib.journal import mark_reviewed, read_for_stop  # noqa: E402  # pylint: disable=wrong-import-position
+from lib.pattern_semantic import load_exemplars, load_manifest, rule_prompt  # noqa: E402  # pylint: disable=wrong-import-position
+
+
+def _rule_entries(rows: list[dict]) -> list[dict]:
+    """Beside the rows, because the judge compares against both sides."""
+    rules = sorted({str(row.get("rule")) for row in rows if row.get("role") == "pattern"})
+    if not rules:
+        return []
+    exemplars, manifest = load_exemplars(), load_manifest()
+    prompts = (rule_prompt(rule, exemplars, manifest) for rule in rules if rule in manifest["rules"])
+    return [
+        {
+            "role": "rule", "rule": prompt.name, "action": prompt.action,
+            "violating": list(prompt.violating_examples), "clean": list(prompt.clean_examples),
+        }
+        for prompt in prompts
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,7 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         rows = read_for_stop(args.session_id)
     except ValueError as exc:
         parser.error(str(exc))
-    sys.stdout.write(json.dumps(rows, ensure_ascii=True, separators=(",", ":")) + "\n")
+    served = rows + _rule_entries(rows)
+    sys.stdout.write(json.dumps(served, ensure_ascii=True, separators=(",", ":")) + "\n")
     mark_reviewed(args.session_id, rows)
     return 0
 
