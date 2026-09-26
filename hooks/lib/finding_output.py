@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 try:
     from . import catalog
@@ -78,6 +79,24 @@ def clip(value: object, limit: int) -> str:
 
 def _one_line(value: object) -> str:
     return safe_text(value).replace("\n", " ")
+
+
+def _sentence(text: str) -> str:
+    stripped = text.strip()
+    return stripped if stripped.endswith((".", "!", "?")) else stripped + "."
+
+
+class ReviewNote(NamedTuple):
+    location: str
+    found: str
+    problem: str
+    action: str
+
+
+def review_row(note: ReviewNote) -> str:
+    """Give model review rows one shape, because the reader acts on the same three parts from every reviewer."""
+    problem, action = _sentence(_one_line(note.problem)), _sentence(_one_line(note.action))
+    return f'{_one_line(note.location)} Found "{_one_line(note.found)}". Problem: {problem} Action: {action}'
 
 
 def format_row(item: dict) -> str:
