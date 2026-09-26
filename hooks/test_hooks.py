@@ -471,7 +471,7 @@ def test_pretooluse_entry_scripts_deny_malformed_stdin() -> None:
         response = json.loads(result.stdout)
         assert "decision" not in response, script
         assert response["hookSpecificOutput"]["permissionDecision"] == "deny", script
-        assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload"), script
+        assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("the cause was: unreadable hook payload"), script
 
 
 def test_pretooluse_entry_scripts_allow_empty_stdin() -> None:

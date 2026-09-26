@@ -4,7 +4,10 @@ from __future__ import annotations
 import operator
 
 from lib import payloads
-from lib.hookio import PARSE_FAILURE, claude_pretool_response, context, deny, read_payload, write_payload
+from lib.hookio import (
+    PARSE_FAILURE, UNREADABLE_PAYLOAD, claude_pretool_response, config_failure, context, deny, payload_failure,
+    read_payload, write_payload,
+)
 from lib.payloads import exact_string_dict
 import pre_bash
 import pre_commit
@@ -15,10 +18,6 @@ import pre_write
 DIRECT_WRITERS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
 PYTHON_TOOLS = frozenset({"Python"})
 
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this tool call and blocked it rather than letting it through. "
-    "Repair the hook payload and retry. Cause: "
-)
 
 
 def _invalid_payload(payload: object) -> bool:
@@ -75,7 +74,7 @@ def _merge(responses: list[dict]) -> dict:
 
 def _dispatch(payload: dict, config: dict | None) -> dict:
     if _invalid_payload(payload):
-        return deny(UNDECIDABLE + "unreadable hook payload")
+        return deny(payload_failure(UNREADABLE_PAYLOAD))
     name = payloads.tool_name(payload)
     if name in DIRECT_WRITERS:
         return pre_write.run(payload, config)
@@ -93,7 +92,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
     try:
         return _dispatch(payload, config)
     except Exception as exc:
-        return deny(UNDECIDABLE + str(exc))
+        return deny(config_failure("tool call", exc))
 
 
 if __name__ == "__main__":

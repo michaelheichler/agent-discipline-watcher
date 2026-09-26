@@ -113,6 +113,32 @@ def test_fail_closed_denies_naming_the_subject_and_cause_on_exception() -> None:
     assert "Cause: bad state" in response["reason"]
 
 
+def test_fail_closed_tells_the_reader_to_retry_an_unreadable_payload() -> None:
+    def _raise() -> dict:
+        raise ValueError(hookio.UNREADABLE_PAYLOAD)
+
+    reason = hookio.fail_closed("write", _raise)["reason"]
+
+    assert reason == (
+        "agent-discipline-watcher could not read the tool call and blocked it. Retry once. "
+        "If it repeats, the cause was: unreadable hook payload"
+    )
+    assert "config" not in reason
+
+
+def test_fail_closed_names_the_config_path_for_other_failures(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def _raise() -> dict:
+        raise ValueError("bad gate map")
+
+    reason = hookio.fail_closed("write", _raise)["reason"]
+
+    assert str(tmp_path.resolve() / ".agent-discipline.json") in reason
+    assert "gate config" in reason
+    assert reason.endswith("Cause: bad gate map")
+
+
 def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:
     response = hookio.claude_pretool_response(hookio.deny("fix and retry"))
     assert "decision" not in response
