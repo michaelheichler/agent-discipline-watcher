@@ -294,7 +294,7 @@ class McpCircuitBreakerTests(HookTestCase):
     def test_invalid_pre_mcp_session_stops_before_config_and_ledger_wrapper(self) -> None:
         for session in (".", ".."):
             with (
-                mock.patch.object(pre_mcp, "_safe_config") as safe_config,
+                mock.patch.object(pre_mcp, "safe_config") as safe_config,
                 mock.patch.object(pre_mcp, "run_with_ledger") as ledger,
             ):
                 self.assertEqual(

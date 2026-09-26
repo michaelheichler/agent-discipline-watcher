@@ -293,6 +293,14 @@ class FailureHookTests(HookTestCase):
             pre_mcp.run(mcp_payload, self.cfg, now=1.0)
         project.assert_not_called()
 
+    def test_mcp_hooks_share_validators_through_lib(self) -> None:
+        from lib import mcp_health
+
+        source = Path(pre_mcp.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("from failure import", source)
+        self.assertIs(pre_mcp.parse_mcp_tool, mcp_health.parse_mcp_tool)
+        self.assertIs(failure.parse_mcp_tool, mcp_health.parse_mcp_tool)
+
     def test_oversized_tool_is_not_a_state_key(self):
         failure.run(self.payload(tool="x" * 264), self.cfg, now=1.0)
         streaks = self.state()[failure.FAILURE_STREAKS_KEY]
@@ -390,7 +398,7 @@ class FailureHookTests(HookTestCase):
     def test_invalid_session_stops_before_config_and_ledger_wrapper(self):
         for session in (".", ".."):
             with (
-                mock.patch.object(failure, "_safe_config") as safe_config,
+                mock.patch.object(failure, "safe_config") as safe_config,
                 mock.patch.object(failure, "run_with_ledger") as ledger,
             ):
                 self.assertEqual(
@@ -586,7 +594,7 @@ class SuccessResetTests(HookTestCase):
     def test_invalid_success_helper_session_stops_before_config_and_state(self):
         for session in (".", ".."):
             with (
-                mock.patch.object(failure, "_safe_config") as safe_config,
+                mock.patch.object(failure, "safe_config") as safe_config,
                 mock.patch.object(failure.session_state, "update_state") as update,
             ):
                 failure.record_success(self.payload(session=session), self.cfg)

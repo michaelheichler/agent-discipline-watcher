@@ -1,44 +1,37 @@
 from __future__ import annotations
 
 import math
-import operator
-import posixpath
-import re
 import sys
 import time
 from dataclasses import dataclass
-from typing import TypedDict, TypeGuard, cast
+from typing import TypedDict
 
 from lib import session_state
 from lib.config import StorageRoots
 from lib.hookio import read_payload, system_message, write_payload
-from lib.payloads import FailurePayload, exact_string_dict, failure_payload
+from lib.mcp_health import (
+    MAX_TIMESTAMP,
+    MCP_HEALTH_KEY,
+    MCP_MAX_BACKOFF_SECONDS,
+    McpHealthEntry,
+    TrustedPayload,
+    has_exact_type,
+    is_exact_int,
+    is_exact_number,
+    normalize_payload,
+    parse_mcp_tool,
+    safe_config,
+    valid_now,
+)
+from lib.mcp_health import config_roots as _config_roots
+from lib.payloads import exact_string_dict
 from lib.reporting import record_decision, run_with_ledger
 
 FAILURE_EVENT = "PostToolUseFailure"
 FAILURE_STREAKS_KEY = "failure_streaks"
-MCP_HEALTH_KEY = "mcp_health"
 GUIDANCE_THRESHOLD = 3
 MCP_BASE_BACKOFF_SECONDS = 30
-MCP_MAX_BACKOFF_SECONDS = 600
-_MAX_TOOL_LENGTH = 263
-_MAX_TARGET_LENGTH = 512
-_MAX_MCP_SERVER_LENGTH = 128
-_MAX_MCP_TOOL_LENGTH = 128
-_MAX_SESSION_LENGTH = 128
-_MAX_CWD_LENGTH = 4096
-_MAX_ERROR_INPUT_LENGTH = 8192
-_MAX_ERROR_LENGTH = 1024
-_MAX_DURATION_MS = 86_400_000
-_MAX_NOW = 100_000_000_000.0
-_MAX_TIMESTAMP = _MAX_NOW + MCP_MAX_BACKOFF_SECONDS
-_CONTROL_LIMIT = 32
-_DELETE_CODE = 127
 _BACKOFF_CAP_COUNT = 6
-_MCP_PART_CHARACTERS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
-)
-_SESSION_PATTERN = re.compile(r"[A-Za-z0-9_.:-]{1,128}", re.ASCII)
 
 
 class FailureEventData(TypedDict):
@@ -53,17 +46,6 @@ class FailureEventData(TypedDict):
 class FailureCounts(TypedDict, total=False):
     tool_count: int
     target_count: int
-
-
-class TrustedPayload(TypedDict):
-    session_id: str
-    cwd: str
-    tool_name: str
-    tool_use_id: str
-    target: str
-    error: str
-    is_interrupt: bool
-    duration_ms: int
 
 
 class StreakData(TypedDict):
@@ -87,140 +69,17 @@ class FailureRunContext:
     current_time: float | None
 
 
-def _has_exact_type(value: object, expected: type) -> bool:
-    return operator.is_(type(value), expected)
-
-
-def _bounded_text(value: object, maximum: int) -> str:
-    if not _has_exact_type(value, str):
-        return ""
-    text = cast(str, value)
-    if not text or len(text) > maximum:
-        return ""
-    if any(
-        ord(character) < _CONTROL_LIMIT or ord(character) == _DELETE_CODE
-        for character in text
-    ):
-        return ""
-    return text
-
-
-def _normalized_error(value: object) -> str:
-    if not _has_exact_type(value, str):
-        return ""
-    clipped = cast(str, value)[:_MAX_ERROR_INPUT_LENGTH]
-    printable = "".join(
-        " "
-        if ord(character) < _CONTROL_LIMIT or ord(character) == _DELETE_CODE
-        else character
-        for character in clipped
-    )
-    return " ".join(printable.split())[:_MAX_ERROR_LENGTH]
-
-
-def _is_exact_number(value: object) -> TypeGuard[int | float]:
-    return _has_exact_type(value, int) or _has_exact_type(value, float)
-
-
-def _is_exact_int(value: object) -> TypeGuard[int]:
-    return _has_exact_type(value, int)
-
-
-def _canonical_duration(value: object) -> int:
-    if not _is_exact_int(value):
-        return 0
-    if value < 0 or value > _MAX_DURATION_MS:
-        return 0
-    return value
-
-
-def _valid_now(value: object) -> float | None:
-    if not _is_exact_number(value):
-        return None
-    if not math.isfinite(value) or value < 0 or value > _MAX_NOW:
-        return None
-    return float(value)
-
-
-def _target(raw_target: str, cwd: str) -> str:
-    target = _bounded_text(raw_target, _MAX_TARGET_LENGTH)
-    if not target:
-        return ""
-    if posixpath.isabs(target):
-        canonical = posixpath.abspath(posixpath.normpath(target))
-    elif cwd and posixpath.isabs(cwd):
-        canonical = posixpath.abspath(posixpath.normpath(posixpath.join(cwd, target)))
-    else:
-        canonical = posixpath.normpath(target)
-    return canonical if len(canonical) <= _MAX_TARGET_LENGTH else ""
-
-
-def normalize_payload(payload: object) -> TrustedPayload:
-    """Bound payload-derived keys and paths because hook input crosses a trust boundary."""
-    projected: FailurePayload = failure_payload(payload)
-    session_id = _bounded_text(projected["session_id"], _MAX_SESSION_LENGTH)
-    if session_id in (".", "..") or not _SESSION_PATTERN.fullmatch(session_id):
-        session_id = ""
-    cwd = _bounded_text(projected["cwd"], _MAX_CWD_LENGTH)
-    return {
-        "session_id": session_id,
-        "cwd": cwd,
-        "tool_name": _bounded_text(projected["tool_name"], _MAX_TOOL_LENGTH),
-        "tool_use_id": _bounded_text(projected["tool_use_id"], _MAX_TOOL_LENGTH),
-        "target": _target(projected["file_path"], cwd),
-        "error": _normalized_error(projected["error"]),
-        "is_interrupt": projected["is_interrupt"],
-        "duration_ms": _canonical_duration(projected["duration_ms"]),
-    }
-
-
-def _safe_config(config: object) -> dict[str, object]:
-    source = exact_string_dict(config)
-    result: dict[str, object] = {}
-    for key in ("state_root", "ledger_root"):
-        value = _bounded_text(source.get(key), _MAX_CWD_LENGTH)
-        if value:
-            result[key] = value
-    return result
-
-
-def _config_roots(config: dict[str, object]) -> StorageRoots:
-    state_root = _bounded_text(config.get("state_root"), _MAX_CWD_LENGTH) or None
-    ledger_root = _bounded_text(config.get("ledger_root"), _MAX_CWD_LENGTH) or None
-    return StorageRoots(state_root, ledger_root)
-
-
-def parse_mcp_tool(tool_name: str) -> tuple[str, str] | None:
-    """Reject malformed and oversized MCP names because they become persistent health-map keys."""
-    if not _has_exact_type(tool_name, str) or not tool_name.startswith("mcp__"):
-        return None
-    server, separator, tool = tool_name[5:].partition("__")
-    if not separator:
-        return None
-    if not _is_valid_mcp_part(server, _MAX_MCP_SERVER_LENGTH):
-        return None
-    if not _is_valid_mcp_part(tool, _MAX_MCP_TOOL_LENGTH):
-        return None
-    return server, tool
-
-
-def _is_valid_mcp_part(value: str, maximum: int) -> bool:
-    if not value or len(value) > maximum:
-        return False
-    return all(character in _MCP_PART_CHARACTERS for character in value)
-
-
 def _next_streak(previous: object, signature: _FailureSignature) -> StreakData:
     count = 1
     prior = exact_string_dict(previous)
     if prior:
         prior_count = prior.get("count")
         same_signature = (
-            _has_exact_type(prior.get("error"), str)
+            has_exact_type(prior.get("error"), str)
             and prior.get("error") == signature.error
             and prior.get("is_interrupt") is signature.interrupt
         )
-        if same_signature and _is_exact_int(prior_count) and prior_count > 0:
+        if same_signature and is_exact_int(prior_count) and prior_count > 0:
             count = prior_count + 1
     return {
         "count": count,
@@ -237,15 +96,15 @@ def _backoff_seconds(failure_count: int) -> int:
 
 
 def _valid_nonnegative_int(value: object) -> int:
-    if _is_exact_int(value) and value >= 0:
+    if is_exact_int(value) and value >= 0:
         return value
     return 0
 
 
 def _valid_timestamp(value: object, default: float) -> float:
-    if _is_exact_number(value):
+    if is_exact_number(value):
         converted = float(value)
-        if 0 <= converted <= _MAX_TIMESTAMP and math.isfinite(converted):
+        if 0 <= converted <= MAX_TIMESTAMP and math.isfinite(converted):
             return converted
     return default
 
@@ -289,7 +148,7 @@ def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
     previous_time = _valid_timestamp(server_state.get("last_failure_at"), event["now"])
     failure_time = max(event["now"], previous_time)
     retry_after = failure_time + _backoff_seconds(count)
-    health[server] = {
+    entry: McpHealthEntry = {
         "failure_count": count,
         "last_failure_at": failure_time,
         "retry_after": retry_after,
@@ -297,6 +156,7 @@ def _updated_mcp_health(state: dict, event: FailureEventData) -> dict | None:
         "is_interrupt": False,
         "duration_ms": event["duration_ms"],
     }
+    health[server] = entry
     return health
 
 
@@ -313,7 +173,7 @@ def _record_failure(
 
 
 def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
-    if not key or not _has_exact_type(mapping, dict):
+    if not key or not has_exact_type(mapping, dict):
         return mapping, False
     copied = exact_string_dict(mapping)
     if key not in copied:
@@ -323,12 +183,12 @@ def _remove_key(mapping: object, key: str) -> tuple[object, bool]:
 
 
 def _record_success(state: dict, payload: TrustedPayload) -> dict:
-    if not _has_exact_type(state, dict):
+    if not has_exact_type(state, dict):
         return state
     trusted_state = exact_string_dict(state)
     updated = dict(trusted_state)
     streaks = trusted_state.get(FAILURE_STREAKS_KEY)
-    if _has_exact_type(streaks, dict):
+    if has_exact_type(streaks, dict):
         streak_map = exact_string_dict(streaks)
         tools, tool_removed = _remove_key(streak_map.get("tools"), payload["tool_name"])
         targets, target_removed = _remove_key(
@@ -357,7 +217,7 @@ def record_success(payload: dict, config: dict | None = None) -> None:
         session_id = trusted_payload["session_id"]
         if not session_id:
             return
-        trusted_config = _safe_config(config)
+        trusted_config = safe_config(config)
         roots = _config_roots(trusted_config)
         session_state.update_state_strict(
             session_id,
@@ -469,10 +329,10 @@ def run(payload: dict, config: dict | None = None, now: float | None = None) -> 
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:
             return {}
-        trusted_config = _safe_config(config)
+        trusted_config = safe_config(config)
         roots = _config_roots(trusted_config)
         clock = time.time() if now is None else now
-        context = FailureRunContext(trusted_payload, roots, _valid_now(clock))
+        context = FailureRunContext(trusted_payload, roots, valid_now(clock))
         return _run_failure(context)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
         sys.stderr.write(f"agent-discipline-watcher: failure hook failed: {exc}\n")
