@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 import session_start
-from lib import claude_native, claude_presets, host
+from lib import claude_native, claude_presets, embedding_lease, embedding_session, host
 
 
 class SessionStartLifecycleTests(unittest.TestCase):
@@ -169,6 +169,90 @@ def test_another_host_writes_no_claude_settings(monkeypatch: pytest.MonkeyPatch)
     session_start.run({"source": "startup"})
 
     assert not settings.exists()
+
+
+def _on_codex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(host.CODEX_ENV, "1")
+    for other in (host.OMP_ENV, host.CLAUDE_ENV, host.COWORK_ENV):
+        monkeypatch.delenv(other, raising=False)
+
+
+@pytest.fixture(name="cold_worker")
+def _cold_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[list, dict]:
+    """Faked, because a test must never load the real model."""
+    monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
+    for name in embedding_session.USER_URL_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(embedding_session, "provisioned", lambda: True)
+    launched: list = []
+    monkeypatch.setattr(embedding_session, "start_detached", launched.append)
+    return launched, {"state_root": str(tmp_path / "state")}
+
+
+def _leases(config: dict, now: float) -> tuple[str, ...]:
+    return embedding_lease.live_sessions(now, embedding_session.lease_root_for(config))
+
+
+def test_a_codex_start_warms_the_model_without_waiting(cold_worker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Warmed, because Codex votes inline within 9 seconds."""
+    launched, config = cold_worker
+    _on_codex(monkeypatch)
+
+    started = time.monotonic()
+    output = session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert time.monotonic() - started < 2.0
+    assert output["hookSpecificOutput"]["additionalContext"] == session_start.CONTRACT
+    assert launched == [embedding_session.default_root()]
+    assert _leases(config, time.time()) == ("s1",)
+
+
+def _warm_at_start(config: dict) -> None:
+    session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+
+def _open_a_turn(config: dict) -> None:
+    embedding_session.open_turn("s1", embedding_session.lease_root_for(config))
+
+
+@pytest.mark.parametrize("take_lease", [_warm_at_start, _open_a_turn], ids=["warm-up", "turn"])
+def test_an_idle_codex_session_stops_pinning_the_model_after_the_ttl(cold_worker, monkeypatch: pytest.MonkeyPatch, take_lease) -> None:
+    """Expired, because a session without prose must free 709 MB."""
+    _, config = cold_worker
+    _on_codex(monkeypatch)
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", True)
+    server_root = embedding_session.default_root()
+    taken = time.time()
+
+    take_lease(config)
+
+    assert _leases(config, taken + embedding_lease.LEASE_TTL_SECONDS - 5) == ("s1",)
+    assert embedding_lease.has_live_leases(server_root, taken + embedding_lease.LEASE_TTL_SECONDS + 5) is False
+
+
+def test_a_codex_start_without_the_model_stays_quiet(cold_worker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Skipped, because SessionStart must never download."""
+    launched, config = cold_worker
+    _on_codex(monkeypatch)
+    monkeypatch.setattr(embedding_session, "provisioned", lambda: False)
+
+    output = session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert output["hookSpecificOutput"]["additionalContext"] == session_start.CONTRACT
+    assert capsys.readouterr().err == ""
+    assert launched == []
+    assert _leases(config, time.time()) == ()
+
+
+def test_a_claude_start_leaves_the_model_to_the_async_route(cold_worker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skipped, because the Claude vote waits 120 seconds."""
+    launched, config = cold_worker
+    _on_claude(monkeypatch)
+
+    session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert launched == []
+    assert _leases(config, time.time()) == ()
 
 
 if __name__ == "__main__":

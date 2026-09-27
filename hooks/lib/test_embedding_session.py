@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from lib import embedding_lease, embedding_session
+from lib import embedding_lease, embedding_session, model_artifacts, model_store
 
 
 def _closed_port() -> int:
@@ -147,6 +147,50 @@ def test_failed_cleanup_is_reported_without_raising(tmp_path, capsys) -> None:
 
     assert embedding_session.close_turn("alpha", str(tmp_path), unload=fail_release) is False
     assert "embedding cleanup failed: cannot signal worker" in capsys.readouterr().err
+
+
+def _tiny_platform(runtime: model_artifacts.ArchiveRuntime | model_artifacts.PythonRuntime) -> model_artifacts.ModelPlatform:
+    weights = (model_artifacts.Artifact("model.bin", "https://example.invalid/model.bin", "0" * 64, 4),)
+    return model_artifacts.ModelPlatform("test-platform", "test", weights, runtime)
+
+
+def _lay_out(entry: model_artifacts.ModelPlatform, weight_bytes: bytes) -> None:
+    root = embedding_session.default_root()
+    weights = model_store.weights_root(entry, root)
+    weights.mkdir(parents=True)
+    (weights / "model.bin").write_bytes(weight_bytes)
+    python = model_store.runtime_root(entry, root) / model_store.VENV_DIRNAME / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("", encoding="utf-8")
+
+
+def test_sized_weights_and_a_runtime_count_as_provisioned() -> None:
+    entry = _tiny_platform(model_artifacts.PythonRuntime(()))
+    _lay_out(entry, b"four")
+
+    assert embedding_session.provisioned(lambda: entry) is True
+
+
+def test_a_partial_weight_file_is_not_provisioned() -> None:
+    entry = _tiny_platform(model_artifacts.PythonRuntime(()))
+    _lay_out(entry, b"fo")
+
+    assert embedding_session.provisioned(lambda: entry) is False
+
+
+def test_an_archive_runtime_without_its_server_is_not_provisioned() -> None:
+    archive = model_artifacts.Artifact("server.tar.gz", "https://example.invalid/s", "0" * 64, 1)
+    entry = _tiny_platform(model_artifacts.ArchiveRuntime("bin/llama-server", archive))
+    _lay_out(entry, b"four")
+
+    assert embedding_session.provisioned(lambda: entry) is False
+
+
+def test_an_unsupported_machine_is_not_provisioned() -> None:
+    def unsupported() -> model_artifacts.ModelPlatform:
+        raise ValueError("no embedding build")
+
+    assert embedding_session.provisioned(unsupported) is False
 
 
 def test_renew_turn_keeps_a_long_turn_holding_the_model(tmp_path) -> None:

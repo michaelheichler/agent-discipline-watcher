@@ -53,7 +53,7 @@ The scanner uses one region extractor for mixed-language files. Markup, attribut
 The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. The route reads each edited prose file, runs the embedding vote, and writes the surviving sentences to the journal. It prints nothing and returns no decision.
 
 1. Claude Code runs the route as an async PostToolUse hook after each file edit tool. The hook has a 180 second timeout. The write never waits for it.
-2. Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route.
+2. Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route. A cold model takes longer than 9 seconds to load, so Codex SessionStart and each Codex prompt start the worker in the background when the model is already on disk. Neither hook waits for the load or downloads anything. Stop releases the model at the end of each turn, and the next prompt starts it again. The vote then runs inline on a warm worker. A write that lands before the load finishes gets no vote.
 3. OMP has no async route. Its `OmpReview` prepare step runs the same vote inline and waits at most 10 seconds for the model.
 
 On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
