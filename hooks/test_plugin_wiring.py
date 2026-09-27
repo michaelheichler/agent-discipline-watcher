@@ -70,35 +70,12 @@ def merged_watcher_hooks(skill_dir: str) -> dict:
 
 
 class PluginManifestTests(unittest.TestCase):
-    def test_default_agent_models_match_generated_haiku_preset(self):
+    def test_the_manifest_ships_only_command_hooks(self) -> None:
+        """Commands only, because settings hold the one reviewer."""
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        generated = claude_presets.shipped_hooks()
-        installed = {
-            event: next(
-                entry["model"]
-                for hook_event, entry in all_hooks(config)
-                if hook_event == event and entry.get("type") == "agent"
-            )
-            for event in ("PostToolUse", "Stop")
-        }
-        expected = {
-            event: generated[event][0]["hooks"][0]["model"]
-            for event in ("PostToolUse", "Stop")
-        }
-
-        self.assertEqual(installed, expected)
-
-    def test_shipped_reviewers_are_rendered_from_the_haiku_preset(self) -> None:
-        """Rendered because a hand-kept copy drifted in matcher, timeout, and prompt."""
-        on_disk = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        self.assertEqual(on_disk, claude_presets.render_manifest(on_disk))
-        shipped = claude_presets.shipped_hooks()
-        for event in ("PostToolUse", "Stop"):
-            agent_groups = [
-                group for group in on_disk["hooks"][event]
-                if any(entry.get("type") == "agent" for entry in group["hooks"])
-            ]
-            self.assertEqual(agent_groups, shipped[event])
+        kinds = {entry.get("type") for _event, entry in all_hooks(config)}
+        self.assertEqual(kinds, {"command"})
+        self.assertNotIn(claude_presets.MANAGED_MARKER, HOOKS_JSON.read_text(encoding="utf-8"))
 
     def test_session_end_releases_the_active_session_lease(self):
         config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
@@ -266,46 +243,11 @@ class PostToolUseWiringTests(unittest.TestCase):
     def setUp(self):
         self.config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
 
-    def _agent_entries(self):
-        return [entry for event, entry in all_hooks(self.config) if event == "PostToolUse" and entry.get("type") == "agent"]
-
     def test_the_command_post_tool_use_handler_still_exists(self):
         dispatch = dispatch_map()
         command_routes = {route_of(entry) for event, entry in hook_commands(self.config) if event == "PostToolUse"}
         self.assertIn("PostToolUse", command_routes)
         self.assertEqual(dispatch["PostToolUse"], "record.py")
-
-    def test_the_post_tool_use_agent_reviewer_is_registered(self):
-        """Carried by the plugin because a preset write into settings.json is a step nobody runs."""
-        entries = self._agent_entries()
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["model"], "claude-haiku-4-5-20251001")
-
-    def test_the_agent_reviewer_enumerates_its_output_space(self):
-        """Enumerated in the prompt because a chatty reply fails the hook and gates nothing."""
-        prompts = [
-            entry["prompt"]
-            for event, entry in all_hooks(self.config)
-            if event in ("PostToolUse", "Stop") and entry.get("type") == "agent"
-        ]
-        self.assertEqual(len(prompts), 2)
-        for prompt in prompts:
-            with self.subTest(event=prompt.splitlines()[1]):
-                self.assertIn('{"ok": true}', prompt)
-                self.assertIn('"reason"', prompt)
-                self.assertIn("no prose", prompt.lower())
-                self.assertIn("StructuredOutput", prompt)
-                self.assertIn("exactly once", prompt)
-                self.assertIn("plain text", prompt)
-                self.assertNotIn("JSON:", prompt)
-
-    def test_no_agent_handler_runs_on_pre_tool_use(self):
-        """Kept off PreToolUse because a non-conforming reply there denies the tool call, reproduced in f9da7d5."""
-        entries = [
-            entry for event, entry in all_hooks(self.config)
-            if event == "PreToolUse" and entry.get("type") == "agent"
-        ]
-        self.assertEqual(entries, [])
 
     def test_plugin_and_claude_merge_scan_bash_post_tool_use(self):
         merged = {"hooks": merged_watcher_hooks("/tmp/skill-dir")}

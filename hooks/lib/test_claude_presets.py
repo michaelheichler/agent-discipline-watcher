@@ -108,24 +108,6 @@ def test_a_written_preset_supersedes_the_shipped_reviewer(preset: str) -> None:
     assert claude_presets.supersedes_plugin(settings)
 
 
-def test_a_legacy_copy_of_the_shipped_reviewer_does_not_supersede_itself() -> None:
-    """Keep it running because an installer copy of the plugin entry is the only reviewer there."""
-    legacy = {"hooks": claude_presets.shipped_hooks()}
-
-    assert not claude_presets.supersedes_plugin(legacy)
-    assert not claude_presets.supersedes_plugin({})
-
-
-def test_every_shipped_reviewer_checks_for_a_superseding_preset_first() -> None:
-    """Check first because a skipped reviewer must spend no review work."""
-    generated = claude_presets.shipped_hooks()
-
-    for event in ("PostToolUse", "Stop"):
-        prompt = generated[event][0]["hooks"][0]["prompt"]
-        assert claude_presets.SUPERSEDED_FLAG in prompt
-        assert prompt.index(claude_presets.SUPERSEDED_FLAG) < prompt.index("OUTPUT CONTRACT")
-
-
 @pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
 def test_every_stop_reviewer_judges_pattern_rows_against_their_examples(preset: str) -> None:
     """Pinned, because a rubric-free judge drifted to taste."""

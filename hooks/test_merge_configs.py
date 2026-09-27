@@ -132,8 +132,7 @@ class MergeConfigTests(unittest.TestCase):
             twice = settings.read_text()
         assert once == twice, "a second merge from the same skill dir must not duplicate entries"
         merged = json.loads(twice)
-        # Agent groups match, because their prompts name the helper.
-        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 3, "Stop": 2}
+        expected_counts = {"SessionStart": 1, "PreToolUse": 1, "PostToolUse": 2, "Stop": 1}
         for lifecycle, expected in expected_counts.items():
             groups = merged["hooks"][lifecycle]
             watcher_groups = [group for group in groups if SKILL_DIR in json.dumps(group)]

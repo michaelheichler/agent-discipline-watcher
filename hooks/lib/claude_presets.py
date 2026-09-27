@@ -18,9 +18,7 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
 LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
-AGENT_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-MANIFEST_PATH = PLUGIN_ROOT / "hooks" / "hooks.json"
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
 SHIPPED_READER_PATH = "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/read_claude_journal.sh"
@@ -250,39 +248,6 @@ def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
             "Stop": [{"hooks": [handler]}],
         }
     return {"Stop": [{"hooks": [_agent(model_for(preset, "document"), stop_prompt(preset))]}]}
-
-
-def shipped_hooks() -> dict[str, list[dict[str, Any]]]:
-    comment = _agent(model_for(SHIPPED_PRESET, "comment"), comment_prompt(SHIPPED_PRESET))
-    document = _agent(model_for(SHIPPED_PRESET, "document"), stop_prompt(SHIPPED_PRESET, shipped=True))
-    return {
-        "PostToolUse": [{"matcher": AGENT_MATCHER, "hooks": [comment]}],
-        "Stop": [{"hooks": [document]}],
-    }
-
-
-def _is_agent_group(group: object) -> bool:
-    entries = group.get("hooks") if isinstance(group, dict) else None
-    return isinstance(entries, list) and any(isinstance(entry, dict) and entry.get("type") == "agent" for entry in entries)
-
-
-def render_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Rendered from the preset, because a hand-kept copy drifted."""
-    hooks = dict(manifest["hooks"])
-    for lifecycle, groups in shipped_hooks().items():
-        kept = [group for group in hooks.get(lifecycle, []) if not _is_agent_group(group)]
-        hooks[lifecycle] = kept + groups
-    return {**manifest, "hooks": hooks}
-
-
-def main() -> int:
-    current = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    MANIFEST_PATH.write_text(json.dumps(render_manifest(current), indent=2) + "\n", encoding="utf-8")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
