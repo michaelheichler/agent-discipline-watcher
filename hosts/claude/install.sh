@@ -32,6 +32,7 @@ fi
 
 mkdir -p "$adw_bin"
 adw_replace_link "$adw_bin/adw-judge" "$ADW_SKILL_DIR/bin/adw-judge"
+adw_replace_link "$adw_bin/adw-nuke" "$ADW_SKILL_DIR/bin/adw-nuke"
 adw_remove_own_link "$HOME/.local/bin/adw-judge" "*/agent-discipline-watcher/bin/adw-judge"
 for rc_file in "$HOME/.zshrc" "$HOME/.bashrc"; do
   adw_strip_rc_block "$rc_file"

@@ -15,6 +15,7 @@
   "installer_note": "Writes the adw-judge preset CLI under the state directory. The plugin carries every hook.",
   "writes": [
     "~/.adw/bin/adw-judge",
+    "~/.adw/bin/adw-nuke",
     "~/.claude/settings.json, to remove legacy watcher hooks and write the default haiku reviewer at SessionStart",
     "~/.claude/plugins/cache/agent-discipline-watcher, cleared then reinstalled by the claude CLI"
   ],

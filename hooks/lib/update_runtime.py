@@ -29,7 +29,7 @@ LEGACY_LINK_TARGETS = {
     ".omp/agent/extensions/agent-discipline-watcher": EXTENSION_PATH,
 }
 MANAGED_LINKS = frozenset({
-    ".adw/bin/adw", ".adw/bin/adw-judge", ".local/bin/agent-discipline",
+    ".adw/bin/adw", ".adw/bin/adw-judge", ".adw/bin/adw-nuke", ".local/bin/agent-discipline",
     ".local/bin/adw-cli", ".local/bin/adw-judge",
     ".codex/skills/agent-discipline-watcher", ".claude/skills/agent-discipline-watcher",
     ".config/claude-code/skills/agent-discipline-watcher",
@@ -149,7 +149,7 @@ def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None
     if "claude" in hosts:
         profile = (claude_root or _claude_root(home)).relative_to(home)
         paths.extend(map(Path, (
-            ".adw/bin/adw-judge", ".local/bin/adw-judge", ".zshrc", ".bashrc",
+            ".adw/bin/adw-judge", ".adw/bin/adw-nuke", ".local/bin/adw-judge", ".zshrc", ".bashrc",
             ".adw/update-marketplace",
         )))
         paths.extend(profile / name for name in (
