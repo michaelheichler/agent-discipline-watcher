@@ -99,6 +99,40 @@ def test_a_fresh_settings_file_gains_the_haiku_block_once(monkeypatch: pytest.Mo
     assert claude_presets.managed_hooks(json.loads(first)) == expected
 
 
+def _moved(settings: Path, preset: str, edit_timeout: bool) -> None:
+    claude_native.set_preset(preset, settings_path=settings, preset_path=claude_native.preset_path())
+    old_root = claude_presets.PLUGIN_ROOT.parent / "old-revision"
+    text = settings.read_text(encoding="utf-8").replace(str(claude_presets.PLUGIN_ROOT), str(old_root))
+    moved = json.loads(text)
+    if edit_timeout:
+        moved["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 45
+    settings.write_text(json.dumps(moved), encoding="utf-8")
+
+
+def test_a_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repointed, because an old cache revision can vanish."""
+    settings = _on_claude(monkeypatch)
+    _moved(settings, "mixed", edit_timeout=True)
+
+    session_start.run({"source": "startup"})
+
+    stop = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["Stop"][0]["hooks"][0]
+    assert stop["prompt"] == claude_presets.stop_prompt("mixed")
+    assert stop["timeout"] == 45
+    assert claude_native.read_preset() == "mixed"
+
+
+def test_a_luna_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repointed, because the handler path goes stale too."""
+    settings = _on_claude(monkeypatch)
+    _moved(settings, "luna", edit_timeout=False)
+
+    session_start.run({"source": "startup"})
+
+    current = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("luna")})
+    assert claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8"))) == current
+
+
 def test_a_block_the_user_changed_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kept, because the user chose it."""
     settings = _on_claude(monkeypatch)
