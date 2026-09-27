@@ -70,24 +70,21 @@ def test_an_answer_without_an_array_raises() -> None:
     with pytest.raises(ValueError):
         judge.parse_verdicts("I could not decide.", CANDIDATES)
 
-def test_the_selection_reaches_the_judge_without_a_silent_downgrade(monkeypatch) -> None:
+def test_the_selection_reaches_the_judge_without_a_silent_downgrade() -> None:
     selected: list[str] = []
-    monkeypatch.setattr(judge, "available", lambda: True)
-    monkeypatch.setattr(
-        judge,
-        "_run",
-        lambda _prompt, model: selected.append(model) or json.dumps({
+
+    def complete(_prompt: str, model: str) -> str:
+        selected.append(model)
+        return json.dumps({
             "is_error": False,
             "result": json.dumps([
                 {"index": 0, "verdict": "states_why"},
                 {"index": 1, "verdict": "states_why"},
             ]),
-        }),
-    )
+        })
 
-    judge.judge(CANDIDATES, "claude-3-5-haiku-20241022")
-    judge.judge(CANDIDATES, "claude-sonnet-5")
-    judge.judge(CANDIDATES, None)
+    for model in ("claude-3-5-haiku-20241022", "claude-sonnet-5", None):
+        judge.judge(CANDIDATES, model, ready=lambda: True, complete=complete)
 
     assert selected == [
         "claude-3-5-haiku-20241022",

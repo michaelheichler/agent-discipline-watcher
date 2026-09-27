@@ -29,34 +29,30 @@ def test_three_item_list_reaches_the_judged_gate_rather_than_the_write_path() ->
     assert "three_item_list" in regex_judge.judged_rules({})
 
 
-def test_a_judged_rule_speaks_only_through_the_reader(monkeypatch) -> None:
+def test_a_judged_rule_speaks_only_through_the_reader() -> None:
     findings = [{"rule": "three_item_list", "line": 3, "snippet": THREE_ITEMS}]
-    monkeypatch.setattr(
-        regex_judge, "confirm_all",
-        lambda work, _model: JudgedOutcome(
-            {rule.name: candidates for rule, candidates in work if candidates}, (), ""),
-    )
 
-    confirmed = regex_judge.confirm("sample.md", findings, {})
+    def confirm_every(work, _model) -> JudgedOutcome:
+        return JudgedOutcome({rule.name: candidates for rule, candidates in work if candidates}, (), "")
+
+    confirmed = regex_judge.confirm("sample.md", findings, {}, judge_all=confirm_every)
 
     assert [(item.rule, item.line) for item in confirmed] == [("three_item_list", 3)]
 
 
-def test_a_reader_that_confirms_nothing_reports_nothing(monkeypatch) -> None:
+def test_a_reader_that_confirms_nothing_reports_nothing() -> None:
     findings = [{"rule": "three_item_list", "line": 3, "snippet": THREE_ITEMS}]
-    monkeypatch.setattr(regex_judge, "confirm_all", lambda _work, _model: JudgedOutcome({}, (), ""))
 
-    assert regex_judge.confirm("sample.md", findings, {}) == ()
+    assert regex_judge.confirm("sample.md", findings, {}, judge_all=lambda _work, _model: JudgedOutcome({}, (), "")) == ()
 
 
-def test_an_unjudged_rule_never_reaches_the_reader(monkeypatch) -> None:
+def test_an_unjudged_rule_never_reaches_the_reader() -> None:
     findings = [{"rule": "passive_voice", "line": 1, "snippet": "The build was broken by the change."}]
-    monkeypatch.setattr(
-        regex_judge, "confirm_all",
-        lambda _work, _model: (_ for _ in ()).throw(AssertionError("an enforcing rule was sent to the reader")),
-    )
 
-    assert regex_judge.confirm("sample.md", findings, {}) == ()
+    def refuse(_work, _model) -> JudgedOutcome:
+        raise AssertionError("an enforcing rule was sent to the reader")
+
+    assert regex_judge.confirm("sample.md", findings, {}, judge_all=refuse) == ()
 
 
 def test_a_project_can_move_another_rule_to_the_judged_gate() -> None:

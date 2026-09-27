@@ -37,14 +37,16 @@ def test_pattern_candidates_adapt_to_the_shared_judge_contract() -> None:
     assert request.candidates == tuple(candidate.text for candidate in CANDIDATES)
 
 
-def test_only_the_lines_the_judge_calls_violating_survive(monkeypatch) -> None:
-    monkeypatch.setattr(pattern_judge, "available", lambda: True)
-    monkeypatch.setattr(
-        pattern_judge, "_run",
-        lambda _prompt, _model: _answer([{"index": 0, "verdict": "violating"}, {"index": 1, "verdict": "clean"}]),
+def _confirm(candidates: tuple[PatternCandidate, ...], ready: bool, complete) -> tuple[PatternCandidate, ...]:
+    return pattern_judge.confirm(
+        RULE, candidates, pattern_judge.JUDGED_GATE_MODEL, ready=lambda: ready, complete=complete,
     )
 
-    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == (CANDIDATES[0],)
+
+def test_only_the_lines_the_judge_calls_violating_survive() -> None:
+    answer = _answer([{"index": 0, "verdict": "violating"}, {"index": 1, "verdict": "clean"}])
+
+    assert _confirm(CANDIDATES, True, lambda _prompt, _model: answer) == (CANDIDATES[0],)
 
 
 def test_an_incomplete_judge_answer_is_rejected() -> None:
@@ -62,21 +64,13 @@ def test_an_error_body_raises_rather_than_confirming() -> None:
         pattern_judge.parse_verdicts(json.dumps({"result": "[]", "is_error": True}), 1)
 
 
-def test_an_absent_judge_confirms_nothing(monkeypatch) -> None:
-    monkeypatch.setattr(pattern_judge, "available", lambda: False)
-
-    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == ()
+def test_an_absent_judge_confirms_nothing() -> None:
+    assert _confirm(CANDIDATES, False, lambda _prompt, _model: pytest.fail("asked an absent judge")) == ()
 
 
-def test_a_judge_that_never_answers_confirms_nothing(monkeypatch) -> None:
-    monkeypatch.setattr(pattern_judge, "available", lambda: True)
-    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt, _model: None)
-
-    assert pattern_judge.confirm(RULE, CANDIDATES, pattern_judge.JUDGED_GATE_MODEL) == ()
+def test_a_judge_that_never_answers_confirms_nothing() -> None:
+    assert _confirm(CANDIDATES, True, lambda _prompt, _model: None) == ()
 
 
-def test_no_candidates_costs_no_call(monkeypatch) -> None:
-    monkeypatch.setattr(pattern_judge, "available", lambda: True)
-    monkeypatch.setattr(pattern_judge, "_run", lambda _prompt, _model: pytest.fail("the judge was called with nothing to judge"))
-
-    assert pattern_judge.confirm(RULE, (), pattern_judge.JUDGED_GATE_MODEL) == ()
+def test_no_candidates_costs_no_call() -> None:
+    assert _confirm((), True, lambda _prompt, _model: pytest.fail("the judge was called with nothing to judge")) == ()

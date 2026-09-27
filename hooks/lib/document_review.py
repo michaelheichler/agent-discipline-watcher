@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from typing import Any, NamedTuple
 
 try:
@@ -153,14 +154,14 @@ def data_boundary_enabled(cfg: dict) -> bool:
 def build_prompt(path: str, text: str) -> str:
     return build_judge_prompt(request_for(path, text))
 
-def review(path: str, text: str, config: dict | None = None) -> tuple[Note, ...]:
+def review(path: str, text: str, config: dict | None = None, *, ready: Callable[[], bool] = available, complete: Callable[[str, str], str | None] = _run) -> tuple[Note, ...]:
     """No model review without a data boundary, because source text would leave the machine."""
     if config is None or not data_boundary_enabled(config):
         return ()
-    if not text.strip() or not available():
+    if not text.strip() or not ready():
         return ()
     model = str(config.get("adw_model") or REVIEW_MODEL)
-    raw = _run(build_prompt(path, text), model)
+    raw = complete(build_prompt(path, text), model)
     if raw is None:
         return ()
     try:
