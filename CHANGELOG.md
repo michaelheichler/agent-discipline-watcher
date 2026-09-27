@@ -1,10 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 (2026-09-27)
 
 ### Added
 
-- `adw-nuke --dry-run|--yes` and `/agent-discipline-watcher:adw-nuke` remove every ADW trace across Claude Code, Codex, OMP, and the shell, including the whole `~/.adw` tree, so a fresh `./install.sh` starts clean.
+- `adw-nuke --dry-run|--yes` and `/agent-discipline-watcher:adw-nuke` remove every ADW trace from Claude Code, Codex, OMP, and the shell. The whole `~/.adw` tree goes too, so a fresh `./install.sh` starts clean.
+
+### Changed
+
+- The `max_rows` default is 5, the same as the block cap, and the cap lives in one place.
+- The batch and record undecidable messages name the config path, through the shared `hookio` text.
+- `luna_worker.main` takes `stdin` and `run` as keyword seams. Tests inject fakes through seams instead of patching private names, 285 patches down to 107.
+- `claude_native.py` holds no function over 25 lines. `claude_default` reaches it through one public function, `ensure_managed_block`.
+- README sentences follow the Simplified Technical English lint, 30 hits down to 0.
+
+### Removed
+
+- The dead document-review state path in `end_turn.py` and `document_review.py`, which had no writer since 0.21.0. The unused `comment_prompt` alias in `claude_native.py`.
 
 ## 0.21.0 (2026-09-27)
 

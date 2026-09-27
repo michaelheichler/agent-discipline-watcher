@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.21.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.22.0**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -193,14 +193,14 @@ trace so a fresh `./install.sh` starts clean. From a Claude session, run
 ~/.adw/bin/adw-nuke --yes
 ```
 
-The dry run prints each path it would remove or edit and writes nothing.
+The dry run prints each path that a real run removes or edits, and writes nothing.
 Without `--yes` the command prints the same list and refuses.
 
 `--yes` removes these, in this order.
 
 1. The Claude plugin and marketplace records, through `claude plugin
-   uninstall` and `claude plugin marketplace remove`. It edits the two JSON
-   files directly when the `claude` binary is absent or the call fails.
+   uninstall` and `claude plugin marketplace remove`. If the `claude` binary
+   is absent or the call fails, it edits the two JSON files directly.
 2. The ADW entries in Claude `settings.json`, `~/.codex/hooks.json`,
    `~/.codex/config.toml`, `~/.omp/agent/settings.json`, `~/.zshrc`, and
    `~/.bashrc`. Every other entry stays as it was.
@@ -210,9 +210,9 @@ Without `--yes` the command prints the same list and refuses.
 4. The whole `~/.adw` tree, including state, the ledger, reports, caches, the
    embedding model, and runtimes. No flag keeps them.
 
-The command stops before any write if a path leaves the home directory, a
-config root is a symlink, or a link path points somewhere foreign. Restart
-Claude Code, Codex, and OMP afterwards.
+If a path leaves the home directory, the command stops before any write. The
+same stop applies to a symlinked Claude profile and to a foreign link target.
+Restart Claude Code, Codex, and OMP afterwards.
 
 In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
 screen. They edit the project `.agent-discipline.json` policy used by the same
