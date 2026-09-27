@@ -121,6 +121,8 @@ def test_claude_writes_only_the_paths_its_manifest_declares(tmp_path: Path) -> N
     written = {str(path) for path in _touched(tmp_path) if not str(path).startswith(".adw/install")}
 
     assert ".adw/bin/adw-judge" in written
+    assert ".adw/bin/adw-nuke" in written
+    assert (tmp_path / ".adw/bin/adw-nuke").resolve().is_file()
     updater = tmp_path / ".adw/bin/adw"
     assert updater.is_symlink()
     assert updater.resolve() == tmp_path / ".adw/install/adw/bin/adw"

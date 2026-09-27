@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -le 1 ] || {
+  echo "usage: adw-nuke [--dry-run|--yes]" >&2
+  exit 2
+}
+case "${1:-}" in
+  ""|--dry-run|--yes) ;;
+  *)
+    echo "adw-nuke: invalid argument: $1" >&2
+    exit 2
+    ;;
+esac
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  if [ "${SOURCE#/}" = "$SOURCE" ]; then
+    SOURCE="$SOURCE_DIR/$SOURCE"
+  fi
+done
+DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+. "$DIR/hooks/resolve-python.sh"
+read -r FLOOR < "$DIR/.python-version"
+PYTHON="$(adw_resolve_python "$FLOOR")"
+[ -n "$PYTHON" ] || {
+  echo "adw-nuke: no Python $FLOOR or newer on PATH. Install one, or point ADW_PYTHON at it." >&2
+  exit 2
+}
+exec "$PYTHON" -I -S "$DIR/hooks/nuke.py" "$@"

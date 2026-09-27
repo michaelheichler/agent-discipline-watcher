@@ -182,6 +182,38 @@ Install the first release containing the updater from Terminal. An older
 installed guard cannot authorize the new command. Restart the selected agent
 hosts after updating so they load the new hooks and extension.
 
+### Full removal
+
+The Claude installer also links `~/.adw/bin/adw-nuke`. It removes every ADW
+trace so a fresh `./install.sh` starts clean. From a Claude session, run
+`/agent-discipline-watcher:adw-nuke --dry-run` instead.
+
+```bash
+~/.adw/bin/adw-nuke --dry-run
+~/.adw/bin/adw-nuke --yes
+```
+
+The dry run prints each path it would remove or edit and writes nothing.
+Without `--yes` the command prints the same list and refuses.
+
+`--yes` removes these, in this order.
+
+1. The Claude plugin and marketplace records, through `claude plugin
+   uninstall` and `claude plugin marketplace remove`. It edits the two JSON
+   files directly when the `claude` binary is absent or the call fails.
+2. The ADW entries in Claude `settings.json`, `~/.codex/hooks.json`,
+   `~/.codex/config.toml`, `~/.omp/agent/settings.json`, `~/.zshrc`, and
+   `~/.bashrc`. Every other entry stays as it was.
+3. The Claude plugin cache, marketplace, `commands/adw`, and skill link, the
+   Codex skill and ADW backup files, the OMP extension and `~/.agents` skill
+   links, and the `~/.local/bin` links.
+4. The whole `~/.adw` tree, including state, the ledger, reports, caches, the
+   embedding model, and runtimes. No flag keeps them.
+
+The command stops before any write if a path leaves the home directory, a
+config root is a symlink, or a link path points somewhere foreign. Restart
+Claude Code, Codex, and OMP afterwards.
+
 In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
 screen. They edit the project `.agent-discipline.json` policy used by the same
 Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is
