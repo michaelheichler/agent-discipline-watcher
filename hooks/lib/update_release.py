@@ -10,8 +10,10 @@ import stat
 import tarfile
 import urllib.request
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import BinaryIO
 from urllib.parse import quote, urljoin, urlsplit
 
 
@@ -44,6 +46,8 @@ REQUIRED_FILES = (
     ".claude-plugin/plugin.json",
     "README.md",
 )
+
+Fetch = Callable[[str, int, str], bytes]
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,9 +132,9 @@ def _get_bytes(url: str, limit: int, accept: str) -> bytes:
         return _read_response(response, limit)
 
 
-def _json(url: str) -> dict[str, object]:
+def _json(url: str, fetch: Fetch) -> dict[str, object]:
     try:
-        value = json.loads(_get_bytes(url, MAX_API_BYTES, "application/vnd.github+json").decode("utf-8"))
+        value = json.loads(fetch(url, MAX_API_BYTES, "application/vnd.github+json").decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
         raise ValueError("release API returned invalid JSON") from error
     if not isinstance(value, dict):
@@ -159,28 +163,28 @@ def _object(value: object) -> tuple[str, str]:
     return kind, _sha(value.get("sha"), "git object SHA")
 
 
-def _commit_for_tag(tag: str) -> str:
-    ref = _json(f"{API_ROOT}/git/ref/tags/{quote(tag, safe='')}")
+def _commit_for_tag(tag: str, fetch: Fetch) -> str:
+    ref = _json(f"{API_ROOT}/git/ref/tags/{quote(tag, safe='')}", fetch)
     kind, sha = _object(ref.get("object"))
     for depth in range(MAX_TAG_DEPTH + 1):
         if kind == "commit":
             return sha
         if depth == MAX_TAG_DEPTH:
             raise ValueError("annotated tag depth exceeds the limit")
-        tag_document = _json(f"{API_ROOT}/git/tags/{quote(sha, safe='')}")
+        tag_document = _json(f"{API_ROOT}/git/tags/{quote(sha, safe='')}", fetch)
         kind, sha = _object(tag_document.get("object"))
     raise ValueError("git tag did not resolve to a commit")
 
 
-def latest_release() -> Release:
-    metadata = _json(LATEST_URL)
+def latest_release(*, fetch: Fetch = _get_bytes) -> Release:
+    metadata = _json(LATEST_URL, fetch)
     tag = _tag(metadata.get("tag_name"))
     if metadata.get("draft") is not False or metadata.get("prerelease") is not False:
         raise ValueError("latest GitHub release is not a stable published release")
     published_at = metadata.get("published_at")
     if not isinstance(published_at, str) or not published_at.strip():
         raise ValueError("latest GitHub release is not published")
-    return Release(tag, _commit_for_tag(tag))
+    return Release(tag, _commit_for_tag(tag, fetch))
 
 
 def _member_parts(name: object) -> tuple[str, ...]:
@@ -256,36 +260,41 @@ def _decompressed_tar(data: bytes) -> bytes:
     return bytes(body)
 
 
+def _scan_members(bundle: tarfile.TarFile) -> list[tarfile.TarInfo]:
+    infos: list[tarfile.TarInfo] = []
+    seen: set[tuple[str, ...]] = set()
+    root: str | None = None
+    total = 0
+    for index in range(MAX_MEMBERS + 1):
+        info = bundle.next()
+        if info is None:
+            break
+        if index >= MAX_MEMBERS:
+            raise ValueError("release archive has too many members")
+        parts = _member_parts(info.name)
+        if root is None:
+            root = parts[0]
+        elif parts[0] != root:
+            raise ValueError("release archive has multiple roots")
+        if parts in seen:
+            raise ValueError("release archive contains duplicate paths")
+        seen.add(parts)
+        if not _member_kind(info):
+            total += info.size
+            if total > MAX_EXTRACTED_BYTES:
+                raise ValueError("release archive exceeds the extracted size limit")
+        infos.append(info)
+    return infos
+
+
 def _archive_plan(data: bytes) -> _Archive:
     try:
         bundle = tarfile.open(fileobj=io.BytesIO(data), mode="r:")
     except (tarfile.TarError, OSError, EOFError) as error:
         raise ValueError("release archive is not a valid tar archive") from error
     with bundle:
-        infos: list[tarfile.TarInfo] = []
-        seen: set[tuple[str, ...]] = set()
-        root: str | None = None
-        total = 0
         try:
-            for index in range(MAX_MEMBERS + 1):
-                info = bundle.next()
-                if info is None:
-                    break
-                if index >= MAX_MEMBERS:
-                    raise ValueError("release archive has too many members")
-                parts = _member_parts(info.name)
-                if root is None:
-                    root = parts[0]
-                elif parts[0] != root:
-                    raise ValueError("release archive has multiple roots")
-                if parts in seen:
-                    raise ValueError("release archive contains duplicate paths")
-                seen.add(parts)
-                if not _member_kind(info):
-                    total += info.size
-                    if total > MAX_EXTRACTED_BYTES:
-                        raise ValueError("release archive exceeds the extracted size limit")
-                infos.append(info)
+            infos = _scan_members(bundle)
         except (tarfile.TarError, OSError, EOFError) as error:
             raise ValueError("release archive members could not be read") from error
         return _plan_members(infos)
@@ -381,6 +390,18 @@ def _extract_directory(target: Path, destination: Path, created: list[Path]) -> 
     _ensure_directory(target, destination, created)
 
 
+def _copy_member(stream: BinaryIO, output: BinaryIO, size: int) -> int:
+    copied = 0
+    while True:
+        chunk = stream.read(min(READ_CHUNK_BYTES, size - copied + 1))
+        if not chunk:
+            return copied
+        copied += len(chunk)
+        if copied > size:
+            raise ValueError("release archive member exceeds its declared size")
+        output.write(chunk)
+
+
 def _extract_file(
     bundle: tarfile.TarFile,
     member: _Member,
@@ -400,14 +421,7 @@ def _extract_file(
             created.append(target)
             with os.fdopen(descriptor, "wb") as output:
                 descriptor = -1
-                while True:
-                    chunk = stream.read(min(READ_CHUNK_BYTES, member.info.size - copied + 1))
-                    if not chunk:
-                        break
-                    copied += len(chunk)
-                    if copied > member.info.size:
-                        raise ValueError("release archive member exceeds its declared size")
-                    output.write(chunk)
+                copied = _copy_member(stream, output, member.info.size)
         finally:
             if descriptor >= 0:
                 os.close(descriptor)
@@ -444,19 +458,21 @@ def _remove_empty_destination(destination: Path, created: os.stat_result | None)
         pass
 
 
-def stage_release(release: Release, destination: Path) -> None:
+def _download_tar(commit: str, fetch: Fetch) -> bytes:
+    archive_bytes = fetch(f"{ARCHIVE_ROOT}/{commit}", MAX_ARCHIVE_BYTES, "application/gzip")
+    if not isinstance(archive_bytes, bytes) or len(archive_bytes) > MAX_ARCHIVE_BYTES:
+        raise ValueError("release archive exceeds the size limit")
+    return _decompressed_tar(archive_bytes)
+
+
+def stage_release(release: Release, destination: Path, *, fetch: Fetch = _get_bytes) -> None:
     if not isinstance(release, Release):
         raise ValueError("release has the wrong type")
     tag = _tag(release.tag)
     commit = _sha(release.commit, "release commit")
     destination = Path(destination)
     existed = _destination_state(destination)
-    archive_bytes = _get_bytes(
-        f"{ARCHIVE_ROOT}/{commit}", MAX_ARCHIVE_BYTES, "application/gzip",
-    )
-    if not isinstance(archive_bytes, bytes) or len(archive_bytes) > MAX_ARCHIVE_BYTES:
-        raise ValueError("release archive exceeds the size limit")
-    archive_bytes = _decompressed_tar(archive_bytes)
+    archive_bytes = _download_tar(commit, fetch)
     archive = _archive_plan(archive_bytes)
     created: os.stat_result | None = None
     try:
