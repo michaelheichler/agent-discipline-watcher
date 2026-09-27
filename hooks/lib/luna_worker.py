@@ -1,13 +1,15 @@
-"""ADW-owned process boundary for the official openai-codex SDK."""
+"""Separate, because a hung SDK call must die on timeout."""
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import os
 from pathlib import Path
 import stat
 import sys
+from typing import TextIO
 
-from .judge_contracts import JudgeRequest, ReviewKind
+from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import (
     CONFIG_OVERRIDES,
     OpenAICodexSdk,
@@ -18,21 +20,26 @@ from .luna_storage import LunaProviderFailure
 
 
 MAX_ERROR_MESSAGE = 256
+DESCRIPTOR_FIELDS = (
+    "call_fd", "codex_home_fd", "cwd_fd", "call_identity",
+    "codex_home_identity", "cwd_identity",
+)
+Runner = Callable[[JudgeRequest, SdkLaunch], JudgeResult]
 
 
-def execute(request: JudgeRequest, launch: SdkLaunch):
+def execute(request: JudgeRequest, launch: SdkLaunch) -> JudgeResult:
     return run_sdk_request(request, launch, OpenAICodexSdk())
 
 
-def main() -> int:
+def main(*, stdin: TextIO = sys.stdin, run: Runner = execute) -> int:
     try:
-        request, launch = _decode_request(json.loads(sys.stdin.read()))
+        request, launch = _decode_request(json.loads(stdin.read()))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         _write_error("request", "invalid Luna worker request")
         return 2
     try:
         _prepare_descriptor_launch(launch)
-        result = execute(request, launch)
+        result = run(request, launch)
         print(json.dumps({"ok": True, "result": result.__dict__}, ensure_ascii=True))
         return 0
     except LunaProviderFailure as exc:
@@ -50,30 +57,40 @@ def _decode_request(row: object) -> tuple[JudgeRequest, SdkLaunch]:
     config_overrides = tuple(row["config_overrides"])
     if config_overrides != CONFIG_OVERRIDES:
         raise ValueError("worker config overrides do not match the provider contract")
-    descriptor_fields = (
-        "call_fd", "codex_home_fd", "cwd_fd", "call_identity",
-        "codex_home_identity", "cwd_identity",
+    launch = _decode_launch(row, config_overrides)
+    return _decode_judge_request(row), launch
+
+
+def _decode_launch(row: dict, config_overrides: tuple[str, ...]) -> SdkLaunch:
+    if any(field in row for field in DESCRIPTOR_FIELDS):
+        return _decode_descriptor_launch(row, config_overrides)
+    return _decode_path_launch(row, config_overrides)
+
+
+def _decode_descriptor_launch(row: dict, config_overrides: tuple[str, ...]) -> SdkLaunch:
+    if not all(field in row for field in DESCRIPTOR_FIELDS):
+        raise ValueError("worker runtime descriptors are incomplete")
+    return SdkLaunch(
+        codex_home=Path("../home"), cwd=Path("."), config_overrides=config_overrides,
+        call_fd=_decode_fd(row["call_fd"]),
+        codex_home_fd=_decode_fd(row["codex_home_fd"]),
+        cwd_fd=_decode_fd(row["cwd_fd"]),
+        call_identity=_decode_identity(row["call_identity"]),
+        codex_home_identity=_decode_identity(row["codex_home_identity"]),
+        cwd_identity=_decode_identity(row["cwd_identity"]),
     )
-    has_descriptors = any(field in row for field in descriptor_fields)
-    if has_descriptors:
-        if not all(field in row for field in descriptor_fields):
-            raise ValueError("worker runtime descriptors are incomplete")
-        call_fd = _decode_fd(row["call_fd"])
-        codex_home_fd = _decode_fd(row["codex_home_fd"])
-        cwd_fd = _decode_fd(row["cwd_fd"])
-        call_identity = _decode_identity(row["call_identity"])
-        codex_home_identity = _decode_identity(row["codex_home_identity"])
-        cwd_identity = _decode_identity(row["cwd_identity"])
-        codex_home = Path("../home")
-        cwd = Path(".")
-    else:
-        codex_home = Path(row["codex_home"])
-        cwd = Path(row["cwd"])
-        if not codex_home.is_absolute() or not cwd.is_absolute():
-            raise ValueError("worker runtime paths must be absolute")
-        call_fd = codex_home_fd = cwd_fd = None
-        call_identity = codex_home_identity = cwd_identity = None
-    request = JudgeRequest(
+
+
+def _decode_path_launch(row: dict, config_overrides: tuple[str, ...]) -> SdkLaunch:
+    codex_home = Path(row["codex_home"])
+    cwd = Path(row["cwd"])
+    if not codex_home.is_absolute() or not cwd.is_absolute():
+        raise ValueError("worker runtime paths must be absolute")
+    return SdkLaunch(codex_home=codex_home, cwd=cwd, config_overrides=config_overrides)
+
+
+def _decode_judge_request(row: dict) -> JudgeRequest:
+    return JudgeRequest(
         review_kind=ReviewKind(row["review_kind"]),
         candidates=tuple(row["candidates"]),
         source_context=row["source_context"],
@@ -83,13 +100,6 @@ def _decode_request(row: object) -> tuple[JudgeRequest, SdkLaunch]:
         clean_examples=tuple(row["clean_examples"]),
         rubric_version=row["rubric_version"],
     )
-    launch = SdkLaunch(
-        codex_home=codex_home, cwd=cwd, config_overrides=config_overrides,
-        call_fd=call_fd, call_identity=call_identity,
-        codex_home_fd=codex_home_fd, cwd_fd=cwd_fd,
-        codex_home_identity=codex_home_identity, cwd_identity=cwd_identity,
-    )
-    return request, launch
 
 
 def _decode_fd(value: object) -> int:
@@ -110,48 +120,57 @@ def _decode_identity(value: object) -> tuple[int, int]:
 def _prepare_descriptor_launch(launch: SdkLaunch) -> None:
     if launch.cwd_fd is None:
         return
-    if (
-        launch.call_fd is None or launch.codex_home_fd is None or launch.cwd_identity is None
-        or launch.call_identity is None or launch.codex_home_identity is None
-    ):
-        raise LunaProviderFailure(
-            "Luna worker runtime descriptors are incomplete", category="configuration",
-        )
+    _require(
+        launch.call_fd is not None and launch.codex_home_fd is not None
+        and launch.cwd_identity is not None and launch.call_identity is not None
+        and launch.codex_home_identity is not None,
+        "Luna worker runtime descriptors are incomplete",
+    )
     _verify_directory_descriptor(launch.call_fd, launch.call_identity, "call")
     _verify_directory_descriptor(launch.cwd_fd, launch.cwd_identity, "cwd")
     _verify_directory_descriptor(launch.codex_home_fd, launch.codex_home_identity, "home")
+    current, parent, relative_cwd, relative_home = _enter_confined_cwd(launch)
+    _require(_identity(current) == launch.cwd_identity, "Luna worker cwd descriptor changed")
+    _require(
+        _identity(parent) == launch.call_identity,
+        "Luna worker cwd is no longer under the runtime descriptor",
+    )
+    _require(
+        _is_directory_at(relative_cwd, launch.cwd_identity),
+        "Luna worker cwd path is no longer confined",
+    )
+    _require(
+        _is_directory_at(relative_home, launch.codex_home_identity),
+        "Luna worker home path is no longer confined",
+    )
+
+
+def _enter_confined_cwd(launch: SdkLaunch) -> tuple[os.stat_result, ...]:
     try:
         os.fchdir(launch.cwd_fd)
-        current = os.stat(".", follow_symlinks=False)
-        parent = os.stat("..", follow_symlinks=False)
-        relative_cwd = os.stat("cwd", dir_fd=launch.call_fd, follow_symlinks=False)
-        relative_home = os.stat("home", dir_fd=launch.call_fd, follow_symlinks=False)
+        return (
+            os.stat(".", follow_symlinks=False),
+            os.stat("..", follow_symlinks=False),
+            os.stat("cwd", dir_fd=launch.call_fd, follow_symlinks=False),
+            os.stat("home", dir_fd=launch.call_fd, follow_symlinks=False),
+        )
     except OSError as exc:
         raise LunaProviderFailure(
             "Luna worker runtime paths are no longer confined", category="configuration",
         ) from exc
-    if (current.st_dev, current.st_ino) != launch.cwd_identity:
-        raise LunaProviderFailure(
-            "Luna worker cwd descriptor changed", category="configuration",
-        )
-    if (parent.st_dev, parent.st_ino) != launch.call_identity:
-        raise LunaProviderFailure(
-            "Luna worker cwd is no longer under the runtime descriptor", category="configuration",
-        )
-    if (
-        not stat.S_ISDIR(relative_cwd.st_mode)
-        or (relative_cwd.st_dev, relative_cwd.st_ino) != launch.cwd_identity
-    ):
-        raise LunaProviderFailure(
-            "Luna worker cwd path is no longer confined", category="configuration",
-        )
-    if (
-        not stat.S_ISDIR(relative_home.st_mode)
-        or (relative_home.st_dev, relative_home.st_ino) != launch.codex_home_identity
-    ):
-        raise LunaProviderFailure(
-            "Luna worker home path is no longer confined", category="configuration",
-        )
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise LunaProviderFailure(message, category="configuration")
+
+
+def _identity(metadata: os.stat_result) -> tuple[int, int]:
+    return metadata.st_dev, metadata.st_ino
+
+
+def _is_directory_at(metadata: os.stat_result, identity: tuple[int, int] | None) -> bool:
+    return stat.S_ISDIR(metadata.st_mode) and _identity(metadata) == identity
 
 
 def _verify_directory_descriptor(

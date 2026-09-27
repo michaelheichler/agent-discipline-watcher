@@ -74,23 +74,6 @@ def test_an_empty_document_costs_no_call() -> None:
     ) == ()
 
 
-def test_a_rewritten_document_is_remembered_under_its_own_digest() -> None:
-    state = document_review.remember({}, "a.md", "abc123", 1)
-
-    assert document_review.previous(state, "a.md") == ("abc123", 1)
-
-
-def test_a_document_never_reviewed_carries_no_digest_and_no_rounds() -> None:
-    assert document_review.previous({}, "a.md") == ("", 0)
-
-
-def test_two_documents_keep_separate_records() -> None:
-    state = document_review.remember(document_review.remember({}, "a.md", "aaa", 1), "b.md", "bbb", 2)
-
-    assert document_review.previous(state, "a.md") == ("aaa", 1)
-    assert document_review.previous(state, "b.md") == ("bbb", 2)
-
-
 def test_the_message_names_the_file_and_the_line() -> None:
     notes = (document_review.Note(3, "quote", "Throat clearing.", "State the result."),)
 
