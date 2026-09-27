@@ -282,7 +282,7 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
     return gate
 
 
-def _run_record(payload: dict, config: dict | None) -> dict:
+def _run_record(payload: dict, config: dict | None, renew: Callable[[str, str | None], bool] = renew_turn) -> dict:
     projected = _projected_payload(payload)
     trusted_config = exact_string_dict(config)
     roots = config_roots(trusted_config)
@@ -294,7 +294,7 @@ def _run_record(payload: dict, config: dict | None) -> dict:
     if projected["session_id"]:
         cfg["session_id"] = projected["session_id"]
         _note_success(projected, trusted_config)
-        renew_turn(projected["session_id"], lease_root_for(cfg))
+        renew(projected["session_id"], lease_root_for(cfg))
     gate_context = _gate_context_for(payload, projected, cfg, state_root, ledger_root)
     return run_with_ledger(
         hook="record",
@@ -339,10 +339,10 @@ def _gate_context_for(
     )
 
 
-def run(payload: dict, config: dict | None = None) -> dict:
+def run(payload: dict, config: dict | None = None, *, renew: Callable[[str, str | None], bool] = renew_turn) -> dict:
     """Block on failure here, mirroring batch.py, because returning {} let a broken gate silently release the turn."""
     try:
-        return _run_record(payload, config)
+        return _run_record(payload, config, renew)
     except Exception as exc:
         reason = UNDECIDABLE + str(exc)
         blocker_state.hold_undecidable(payload, config, UNDECIDABLE_KEY, reason)
