@@ -84,14 +84,13 @@ def test_a_judged_rule_with_exemplars_no_longer_reads_regex_hits(tmp_path: Path)
     ({"rule_gates": {"three_item_list": "observe"}}, []),
 ))
 def test_a_judged_rule_without_exemplars_keeps_the_regex_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: dict, expected: list[bool],
+    tmp_path: Path, config: dict, expected: list[bool],
 ) -> None:
     shipped = omp_review_requests.load_exemplars()
-    monkeypatch.setattr(
-        omp_review_requests, "load_exemplars",
-        lambda: tuple(row for row in shipped if row.rule != "three_item_list"),
-    )
 
-    work = _pattern_work(build_work(tmp_path / "notes.md", SERIES, config))
+    def without_series() -> tuple:
+        return tuple(row for row in shipped if row.rule != "three_item_list")
+
+    work = _pattern_work(build_work(tmp_path / "notes.md", SERIES, config, exemplar_source=without_series))
 
     assert [item.blocking for item in work] == expected
