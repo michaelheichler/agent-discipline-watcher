@@ -28,6 +28,39 @@ SUCCESS = {
         "cached": False,
     },
 }
+MARKER_WORKER = f"""
+    import json
+    import os
+    from pathlib import Path
+    import sys
+
+    from lib.luna_worker import _decode_request, _prepare_descriptor_launch
+
+    request = json.loads(sys.stdin.read())
+    try:
+        _request, launch = _decode_request(request)
+        _prepare_descriptor_launch(launch)
+        if launch.cwd_fd is None:
+            Path("cwd.marker").write_text("worker cwd", encoding="utf-8")
+            Path(os.environ["CODEX_HOME"], "home.marker").write_text(
+                "worker home", encoding="utf-8",
+            )
+        else:
+            with os.fdopen(os.open(
+                "cwd.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.cwd_fd,
+            ), "w", encoding="utf-8") as marker:
+                marker.write("worker cwd")
+            with os.fdopen(os.open(
+                "home.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.codex_home_fd,
+            ), "w", encoding="utf-8") as marker:
+                marker.write("worker home")
+        print({json.dumps(json.dumps(SUCCESS))})
+    except BaseException as exc:
+        print(json.dumps({{
+            "ok": False,
+            "error": {{"category": getattr(exc, "category", "configuration"), "message": str(exc)}},
+        }}))
+"""
 
 
 def _request() -> JudgeRequest:
@@ -48,7 +81,7 @@ def _worker_script(tmp_path: Path, source: str) -> Path:
     return script
 
 
-def _judge(tmp_path: Path, monkeypatch, source: str) -> LunaJudge:
+def _judge(tmp_path: Path, monkeypatch, source: str, timeout_seconds: float | None = None) -> LunaJudge:
     script = _worker_script(tmp_path, source)
     monkeypatch.setattr(luna_provider.sys, "executable", str(script))
     return LunaJudge(
@@ -56,7 +89,24 @@ def _judge(tmp_path: Path, monkeypatch, source: str) -> LunaJudge:
         runtime_root=tmp_path / "runtime",
         cache_root=tmp_path / "cache",
         auth_source=tmp_path / "missing-auth.json",
+        timeout_seconds=timeout_seconds,
     )
+
+
+def _worker_with_orphan(child_marker: Path, last_line: str) -> str:
+    return f"""
+        from pathlib import Path
+        import subprocess
+        import sys
+        import time
+        child = subprocess.Popen(
+            [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        Path({str(child_marker)!r}).write_text(str(child.pid))
+        sys.stdin.read()
+        {last_line}
+    """
 
 
 def _is_process_alive(pid: int) -> bool:
@@ -89,7 +139,7 @@ def test_worker_spawn_time_consumes_the_single_parent_deadline(tmp_path: Path, m
         import sys
         sys.stdin.read()
         print({json.dumps(json.dumps(SUCCESS))})
-    """)
+    """, timeout_seconds=0.05)
     real_popen = subprocess.Popen
 
     def delayed_popen(*args, **kwargs):
@@ -97,7 +147,6 @@ def test_worker_spawn_time_consumes_the_single_parent_deadline(tmp_path: Path, m
         return real_popen(*args, **kwargs)
 
     monkeypatch.setattr(luna_provider.subprocess, "Popen", delayed_popen)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.05)
 
     with pytest.raises(LunaProviderFailure, match="timed out"):
         judge.judge(_request())
@@ -117,7 +166,7 @@ def test_instance_timeout_overrides_the_module_default(tmp_path: Path, monkeypat
         auth_source=tmp_path / "missing-auth.json",
         timeout_seconds=0.05,
     )
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 30.0)
+    assert luna_provider.JUDGE_TIMEOUT_SECONDS > 5.0
 
     started = time.monotonic()
     with pytest.raises(LunaProviderFailure, match="timed out"):
@@ -142,26 +191,14 @@ def test_the_parent_deadline_covers_a_worker_stalled_at_any_stage(
         import time
         {STALL_STAGES[stage]}
         time.sleep(30)
-    """)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.5)
+    """, timeout_seconds=0.5)
 
     with pytest.raises(LunaProviderFailure, match="timed out"):
         judge.judge(_request())
 
 
-def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, monkeypatch) -> None:
-    marker = tmp_path / "pid"
-    judge = _judge(tmp_path, monkeypatch, f"""
-        from pathlib import Path
-        import os
-        import sys
-        import time
-        Path({str(marker)!r}).write_text(str(os.getpid()))
-        sys.stdin.read()
-        time.sleep(30)
-    """)
+def _interrupting_popen(marker: Path, processes: list[subprocess.Popen]):
     real_popen = subprocess.Popen
-    processes: list[subprocess.Popen] = []
 
     def interrupting_popen(*args, **kwargs):
         process = real_popen(*args, **kwargs)
@@ -176,7 +213,22 @@ def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, 
         process.communicate = interrupted_communicate
         return process
 
-    monkeypatch.setattr(luna_provider.subprocess, "Popen", interrupting_popen)
+    return interrupting_popen
+
+
+def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, monkeypatch) -> None:
+    marker = tmp_path / "pid"
+    judge = _judge(tmp_path, monkeypatch, f"""
+        from pathlib import Path
+        import os
+        import sys
+        import time
+        Path({str(marker)!r}).write_text(str(os.getpid()))
+        sys.stdin.read()
+        time.sleep(30)
+    """)
+    processes: list[subprocess.Popen] = []
+    monkeypatch.setattr(luna_provider.subprocess, "Popen", _interrupting_popen(marker, processes))
 
     try:
         with pytest.raises(KeyboardInterrupt, match="controlled interruption"):
@@ -195,21 +247,7 @@ def test_timeout_kills_descendants_even_when_group_leader_exits_on_term(
     tmp_path: Path, monkeypatch,
 ) -> None:
     child_marker = tmp_path / "child-pid"
-    judge = _judge(tmp_path, monkeypatch, f"""
-        from pathlib import Path
-        import signal
-        import subprocess
-        import sys
-        import time
-        child = subprocess.Popen(
-            [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        Path({str(child_marker)!r}).write_text(str(child.pid))
-        sys.stdin.read()
-        time.sleep(30)
-    """)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.5)
+    judge = _judge(tmp_path, monkeypatch, _worker_with_orphan(child_marker, "time.sleep(30)"), timeout_seconds=0.5)
     child_pid = -1
 
     try:
@@ -226,18 +264,7 @@ def test_malformed_worker_exit_terminates_its_remaining_process_group(
     tmp_path: Path, monkeypatch,
 ) -> None:
     child_marker = tmp_path / "malformed-child-pid"
-    judge = _judge(tmp_path, monkeypatch, f"""
-        from pathlib import Path
-        import subprocess
-        import sys
-        child = subprocess.Popen(
-            [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        Path({str(child_marker)!r}).write_text(str(child.pid))
-        sys.stdin.read()
-        print('not-json')
-    """)
+    judge = _judge(tmp_path, monkeypatch, _worker_with_orphan(child_marker, "print('not-json')"))
     child_pid = -1
 
     try:
@@ -258,7 +285,7 @@ def test_term_exit_race_still_reaps_the_worker(tmp_path: Path, monkeypatch) -> N
         signal.signal(signal.SIGTERM, lambda *_args: sys.exit(0))
         sys.stdin.read()
         time.sleep(30)
-    """)
+    """, timeout_seconds=0.5)
     real_popen = subprocess.Popen
     processes: list[subprocess.Popen] = []
 
@@ -268,7 +295,6 @@ def test_term_exit_race_still_reaps_the_worker(tmp_path: Path, monkeypatch) -> N
         return process
 
     monkeypatch.setattr(luna_provider.subprocess, "Popen", recording_popen)
-    monkeypatch.setattr(luna_provider, "JUDGE_TIMEOUT_SECONDS", 0.5)
 
     with pytest.raises(LunaProviderFailure, match="timed out"):
         judge.judge(_request())
@@ -320,46 +346,7 @@ def test_successful_worker_exit_is_not_signalled(tmp_path: Path, monkeypatch) ->
     assert signals == []
 
 
-def test_runtime_leaves_cannot_be_swapped_into_external_worker_markers(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    outside_cwd = tmp_path / "outside-cwd"
-    outside_home = tmp_path / "outside-home"
-    outside_cwd.mkdir()
-    outside_home.mkdir()
-    judge = _judge(tmp_path, monkeypatch, f"""
-        import json
-        import os
-        from pathlib import Path
-        import sys
-
-        from lib.luna_worker import _decode_request, _prepare_descriptor_launch
-
-        request = json.loads(sys.stdin.read())
-        try:
-            _request, launch = _decode_request(request)
-            _prepare_descriptor_launch(launch)
-            if launch.cwd_fd is None:
-                Path("cwd.marker").write_text("worker cwd", encoding="utf-8")
-                Path(os.environ["CODEX_HOME"], "home.marker").write_text(
-                    "worker home", encoding="utf-8",
-                )
-            else:
-                with os.fdopen(os.open(
-                    "cwd.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.cwd_fd,
-                ), "w", encoding="utf-8") as marker:
-                    marker.write("worker cwd")
-                with os.fdopen(os.open(
-                    "home.marker", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=launch.codex_home_fd,
-                ), "w", encoding="utf-8") as marker:
-                    marker.write("worker home")
-            print({json.dumps(json.dumps(SUCCESS))})
-        except BaseException as exc:
-            print(json.dumps({{
-                "ok": False,
-                "error": {{"category": getattr(exc, "category", "configuration"), "message": str(exc)}},
-            }}))
-    """)
+def _swapping_popen(tmp_path: Path, outside_cwd: Path, outside_home: Path):
     real_popen = subprocess.Popen
 
     def swap_runtime_leaves_before_spawn(*args, **kwargs):
@@ -373,7 +360,18 @@ def test_runtime_leaves_cannot_be_swapped_into_external_worker_markers(
         (call_dir / "home").symlink_to(outside_home, target_is_directory=True)
         return real_popen(*args, **kwargs)
 
-    monkeypatch.setattr(luna_provider.subprocess, "Popen", swap_runtime_leaves_before_spawn)
+    return swap_runtime_leaves_before_spawn
+
+
+def test_runtime_leaves_cannot_be_swapped_into_external_worker_markers(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    outside_cwd = tmp_path / "outside-cwd"
+    outside_home = tmp_path / "outside-home"
+    outside_cwd.mkdir()
+    outside_home.mkdir()
+    judge = _judge(tmp_path, monkeypatch, MARKER_WORKER)
+    monkeypatch.setattr(luna_provider.subprocess, "Popen", _swapping_popen(tmp_path, outside_cwd, outside_home))
 
     with pytest.raises(LunaProviderFailure, match="runtime descriptor"):
         judge.judge(_request())
