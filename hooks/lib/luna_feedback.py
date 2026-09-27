@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import reporting
-from .finding_output import ReviewNote, review_row
+from .finding_output import ReviewNote, format_row, review_row
 
 MAX_FEEDBACK_CHARS = 900
 MAX_LISTED_ROWS = 5
@@ -32,23 +32,40 @@ def _listing(lead: str, rows: list[str]) -> str:
     return body[:max(MAX_FEEDBACK_CHARS - len(tail) - 1, 0)] + "\n" + tail
 
 
-def _item_rows(result: Any, found: tuple[Any, ...], verdict: str, action: str) -> list[str]:
+def _verdicts(result: Any, found: tuple[Any, ...], verdict: str) -> list[tuple[Any, dict]]:
     """Drop a row whose index misses because a stray index would name the wrong line."""
     rows = result.payload.get("items")
     if not isinstance(rows, list):
         return []
-    feedback = []
+    matched = []
     for row in rows:
         if not isinstance(row, dict) or row.get("verdict") != verdict:
             continue
         index = row.get("index")
-        if type(index) is not int or not 0 <= index < len(found):
-            continue
-        candidate = found[index]
-        reason = bounded(row.get("reason", "The judge named no reason."))
-        note = ReviewNote(f"{candidate.path}:{candidate.line}", bounded(candidate.text), reason, action)
-        feedback.append(review_row(note))
-    return feedback
+        if type(index) is int and 0 <= index < len(found):
+            matched.append((found[index], row))
+    return matched
+
+
+def _item_rows(result: Any, found: tuple[Any, ...], verdict: str, action: str) -> list[str]:
+    return [
+        review_row(ReviewNote(
+            f"{candidate.path}:{candidate.line}", bounded(candidate.text),
+            bounded(row.get("reason", "The judge named no reason.")), action,
+        ))
+        for candidate, row in _verdicts(result, found, verdict)
+    ]
+
+
+def _finding_rows(result: Any, found: tuple[Any, ...], rule: str, action: str) -> list[str]:
+    """Titled like a rule finding, because the reader acts on both."""
+    return [
+        format_row({
+            "path": candidate.path, "line": candidate.line, "rule": rule,
+            "match": candidate.text, "action": action,
+        })
+        for candidate, _row in _verdicts(result, found, "violating")
+    ]
 
 
 def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
@@ -56,8 +73,12 @@ def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
     return _listing(COMMENT_LEAD, feedback) if feedback else ""
 
 
-def pattern_feedback(result: Any, found: tuple[Any, ...], action: str) -> str:
-    feedback = _item_rows(result, found, "violating", bounded(action))
+def pattern_feedback(result: Any, found: tuple[Any, ...], action: str, rule: str = "") -> str:
+    """Rule optional, because Codex does not pass one yet."""
+    if rule:
+        feedback = _finding_rows(result, found, rule, bounded(action))
+    else:
+        feedback = _item_rows(result, found, "violating", bounded(action))
     return _listing(PATTERN_LEAD, feedback) if feedback else ""
 
 

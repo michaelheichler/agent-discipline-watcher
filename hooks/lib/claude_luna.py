@@ -15,6 +15,7 @@ from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_feedback import bounded as _bounded
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
+from .luna_feedback import pattern_feedback as _pattern_feedback
 from .luna_storage import LunaProviderFailure
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
@@ -333,6 +334,9 @@ def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> J
 def _feedback(request: JudgeRequest, result: JudgeResult, sources: Any) -> str:
     if request.review_kind is ReviewKind.COMMENT:
         return _comment_feedback(result, sources)
+    if request.review_kind is ReviewKind.PATTERN:
+        found = tuple(map(_pattern_candidate, sources))
+        return _pattern_feedback(result, found, request.rule_action, rule=request.rule_name)
     return _document_feedback(result, sources)
 
 

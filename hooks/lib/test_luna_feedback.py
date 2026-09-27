@@ -6,6 +6,7 @@ import pytest
 
 from lib import luna_feedback
 from lib.judge import Candidate
+from lib.pattern_judge import PatternCandidate
 
 
 @pytest.fixture(name="reports")
@@ -42,6 +43,27 @@ def test_document_rows_carry_the_path_and_line_of_the_quote() -> None:
     result = SimpleNamespace(payload={"notes": [{"quote": "ships soon", "problem": "Vague date", "fix": "Give the date"}]})
     lines = luna_feedback.document_feedback(result, rows).split("\n")
     assert lines[1] == '1. docs/a.md:2 Found "ships soon". Problem: Vague date. Action: Give the date.'
+
+
+def _closer_verdict() -> tuple[tuple[PatternCandidate, ...], SimpleNamespace]:
+    found = (PatternCandidate("docs/a.md", 4, "Hope this helps."), PatternCandidate("docs/a.md", 9, "It ships Monday."))
+    items = [{"index": 0, "verdict": "violating", "reason": "Stock closer."}, {"index": 1, "verdict": "clean", "reason": ""}]
+    return found, SimpleNamespace(payload={"items": items})
+
+
+def test_a_named_rule_turns_a_violating_verdict_into_a_titled_finding() -> None:
+    found, result = _closer_verdict()
+    lines = luna_feedback.pattern_feedback(result, found, "Delete the closer.", rule="ai_closer").split("\n")
+    assert lines == [
+        "ADW Luna pattern review:",
+        '1. docs/a.md:4 Wrap-up flourish "Hope this helps.". Delete the closer. (ai_closer)',
+    ]
+
+
+def test_an_unnamed_rule_keeps_the_review_row_shape() -> None:
+    found, result = _closer_verdict()
+    lines = luna_feedback.pattern_feedback(result, found, "Delete the closer.").split("\n")
+    assert lines[1] == '1. docs/a.md:4 Found "Hope this helps.". Problem: Stock closer. Action: Delete the closer.'
 
 
 def test_feedback_stays_inside_the_character_budget(reports: Path) -> None:
