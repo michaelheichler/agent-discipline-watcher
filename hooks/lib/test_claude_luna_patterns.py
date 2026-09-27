@@ -24,7 +24,12 @@ STOP = {"hook_event_name": "Stop", "session_id": "patterns", "stop_hook_active":
 @pytest.fixture(autouse=True)
 def _open_data_boundary(tmp_path: Path) -> None:
     """Opened here, because the gate has its own test file."""
-    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
+    policy = {"data_boundary": {"enabled": True}, "rule_gates": {"ai_closer": "enforce"}}
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps(policy), encoding="utf-8")
+
+
+def _config(tmp_path: Path) -> dict:
+    return json.loads((tmp_path / ".agent-discipline.json").read_text(encoding="utf-8"))
 
 
 class Provider:  # pylint: disable=too-few-public-methods
@@ -55,7 +60,7 @@ def _run(tmp_path: Path, state_root: Path, provider: Provider) -> dict:
 
 
 def test_a_current_turn_pattern_row_becomes_one_pattern_request(tmp_path: Path) -> None:
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN]))
+    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN]), _config(tmp_path))
 
     assert work is not None and len(work) == 1
     request, sources = work[0]
@@ -68,9 +73,15 @@ def test_a_current_turn_pattern_row_becomes_one_pattern_request(tmp_path: Path) 
 def test_one_request_carries_every_row_of_one_rule(tmp_path: Path) -> None:
     rows = [PATTERN, {**PATTERN, "line": 5, "text": "I hope this helps with your project."}]
 
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, rows))
+    work = claude_luna.stop_request(STOP, _journal(tmp_path, rows), _config(tmp_path))
 
     assert [len(request.candidates) for request, _rows in work] == [2]
+
+
+def test_a_rule_the_project_observes_builds_no_request(tmp_path: Path) -> None:
+    observed = {**_config(tmp_path), "rule_gates": {"ai_closer": "observe"}}
+
+    assert claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN]), observed) is None
 
 
 def test_an_unknown_rule_builds_no_request(tmp_path: Path) -> None:
@@ -86,7 +97,7 @@ def test_pattern_and_document_rows_share_the_stop_budget(tmp_path: Path) -> None
         for name in ("first.md", "second.md")
     ]
 
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN, *documents]))
+    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN, *documents]), _config(tmp_path))
 
     paths = {row["path"] for _request, rows in work for row in rows}
     assert paths == {"note.md", "first.md"}

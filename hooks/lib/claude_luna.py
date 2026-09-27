@@ -19,7 +19,7 @@ from .luna_feedback import pattern_feedback as _pattern_feedback
 from .luna_storage import LunaProviderFailure
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
-from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
+from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
 
 
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "Bash"})
@@ -257,7 +257,7 @@ def _pattern_candidate(row: dict[str, Any]) -> PatternCandidate:
     return PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
 
 
-def _pattern_work(rows: list[dict[str, Any]]) -> list[Work]:
+def _pattern_work(rows: list[dict[str, Any]], config: dict | None) -> list[Work]:
     """One request per rule, because each carries its examples."""
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -269,14 +269,14 @@ def _pattern_work(rows: list[dict[str, Any]]) -> list[Work]:
     return [
         (pattern_request(rule_prompt(rule, exemplars, manifest), tuple(map(_pattern_candidate, found))), found)
         for rule, found in sorted(grouped.items())
-        if rule in manifest["rules"]
+        if rule in manifest["rules"] and rule_blocks(manifest, rule, config)
     ]
 
 
-def stop_request(payload: object, state_root: str | Path | None) -> list[Work] | None:
+def stop_request(payload: object, state_root: str | Path | None, config: dict | None = None) -> list[Work] | None:
     """Split across requests, because a cut document reads as reviewed."""
     rows = _stop_rows(payload, state_root)
-    return document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows) or None
+    return document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows, config) or None
 
 
 def _hook_config(payload: object) -> dict:
@@ -314,11 +314,11 @@ def _failure(
     return stop_block(message)
 
 
-def _built(event: str, payload: object, state_root: str | Path | None) -> list[Work] | None:
+def _built(event: str, payload: object, state_root: str | Path | None, config: dict) -> list[Work] | None:
     if event == "PostToolUse":
         built = post_request(payload)
         return [built] if built else None
-    return stop_request(payload, state_root)
+    return stop_request(payload, state_root, config)
 
 
 def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> JudgeResult | None:
@@ -388,7 +388,7 @@ def run(
     if event not in {"PostToolUse", "Stop"} or not data_boundary_enabled(cfg):
         return {}
     root = state_root if state_root is not None else cfg.get("state_root")
-    work = _built(event, payload, root)
+    work = _built(event, payload, root, cfg)
     if work is None:
         return {}
     outcome = _judged(event, work, provider, {"settings_path": settings_path, "preset_path": preset_path})
