@@ -15,7 +15,7 @@ from lib.mcp_health import config_roots
 from lib.config import effective_config
 from lib.embedding_session import lease_root_for, renew_turn
 from lib.findings import Finding, VerdictKind
-from lib.hookio import advise, claude_feedback_response, read_payload, write_payload
+from lib.hookio import advise, claude_feedback_response, config_failure, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
 from lib.baseline import split_committed
 from lib.reporting import (
@@ -29,10 +29,6 @@ from lib.reporting import (
 from lib.scanner import scan_all
 
 UNDECIDABLE_KEY = blocker_state.RECORD_ERROR_KEY
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this edit. Treat the turn as unscanned and rerun the check "
-    "after repairing the gate config. Cause: "
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,7 +340,7 @@ def run(payload: dict, config: dict | None = None, *, renew: Callable[[str, str 
     try:
         return _run_record(payload, config, renew)
     except Exception as exc:
-        reason = UNDECIDABLE + str(exc)
+        reason = config_failure("edit", exc, payloads.cwd(payload) or None)
         blocker_state.hold_undecidable(payload, config, UNDECIDABLE_KEY, reason)
         return {"decision": "block", "reason": reason}
 

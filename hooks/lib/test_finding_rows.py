@@ -1,4 +1,4 @@
-from lib import catalog, reporting, scanner
+from lib import catalog, config, reporting, scanner
 
 UTILIZE = "util" + "ize"
 
@@ -66,6 +66,21 @@ def test_compact_block_caps_at_five_and_points_to_the_report() -> None:
     assert [line.split(".", 1)[0] for line in lines[1:6]] == ["1", "2", "3", "4", "5"]
     assert lines[6] == f"3 more findings: {report}"
     assert len(lines) == 7
+
+
+def test_default_config_lists_every_row_the_cap_allows() -> None:
+    findings = [_finding(line=line) for line in range(1, 9)]
+    reason, report = reporting.compact_block(findings, config.effective_config())
+    lines = reason.split("\n")
+    assert config.DEFAULTS["max_rows"] == 5
+    assert len(lines) == 7
+    assert lines[6] == f"3 more findings: {report}"
+
+
+def test_max_rows_above_the_cap_is_clamped_to_five() -> None:
+    findings = [_finding(line=line) for line in range(1, 30)]
+    reason, _ = reporting.compact_block(findings, {"max_rows": 20})
+    assert reason.split("\n")[6].startswith("24 more findings: ")
 
 
 def test_long_rows_cannot_push_the_report_path_out() -> None:

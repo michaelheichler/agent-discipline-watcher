@@ -66,11 +66,13 @@ RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
 # Scoped to families a live hook already emits, because defining a gate state before the family exists is speculative schema creep.
 GATE_FAMILIES = ("punctuation", "english", "clean_code")
 
+MAX_LISTED_ROWS = 5
+
 DEFAULTS = {
     "punctuation": True,
     "english": True,
     "clean_code": True,
-    "max_rows": 8,
+    "max_rows": MAX_LISTED_ROWS,
     "sentence_word_cap": 40,
     "list_item_cap": 8,
     "adw_model": "",

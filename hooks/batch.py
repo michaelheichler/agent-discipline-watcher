@@ -20,7 +20,7 @@ from lib.canonical import (
 )
 from lib.config import effective_config, effective_hook_config, resolve_outcome
 from lib.findings import Finding
-from lib.hookio import advise, read_payload, write_payload
+from lib.hookio import advise, config_failure, read_payload, write_payload
 from lib.reporting import run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
@@ -474,18 +474,12 @@ def _batch_response(kind: str, reason: str) -> dict:
     return {}
 
 
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this batch. Treat the turn as unscanned and rerun the check "
-    "after repairing the gate config. Cause: "
-)
-
-
 def run(payload: dict, config: dict | None = None) -> dict:
     """Fail closed because an undecidable batch must not silently release the turn."""
     try:
         return _run(payload, config)
     except Exception as exc:
-        reason = UNDECIDABLE + str(exc)
+        reason = config_failure("batch", exc, payloads.cwd(payload) or None)
         blocker_state.hold_undecidable(_sanitized_payload(payload), config, UNDECIDABLE_KEY, reason)
         return {"decision": "block", "reason": reason}
 

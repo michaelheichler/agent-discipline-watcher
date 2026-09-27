@@ -362,7 +362,7 @@ class SchemaDefaultsTests(unittest.TestCase):
         self.assertTrue(cfg["punctuation"])
         self.assertTrue(cfg["english"])
         self.assertTrue(cfg["clean_code"])
-        self.assertEqual(cfg["max_rows"], 8)
+        self.assertEqual(cfg["max_rows"], 5)
         self.assertEqual(cfg["exempt_paths"], [])
 
     def test_effective_config_merges_gate_overrides(self):

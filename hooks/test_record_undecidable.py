@@ -5,6 +5,7 @@ from unittest import mock
 
 import record
 import stop
+from lib.config import project_config_path
 
 
 def _write_payload(tmp_path: Path, target: Path) -> dict:
@@ -39,4 +40,7 @@ def test_record_error_holds_stop_while_the_unscanned_write_has_findings(tmp_path
         record.run(_write_payload(tmp_path, target), config)
     response = stop.run(_stop_payload(tmp_path), config)
     assert response["decision"] == "block"
-    assert "could not evaluate this edit" in response["reason"]
+    assert (
+        "agent-discipline-watcher could not evaluate this edit and blocked it rather than letting it through. "
+        f"Repair the gate config at {project_config_path(tmp_path)} and retry. Cause: broken gate"
+    ) in response["reason"]
