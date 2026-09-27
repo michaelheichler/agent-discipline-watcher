@@ -58,7 +58,7 @@ def _item_rows(result: Any, found: tuple[Any, ...], verdict: str, action: str) -
 
 
 def _finding_rows(result: Any, found: tuple[Any, ...], rule: str, action: str) -> list[str]:
-    """Titled like a rule finding, because the reader acts on both."""
+    """Titled like a rule finding, because readers act on both."""
     return [
         format_row({
             "path": candidate.path, "line": candidate.line, "rule": rule,
@@ -74,7 +74,7 @@ def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
 
 
 def pattern_feedback(result: Any, found: tuple[Any, ...], action: str, rule: str = "") -> str:
-    """Rule optional, because Codex does not pass one yet."""
+    """Rule optional, because the Codex caller passes none."""
     if rule:
         feedback = _finding_rows(result, found, rule, bounded(action))
     else:
