@@ -24,7 +24,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset uses Haiku for comment checks and Sonnet for the Stop review, and it is the one preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
+The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset runs the Stop review on Sonnet, and it is the one preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
 
 ## What the rules were measured against
 
@@ -200,17 +200,27 @@ subject to target validation.
 
 A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the required version. This prevents silent loss of enforcement.
 
-The plugin ships its own reviewer, so a plain install already judges on Haiku
-and needs no preset step. Select a different one with
+The plugin manifest ships command hooks only. The reviewer lives in
+`~/.claude/settings.json` as the managed block, the hook entries whose first
+line or command carries the `adw-managed-hook-v1` marker. When a Claude Code
+session starts and settings hold no managed block, the SessionStart hook
+writes the `haiku` preset. A plain install needs no preset step. Claude Code
+picks up the settings change without a restart. SessionStart leaves an
+existing managed block alone, so a preset you chose or edited stays. When
+SessionStart cannot read the settings file, it prints one line to stderr and
+the session goes on without a reviewer. Select a different preset with
 `/agent-discipline-watcher:adw-judge haiku|mixed|luna|luna-native|status`.
+Each selection replaces the managed block, so settings never hold two
+reviewer sets.
 
-Every preset with a Stop agent judges the `pattern` rows of the turn. The
-journal helper prints those rows, and beside them one rule entry per rule
-with four violating and four clean examples. The agent judges every row in
-one batch against `PATTERN_RUBRIC` and opens no file.
+Each agent preset registers one reviewer, on Stop. No agent runs per write.
+The PostToolUse command hook records comment candidates in the journal, and the
+async `JudgeReview` route adds pattern candidates. The Stop agent judges both
+from those rows. The journal helper prints the rows, and beside them one rule
+entry per rule with four violating and four clean examples. The agent judges
+every row in one batch against `PATTERN_RUBRIC` and opens no file.
 
-`haiku` runs one model for both roles. `mixed` spends Haiku on the per-write
-comment check and Sonnet on the per-turn review.
+`haiku` runs the Stop review on Haiku. `mixed` runs it on Sonnet.
 
 Only `mixed` adds the whole-document review. Its Stop agent passes
 `--documents` to the helper, which then prints document rows too.
@@ -220,20 +230,13 @@ Luna into the Claude model list. `luna` emits no native agent at all. It uses a
 command handler on the subscription-backed Codex runtime and switches to
 `mixed` only after Luna is unavailable.
 
-A preset replaces the shipped reviewers rather than adding to them. `mixed`,
-`luna`, and `luna-native` write their reviewers into `~/.claude/settings.json`.
-Claude Code cannot switch off one plugin hook, so each shipped Haiku reviewer
-first runs `read_claude_journal.sh --superseded` and stands down when a preset
-entry exists. A reviewer that stands down still starts, which costs one short
-agent turn. Selecting `haiku` again removes the preset entries, and the shipped
-reviewers resume.
-
 The Luna routes send source text off the machine. The Claude Luna handler and
 the Codex Stop review run only when `data_boundary.enabled` is `true` in
 `.agent-discipline.json`, the same gate the OMP review uses.
 
-`status` counts the reviewers a session carries rather than echoing the stored
-preset, so an unwired gate says so. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
+`status` counts the reviewers in the managed block rather than echoing the
+stored preset, so an unwired gate says so. An agent preset counts one. `luna`
+counts two, one command handler on PostToolUse and one on Stop. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
 install needs the explicit Haiku-only environment.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
