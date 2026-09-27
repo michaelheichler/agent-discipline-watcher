@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 (2026-09-28)
+
+### Changed
+
+- Every model reviewer honors `rule_gates` for pattern rows. A rule the project sets to `observe` reports and never blocks, on Claude Code, Codex, and OMP. The vote skips a rule set to `off`. The shipped default sets `ai_closer` to `observe`. So an upheld `ai_closer` row now reports instead of blocking, unless a project sets it to `enforce`.
+- The Claude `luna` preset judges the pattern rows from the embedding vote at Stop, one request per rule with four examples per side. Before, it read document rows only.
+- Codex starts the embedding worker in the background at SessionStart and at each prompt. Once the load finishes, a prose write finds a loaded model. A write in the first seconds of a turn still gets no vote.
+
 ## 0.22.1 (2026-09-27)
 
 ### Fixed

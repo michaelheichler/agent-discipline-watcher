@@ -1,6 +1,10 @@
 # Open policy items after 0.22.1
 
-Written on 2026-09-27 after the codebase review, the eight leftover fixes, and the `adw-nuke` release. Each item names the code, the current behavior, the options, and a recommendation. None of them ships until the owner picks an option.
+Written on 2026-09-27 after the codebase review, the eight leftover fixes, and the `adw-nuke` release. Each item names the code, the current behavior, the options, and a recommendation.
+
+Decided on 2026-09-28. The owner took the recommendation on every item. Items 1 to 3 shipped in 0.23.0. Items 4 and 5 stay as they are by choice. The sections below record the state before that decision.
+
+Two facts came out during the 0.23.0 work that the sections below do not say. `DEFAULTS` sets `ai_closer` to `observe`. So an upheld `ai_closer` row now reports by default on every host. Stop releases the embedding lease every turn. So the Codex warm-up runs at each prompt, not only at SessionStart. A write in the first seconds of a Codex turn still gets no vote.
 
 ## 1. Voted pattern rows ignore per-rule `observe`
 
@@ -74,3 +78,8 @@ Recommendation. Option 2. Release notes are a record of what shipped at the time
 2. Release 0.22.1. `adw-nuke` and `adw update` remove read-only Luna sandbox directories.
 3. Clean reinstall on the MacBook for Claude Code, Codex, and OMP, and on tux for Claude Code and Codex. Both run 0.22.1 at revision `8de2d5a4908d`.
 4. On tux, two stray checkouts and one old backup link are gone. The OpenCode plugin at `~/.config/opencode/plugins/agent-discipline-watcher.ts` now runs `~/.adw/install/agent-discipline-watcher/hooks/run.sh`.
+
+## Done and verified on 2026-09-28
+
+1. Release 0.23.0. Items 1 to 3 above, through three agents in parallel worktrees, plus one hand commit that wires `rule_blocks` into the Claude `luna` pattern path.
+2. On merged main, pytest 3029 passed, pylint 10.00, bun 207 passed.
