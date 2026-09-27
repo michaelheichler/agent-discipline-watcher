@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `adw-nuke --dry-run|--yes` and `/agent-discipline-watcher:adw-nuke` remove every ADW trace across Claude Code, Codex, OMP, and the shell, including the whole `~/.adw` tree, so a fresh `./install.sh` starts clean.
+
 ## 0.21.0 (2026-09-27)
 
 ### Changed
