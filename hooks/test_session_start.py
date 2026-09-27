@@ -207,6 +207,29 @@ def test_a_codex_start_warms_the_model_without_waiting(cold_worker, monkeypatch:
     assert _leases(config, time.time()) == ("s1",)
 
 
+def _warm_at_start(config: dict) -> None:
+    session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+
+def _open_a_turn(config: dict) -> None:
+    embedding_session.open_turn("s1", embedding_session.lease_root_for(config))
+
+
+@pytest.mark.parametrize("take_lease", [_warm_at_start, _open_a_turn], ids=["warm-up", "turn"])
+def test_an_idle_codex_session_stops_pinning_the_model_after_the_ttl(cold_worker, monkeypatch: pytest.MonkeyPatch, take_lease) -> None:
+    """Expired, because a session without prose must free 709 MB."""
+    _, config = cold_worker
+    _on_codex(monkeypatch)
+    monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", True)
+    server_root = embedding_session.default_root()
+    taken = time.time()
+
+    take_lease(config)
+
+    assert _leases(config, taken + embedding_lease.LEASE_TTL_SECONDS - 5) == ("s1",)
+    assert embedding_lease.has_live_leases(server_root, taken + embedding_lease.LEASE_TTL_SECONDS + 5) is False
+
+
 def test_a_codex_start_without_the_model_stays_quiet(cold_worker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     """Skipped, because SessionStart must never download."""
     launched, config = cold_worker
