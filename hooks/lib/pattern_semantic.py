@@ -208,7 +208,7 @@ def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
         return {}
-    rules = measured_rules(layer.manifest())
+    rules = tuple(rule for rule in measured_rules(layer.manifest()) if rule_state(rule, config) != "off")
     exemplars = tuple(row for row in layer.exemplars() if row.rule in rules)
     cached = layer.exemplar_vectors(exemplars) if config is None else layer.exemplar_vectors(exemplars, config)
     current = layer.vectors(tuple({item.text for item in sentences})) if config is None else layer.vectors(

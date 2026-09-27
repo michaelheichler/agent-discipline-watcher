@@ -229,6 +229,23 @@ def test_the_vote_embeds_only_the_exemplars_a_measured_rule_needs() -> None:
     assert {row.rule for row in embedded[0]} == {"ai_closer"}
 
 
+@pytest.mark.usefixtures("opted_in")
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({"ai_closer": "off"}, set()),
+    ({"ai_closer": {"prose": "off"}}, set()),
+    ({"ai_closer": "observe"}, {"ai_closer"}),
+    ({}, {"ai_closer"}),
+))
+def test_a_rule_gated_off_never_becomes_a_pattern_row(gates: dict, expected: set[str]) -> None:
+    layer = VOTING._replace(
+        exemplar_vectors=lambda _exemplars, _config: VECTORS, vectors=lambda _texts, _config: VECTORS,
+    )
+
+    voted = pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n", {"rule_gates": gates}, layer=layer)
+
+    assert set(voted) == expected
+
+
 def test_the_candidate_stage_is_silent_until_the_reader_opts_in() -> None:
     switched_off = Layer(vectors=lambda _texts: pytest.fail("embedded while switched off"))
 
