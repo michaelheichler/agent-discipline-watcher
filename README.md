@@ -180,7 +180,7 @@ ignores `ADW_PYTHON`. Custom interpreters remain an installer option.
 
 Install the first release containing the updater from Terminal. An older
 installed guard cannot authorize the new command. Restart the selected agent
-harnesses after updating so they load the new hooks and extension.
+hosts after updating so they load the new hooks and extension.
 
 In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
 screen. They edit the project `.agent-discipline.json` policy used by the same
@@ -225,7 +225,7 @@ every row in one batch against `PATTERN_RUBRIC` and opens no file.
 Only `mixed` adds the whole-document review. Its Stop agent passes
 `--documents` to the helper, which then prints document rows too.
 
-`luna-native` names the Luna model directly. It works where a harness such as LeverFrame injects
+`luna-native` names the Luna model directly. It works where a tool such as LeverFrame injects
 Luna into the Claude model list. `luna` emits no native agent at all. It uses a
 command handler on the subscription-backed Codex runtime and switches to
 `mixed` only after Luna is unavailable.
