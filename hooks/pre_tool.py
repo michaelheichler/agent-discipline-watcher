@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import operator
+from collections.abc import Callable
+from typing import NamedTuple
 
 from lib import payloads
 from lib.hookio import (
@@ -77,25 +79,36 @@ def _merge(responses: list[dict]) -> dict:
     return {**merged, "systemMessage": "\n".join(dict.fromkeys(system_messages))} if system_messages else merged
 
 
-def _dispatch(payload: dict, config: dict | None) -> dict:
+Gate = Callable[[dict, "dict | None"], dict]
+
+
+class Gates(NamedTuple):
+    write: Gate = pre_write.run
+    bash: Gate = pre_bash.run
+    commit: Gate = pre_commit.run
+    python: Gate = pre_python.run
+    mcp: Gate = pre_mcp.run
+
+
+def _dispatch(payload: dict, config: dict | None, gates: Gates) -> dict:
     if _invalid_payload(payload):
         return deny(payload_failure(UNREADABLE_PAYLOAD))
     name = payloads.tool_name(payload)
     if name in DIRECT_WRITERS:
-        return pre_write.run(payload, config)
+        return gates.write(payload, config)
     if name == "Bash":
-        return _merge([pre_bash.run(payload, config), pre_commit.run(payload, config)])
+        return _merge([gates.bash(payload, config), gates.commit(payload, config)])
     if name in PYTHON_TOOLS:
-        return pre_python.run(payload, config)
+        return gates.python(payload, config)
     if name.startswith("mcp__"):
-        return pre_mcp.run(payload, config)
+        return gates.mcp(payload, config)
     return {}
 
 
-def run(payload: dict, config: dict | None = None) -> dict:
+def run(payload: dict, config: dict | None = None, *, gates: Gates = Gates()) -> dict:
     """Route here so that one process owns input mutation and permission outcomes, blocking rather than passing the call through when the dispatcher itself cannot decide."""
     try:
-        return _dispatch(payload, config)
+        return _dispatch(payload, config, gates)
     except Exception as exc:
         return deny(config_failure("tool call", exc))
 
