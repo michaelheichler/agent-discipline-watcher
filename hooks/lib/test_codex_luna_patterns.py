@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import stop
-from lib import codex_luna
+from lib import journal, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 
 CLOSER = "Feel free to ask me anything else."
@@ -43,8 +43,8 @@ def _provider() -> SimpleNamespace:
     return SimpleNamespace(calls=calls, judge=judge)
 
 
-def _review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -> tuple[dict, SimpleNamespace]:
-    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: rows)
+def _review(tmp_path: Path, rows: list[dict]) -> tuple[dict, SimpleNamespace]:
+    session_state.write_state("patterns", {journal.STATE_KEY: rows}, tmp_path / "state")
     provider = _provider()
     response = stop.run(
         {"session_id": "patterns", "turn_id": "turn-1", "stop_hook_active": False, "cwd": str(tmp_path)},
@@ -54,8 +54,8 @@ def _review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict]) -
     return response, provider
 
 
-def test_codex_judges_pattern_rows_beside_documents_and_comments(tmp_path, monkeypatch) -> None:
-    response, provider = _review(tmp_path, monkeypatch, [DOCUMENT, COMMENT, PATTERN])
+def test_codex_judges_pattern_rows_beside_documents_and_comments(tmp_path) -> None:
+    response, provider = _review(tmp_path, [DOCUMENT, COMMENT, PATTERN])
 
     assert [request.review_kind for request in provider.calls] == [
         ReviewKind.DOCUMENT, ReviewKind.COMMENT, ReviewKind.PATTERN,
@@ -68,23 +68,23 @@ def test_codex_judges_pattern_rows_beside_documents_and_comments(tmp_path, monke
     assert "note.md:2" in response["reason"]
 
 
-def test_one_request_carries_every_row_of_one_rule(tmp_path, monkeypatch) -> None:
+def test_one_request_carries_every_row_of_one_rule(tmp_path) -> None:
     rows = [PATTERN, {**PATTERN, "line": 5, "text": "I hope this helps with your project."}]
 
-    _response, provider = _review(tmp_path, monkeypatch, rows)
+    _response, provider = _review(tmp_path, rows)
 
     assert [len(request.candidates) for request in provider.calls] == [2]
 
 
-def test_pattern_rows_from_another_turn_are_not_judged(tmp_path, monkeypatch) -> None:
-    response, provider = _review(tmp_path, monkeypatch, [{**PATTERN, "turn_id": "turn-0"}])
+def test_pattern_rows_from_another_turn_are_not_judged(tmp_path) -> None:
+    response, provider = _review(tmp_path, [{**PATTERN, "turn_id": "turn-0"}])
 
     assert provider.calls == []
     assert response == {}
 
 
-def test_an_incomplete_pattern_row_fails_closed(tmp_path, monkeypatch) -> None:
-    response, provider = _review(tmp_path, monkeypatch, [{**PATTERN, "rule": ""}])
+def test_an_incomplete_pattern_row_fails_closed(tmp_path) -> None:
+    response, provider = _review(tmp_path, [{**PATTERN, "rule": ""}])
 
     assert provider.calls == []
     assert "incomplete pattern candidate" in response["reason"]
