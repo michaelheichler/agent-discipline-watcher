@@ -15,8 +15,11 @@ from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_feedback import bounded as _bounded
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
+from .luna_feedback import pattern_feedback as _pattern_feedback
 from .luna_storage import LunaProviderFailure
 from .narration_candidates import candidates
+from .pattern_judge import PatternCandidate, request_for as pattern_request
+from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 
 
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "Bash"})
@@ -249,9 +252,31 @@ def _stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str,
         return []
 
 
+def _pattern_candidate(row: dict[str, Any]) -> PatternCandidate:
+    line = row.get("line") if isinstance(row.get("line"), int) else 1
+    return PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
+
+
+def _pattern_work(rows: list[dict[str, Any]]) -> list[Work]:
+    """One request per rule, because each carries its examples."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if row.get("role") == "pattern" and row.get("text"):
+            grouped.setdefault(str(row.get("rule")), []).append(row)
+    if not grouped:
+        return []
+    exemplars, manifest = load_exemplars(), load_manifest()
+    return [
+        (pattern_request(rule_prompt(rule, exemplars, manifest), tuple(map(_pattern_candidate, found))), found)
+        for rule, found in sorted(grouped.items())
+        if rule in manifest["rules"]
+    ]
+
+
 def stop_request(payload: object, state_root: str | Path | None) -> list[Work] | None:
     """Split across requests, because a cut document reads as reviewed."""
-    return document_work(_stop_rows(payload, state_root), MAX_DOCUMENT_CHARS, STOP_LABEL) or None
+    rows = _stop_rows(payload, state_root)
+    return document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows) or None
 
 
 def _hook_config(payload: object) -> dict:
@@ -309,6 +334,9 @@ def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> J
 def _feedback(request: JudgeRequest, result: JudgeResult, sources: Any) -> str:
     if request.review_kind is ReviewKind.COMMENT:
         return _comment_feedback(result, sources)
+    if request.review_kind is ReviewKind.PATTERN:
+        found = tuple(map(_pattern_candidate, sources))
+        return _pattern_feedback(result, found, request.rule_action, rule=request.rule_name)
     return _document_feedback(result, sources)
 
 
