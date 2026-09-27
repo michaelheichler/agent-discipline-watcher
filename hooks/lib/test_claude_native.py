@@ -16,12 +16,8 @@ from lib import claude_native, journal, session_state
 def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> None:
     generated = claude_native.generated_hooks("mixed")
 
-    assert set(generated) == {"PostToolUse", "Stop"}
-    post = generated["PostToolUse"][0]
+    assert set(generated) == {"Stop"}
     stop = generated["Stop"][0]
-    assert post["matcher"] == "Write|Edit|MultiEdit|NotebookEdit|apply_patch|AskUserQuestion"
-    assert post["hooks"][0]["type"] == "agent"
-    assert post["hooks"][0]["model"] == "claude-haiku-4-5-20251001"
     assert stop["hooks"][0]["type"] == "agent"
     assert stop["hooks"][0]["model"] == "claude-sonnet-4-6"
     assert "batch" in stop["hooks"][0]["prompt"].lower()
@@ -186,13 +182,16 @@ def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkey
     assert journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
-MIXED_MODELS = {"PostToolUse": "claude-haiku-4-5-20251001", "Stop": "claude-sonnet-4-6"}
+MIXED_MODELS = {"Stop": "claude-sonnet-4-6"}
 
 
 def _agent_models(configured: dict) -> dict[str, str]:
     return {
-        lifecycle: next(hook["model"] for hook in configured["hooks"][lifecycle][0]["hooks"] if hook.get("type") == "agent")
-        for lifecycle in ("PostToolUse", "Stop")
+        lifecycle: hook["model"]
+        for lifecycle, groups in configured["hooks"].items()
+        for group in groups
+        for hook in group["hooks"]
+        if hook.get("type") == "agent"
     }
 
 
@@ -225,7 +224,7 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
     assert managed_luna_command not in handlers
     assert unrelated_luna_command in handlers
     assert unrelated in handlers
-    assert any(handler["type"] == "agent" for handler in handlers)
+    assert merged["hooks"]["Stop"][0]["hooks"][0]["type"] == "agent"
 
 
 def test_cli_rejects_extra_preset_arguments(tmp_path: Path) -> None:
@@ -469,7 +468,7 @@ def test_settings_update_retries_after_external_regular_target_mutation(
 
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert configured["external_setting"] == "keep me"
-    assert configured["hooks"]["PostToolUse"][0]["hooks"][0]["model"] == claude_native.LUNA_NATIVE_MODEL
+    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == claude_native.LUNA_NATIVE_MODEL
 
 
 def test_descriptor_open_failure_does_not_leak_parent_fd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

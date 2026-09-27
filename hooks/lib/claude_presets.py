@@ -62,9 +62,9 @@ def _numbered(steps: list[str]) -> str:
     return "".join(f"{index}. {step}\n" for index, step in enumerate(steps, start=1))
 
 
-def _yield_steps(preset: str) -> list[str]:
+def _yield_steps(shipped: bool) -> list[str]:
     """Only the shipped reviewer yields, because a preset entry is the replacement."""
-    if preset != SHIPPED_PRESET:
+    if not shipped:
         return []
     return [
         f"Run this exact helper with {SUPERSEDED_FLAG} as its only argument: {SHIPPED_READER_PATH}. "
@@ -73,13 +73,13 @@ def _yield_steps(preset: str) -> list[str]:
     ]
 
 
-def _reader_path(preset: str) -> str:
-    return SHIPPED_READER_PATH if preset == SHIPPED_PRESET else JOURNAL_READER_PATH
+def _reader_path(shipped: bool) -> str:
+    return SHIPPED_READER_PATH if shipped else JOURNAL_READER_PATH
 
 
 def comment_prompt(preset: str) -> str:
     steps = [
-        *_yield_steps(validate_preset(preset)),
+        *_yield_steps(validate_preset(preset) == SHIPPED_PRESET),
         "Read the named path.",
         "Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent "
         "behind a comment. Text a question puts to the user counts as reader-facing English.",
@@ -100,27 +100,27 @@ def comment_prompt(preset: str) -> str:
     )
 
 
-def _reader_steps(preset: str) -> list[str]:
+def _reader_steps(preset: str, shipped: bool) -> list[str]:
     """Documents only on mixed, because a whole file costs the most."""
     if preset != "mixed":
         return [
             "Run this exact helper with the session_id from the hook input as its only argument: "
-            + _reader_path(preset),
+            + _reader_path(shipped),
         ]
     return [
         f"Run this exact helper with {DOCUMENTS_FLAG} and then the session_id from the hook input as its two "
-        "arguments: " + _reader_path(preset),
+        "arguments: " + _reader_path(shipped),
         f"Judge each document row as one whole document. {DOCUMENT_RUBRIC}",
     ]
 
 
-def stop_prompt(preset: str) -> str:
+def stop_prompt(preset: str, shipped: bool = False) -> str:
     selected = validate_preset(preset)
     steps = [
         "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
         "successful StructuredOutput shape.",
-        *_yield_steps(selected),
-        *_reader_steps(selected),
+        *_yield_steps(shipped),
+        *_reader_steps(selected, shipped),
         "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
         "asks for and four violating and four clean examples. Decide whether the row text is violating or "
         f"clean for that rule alone. {PATTERN_RUBRIC}",
@@ -242,21 +242,23 @@ def _agent(model: str, prompt: str) -> dict[str, Any]:
 
 
 def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
+    """Stop only for agents, because the journal holds each write."""
     if preset == "luna":
         handler = {"type": "command", "command": luna_command(), "timeout": HANDLER_TIMEOUT}
-        comment, document, matcher = handler, handler, WRITE_MATCHER
-    else:
-        comment = _agent(model_for(preset, "comment"), comment_prompt(preset))
-        document = _agent(model_for(preset, "document"), stop_prompt(preset))
-        matcher = AGENT_MATCHER
-    return {
-        "PostToolUse": [{"matcher": matcher, "hooks": [comment]}],
-        "Stop": [{"hooks": [document]}],
-    }
+        return {
+            "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
+            "Stop": [{"hooks": [handler]}],
+        }
+    return {"Stop": [{"hooks": [_agent(model_for(preset, "document"), stop_prompt(preset))]}]}
 
 
 def shipped_hooks() -> dict[str, list[dict[str, Any]]]:
-    return _preset_hooks(SHIPPED_PRESET)
+    comment = _agent(model_for(SHIPPED_PRESET, "comment"), comment_prompt(SHIPPED_PRESET))
+    document = _agent(model_for(SHIPPED_PRESET, "document"), stop_prompt(SHIPPED_PRESET, shipped=True))
+    return {
+        "PostToolUse": [{"matcher": AGENT_MATCHER, "hooks": [comment]}],
+        "Stop": [{"hooks": [document]}],
+    }
 
 
 def _is_agent_group(group: object) -> bool:
@@ -284,6 +286,4 @@ if __name__ == "__main__":
 
 
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    """Empty for the shipped preset, because the plugin manifest already runs it."""
-    selected = validate_preset(preset)
-    return {} if selected == SHIPPED_PRESET else _preset_hooks(selected)
+    return _preset_hooks(validate_preset(preset))

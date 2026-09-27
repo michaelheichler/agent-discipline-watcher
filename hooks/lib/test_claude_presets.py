@@ -51,18 +51,18 @@ def test_luna_refuses_a_native_model_because_it_runs_a_command() -> None:
 
 
 @pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
-def test_every_agent_preset_registers_a_reviewer_on_both_events(preset: str) -> None:
-    """Cover both because a write check alone leaves the finished turn unreviewed."""
-    generated = claude_presets.generated_hooks(preset) or claude_presets.shipped_hooks()
+def test_every_agent_preset_registers_only_a_stop_reviewer(preset: str) -> None:
+    """Stop only, because the journal already holds each write."""
+    generated = claude_presets.generated_hooks(preset)
 
-    for event in ("PostToolUse", "Stop"):
-        entry = generated[event][0]["hooks"][0]
-        assert entry["type"] == "agent"
-        assert "StructuredOutput" in entry["prompt"]
-        assert "exactly once" in entry["prompt"]
-        assert "plain text" in entry["prompt"]
-        assert "JSON:" not in entry["prompt"]
-    stop_prompt = generated["Stop"][0]["hooks"][0]["prompt"]
+    assert set(generated) == {"Stop"}
+    entry = generated["Stop"][0]["hooks"][0]
+    assert entry["type"] == "agent"
+    assert "StructuredOutput" in entry["prompt"]
+    assert "exactly once" in entry["prompt"]
+    assert "plain text" in entry["prompt"]
+    assert "JSON:" not in entry["prompt"]
+    stop_prompt = entry["prompt"]
     assert "skip every remaining step" in stop_prompt
     assert stop_prompt.index("Batch all") < stop_prompt.index("OUTPUT CONTRACT")
 
@@ -92,9 +92,12 @@ def test_every_generated_handler_carries_the_managed_marker(preset: str) -> None
         assert claude_presets.MANAGED_MARKER in carrier
 
 
-def test_the_haiku_preset_writes_no_settings_entry_because_the_plugin_ships_it() -> None:
-    """Write nothing because a settings copy of the shipped reviewer runs a second Haiku agent."""
-    assert not claude_presets.generated_hooks("haiku")
+def test_the_haiku_preset_names_the_reader_by_absolute_path() -> None:
+    """Absolute, because settings hooks get no plugin root."""
+    prompt = claude_presets.generated_hooks("haiku")["Stop"][0]["hooks"][0]["prompt"]
+
+    assert claude_presets.JOURNAL_READER_PATH in prompt
+    assert "CLAUDE_PLUGIN_ROOT" not in prompt
 
 
 @pytest.mark.parametrize("preset", ("mixed", "luna", "luna-native"))

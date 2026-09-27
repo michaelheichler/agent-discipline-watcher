@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lib import retention, session_state
+from lib import retention, session_state, turn_adapter
 from lib.hookio import CONTRACT, CONTRACT_REMINDER, context, read_payload, write_payload
 
 SESSION_START_EVENT = "SessionStart"
@@ -17,6 +17,7 @@ def run(payload: dict | None = None, config: dict | None = None) -> dict:
         ledger_root = settings.get("ledger_root") if isinstance(settings.get("ledger_root"), str) else None
         session_state.acquire_session_lease(session_id, state_root)
         retention.sweep(state_root=state_root, ledger_root=ledger_root)
+    turn_adapter.prepare_session()
     message = CONTRACT_REMINDER if fields.get("source") in REMINDER_SOURCES else CONTRACT
     return context(message, SESSION_START_EVENT)
 
