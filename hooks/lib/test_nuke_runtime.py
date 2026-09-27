@@ -282,3 +282,14 @@ def test_only_one_of_the_two_flags_is_accepted(arguments, tmp_path) -> None:
     with pytest.raises(SystemExit) as error:
         nuke_runtime.main(arguments, steps=_steps(tmp_path))
     assert error.value.code == 2
+
+
+def test_yes_removes_a_read_only_luna_sandbox(home, capsys) -> None:
+    sandbox = home / ".adw" / "runtime" / "luna-0d49"
+    (sandbox / "cwd").mkdir(parents=True)
+    (sandbox / "cwd" / "call.json").write_text("{}", encoding="utf-8")
+    (sandbox / "cwd").chmod(0o500)
+    sandbox.chmod(0o500)
+    assert nuke_runtime.main(["--yes"], steps=_steps(home)) == 0
+    assert not (home / ".adw").exists()
+    assert f"removed {home / '.adw'}" in capsys.readouterr().out

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.1 (2026-09-27)
+
+### Fixed
+
+- `adw-nuke` and `adw update` remove a read-only Luna sandbox directory under `~/.adw/runtime`. Before, the first such directory stopped the run with a permission error.
+
 ## 0.22.0 (2026-09-27)
 
 ### Added

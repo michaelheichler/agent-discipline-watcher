@@ -277,11 +277,20 @@ def _backup_paths(paths: list[Path], destination: Path) -> dict[Path, Path | Non
     return backups
 
 
+def _unlock_and_retry(action: Callable, path: str, _exc_info: object) -> None:
+    """Luna sandboxes are read-only dirs, so open the parent and retry once."""
+    parent = os.path.dirname(path)
+    os.chmod(parent, os.stat(parent).st_mode | stat.S_IRWXU)
+    if os.path.isdir(path) and not os.path.islink(path):
+        os.chmod(path, os.stat(path).st_mode | stat.S_IRWXU)
+    action(path)
+
+
 def _remove(path: Path) -> None:
     if path.is_symlink() or path.is_file():
         path.unlink()
     elif path.exists():
-        shutil.rmtree(path)
+        shutil.rmtree(path, onerror=_unlock_and_retry)
 
 
 def _restore_paths(backups: dict[Path, Path | None], home: Path) -> None:
