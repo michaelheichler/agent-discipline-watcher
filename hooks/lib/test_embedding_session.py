@@ -24,9 +24,10 @@ def _opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_without_a_consumer_a_prompt_never_loads_the_model(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(embedding_session, "CONSUMER_REGISTERED", False)
-    monkeypatch.setattr(embedding_session, "ensure_loaded", lambda *_args: pytest.fail("loaded without a consumer"))
+    def forbidden(*_args) -> str:
+        pytest.fail("loaded without a consumer")
 
-    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert embedding_session.open_turn("alpha", str(tmp_path), load=forbidden) is None
     assert not list(tmp_path.glob("*.lease.json"))
 
 
@@ -118,21 +119,21 @@ def test_disabling_embeddings_does_not_prevent_releasing_an_existing_lease(tmp_p
 def test_only_a_managed_answering_worker_needs_a_supervisor(tmp_path, monkeypatch, managed) -> None:
     url = "http://127.0.0.1:1234/v1/embeddings"
     asked = []
-    monkeypatch.setattr(embedding_session, "ensure_loaded", lambda *_args: url)
-    monkeypatch.setattr(embedding_session, "running_url", lambda _root: url if managed else None)
     monkeypatch.setattr(embedding_session, "start_detached", asked.append)
 
-    assert embedding_session.open_turn("alpha", str(tmp_path)) == url
+    answered = embedding_session.open_turn(
+        "alpha", str(tmp_path), load=lambda *_args: url, managed_url=lambda _root: url if managed else None,
+    )
+
+    assert answered == url
     assert asked == ([embedding_session.default_root()] if managed else [])
 
 
-def test_a_startup_failure_names_the_cause_and_the_next_step(tmp_path, monkeypatch, capsys) -> None:
+def test_a_startup_failure_names_the_cause_and_the_next_step(tmp_path, capsys) -> None:
     def fail_load(*_args) -> str:
         raise OSError("disk full")
 
-    monkeypatch.setattr(embedding_session, "ensure_loaded", fail_load)
-
-    assert embedding_session.open_turn("alpha", str(tmp_path)) is None
+    assert embedding_session.open_turn("alpha", str(tmp_path), load=fail_load) is None
     assert capsys.readouterr().err.splitlines() == [
         "ADW could not start optional meaning checks: disk full",
         "Regex checks remain active.",
@@ -140,13 +141,11 @@ def test_a_startup_failure_names_the_cause_and_the_next_step(tmp_path, monkeypat
     ]
 
 
-def test_failed_cleanup_is_reported_without_raising(tmp_path, monkeypatch, capsys) -> None:
+def test_failed_cleanup_is_reported_without_raising(tmp_path, capsys) -> None:
     def fail_release(*_args) -> bool:
         raise PermissionError("cannot signal worker")
 
-    monkeypatch.setattr(embedding_session, "release", fail_release)
-
-    assert embedding_session.close_turn("alpha", str(tmp_path)) is False
+    assert embedding_session.close_turn("alpha", str(tmp_path), unload=fail_release) is False
     assert "embedding cleanup failed: cannot signal worker" in capsys.readouterr().err
 
 
