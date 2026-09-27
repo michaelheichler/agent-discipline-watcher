@@ -66,7 +66,7 @@ The scanner reads every prose extension it knows, not markdown alone. Before 0.1
 
 Comments run through the same scan, and they are the one surface where the watcher is stricter than it is on prose.
 
-Code comments and docstrings may contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
+Code comments and docstrings can contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
 
 The Luna comment reviewer covers Python and supported comment-bearing source files. These include TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
 
@@ -347,14 +347,14 @@ processing. The checker permits ordinary Python startup when it trusts
 the import paths. Writes and executable startup overrides retain their
 checks. Unknown calls must pass the read checker.
 
-`config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that would weaken the gates. That means a self-authorization key, a downgraded always-blocking rule, or a redirected state or ledger root. It also means anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
+`config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that weakens the gates. That means a self-authorization key, a downgraded always-blocking rule, or a redirected state or ledger root. It also means anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
 
 Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through. Examples are `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, and `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc. It treats that write like a Write or Edit call rather than blocking it.
 
 For read-only Python snippets in Bash, use isolated startup with `python3 -I -S`.
 For example, `python3 -I -S -c 'from pathlib import Path; print(Path("notes.md").read_text())'`
 reads a file without loading project startup modules. ADW rejects redirects that
-would write opaque Python output to a file. Use Write or Edit for content changes.
+write opaque Python output to a file. Use Write or Edit for content changes.
 
 ## Active integrations
 
