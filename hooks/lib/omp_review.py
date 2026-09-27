@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pre_bash
@@ -137,28 +138,28 @@ def _targets(payload: dict) -> dict:
     return {"paths": list(dict.fromkeys(paths))}
 
 
-def _vote(payload: dict, target: Path, cfg: dict) -> None:
+def _vote(payload: dict, target: Path, cfg: dict, voter: pattern_vote.Voter) -> None:
     """Inline, because OMP has no async route to vote on."""
     if target.suffix.lower() not in PROSE_EXTS or not embedding_session.enabled() or not payloads.session_id(payload):
         return
     try:
         turn = pattern_vote.turn_for(payload, cfg)
-        if pattern_vote.model_ready(turn, VOTE_READY_SECONDS):
-            pattern_vote.vote(turn, target)
+        if pattern_vote.model_ready(turn, VOTE_READY_SECONDS, voter):
+            pattern_vote.vote(turn, target, voter)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: pattern vote skipped: {exc}\n")
 
 
-def _review(request: dict, payload: dict, config: dict | None) -> dict:
+def _review(request: dict, payload: dict, config: dict | None, voter: pattern_vote.Voter, read: Callable[[Path], str]) -> dict:
     cfg = effective_hook_config(config, payloads.cwd(payload) or None)
     if not data_boundary_enabled(cfg):
         return {"enabled": False, "requests": []}
     target = _target(payload)
     if target.suffix.lower() not in REVIEW_SUFFIXES:
         return {"enabled": True, "requests": []}
-    source = read_source(target)
+    source = read(target)
     if request.get("operation") == "prepare":
-        _vote(payload, target, cfg)
+        _vote(payload, target, cfg, voter)
     work = build_work(target, source, {**cfg, "session_id": payloads.session_id(payload)})
     digest = _digest(target, source, cfg, work)
     if request.get("operation") == "prepare":
@@ -175,7 +176,7 @@ def _review(request: dict, payload: dict, config: dict | None) -> dict:
     return validated_findings(work[index], request.get("output"), {**cfg, "session_id": payloads.session_id(payload)})
 
 
-def run(request: object, config: dict | None = None) -> dict:
+def run(request: object, config: dict | None = None, *, voter: pattern_vote.Voter = pattern_vote.Voter(), read: Callable[[Path], str] = read_source) -> dict:
     if not isinstance(request, dict) or not isinstance(request.get("payload"), dict):
         raise ValueError("invalid OMP review bridge request")
     operation, payload = request.get("operation"), request["payload"]
@@ -183,4 +184,4 @@ def run(request: object, config: dict | None = None) -> dict:
         return _targets(payload)
     if operation not in {"prepare", "validate"}:
         raise ValueError("unknown OMP review bridge operation")
-    return _review(request, payload, config)
+    return _review(request, payload, config, voter, read)

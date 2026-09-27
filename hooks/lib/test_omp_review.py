@@ -27,12 +27,12 @@ def validate(path, prepared, output, index=0):
     }, ENABLED)
 
 
-def test_disabled_boundary_does_not_read_source(tmp_path, monkeypatch):
+def test_disabled_boundary_does_not_read_source(tmp_path):
     def unexpected_read(_path):
         raise AssertionError("source must remain unread")
 
-    monkeypatch.setattr(omp_review, "read_source", unexpected_read)
-    assert prepare(tmp_path / "missing.py", {"data_boundary": {"enabled": False}}) == {
+    request = {"operation": "prepare", "payload": payload_for(tmp_path / "missing.py")}
+    assert omp_review.run(request, {"data_boundary": {"enabled": False}}, read=unexpected_read) == {
         "enabled": False, "requests": [],
     }
 
