@@ -793,6 +793,27 @@ def set_preset(
         return _set_preset_unlocked(selected, target_settings, target_preset)
 
 
+def ensure_managed_block(default: str, repoint: Callable[[dict[str, Any]], dict[str, Any]]) -> str | None:
+    """One lock, because a racing set_preset must not interleave."""
+    target_settings = _canonical(settings_path())
+    target_preset = _canonical(preset_path())
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        if not _managed_hooks(_load_settings(target_settings)):
+            return _set_preset_unlocked(default, target_settings, target_preset)
+        _rewrite_settings(target_settings, repoint)
+        return None
+
+
+def _rewrite_settings(path: Path, transform: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    digest, current, generation = _settings_snapshot(path)
+    updated = transform(current)
+    if updated == current:
+        return
+    rendered = json.dumps(updated, indent=2, sort_keys=True) + "\n"
+    _atomic_write_settings(path, rendered, expected_generation=(digest, generation))
+
+
 def status(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None, environment: Mapping[str, str] | None = None) -> dict[str, str]:
     target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
     target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
