@@ -66,7 +66,7 @@ The scanner reads every prose extension it knows, not markdown alone. Before 0.1
 
 Comments run through the same scan, and they are the one surface where the watcher is stricter than it is on prose.
 
-Code comments and docstrings can contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
+Code comments and docstrings can contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Configuration, exemptions, and model output cannot release these rules.
 
 The Luna comment reviewer covers Python and supported comment-bearing source files. These include TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
 
@@ -167,7 +167,7 @@ preserves session state and all recorded findings.
 ```
 
 Use an absolute path in agent tool calls. For example,
-`/Users/yourname/.adw/bin/adw update --omp` lets the guard validate the
+`/Users/yourname/.adw/bin/adw update --omp` lets the guard check the
 installed executable and host flags before permitting the update.
 Arbitrary installer scripts still require a Terminal install.
 The updater requires the default installation directory.
@@ -203,14 +203,14 @@ A Unix shell and the Python named in `.python-version`, the one place this proje
 The plugin manifest ships command hooks only. The reviewer lives in
 `~/.claude/settings.json` as the managed block, the hook entries whose first
 line or command carries the `adw-managed-hook-v1` marker. When a Claude Code
-session starts and settings hold no managed block, the SessionStart hook
+session starts and `settings.json` holds no managed block, the SessionStart hook
 writes the `haiku` preset. A plain install needs no preset step. Claude Code
-picks up the settings change without a restart. SessionStart leaves an
+picks up the configuration change without a restart. SessionStart leaves an
 existing managed block alone, so a preset you chose or edited stays. When
-SessionStart cannot read the settings file, it prints one line to stderr and
+SessionStart cannot read `settings.json`, it prints one line to stderr and
 the session goes on without a reviewer. Select a different preset with
 `/agent-discipline-watcher:adw-judge haiku|mixed|luna|luna-native|status`.
-Each selection replaces the managed block, so settings never hold two
+Each selection replaces the managed block, so `settings.json` never holds two
 reviewer sets.
 
 Each agent preset registers one reviewer, on Stop. No agent runs per write.
@@ -247,7 +247,7 @@ or an unusable reply blocks the Stop instead, and each retry reviews again
 until one succeeds. ADW records completion only after a successful review. Run `./install.sh --codex -y`
 to repair the runtime, then complete Codex ChatGPT login.
 
-ADW keeps confirmed findings active until the affected source changes.
+After a review upholds a finding, ADW keeps it active until the affected source changes.
 An unrelated edit cannot release them during a provider outage.
 
 ## Environment variables
@@ -274,7 +274,7 @@ Set these in the `env` block of `~/.claude/settings.json`, because that block is
 
 With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs.
 
-Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease. If the user turned embeddings off after loading, they still release it. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime. A missed Stop therefore no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
+Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease. If the user turned embeddings off after loading, they still release it. Shutdown checks that the process exited before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime. A missed Stop therefore no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
 
 ### Thresholds
 
@@ -285,14 +285,14 @@ Every project shares the managed worker, and it stays loaded while a live turn h
 | `ADW_FUNC_BLOCK_LINES` | 80 | Function length that blocks. |
 | `ADW_MAX_SCAN_BYTES` | 1000000 | Full-text scan limit. Larger files retain fallback length checks. |
 
-Each also has a project config key in `.agent-discipline.json`. The config key wins where you set both, and the environment variable is the fallback.
+Each also has a project configuration key in `.agent-discipline.json`. The configuration key wins where you set both, and the environment variable is the fallback.
 
 Code files warn at 500 lines and turn critical at 750.
 At 1000, ADW blocks the write.
 
 ADW measures the resulting file after appends or patch moves, regardless of
 the size of the diff. The legacy `ADW_FILE_BLOCK_LINES` and `file_block_lines`
-settings do not change these thresholds.
+keys do not change these thresholds.
 
 ### Escape hatches and internals
 
@@ -331,16 +331,16 @@ The watcher migrates an existing `~/.agent-discipline` once, on first run.
 
 Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
 
-Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge confirms them before the watcher reports anything. Today only the OMP review route runs that judge. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
+Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge checks them before the watcher reports anything. Today only the OMP review route runs that judge. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
 In OMP, `/adw configure` and `/agent-discipline configure` edit this project policy through the same Python configuration engine. The screen covers family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, and the data boundary. Always-blocking rules stay locked. Unknown keys and environment values are not rendered.
 
 `three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Its precision behind the judge has no measurement yet. `pattern_exemplars.json` records no judge precision for it, so no number here backs a block. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
 
 ## Self protection
 
-The `self_protection` family blocks routes around the gates. It covers the watcher's own install directories and a write that strips the watcher's hook entries from a client settings file. It also covers installer commands without a sandboxed `HOME`, no-verify commits, cap overrides, state deletion, and protected configuration edits. No project configuration can disable these rules.
+The `self_protection` family blocks routes around the gates. It covers the watcher's own install directories and a write that strips the watcher's hook entries from a client configuration file. It also covers installer commands without a sandboxed `HOME`, `--no-verify` commits, cap overrides, state deletion, and protected configuration edits. No project configuration can disable these rules.
 
-It does not police file access in general. The host's own permission settings own everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp`. The watcher judges how an agent writes, not where.
+It does not police file access in general. The host's own permission configuration owns everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp`. The watcher judges how an agent writes, not where.
 
 The Python read checker accepts loops, generators, path joins, and text
 processing. If the checker trusts the import paths, it permits ordinary
@@ -358,7 +358,7 @@ write opaque Python output to a file. Use Write or Edit for content changes.
 
 ## Active integrations
 
-Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-hooks.json` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer removes the old watcher entries from `~/.codex/config.toml`, then merges them into `~/.codex/hooks.json` without replacing unrelated settings or hooks. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
+Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-hooks.json` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer removes the old watcher entries from `~/.codex/config.toml`, then merges them into `~/.codex/hooks.json` without replacing unrelated configuration or hooks. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
 
 OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks cover every OMP mutating file tool and Bash, then return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
 
