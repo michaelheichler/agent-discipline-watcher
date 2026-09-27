@@ -78,14 +78,18 @@ def test_an_unknown_rule_builds_no_request(tmp_path: Path) -> None:
 
 
 def test_pattern_and_document_rows_share_the_stop_budget(tmp_path: Path) -> None:
-    document = {
-        "role": "document", "path": "big.md", "content_hash": "def", "turn_id": "turn-1",
-        "source_context": "x" * journal.MAX_STOP_TOTAL_CHARS,
-    }
+    documents = [
+        {
+            "role": "document", "path": name, "content_hash": name, "turn_id": "turn-1",
+            "source_context": "x" * journal.MAX_STOP_DOCUMENT_CHARS,
+        }
+        for name in ("first.md", "second.md")
+    ]
 
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN, document]))
+    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN, *documents]))
 
-    assert [request.review_kind for request, _rows in work] == [ReviewKind.PATTERN]
+    paths = {row["path"] for _request, rows in work for row in rows}
+    assert paths == {"note.md", "first.md"}
 
 
 def test_a_violating_verdict_blocks_with_a_titled_finding_row(tmp_path: Path) -> None:
