@@ -582,7 +582,11 @@ class SuccessResetTests(HookTestCase):
         ):
             response = self.succeed(record_gate=True)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("could not evaluate this edit", response["reason"])
+        self.assertIn(
+            "agent-discipline-watcher could not evaluate this edit and blocked it rather than letting it through. "
+            "Repair the gate config at ",
+            response["reason"],
+        )
         self.assertEqual(self.state(), before)
 
     def test_invalid_success_session_writes_no_state_or_ledger(self):

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import record
 from lib import blocker_state, reporting, session_state
+from lib.config import project_config_path
 
 
 class EditJournalTests(unittest.TestCase):
@@ -188,7 +189,10 @@ class EditJournalTests(unittest.TestCase):
         with mock.patch.object(blocker_state, "touch_paths", side_effect=OSError("read only")):
             response = record.run(payload, self.cfg)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("could not evaluate this edit", response["reason"])
+        self.assertTrue(response["reason"].startswith(
+            "agent-discipline-watcher could not evaluate this edit and blocked it rather than letting it through. "
+            f"Repair the gate config at {project_config_path(self.root)} and retry. Cause: "
+        ))
         reasons, _paths = blocker_state.snapshot("s1", "", self.state_root)
         self.assertTrue(any("read only" in reason for reason in reasons))
 
