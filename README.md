@@ -60,7 +60,7 @@ On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP jud
 
 The candidate journal records every prose write, including a file under a `scratchpad` directory in the system temp root. The document reviewers therefore read scratch notes too. The `JudgeReview` route skips them, so a scratch note gets no pattern rows.
 
-The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as if they were prose.
+The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
 
 ## Comment policy
 
@@ -70,7 +70,7 @@ Code comments and docstrings can contain one strict WHY line of at most 60 chara
 
 The Luna comment reviewer covers Python and supported comment-bearing source files. These include TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
 
-The opening clause decides it. A comment that opens on the code and its behaviour fails even when a `because` clause follows. This applies to the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
+The opening clause decides it. When a comment opens on the code and its behaviour, it fails even with a `because` clause after it. This applies to the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
 
 These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent. The 60-character cap and the opening-clause test are therefore a judgement rather than a number.
 
@@ -111,8 +111,8 @@ provide Claude's PostToolBatch or PostToolUseFailure events.
 `~/.omp/agent/extensions/agent-discipline-watcher`, and registers the
 installed `index.ts` in `~/.omp/agent/settings.json`. The extension resolves
 its runner from the installed copy under `~/.adw`, so it needs no link outside
-the state directory. An earlier install put one under `~/.agents/skills`, and
-the installer removes that link when it still points at an ADW copy. Nothing in
+the state directory. An earlier install put one under `~/.agents/skills`.
+If that link still points at an ADW copy, the installer removes it. Nothing in
 the installed client configuration points into the development checkout.
 
 ```text
@@ -188,8 +188,8 @@ Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is
 separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
 
 Cursor `.mdc` rules use the same Markdown scanner and frontmatter handling
-as `.md` files. YAML glob patterns do not become code comments. The watcher
-still checks the Markdown body when an agent edits a rule or finishes a turn.
+as `.md` files. YAML glob patterns do not become code comments. When an agent
+edits a rule or finishes a turn, the watcher still checks the Markdown body.
 
 OMP's exact `xd://report_issue` write destination uses the native report
 handler and its consent prompt. ADW does not treat that report as a project
@@ -231,13 +231,13 @@ command handler on the subscription-backed Codex runtime and switches to
 `mixed` only after Luna is unavailable.
 
 The Luna routes send source text off the machine. The Claude Luna handler and
-the Codex Stop review run only when `data_boundary.enabled` is `true` in
-`.agent-discipline.json`, the same gate the OMP review uses.
+the Codex Stop review run only with `data_boundary.enabled` set to `true` in
+`.agent-discipline.json`. The OMP review uses the same gate.
 
 `status` counts the reviewers in the managed block rather than echoing the
 stored preset, so an unwired gate says so. An agent preset counts one. `luna`
-counts two, one command handler on PostToolUse and one on Stop. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
-install needs the explicit Haiku-only environment.
+counts two, one command handler on PostToolUse and one on Stop. If an install needs
+the explicit Haiku-only environment, set `ADW_CLAUDE_HAIKU_ONLY=1`.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
 Missing runtime, subscription login, model availability, or provider
@@ -252,7 +252,7 @@ An unrelated edit cannot release them during a provider outage.
 
 ## Environment variables
 
-Set these in the `env` block of `~/.claude/settings.json`, because that block is what reaches the hooks. A shell export only works if you always launch the client from that shell.
+Set these in the `env` block of `~/.claude/settings.json`, because that block is what reaches the hooks. If you use a shell export instead, you must always launch the client from that shell.
 
 ```json
 {
@@ -274,13 +274,13 @@ Set these in the `env` block of `~/.claude/settings.json`, because that block is
 
 With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs.
 
-Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease, even if the user turned embeddings off after loading. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime. A missed Stop therefore no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
+Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease. If the user turned embeddings off after loading, they still release it. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime. A missed Stop therefore no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
 
 ### Thresholds
 
 | variable | default | effect |
 | --- | --- | --- |
-| `ADW_SENTENCE_WORD_CAP` | 40 | Fallback sentence cap. Normally the cap is a Tukey upper fence computed from the document's own sentences, so dense prose gets a higher cap than terse prose. This value applies only when a document has too few sentences to measure. |
+| `ADW_SENTENCE_WORD_CAP` | 40 | Fallback sentence cap. Normally the cap is a Tukey upper fence computed from the document's own sentences, so dense prose gets a higher cap than terse prose. Only a document with too few sentences to measure uses this value. |
 | `ADW_LIST_ITEM_CAP` | 8 | Items before a list is oversized. |
 | `ADW_FUNC_BLOCK_LINES` | 80 | Function length that blocks. |
 | `ADW_MAX_SCAN_BYTES` | 1000000 | Full-text scan limit. Larger files retain fallback length checks. |
@@ -298,7 +298,7 @@ settings do not change these thresholds.
 
 | variable | effect |
 | --- | --- |
-| `ADW_PYTHON` | Interpreter to run the hooks with, skipping the PATH search. It is still probed against `.python-version`, and a build below the floor fails rather than falling back. Set it when the qualifying Python is not on the PATH your client starts with. |
+| `ADW_PYTHON` | Interpreter to run the hooks with, skipping the PATH search. It is still probed against `.python-version`, and a build below the floor fails rather than falling back. If the qualifying Python is not on the PATH your client starts with, set it. |
 | `ADW_ALLOW_PROTECTED_EDIT` | Permits an edit to the watcher's own install. Self protection blocks a Bash write that sets this inline. |
 | `ADW_JUDGE_ACTIVE` | Set by the watcher on the judge subprocess so a nested hook cannot recurse. Not for you to set. |
 | `ADW_JUDGE_LIVE` | Set to 1 to run the tests that spend a real model call. Those tests skip otherwise. |
@@ -343,8 +343,8 @@ The `self_protection` family blocks routes around the gates. It covers the watch
 It does not police file access in general. The host's own permission settings own everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp`. The watcher judges how an agent writes, not where.
 
 The Python read checker accepts loops, generators, path joins, and text
-processing. The checker permits ordinary Python startup when it trusts
-the import paths. Writes and executable startup overrides retain their
+processing. If the checker trusts the import paths, it permits ordinary
+Python startup. Writes and executable startup overrides retain their
 checks. Unknown calls must pass the read checker.
 
 `config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that weakens the gates. That means a self-authorization key, a downgraded always-blocking rule, or a redirected state or ledger root. It also means anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
