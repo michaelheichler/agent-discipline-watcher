@@ -24,7 +24,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset runs the Stop review on Sonnet, and it is the one preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
+The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset runs the Stop review on Sonnet, and it is the one agent preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
 
 ## What the rules were measured against
 
@@ -254,13 +254,17 @@ every row in one batch against `PATTERN_RUBRIC` and opens no file.
 
 `haiku` runs the Stop review on Haiku. `mixed` runs it on Sonnet.
 
-Only `mixed` adds the whole-document review. Its Stop agent passes
-`--documents` to the helper, which then prints document rows too.
+Among the agent presets, only `mixed` adds the whole-document review. Its Stop
+agent passes `--documents` to the helper, which then prints document rows too.
 
 `luna-native` names the Luna model directly. It works where a tool such as LeverFrame injects
 Luna into the Claude model list. `luna` emits no native agent at all. It uses a
 command handler on the subscription-backed Codex runtime and switches to
-`mixed` only after Luna is unavailable.
+`mixed` only after Luna is unavailable. Its Stop handler judges the same
+journal rows as the agent presets. It sends one request per pattern rule, with
+four violating and four clean examples, beside the document rows. Each upheld
+pattern row prints its path, line, rule title, matched text, and action.
+Pattern and document rows share one 48,000 character Stop budget.
 
 The Luna routes send source text off the machine. The Claude Luna handler and
 the Codex Stop review run only with `data_boundary.enabled` set to `true` in
