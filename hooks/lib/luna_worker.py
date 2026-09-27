@@ -1,11 +1,13 @@
 """Separate, because a hung SDK call must die on timeout."""
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import os
 from pathlib import Path
 import stat
 import sys
+from typing import TextIO
 
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import (
@@ -22,21 +24,22 @@ DESCRIPTOR_FIELDS = (
     "call_fd", "codex_home_fd", "cwd_fd", "call_identity",
     "codex_home_identity", "cwd_identity",
 )
+Runner = Callable[[JudgeRequest, SdkLaunch], JudgeResult]
 
 
 def execute(request: JudgeRequest, launch: SdkLaunch) -> JudgeResult:
     return run_sdk_request(request, launch, OpenAICodexSdk())
 
 
-def main() -> int:
+def main(*, stdin: TextIO = sys.stdin, run: Runner = execute) -> int:
     try:
-        request, launch = _decode_request(json.loads(sys.stdin.read()))
+        request, launch = _decode_request(json.loads(stdin.read()))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         _write_error("request", "invalid Luna worker request")
         return 2
     try:
         _prepare_descriptor_launch(launch)
-        result = execute(request, launch)
+        result = run(request, launch)
         print(json.dumps({"ok": True, "result": result.__dict__}, ensure_ascii=True))
         return 0
     except LunaProviderFailure as exc:

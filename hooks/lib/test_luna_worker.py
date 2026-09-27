@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from contextlib import redirect_stdout
+from typing import NoReturn
 
 import pytest
 
@@ -29,12 +30,10 @@ def _request_payload(tmp_path: Path) -> dict[str, object]:
     }
 
 
-def _run_main(monkeypatch, payload: object, execute) -> tuple[int, dict[str, object]]:
-    monkeypatch.setattr(luna_worker.sys, "stdin", io.StringIO(json.dumps(payload)))
-    monkeypatch.setattr(luna_worker, "execute", execute)
+def _run_main(payload: object, execute) -> tuple[int, dict[str, object]]:
     stdout = io.StringIO()
     with redirect_stdout(stdout):
-        status = luna_worker.main()
+        status = luna_worker.main(stdin=io.StringIO(json.dumps(payload)), run=execute)
     return status, json.loads(stdout.getvalue())
 
 
@@ -61,15 +60,13 @@ def test_worker_rejects_an_invalid_protocol_request(tmp_path: Path) -> None:
         ("JsonRpcError", "sdk"),
     ),
 )
-def test_worker_encodes_expected_sdk_failures_as_typed_bounded_errors(
-    tmp_path: Path, monkeypatch, error_name: str, category: str,
-) -> None:
+def test_worker_encodes_expected_sdk_failures_as_typed_bounded_errors(tmp_path: Path, error_name: str, category: str) -> None:
     error_type = type(error_name, (RuntimeError,), {})
 
-    def fail(_request, _launch):
+    def fail(_request, _launch) -> NoReturn:
         raise error_type("provider stderr detail\n" + "x" * 2000)
 
-    status, body = _run_main(monkeypatch, _request_payload(tmp_path), fail)
+    status, body = _run_main(_request_payload(tmp_path), fail)
 
     assert status != 0
     assert body["ok"] is False
@@ -78,13 +75,11 @@ def test_worker_encodes_expected_sdk_failures_as_typed_bounded_errors(
     assert len(body["error"]["message"]) <= 256
 
 
-def test_worker_converts_unknown_base_exception_to_bounded_internal_error(
-    tmp_path: Path, monkeypatch,
-) -> None:
-    def fail(_request, _launch):
+def test_worker_converts_unknown_base_exception_to_bounded_internal_error(tmp_path: Path) -> None:
+    def fail(_request, _launch) -> NoReturn:
         raise KeyboardInterrupt("sensitive unknown detail" + "x" * 2000)
 
-    status, body = _run_main(monkeypatch, _request_payload(tmp_path), fail)
+    status, body = _run_main(_request_payload(tmp_path), fail)
 
     assert status != 0
     assert body == {
