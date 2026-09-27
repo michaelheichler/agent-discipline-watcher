@@ -11,6 +11,7 @@ from pathlib import Path, PurePath
 from typing import NamedTuple
 
 try:
+    from .config import rule_state
     from .embedding_client import Vector, embed, embeddings_urls, model_name
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
@@ -18,6 +19,7 @@ try:
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
+    from config import rule_state
     from embedding_client import Vector, embed, embeddings_urls, model_name
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
@@ -83,6 +85,13 @@ def blocking_rules(manifest: dict) -> frozenset[str]:
         rule for rule in measured_rules(manifest)
         if manifest["rules"][rule]["judge_precision"] >= ENFORCE_PRECISION
     )
+
+
+def rule_blocks(manifest: dict, rule: str, config: dict | None) -> bool:
+    """Project config wins, because the regex path obeys it."""
+    if rule_state(rule, config) in {"observe", "off"}:
+        return False
+    return rule in blocking_rules(manifest)
 
 
 def prose_source(path: str, text: str) -> str:

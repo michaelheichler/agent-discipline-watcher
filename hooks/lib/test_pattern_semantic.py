@@ -70,6 +70,26 @@ def test_only_a_measured_rule_blocks() -> None:
     assert pattern_semantic.blocking_rules(manifest) == frozenset({"measured_high"})
 
 
+GATED = {"rules": {"measured_high": {"judge_precision": 0.94}, "measured_low": {"judge_precision": 0.60}}}
+
+
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({}, True),
+    ({"measured_high": "enforce"}, True),
+    ({"measured_high": "judged"}, True),
+    ({"measured_high": "observe"}, False),
+    ({"measured_high": "off"}, False),
+    ({"measured_high": {"prose": "observe"}}, False),
+    ({"measured_high": {"code": "observe"}}, True),
+))
+def test_a_project_rule_gate_outranks_the_measurement(gates: dict, expected: bool) -> None:
+    assert pattern_semantic.rule_blocks(GATED, "measured_high", {"rule_gates": gates}) is expected
+
+
+def test_an_enforce_gate_cannot_lift_a_rule_below_the_floor() -> None:
+    assert not pattern_semantic.rule_blocks(GATED, "measured_low", {"rule_gates": {"measured_low": "enforce"}})
+
+
 def test_the_shipped_gate_matches_the_recorded_measurement() -> None:
     manifest = pattern_semantic.load_manifest()
     blocking = pattern_semantic.blocking_rules(manifest)
