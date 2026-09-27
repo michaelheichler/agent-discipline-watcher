@@ -1,6 +1,7 @@
 """Split out because the Luna request shape has its own contract."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,9 +11,9 @@ from lib.judge_contracts import JudgeRequest, JudgeResult
 
 
 @pytest.fixture(autouse=True)
-def _open_data_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+def _open_data_boundary(tmp_path: Path) -> None:
     """Opened here, because the gate has its own test file."""
-    monkeypatch.setattr(claude_luna, "data_boundary_enabled", lambda _cfg: True)
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
 
 
 class Provider:  # pylint: disable=too-few-public-methods
@@ -76,7 +77,7 @@ def test_a_successful_luna_stop_review_judges_every_request_once(tmp_path: Path)
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
     claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     provider = Provider()
-    payload = {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False}
+    payload = {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False, "cwd": str(tmp_path)}
 
     assert claude_luna.run(payload, provider=provider, state_root=state_root, settings_path=settings, preset_path=preset) == {}
     judged = len(provider.requests)

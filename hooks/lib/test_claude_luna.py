@@ -19,10 +19,9 @@ COMMENT = "# Counts the retries because the report header needs a total.\nvalue 
 
 
 @pytest.fixture(autouse=True)
-def _open_data_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _open_data_boundary(tmp_path: Path) -> None:
     """Opened here, because the gate has its own test file."""
     (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
-    monkeypatch.setattr(claude_luna, "data_boundary_enabled", lambda _cfg: True)
 
 
 def _result(request: JudgeRequest, payload: dict) -> JudgeResult:
@@ -577,7 +576,7 @@ def test_stop_handler_reads_only_bounded_current_session_journal(tmp_path: Path)
     preset = tmp_path / "preset"
     claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     response = claude_luna.run(
-        {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False},
+        {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False, "cwd": str(tmp_path)},
         provider=provider, state_root=state_root, settings_path=settings, preset_path=preset,
     )
 
@@ -631,7 +630,7 @@ def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
     failure = Provider(error=LunaProviderFailure("subscription unavailable", category="authentication"))
 
     response = claude_luna.run(
-        {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False},
+        {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False, "cwd": str(tmp_path)},
         provider=failure, state_root=state_root, settings_path=settings, preset_path=preset,
     )
 
