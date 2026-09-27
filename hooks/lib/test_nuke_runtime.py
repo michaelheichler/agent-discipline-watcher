@@ -260,6 +260,18 @@ def test_symlinked_edit_target_stops_the_run(home, tmp_path, capsys) -> None:
     assert dotfile.read_text() == USER_RC + FENCE
 
 
+def test_a_home_below_a_symlinked_parent_is_wiped(tmp_path, capsys) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    _link(tmp_path / "linked", real)
+    account = tmp_path / "linked/account"
+    account.mkdir()
+    _claude(account, _install(account))
+    assert nuke_runtime.main(["--yes"], steps=_steps(account)) == 0, capsys.readouterr().err
+    assert PLUGIN_ID not in (account / ".claude/plugins/installed_plugins.json").read_text()
+    assert not (account / ".adw").exists()
+
+
 def test_an_open_rc_fence_is_left_alone() -> None:
     text = USER_RC + "# >>> agent-discipline-watcher >>>\nexport X=1\n"
     assert nuke_runtime.strip_rc_block(text) == text

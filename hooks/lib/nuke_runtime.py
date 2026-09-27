@@ -16,7 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from . import update_claude_state, update_runtime
+from . import update_runtime
 from .update_runtime import HOSTS, INSTALL_PATH, MANAGED_LINKS, _check_path, _remove
 
 NAME = "agent-discipline-watcher"
@@ -198,11 +198,6 @@ def strip_known_records(text: str) -> str:
     return json.dumps(registry, indent=2) + "\n"
 
 
-def _write_state(path: Path, text: str) -> None:
-    """Mode kept because Claude reads these files as private."""
-    update_claude_state.atomic_write(path, text.encode("utf-8"), path.stat().st_mode & 0o777)
-
-
 def _write_claude_settings(path: Path, text: str) -> None:
     _claude_settings()._write(path, json.loads(text))
 
@@ -226,8 +221,8 @@ def _profile_edits(steps: NukeSteps) -> dict[str, EditPair]:
     claude = functools.partial(strip_claude_settings, without_managed=steps.without_managed)
     return {
         "settings.json": (claude, _write_claude_settings),
-        INSTALLED_RECORDS.name: (strip_installed_records, _write_state),
-        KNOWN_RECORDS.name: (strip_known_records, _write_state),
+        INSTALLED_RECORDS.name: (strip_installed_records, _write_with(_codex_hooks)),
+        KNOWN_RECORDS.name: (strip_known_records, _write_with(_codex_hooks)),
     }
 
 
