@@ -540,7 +540,6 @@ def default_preset(
 
 _model_for = claude_presets.model_for
 _luna_command = claude_presets.luna_command
-comment_prompt = claude_presets.comment_prompt
 stop_prompt = claude_presets.stop_prompt
 generated_hooks = claude_presets.generated_hooks
 
