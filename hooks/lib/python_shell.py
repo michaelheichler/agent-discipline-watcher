@@ -49,6 +49,15 @@ def _python_options(segment: list[str] | tuple[str, ...]) -> set[str] | None:
     return options
 
 
+def rejection_finding(make_finding, rule: str, rejection: str, startup_trusted: bool) -> dict:
+    startup = "" if startup_trusted else " Run Python reads as python3 -I -S."
+    return {
+        **make_finding(rule),
+        "detail": f"Python payload is not provably read-only. The checker rejected {rejection}",
+        "action": f"The checker rejected {rejection}. Use Write or Edit for file content.{startup}",
+    }
+
+
 def startup_finding(make_finding, rule: str) -> dict:
     return {
         **make_finding(rule),

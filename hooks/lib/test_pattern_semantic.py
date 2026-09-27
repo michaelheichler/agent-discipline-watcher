@@ -86,6 +86,14 @@ def test_a_sentence_without_a_vector_is_never_flagged() -> None:
     assert pattern_semantic.candidates_for("ai_closer", sentences, VECTORS, EXEMPLARS, "a.md") == ()
 
 
+def test_a_rule_without_exemplar_vectors_is_skipped_with_one_notice(capsys) -> None:
+    sentences = (Sentence(3, "Feel free to ask me anything else."), Sentence(4, "The lease expires after 900 seconds."))
+    only_sentences = {text: VECTORS[text] for _line, text in sentences}
+
+    assert pattern_semantic.candidates_for("ai_closer", sentences, only_sentences, EXEMPLARS, "a.md") == ()
+    assert capsys.readouterr().err.count("ai_closer") == 1
+
+
 def test_an_absent_server_yields_no_finding_rather_than_a_clean_verdict(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "embed", lambda _texts: None)
 
@@ -129,6 +137,39 @@ def test_the_judge_decides_which_candidates_become_findings(monkeypatch) -> None
     assert [(item.rule, item.blocking) for item in findings] == [("ai_closer", True)]
 
 
+@pytest.fixture(name="cache_root")
+def _cache_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(pattern_semantic, "exemplar_cache_root", lambda: tmp_path)
+    monkeypatch.setenv("ADW_EMBEDDING_URL", "http://127.0.0.1:1111/v1/embeddings")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [("ADW_EMBEDDING_MODEL", "another-model"), ("ADW_EMBEDDING_URL", "http://127.0.0.1:2222/v1/embeddings")],
+)
+def test_the_cache_key_changes_with_model_and_endpoint(cache_root, monkeypatch, variable, value) -> None:
+    before = pattern_semantic._cache_path(None)
+    monkeypatch.setenv(variable, value)
+
+    assert pattern_semantic._cache_path(None) != before
+
+
+def test_a_failed_cache_write_leaves_the_old_cache_whole(cache_root, monkeypatch) -> None:
+    path = pattern_semantic._cache_path(None)
+    path.write_text('[["old", [1.0]]]', encoding="utf-8")
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda texts, config=None: {text: (0.5,) for text in texts})
+
+    def interrupted(_source, _target) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pattern_semantic.os, "replace", interrupted)
+    with pytest.raises(OSError):
+        pattern_semantic.exemplar_vectors(EXEMPLARS)
+
+    assert path.read_text(encoding="utf-8") == '[["old", [1.0]]]'
+
+
 def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
     monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
@@ -141,3 +182,52 @@ def test_a_judge_that_confirms_nothing_produces_no_finding(monkeypatch) -> None:
     monkeypatch.setattr(pattern_semantic, "confirm_all", lambda _work, _model: JudgedOutcome({}, (), ""))
 
     assert pattern_semantic.scan("a.md", "Feel free to ask me anything else.\n") == ()
+
+
+def _voting_layer(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: True)
+    monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: EXEMPLARS)
+    monkeypatch.setattr(
+        pattern_semantic, "load_manifest",
+        lambda: {"rules": {"ai_closer": {"action": "End when the answer is done.", "judge_precision": 1.0}}},
+    )
+    monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda _exemplars: VECTORS)
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: VECTORS)
+
+
+def test_the_candidate_stage_votes_without_calling_a_judge(monkeypatch) -> None:
+    _voting_layer(monkeypatch)
+    monkeypatch.setattr(pattern_semantic, "confirm_all", lambda *_args: pytest.fail("called the judge"))
+    text = "Feel free to ask me anything else.\n\nThe lease expires after 900 seconds.\n"
+
+    voted = pattern_semantic.candidates("a.md", text)
+
+    assert {rule: [(item.line, item.text) for item in found] for rule, found in voted.items()} == {
+        "ai_closer": [(1, "Feel free to ask me anything else.")],
+    }
+
+
+def test_the_vote_embeds_only_the_exemplars_a_measured_rule_needs(monkeypatch) -> None:
+    _voting_layer(monkeypatch)
+    unmeasured = Exemplar("unmeasured", "violating", "This exemplar belongs to a silent rule.")
+    monkeypatch.setattr(pattern_semantic, "load_exemplars", lambda: (*EXEMPLARS, unmeasured))
+    monkeypatch.setattr(
+        pattern_semantic, "load_manifest",
+        lambda: {"rules": {
+            "ai_closer": {"action": "End when the answer is done.", "judge_precision": 1.0},
+            "unmeasured": {"action": "Say it plainly.", "judge_precision": None},
+        }},
+    )
+    embedded: list[tuple[Exemplar, ...]] = []
+    monkeypatch.setattr(pattern_semantic, "exemplar_vectors", lambda rows: embedded.append(rows) or VECTORS)
+
+    pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n")
+
+    assert {row.rule for row in embedded[0]} == {"ai_closer"}
+
+
+def test_the_candidate_stage_is_silent_until_the_reader_opts_in(monkeypatch) -> None:
+    monkeypatch.setattr(pattern_semantic, "enabled", lambda: False)
+    monkeypatch.setattr(pattern_semantic, "_vectors", lambda _texts: pytest.fail("embedded while switched off"))
+
+    assert pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n") == {}

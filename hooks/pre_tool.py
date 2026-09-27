@@ -4,7 +4,10 @@ from __future__ import annotations
 import operator
 
 from lib import payloads
-from lib.hookio import PARSE_FAILURE, claude_pretool_response, context, deny, read_payload, write_payload
+from lib.hookio import (
+    PARSE_FAILURE, UNREADABLE_PAYLOAD, claude_pretool_response, config_failure, context, deny, payload_failure,
+    read_payload, write_payload,
+)
 from lib.payloads import exact_string_dict
 import pre_bash
 import pre_commit
@@ -15,10 +18,6 @@ import pre_write
 DIRECT_WRITERS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
 PYTHON_TOOLS = frozenset({"Python"})
 
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this tool call and blocked it rather than letting it through. "
-    "Repair the hook payload and retry. Cause: "
-)
 
 
 def _invalid_payload(payload: object) -> bool:
@@ -29,12 +28,17 @@ def _invalid_payload(payload: object) -> bool:
         return True
     if name not in DIRECT_WRITERS and name not in PYTHON_TOOLS and name != "Bash":
         return False
-    fields = exact_string_dict(payload)
+    tool_input = _first_tool_input(exact_string_dict(payload))
+    if not operator.is_(type(tool_input), dict) or not tool_input:
+        return True
+    return name == "Bash" and not operator.is_(type(tool_input.get("command")), str)
+
+
+def _first_tool_input(fields: dict) -> object:
     for key in ("tool_input", "toolInput", "input"):
         if key in fields:
-            value = fields[key]
-            return not operator.is_(type(value), dict) or not value
-    return True
+            return fields[key]
+    return None
 
 
 def _is_denial(response: dict) -> bool:
@@ -75,7 +79,7 @@ def _merge(responses: list[dict]) -> dict:
 
 def _dispatch(payload: dict, config: dict | None) -> dict:
     if _invalid_payload(payload):
-        return deny(UNDECIDABLE + "unreadable hook payload")
+        return deny(payload_failure(UNREADABLE_PAYLOAD))
     name = payloads.tool_name(payload)
     if name in DIRECT_WRITERS:
         return pre_write.run(payload, config)
@@ -93,7 +97,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
     try:
         return _dispatch(payload, config)
     except Exception as exc:
-        return deny(UNDECIDABLE + str(exc))
+        return deny(config_failure("tool call", exc))
 
 
 if __name__ == "__main__":

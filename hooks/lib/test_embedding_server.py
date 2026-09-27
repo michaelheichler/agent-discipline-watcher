@@ -15,16 +15,19 @@ from lib import embedding_client, embedding_lease, embedding_server, embedding_s
 from lib.model_artifacts import ModelPlatform, PythonRuntime
 
 STUB = """
+import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        body = json.dumps({"status": "ok", "nonce": os.environ.get("ADW_EMBEDDING_NONCE", "")}).encode()
         self.send_response(200)
-        self.send_header("Content-Length", "2")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(b"ok")
+        self.wfile.write(body)
 
     def log_message(self, template, *args):
         return
@@ -43,14 +46,14 @@ from lib import embedding_server
 from lib.model_artifacts import ModelPlatform, PythonRuntime
 
 root = Path(sys.argv[2])
-def command(entry, directory, port):
+def provision(entry, directory):
     if sys.argv[4] == "slow":
         (root / "provisioning").touch()
         while not (root / "continue").exists():
             time.sleep(0.02)
-    return (sys.executable, sys.argv[3], str(port))
+    return lambda port: (sys.executable, sys.argv[3], str(port))
 
-embedding_server.command = command
+embedding_server.provision = provision
 embedding_server.LEASE_POLL_SECONDS = 0.05
 embedding_server.supervise(ModelPlatform("stub", "mlx", (), PythonRuntime(())), root)
 """
@@ -61,8 +64,8 @@ def _stub(tmp_path, monkeypatch):
     script = tmp_path / "stub_server.py"
     script.write_text(STUB, encoding="utf-8")
     monkeypatch.setattr(
-        embedding_server, "command",
-        lambda _entry, _root, port: ("python3", str(script), str(port)),
+        embedding_server, "provision",
+        lambda _entry, _root: lambda port: ("python3", str(script), str(port)),
     )
     return script
 
@@ -122,6 +125,16 @@ def test_the_server_starts_on_a_free_port_and_records_it(stub, tmp_path) -> None
         embedding_server.stop(tmp_path)
 
 
+def test_each_worker_launch_starts_a_fresh_log(stub, tmp_path) -> None:
+    (tmp_path / embedding_server.LOG_NAME).write_text("previous launch output\n", encoding="utf-8")
+
+    embedding_server.start(ENTRY, tmp_path)
+    try:
+        assert "previous launch output" not in (tmp_path / embedding_server.LOG_NAME).read_text(encoding="utf-8")
+    finally:
+        embedding_server.stop(tmp_path)
+
+
 def test_stopping_leaves_no_process_and_no_record(stub, tmp_path) -> None:
     record = embedding_server.start(ENTRY, tmp_path)
 
@@ -148,7 +161,7 @@ def test_stop_during_provisioning_cannot_leave_a_late_worker(supervisor, tmp_pat
     child = launch(slow=True)
     _wait_until(lambda: (root / "provisioning").exists())
 
-    assert embedding_client.release("alpha", time.time(), leases) is False
+    assert embedding_client.release("alpha", leases) is True
     (root / "continue").touch()
 
     assert child.wait(timeout=10) == 0
@@ -165,7 +178,7 @@ def test_stop_can_terminate_a_worker_before_health_is_ready(supervisor, stub, tm
     _wait_until(lambda: embedding_server.read_record(root) is not None)
     record = embedding_server.read_record(root)
 
-    assert embedding_client.release("alpha", time.time(), leases) is True
+    assert embedding_client.release("alpha", leases) is True
 
     assert child.wait(timeout=10) == 0
     assert not embedding_server.process_alive(record.pid)
@@ -183,7 +196,7 @@ def test_supervisor_unloads_without_requiring_another_prompt(supervisor, tmp_pat
     _wait_until(lambda: embedding_server._answers(f"http://127.0.0.1:{record.port}/health"))
 
     if ending == "stop":
-        assert embedding_client.release("alpha", time.time(), leases) is True
+        assert embedding_client.release("alpha", leases) is True
     else:
         renewed = time.time() - embedding_lease.LEASE_TTL_SECONDS - 1 if ending == "expiry" else time.time()
         pid = 2 ** 22 if ending == "dead-owner" else os.getpid()
@@ -205,40 +218,39 @@ def test_parallel_supervisors_reuse_one_worker_and_honor_other_projects(supervis
     embedding_client.ensure_loaded("beta", time.time(), leases_b, os.getpid())
 
     assert launch().wait(timeout=10) == 0
-    assert embedding_client.release("alpha", time.time(), leases_a) is False
+    assert embedding_client.release("alpha", leases_a) is True
+    time.sleep(0.2)
     assert embedding_server.read_record(root) == record
     assert embedding_server.process_alive(record.pid)
     assert first.poll() is None
-    assert embedding_client.release("beta", time.time(), leases_b) is True
+    assert embedding_client.release("beta", leases_b) is True
     assert first.wait(timeout=10) == 0
 
 
-def test_a_second_caller_reuses_the_running_server(stub, tmp_path) -> None:
-    first = embedding_server.ensure_running(ENTRY, tmp_path)
-    try:
-        assert embedding_server.ensure_running(ENTRY, tmp_path) == first
-    finally:
-        embedding_server.stop(tmp_path)
+def test_the_supervisor_respawns_a_crashed_worker(supervisor, tmp_path) -> None:
+    root, launch = supervisor
+    leases = tmp_path / "leases"
+    embedding_client.ensure_loaded("alpha", time.time(), leases, os.getpid())
+    child = launch()
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
+    first = embedding_server.read_record(root)
+    _wait_until(lambda: embedding_server._answers(f"http://127.0.0.1:{first.port}/health", first.nonce))
+    time.sleep(4 * embedding_server.READY_POLL_SECONDS)
 
-
-def test_a_crashed_server_is_respawned_rather_than_reported_absent(stub, tmp_path) -> None:
-    first = embedding_server.start(ENTRY, tmp_path)
     os.kill(first.pid, signal.SIGKILL)
     assert _wait_gone(first.pid, time.time() + 15)
+    _wait_until(lambda: embedding_server.running_url(root) is not None)
 
-    assert embedding_server.running_url(tmp_path) is None
-    second = embedding_server.ensure_running(ENTRY, tmp_path)
-    try:
-        assert second != first.url
-    finally:
-        embedding_server.stop(tmp_path)
+    assert embedding_server.read_record(root).pid != first.pid
+    embedding_client.release("alpha", leases)
+    assert child.wait(timeout=10) == 0
 
 
 def test_a_server_that_never_answers_health_raises_and_records_nothing(tmp_path, monkeypatch) -> None:
     script = tmp_path / "silent.py"
     script.write_text(SILENT, encoding="utf-8")
     monkeypatch.setattr(
-        embedding_server, "command", lambda _entry, _root, _port: ("python3", str(script))
+        embedding_server, "provision", lambda _entry, _root: lambda _port: ("python3", str(script))
     )
     monkeypatch.setattr(embedding_server, "READY_TIMEOUT_SECONDS", 1.0)
 
@@ -250,7 +262,7 @@ def test_a_server_that_never_answers_health_raises_and_records_nothing(tmp_path,
 
 def test_a_runtime_that_exits_at_once_is_reported_with_its_status(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
-        embedding_server, "command", lambda _entry, _root, _port: ("python3", "-c", "raise SystemExit(3)")
+        embedding_server, "provision", lambda _entry, _root: lambda _port: ("python3", "-c", "raise SystemExit(3)")
     )
 
     with pytest.raises(ValueError) as raised:
@@ -263,8 +275,8 @@ def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monke
     spawned = []
     original_spawn = embedding_server._spawn
 
-    def spawn(arguments, root):
-        child = original_spawn(arguments, root)
+    def spawn(arguments, root, nonce, **options) -> subprocess.Popen:
+        child = original_spawn(arguments, root, nonce, **options)
         spawned.append(child)
         return child
 
@@ -281,12 +293,45 @@ def test_a_record_write_failure_does_not_orphan_the_worker(stub, tmp_path, monke
     assert embedding_server.read_record(tmp_path) is None
 
 
+def _own_record(process_start: str | None = None) -> embedding_server.ServerRecord:
+    started = process_start or embedding_server.process_start(os.getpid())
+    return embedding_server.ServerRecord(
+        os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0, started, "nonce"
+    )
+
+
 def test_the_record_survives_a_round_trip_through_disk(tmp_path) -> None:
-    record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
+    record = _own_record()
     embedding_server._write_record(tmp_path, record)
 
     assert embedding_server.read_record(tmp_path) == record
     assert embedding_server.running_url(tmp_path) == record.url
+
+
+def test_a_reused_pid_is_never_signalled_or_contacted(tmp_path, monkeypatch) -> None:
+    embedding_server._write_record(tmp_path, _own_record("Thu Jan  1 00:00:00 1970"))
+    real_kill = os.kill
+
+    def only_probe(pid: int, sent: int) -> None:
+        if sent != 0:
+            pytest.fail("signalled a foreign process")
+        real_kill(pid, sent)
+
+    monkeypatch.setattr(os, "kill", only_probe)
+
+    assert embedding_server.running_url(tmp_path) is None
+    assert embedding_server.stop(tmp_path) is False
+    assert embedding_server.read_record(tmp_path) is None
+
+
+def test_a_listener_without_the_launch_nonce_is_not_ready(stub, tmp_path, monkeypatch) -> None:
+    stub.write_text(STUB.replace('os.environ.get("ADW_EMBEDDING_NONCE", "")', '"foreign"'), encoding="utf-8")
+    monkeypatch.setattr(embedding_server, "READY_TIMEOUT_SECONDS", 1.0)
+
+    with pytest.raises(ValueError):
+        embedding_server.start(ENTRY, tmp_path)
+
+    assert embedding_server.read_record(tmp_path) is None
 
 
 def test_a_missing_record_reads_as_absent(tmp_path) -> None:
@@ -296,7 +341,7 @@ def test_a_missing_record_reads_as_absent(tmp_path) -> None:
 
 
 def test_a_failed_signal_preserves_the_record_for_a_later_cleanup(tmp_path, monkeypatch) -> None:
-    record = embedding_server.ServerRecord(os.getpid(), 1234, "http://127.0.0.1:1234/v1/embeddings", "stub", 5.0)
+    record = _own_record()
     embedding_server._write_record(tmp_path, record)
     monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: True)
 
@@ -327,6 +372,8 @@ def test_a_malformed_record_is_ignored_before_kill_or_network(
         "url": url,
         "platform": "stub",
         "started_at": 5.0,
+        "process_start": "Thu Jan  1 00:00:00 1970",
+        "nonce": "nonce",
     }
     embedding_server.record_path(tmp_path).write_text(json.dumps(row), encoding="utf-8")
     monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: pytest.fail("probed malformed pid"))
@@ -347,7 +394,7 @@ def test_the_worker_command_names_the_interpreter_and_the_weights(tmp_path, monk
     monkeypatch.setattr(embedding_server, "ensure_weights", lambda _entry, _root: tmp_path / "weights")
     monkeypatch.setattr(embedding_server, "ensure_runtime", lambda _entry, _root: tmp_path / "python")
 
-    arguments = embedding_server.command(ENTRY, tmp_path, 4321)
+    arguments = embedding_server.provision(ENTRY, tmp_path)(4321)
 
     assert arguments[0] == str(tmp_path / "python")
     assert arguments[1].endswith(embedding_server.WORKER_NAME)
@@ -360,9 +407,39 @@ def test_the_gguf_command_points_llama_server_at_the_quantized_file(tmp_path, mo
     monkeypatch.setattr(embedding_server, "ensure_runtime", lambda _entry, _root: tmp_path / "llama-server")
     from lib.model_artifacts import resolve
 
-    arguments = embedding_server.command(resolve("Linux", "x86_64"), tmp_path, 4321)
+    arguments = embedding_server.provision(resolve("Linux", "x86_64"), tmp_path)(4321)
 
     assert arguments[0] == str(tmp_path / "llama-server")
     assert "--embeddings" in arguments
     assert arguments[arguments.index("--port") + 1] == "4321"
     assert str(entry) not in arguments
+
+
+class _Launched(Exception):
+    pass
+
+
+def test_the_port_is_picked_after_provisioning_finishes(tmp_path, monkeypatch) -> None:
+    events = []
+    embedding_client.ensure_loaded("alpha", time.time(), tmp_path / "leases", os.getpid())
+    monkeypatch.setattr(embedding_client, "probe", lambda: None)
+
+    def provision(_entry, _root) -> object:
+        events.append("provision")
+        return lambda port: ("python3", str(port))
+
+    def free_port() -> int:
+        events.append("port")
+        return 4321
+
+    def launch(*_args) -> None:
+        events.append("launch")
+        raise _Launched
+
+    monkeypatch.setattr(embedding_server, "provision", provision)
+    monkeypatch.setattr(embedding_server, "_free_port", free_port)
+    monkeypatch.setattr(embedding_server, "_launch", launch)
+    with pytest.raises(_Launched):
+        embedding_server._start_leased(ENTRY, embedding_server.default_root())
+
+    assert events == ["provision", "port", "launch"]

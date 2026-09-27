@@ -106,6 +106,29 @@ def test_a_read_only_open_call_is_allowed(command):
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
 
 
+@pytest.mark.parametrize("command", [
+    """python3 -I -S -c 'open("x.txt", "w").write("y")'""",
+    "python3 -I -S <<'EOF'\nopen('x.txt', 'w').write('y')\nEOF",
+    "printf \"open('x.txt', 'w').write('y')\" | python3 -I -S",
+])
+def test_an_isolated_python_write_denial_names_the_node_not_startup_flags(command):
+    reason = blocked(command)
+    assert "Call \"open('x.txt', 'w')\" on line 1" in reason
+    assert "-I -S" not in reason
+
+
+def test_an_unisolated_python_write_denial_names_the_node_and_the_startup(monkeypatch):
+    monkeypatch.setenv("PYTHONINSPECT", "1")
+    reason = blocked("""python3 -c 'open("x.txt", "w").write("y")'""")
+    assert "Call \"open('x.txt', 'w')\" on line 1" in reason
+    assert "python3 -I -S" in reason
+
+
+def test_a_read_only_payload_with_open_startup_still_gets_isolation_advice(monkeypatch):
+    monkeypatch.setenv("PYTHONINSPECT", "1")
+    assert "-I -S" in blocked("python3 <<'EOF'\nprint(1)\nEOF")
+
+
 def test_a_read_only_pathlib_heredoc_is_allowed():
     command = "python3 -I -S <<'EOF'\nfrom pathlib import Path\nprint(Path('x.txt').read_text())\nEOF"
     assert allowed(command) == {}

@@ -18,6 +18,12 @@ from lib.luna_storage import LunaProviderFailure
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _open_data_boundary(tmp_path: Path) -> None:
+    """Opened here, because the gate has its own test file."""
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
+
+
 class Provider:
     def __init__(self, result: JudgeResult | None = None, error: Exception | None = None) -> None:
         self.calls: list[JudgeRequest] = []
@@ -133,8 +139,7 @@ def test_session_and_subagent_start_use_one_short_model_channel_without_readable
 
 def test_codex_stop_judges_current_session_journal_once_and_session_end_releases_lease(tmp_path: Path) -> None:
     state_root = tmp_path / "state"
-    ledger_root = tmp_path / "ledger"
-    config = {"state_root": str(state_root), "ledger_root": str(ledger_root)}
+    config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
@@ -150,11 +155,7 @@ def test_codex_stop_judges_current_session_journal_once_and_session_end_releases
     assert provider.calls[0].review_kind is ReviewKind.DOCUMENT
     source.write_text("A second document.\n", encoding="utf-8")
     journal.record_edit("s1", "turn-2", "tool-2", source, state_root=state_root)
-    third = stop.run(
-        {"session_id": "s1", "turn_id": "turn-2", "stop_hook_active": False, "cwd": str(tmp_path)},
-        config,
-        provider=provider,
-    )
+    third = stop.run({"session_id": "s1", "turn_id": "turn-2", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=provider)
     assert third == {}
     assert len(provider.calls) == 2
     assert session_state.live_session_ids(state_root) == frozenset({"s1"})
@@ -271,16 +272,8 @@ def test_codex_stop_reclaims_stale_inflight_reservation_and_reviews(tmp_path: Pa
     source = tmp_path / "note.md"
     source.write_text("A short document.\n", encoding="utf-8")
     now = 1000.0
-    session_state.write_state(
-        "s1",
-        {
-            "turn_id": "turn-1",
-            codex_luna.IN_FLIGHT_KEY: [{
-                "turn_id": "turn-1", "token": "dead", "created_at": now - 120, "expires_at": now - 1,
-            }],
-        },
-        state_root,
-    )
+    stale = {"turn_id": "turn-1", "token": "dead", "created_at": now - 120, "expires_at": now - 1}
+    session_state.write_state("s1", {"turn_id": "turn-1", codex_luna.IN_FLIGHT_KEY: [stale]}, state_root)
     journal.record_edit("s1", "turn-1", "tool-1", source, state_root=state_root)
     provider = Provider(_result(ReviewKind.DOCUMENT))
 
@@ -317,9 +310,7 @@ def test_codex_reviews_document_and_comment_rows_before_finishing(tmp_path: Path
     assert session_state.read_state("mixed", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
 
 
-def test_codex_reviews_each_document_without_truncating_trailing_rows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_codex_reviews_each_document_without_truncating_trailing_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state_root = tmp_path / "state"
     monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: [
         {"role": "document", "path": "one.md", "source_context": "one", "turn_id": "turn-1"},

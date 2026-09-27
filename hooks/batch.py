@@ -26,10 +26,10 @@ from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
 
 BATCH_EVENT = "PostToolBatch"
-UNDECIDABLE_KEY = "<batch-error>"
+UNDECIDABLE_KEY = blocker_state.BATCH_ERROR_KEY
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
-# Mirrors the PostToolUse matcher in hooks/hooks.json, including Bash, because PostToolBatch has no matcher of its own.
+# Copied from hooks.json because PostToolBatch has no matcher.
 WRITE_TOOL_NAMES = frozenset({
     "write", "edit", "multiedit", "notebookedit", "apply_patch", "bash",
 })
@@ -345,11 +345,7 @@ def _findings_for_calls(
     return findings
 
 
-def findings_for_batch(
-    payload: dict,
-    config: dict | None = None,
-    turn_id: str = "",
-) -> list[dict]:
+def findings_for_batch(payload: dict, config: dict | None = None, turn_id: str = "") -> list[dict]:
     payload = _sanitized_payload(payload)
     cfg = effective_config(config, payloads.cwd(payload) or None)
     cwd = Path(payloads.cwd(payload) or ".")
@@ -378,9 +374,7 @@ def _path_batch_scan(
     return PathBatchScan(cwd, paths, config, source)
 
 
-def findings_for_paths(
-    scan: PathBatchScan | str, *arguments: object
-) -> list[dict]:
+def findings_for_paths(scan: PathBatchScan | str, *arguments: object) -> list[dict]:
     return _findings_for_path_scan(_path_batch_scan(scan, arguments))
 
 
@@ -465,12 +459,8 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str) -> Callable[[str], di
         report_cfg = {**cfg, "session_id": session_id, "turn_id": turn_id}
         kind, reason = reporting.verdict_message(decisions, report_cfg)
         if session_id:
-            _update_blocker_state(
-                blocker_state.BlockerScope(
-                    session_id, blocker_state.scope(payload), cfg.get("state_root")
-                ),
-                _BatchVerdict(entries, kind, reason),
-            )
+            scope = blocker_state.BlockerScope(session_id, blocker_state.scope(payload), cfg.get("state_root"))
+            _update_blocker_state(scope, _BatchVerdict(entries, kind, reason))
         return _batch_response(kind, reason)
 
     return gate
@@ -490,30 +480,13 @@ UNDECIDABLE = (
 )
 
 
-def _record_undecidable_blocker(
-    payload: dict, config: dict | None, reason: str
-) -> None:
-    sanitized = _sanitized_payload(payload)
-    session_id = payloads.session_id(sanitized)
-    if not session_id:
-        return
-    root = effective_hook_config(config, payloads.cwd(sanitized) or None).get("state_root")
-    try:
-        blocker_state.set_pending(
-            session_id, blocker_state.scope(sanitized), UNDECIDABLE_KEY, reason, root,
-        )
-    except Exception as state_exc:
-        import sys
-        sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
-
-
 def run(payload: dict, config: dict | None = None) -> dict:
     """Fail closed because an undecidable batch must not silently release the turn."""
     try:
         return _run(payload, config)
     except Exception as exc:
         reason = UNDECIDABLE + str(exc)
-        _record_undecidable_blocker(payload, config, reason)
+        blocker_state.hold_undecidable(_sanitized_payload(payload), config, UNDECIDABLE_KEY, reason)
         return {"decision": "block", "reason": reason}
 
 

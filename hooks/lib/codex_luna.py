@@ -6,12 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from . import journal, payloads, session_state
-from .codex_luna_documents import document_work, feedback_sources
+from .codex_luna_documents import feedback_sources
+from .config import effective_hook_config
+from .document_review import data_boundary_enabled, document_work
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
+from .luna_feedback import pattern_feedback as _pattern_feedback
 from .hookio import stop_block, system_message
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from .pattern_judge import PatternCandidate, request_for as pattern_request
+from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
 from .luna_storage import LunaProviderFailure
 from .turn_retry import (
@@ -30,6 +35,7 @@ MAX_MESSAGE_CHARS = 900
 MAX_REVIEW_REQUESTS = 8
 REVIEW_DEADLINE_SECONDS = max(1.0, JUDGE_TIMEOUT_SECONDS - 5)
 DOCUMENT_LABEL = "ADW current-session journal"
+UNRESOLVED_CATEGORIES = frozenset({"timeout", "malformed", "worker_protocol", "policy"})
 
 RESERVED = "reserved"
 ALREADY_RESERVED = "already_reserved"
@@ -74,6 +80,13 @@ def _active_token(row: object, now: float) -> bool:
     )
 
 
+def _live_inflight(state: dict, now: float) -> tuple[list[dict], bool]:
+    raw = state.get(IN_FLIGHT_KEY, [])
+    raw_rows = raw if isinstance(raw, list) else []
+    inflight = [row for row in raw_rows if _active_token(row, now)]
+    return inflight, inflight != raw_rows
+
+
 def _probe_reservation(
     session_id: str, turn_id: str, state_root: str | Path | None,
 ) -> tuple[str, bool]:
@@ -84,10 +97,7 @@ def _probe_reservation(
 
     def update(state: dict) -> dict:
         nonlocal status, reclaimed
-        raw = state.get(IN_FLIGHT_KEY, [])
-        raw_rows = raw if isinstance(raw, list) else []
-        inflight = [row for row in raw_rows if _active_token(row, now)]
-        reclaimed = len(inflight) != len(raw_rows)
+        inflight, reclaimed = _live_inflight(state, now)
         if any(row["turn_id"] == key for row in inflight):
             status = IN_PROGRESS
         if reclaimed:
@@ -101,6 +111,18 @@ def _probe_reservation(
     return status, reclaimed
 
 
+def _reserved_state(state: dict, key: str, token: str, now: float) -> tuple[str, dict]:
+    if key in [row for row in state.get(STATE_KEY, []) if isinstance(row, str)]:
+        return ALREADY_RESERVED, state
+    inflight, changed = _live_inflight(state, now)
+    if any(row["turn_id"] == key for row in inflight):
+        return IN_PROGRESS, ({**state, IN_FLIGHT_KEY: inflight} if changed else state)
+    inflight.append({
+        "turn_id": key, "token": token, "created_at": now, "expires_at": now + RESERVATION_TTL_SECONDS,
+    })
+    return RESERVED, {**state, IN_FLIGHT_KEY: inflight[-MAX_REVIEWED_TURNS:]}
+
+
 def _reserve_status(
     session_id: str, turn_id: str, state_root: str | Path | None,
 ) -> tuple[str, str | None]:
@@ -111,31 +133,33 @@ def _reserve_status(
 
     def update(state: dict) -> dict:
         nonlocal status
-        completed = [row for row in state.get(STATE_KEY, []) if isinstance(row, str)]
-        if key in completed:
-            status = ALREADY_RESERVED
-            return state
-        raw = state.get(IN_FLIGHT_KEY, [])
-        raw_rows = raw if isinstance(raw, list) else []
-        inflight = [row for row in raw_rows if _active_token(row, now)]
-        changed = inflight != raw_rows
-        if any(row["turn_id"] == key for row in inflight):
-            status = IN_PROGRESS
-            return {**state, IN_FLIGHT_KEY: inflight} if changed else state
-        inflight.append({
-            "turn_id": key,
-            "token": token,
-            "created_at": now,
-            "expires_at": now + RESERVATION_TTL_SECONDS,
-        })
-        status = RESERVED
-        return {**state, IN_FLIGHT_KEY: inflight[-MAX_REVIEWED_TURNS:]}
+        status, updated = _reserved_state(state, key, token, now)
+        return updated
 
     try:
         session_state.update_state(session_id, update, state_root)
     except (OSError, ValueError, TypeError):
         return RESERVATION_FAILED, None
     return status, token if status == RESERVED else None
+
+
+def _completed_state(state: dict, key: str, token: str) -> dict | None:
+    """None unless this token owns the turn, because a stale finish must not commit."""
+    inflight = [row for row in state.get(IN_FLIGHT_KEY, []) if _active_token(row, time.time())]
+    if not any(row["turn_id"] == key and row["token"] == token for row in inflight):
+        return None
+    completed = [row for row in state.get(STATE_KEY, []) if isinstance(row, str)]
+    if key not in completed:
+        completed.append(key)
+    updated = {
+        **state,
+        STATE_KEY: completed[-MAX_REVIEWED_TURNS:],
+        IN_FLIGHT_KEY: [row for row in inflight if not (row["turn_id"] == key and row["token"] == token)],
+        FAILED_KEY: [row for row in state.get(FAILED_KEY, []) if isinstance(row, dict) and row.get("turn_id") != key],
+    }
+    if state.get(RETRY_KEY) == key:
+        updated.pop(RETRY_KEY, None)
+    return updated
 
 
 def _finish_success(
@@ -146,29 +170,9 @@ def _finish_success(
 
     def update(state: dict) -> dict:
         nonlocal finished
-        completed = [row for row in state.get(STATE_KEY, []) if isinstance(row, str)]
-        now = time.time()
-        inflight = [row for row in state.get(IN_FLIGHT_KEY, []) if _active_token(row, now)]
-        owned = any(row["turn_id"] == key and row["token"] == token for row in inflight)
-        if not owned:
-            return state
-        remaining = [row for row in inflight if not (row["turn_id"] == key and row["token"] == token)]
-        if key not in completed:
-            completed.append(key)
-        failed = [
-            row for row in state.get(FAILED_KEY, [])
-            if isinstance(row, dict) and row.get("turn_id") != key
-        ]
-        finished = True
-        updated = {
-            **state,
-            STATE_KEY: completed[-MAX_REVIEWED_TURNS:],
-            IN_FLIGHT_KEY: remaining,
-            FAILED_KEY: failed,
-        }
-        if state.get(RETRY_KEY) == key:
-            updated.pop(RETRY_KEY, None)
-        return updated
+        updated = _completed_state(state, key, token)
+        finished = updated is not None
+        return state if updated is None else updated
 
     try:
         session_state.update_state(session_id, update, state_root)
@@ -205,6 +209,32 @@ def _failure_block(reason: object, attempts: int = 0) -> dict:
     return stop_block(_bounded(f"agent-discipline-watcher Luna review unavailable: {reason}.{suffix} Correct the review input or state and retry."))
 
 
+def _reject_overflow(overflow: list[dict[str, Any]]) -> None:
+    for marker in overflow:
+        if marker.get("path_identity") == journal.OVERFLOW_SENTINEL:
+            raise LunaReviewFailure(
+                "candidate journal overflow metadata is full; start a new Codex session because this session cannot recover all omitted files"
+            )
+        if not isinstance(marker.get("turn_id"), str):
+            raise LunaReviewFailure("current-session journal overflow state is malformed")
+        target = _bounded(marker.get("path_identity") or "an unknown file")
+        raise LunaReviewFailure(
+            f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the affected file with fewer candidates before retrying"
+        )
+
+
+def _unique_turn_rows(rows: list[dict[str, Any]], turn_id: str) -> list[dict[str, Any]]:
+    unique: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        if row.get("turn_id") in {"", turn_id} and row.get("role") in {"comment", "document", "pattern"}:
+            unique.setdefault(journal.candidate_key(row), row)
+    if len(unique) > MAX_COMMENT_ROWS:
+        raise LunaReviewFailure(
+            f"the current-session journal has {len(unique)} candidates, above the limit of {MAX_COMMENT_ROWS}; reduce candidates in the affected files before retrying"
+        )
+    return list(unique.values())
+
+
 def _journal_rows(
     payload: object,
     turn_id: str,
@@ -220,36 +250,26 @@ def _journal_rows(
         overflow = journal.read_overflow(session_id, state_root=state_root)
     except (OSError, ValueError, TypeError) as exc:
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
-    for marker in overflow:
-        if marker.get("path_identity") == journal.OVERFLOW_SENTINEL:
-            raise LunaReviewFailure(
-                "candidate journal overflow metadata is full; start a new Codex session because this session cannot recover all omitted files"
-            )
-        marker_turn = marker.get("turn_id")
-        if not isinstance(marker_turn, str):
-            raise LunaReviewFailure("current-session journal overflow state is malformed")
-        target = _bounded(marker.get("path_identity") or "an unknown file")
-        raise LunaReviewFailure(
-            f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the affected file with fewer candidates before retrying"
-        )
-    matching = [
-        row for row in rows
-        if row.get("turn_id") in {"", turn_id}
-        and row.get("role") in {"comment", "document"}
+    _reject_overflow(overflow)
+    return _unique_turn_rows(rows, turn_id)
+
+
+def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:
+    """One request per rule, because each carries its examples."""
+    grouped: dict[str, list[PatternCandidate]] = {}
+    for row in rows:
+        if row.get("role") == "pattern":
+            line = row.get("line") if isinstance(row.get("line"), int) else 1
+            candidate = PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
+            grouped.setdefault(str(row.get("rule")), []).append(candidate)
+    if not grouped:
+        return []
+    exemplars, manifest = load_exemplars(), load_manifest()
+    return [
+        (pattern_request(rule_prompt(rule, exemplars, manifest), tuple(found)), found)
+        for rule, found in sorted(grouped.items())
+        if rule in manifest["rules"]
     ]
-    unique: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str, str]] = set()
-    for row in matching:
-        key = journal.candidate_key(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(row)
-    if len(unique) > MAX_COMMENT_ROWS:
-        raise LunaReviewFailure(
-            f"the current-session journal has {len(unique)} candidates, above the limit of {MAX_COMMENT_ROWS}; reduce candidates in the affected files before retrying"
-        )
-    return unique
 
 
 def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, list[Any]], ...] | None:
@@ -265,11 +285,31 @@ def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, li
     ]
     if comments:
         work.append((comment_request(tuple(comments)), comments))
+    work.extend(_pattern_work(rows))
     if len(work) > MAX_REVIEW_REQUESTS:
         raise LunaReviewFailure(
             f"the current-turn Luna review needs {len(work)} requests, above the limit of {MAX_REVIEW_REQUESTS}; shorten documents or reduce edited files before retrying"
         )
     return tuple(work) or None
+
+
+def _filled(row: dict[str, Any], field: str) -> bool:
+    value = row.get(field)
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_row(row: dict[str, Any]) -> None:
+    role = row.get("role")
+    if role == "document" and not (_filled(row, "path") and _filled(row, "source_context")):
+        raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
+    if role == "document" and journal.document_source_truncated(row):
+        raise LunaReviewFailure("the current-session journal truncated a document source; split the document before reviewing")
+    if role == "comment" and not (_filled(row, "path") and _filled(row, "text")):
+        raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
+    if role == "comment" and row.get("text_truncated") is True:
+        raise LunaReviewFailure("the current-session journal truncated a comment candidate; shorten the comment before reviewing")
+    if role == "pattern" and not all(_filled(row, field) for field in ("path", "text", "rule")):
+        raise LunaReviewFailure("the current-session journal has an incomplete pattern candidate")
 
 
 def _review_work(
@@ -281,25 +321,7 @@ def _review_work(
     if not rows:
         return None, "the current-session journal is empty"
     for row in rows:
-        role = row.get("role")
-        if role == "document" and (
-            not isinstance(row.get("path"), str)
-            or not row["path"].strip()
-            or not isinstance(row.get("source_context"), str)
-            or not row["source_context"].strip()
-        ):
-            raise LunaReviewFailure("the current-session journal has an incomplete document candidate")
-        if role == "document" and journal.document_source_truncated(row):
-            raise LunaReviewFailure("the current-session journal truncated a document source; split the document before reviewing")
-        if role == "comment" and (
-            not isinstance(row.get("path"), str)
-            or not row["path"].strip()
-            or not isinstance(row.get("text"), str)
-            or not row["text"].strip()
-        ):
-            raise LunaReviewFailure("the current-session journal has an incomplete comment candidate")
-        if role == "comment" and row.get("text_truncated") is True:
-            raise LunaReviewFailure("the current-session journal truncated a comment candidate; shorten the comment before reviewing")
+        _validate_row(row)
     built = request_for_rows(rows)
     if built is None:
         return None, "the current-session journal has no reviewable candidates"
@@ -326,6 +348,14 @@ def _reserve_review(
     return None, _failure_block(reason, attempts + 1)
 
 
+def _feedback(request: JudgeRequest, result: JudgeResult, sources: list[Any]) -> str:
+    if request.review_kind is ReviewKind.COMMENT:
+        return _comment_feedback(result, tuple(sources))
+    if request.review_kind is ReviewKind.PATTERN:
+        return _pattern_feedback(result, tuple(sources), request.rule_action)
+    return _document_feedback(result, sources)
+
+
 def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> str:
     feedback_rows: list[str] = []
     confirmed: list[dict] = []
@@ -343,10 +373,7 @@ def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[An
         if not isinstance(result, JudgeResult):
             cause = LunaProviderFailure("Luna provider returned an invalid result", category="worker_protocol")
             raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
-        if request.review_kind is ReviewKind.COMMENT:
-            feedback = _comment_feedback(result, tuple(candidates_or_rows))
-        else:
-            feedback = _document_feedback(result, candidates_or_rows)
+        feedback = _feedback(request, result, candidates_or_rows)
         if feedback:
             feedback_rows.append(feedback)
             if request.review_kind is ReviewKind.DOCUMENT:
@@ -408,6 +435,49 @@ def _perform_review(
     return _failure_block(reason, attempts + 1)
 
 
+def _outage_response(session_id: str, turn_id: str, state_root: str | Path | None, exc: LunaProviderFailure) -> dict:
+    confirmed = exc.confirmed if isinstance(exc, InterruptedReview) else []
+    record_provider_outage(session_id, turn_id, _bounded(exc), state_root, feedback=confirmed)
+    notice = system_message(_bounded(
+        f"ADW Luna review unavailable: {exc}. ADW could not complete this review. "
+        "Automatic retries pause for five minutes. Deterministic checks remain active. "
+        "Check Codex subscription login and Luna availability."
+    ))
+    feedback = exc.feedback if isinstance(exc, InterruptedReview) else ""
+    return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
+
+
+def _unresolved_block(session_id: str, turn_id: str, state_root: str | Path | None, exc: Exception) -> dict:
+    """Recorded as a failure, because only a successful retry releases it."""
+    _record_failure(session_id, turn_id, str(exc), state_root)
+    entry = _failure_entry(session_id, turn_id, state_root) or {}
+    blocked = _failure_block(exc, entry.get("attempts", 1))
+    feedback = exc.feedback if isinstance(exc, InterruptedReview) else ""
+    return stop_block(_bounded(f"{blocked['reason']} {feedback}")) if feedback else blocked
+
+
+def _boundary_open(payload: object) -> bool:
+    """Closed on a bad config read, because source text would leave."""
+    try:
+        return data_boundary_enabled(effective_hook_config({}, payloads.cwd(payload) or None))
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def _reviewed(payload: object, session_id: str, turn_id: str, state_root: str | Path | None, provider: object | None) -> dict:
+    previous_failure, attempts, _reclaimed, preflight_response = _preflight(
+        payload, session_id, turn_id, state_root,
+    )
+    if preflight_response is not None:
+        return preflight_response
+    work, empty_reason = _review_work(payload, turn_id, state_root)
+    if work is None:
+        return _failure_block(previous_failure.get("reason", empty_reason), attempts) if previous_failure else {}
+    return _perform_review(
+        session_id, turn_id, state_root, previous_failure, attempts, work, provider,
+    )
+
+
 def review(
     payload: object,
     *,
@@ -416,32 +486,13 @@ def review(
     provider: object | None = None,
 ) -> dict:
     session_id = payloads.session_id(payload)
-    if not session_id:
+    if not session_id or not _boundary_open(payload):
         return {}
-
-    attempts = 0
     try:
-        previous_failure, attempts, _reclaimed, preflight_response = _preflight(
-            payload, session_id, turn_id, state_root,
-        )
-        if preflight_response is not None:
-            return preflight_response
-        work, empty_reason = _review_work(payload, turn_id, state_root)
-        if work is None:
-            return _failure_block(previous_failure.get("reason", empty_reason), attempts) if previous_failure else {}
-        return _perform_review(
-            session_id, turn_id, state_root, previous_failure, attempts, work, provider,
-        )
+        return _reviewed(payload, session_id, turn_id, state_root, provider)
     except LunaProviderFailure as exc:
-        confirmed = exc.confirmed if isinstance(exc, InterruptedReview) else []
-        record_provider_outage(session_id, turn_id, _bounded(exc), state_root, feedback=confirmed)
-        notice = system_message(_bounded(
-            f"ADW Luna review unavailable: {exc}. ADW could not complete this review. "
-            "Automatic retries pause for five minutes. Deterministic checks remain active. "
-            "Check Codex subscription login and Luna availability."
-        ))
-        feedback = exc.feedback if isinstance(exc, InterruptedReview) else ""
-        return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
+        if exc.category not in UNRESOLVED_CATEGORIES:
+            return _outage_response(session_id, turn_id, state_root, exc)
+        return _unresolved_block(session_id, turn_id, state_root, exc)
     except Exception as exc:
-        _record_failure(session_id, turn_id, str(exc), state_root)
-        return _failure_block(exc, attempts + 1)
+        return _unresolved_block(session_id, turn_id, state_root, exc)

@@ -6,8 +6,12 @@ import pytest
 
 import pre_tool
 import record
-from lib import patch_content, session_state, shell_parse, write_shape
+from lib import catalog, patch_content, session_state, shell_parse, write_shape
 from testing import make_repo, run_git
+
+
+def _title(rule: str) -> str:
+    return catalog.rule_entry(rule).title
 
 
 @pytest.fixture
@@ -133,15 +137,8 @@ def test_update_patch_matches_edit_file_length_enforcement(
     target.write_text(_source(count - 1), encoding="utf-8")
     last_line = f"value_{count - 2} = {count - 2}\n"
     added_line = f"value_{count - 1} = {count - 1}\n"
-    edit_response = pre_tool.run({
-        "cwd": str(tmp_path),
-        "tool_name": "Edit",
-        "tool_input": {
-            "file_path": target.name,
-            "old_string": last_line,
-            "new_string": last_line + added_line,
-        },
-    }, config)
+    edit_input = {"file_path": target.name, "old_string": last_line, "new_string": last_line + added_line}
+    edit_response = pre_tool.run({"cwd": str(tmp_path), "tool_name": "Edit", "tool_input": edit_input}, config)
     patch_response = pre_tool.run({
         "cwd": str(tmp_path),
         "tool_name": "apply_patch",
@@ -151,8 +148,8 @@ def test_update_patch_matches_edit_file_length_enforcement(
         )},
     }, config)
 
-    assert rule in _feedback(edit_response)
-    assert rule in _feedback(patch_response)
+    assert _title(rule) in _feedback(edit_response)
+    assert _title(rule) in _feedback(patch_response)
     assert f"File has {count} lines" in _reported_details(patch_response)
     assert patch_response.get("decision") == edit_response.get("decision")
 
@@ -173,7 +170,7 @@ def test_update_patch_scans_the_moved_destination_for_file_length(
 
     assert response.get("decision") == "block"
     assert "module.py:1" in _feedback(response)
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
 
 
 @pytest.mark.parametrize("context", [" value = 1\n", ""])
@@ -191,7 +188,7 @@ def test_update_patch_enforces_length_with_repeated_or_empty_context(
     }, config)
 
     assert response.get("decision") == "block"
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
 
 
 def test_patch_reports_only_the_final_file_length_tier(
@@ -208,8 +205,8 @@ def test_patch_reports_only_the_final_file_length_tier(
         )},
     }, config)
 
-    assert "file_length_critical" in _feedback(response)
-    assert "file_length_warning" not in _feedback(response)
+    assert _title("file_length_critical") in _feedback(response)
+    assert _title("file_length_warning") not in _feedback(response)
 
 
 def test_append_to_an_existing_oversized_file_still_blocks(
@@ -223,7 +220,7 @@ def test_append_to_an_existing_oversized_file_still_blocks(
     }, config)
 
     assert response.get("decision") == "block"
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
     assert "at least" in _reported_details(response)
 
 
@@ -241,7 +238,7 @@ def test_appends_in_one_command_use_the_combined_file_length(
     }, config)
 
     assert response.get("decision") == "block"
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
 
 
 def test_printf_arguments_cannot_grow_a_file_to_the_hard_limit(
@@ -324,7 +321,7 @@ def test_empty_append_does_not_lower_the_capped_file_length(
     }, config)
 
     assert response.get("decision") == "block"
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
 
 
 def test_patch_that_reduces_a_file_below_the_warning_threshold_is_allowed(
@@ -363,5 +360,5 @@ def test_post_tool_patch_cannot_baseline_away_a_committed_oversized_file(
     }, config)
 
     assert response.get("decision") == "block"
-    assert "file_too_long" in _feedback(response)
+    assert _title("file_too_long") in _feedback(response)
     assert f"{target}:1" in _feedback(response)

@@ -19,7 +19,12 @@ MAX_ROWS = 120
 MAX_OVERFLOW_MARKERS = max(1, MAX_ROWS)
 MAX_STOP_ROWS = 24
 MAX_STOP_DOCUMENT_CHARS = 24_000
+MAX_STOP_TOTAL_CHARS = 48_000
+MAX_DOCUMENT_ROUNDS = 2
+REVIEWED_KEY = "claude_candidate_journal_reviewed"
+MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
+MAX_PATTERN_ROWS_PER_FILE = 40
 MAX_FILE_BYTES = 128 * 1024
 MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
@@ -174,9 +179,15 @@ def _path_status(identity: str) -> str:
     return "available" if stat.S_ISREG(metadata.st_mode) else "missing"
 
 
+def _kind(row: dict[str, Any]) -> str:
+    """Rule included, because two rules may flag one sentence."""
+    role = str(row.get("role", ""))
+    return f"{role}:{row.get('rule', '')}" if role == "pattern" else role
+
+
 def candidate_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     return (
-        str(row.get("role", "")), _row_identity(row), str(row.get("content_hash", "")),
+        _kind(row), _row_identity(row), str(row.get("content_hash", "")),
         str(row.get("line", "")), str(row.get("text", "")),
     )
 
@@ -411,6 +422,43 @@ def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Pat
     return added
 
 
+def current_source(path: str | Path) -> tuple[str, str] | None:
+    """Shared with record_edit, because both hashes must agree."""
+    outcome = _read_content(_canonical_path(path))
+    return outcome.value if outcome.status == "available" else None
+
+
+def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{
+        "role": "pattern",
+        "rule": str(row["rule"]),
+        "path": str(target),
+        "path_identity": str(target),
+        "line": int(row["line"]),
+        "text": str(row["text"])[:MAX_CANDIDATE_CHARS],
+        "text_truncated": len(str(row["text"])) > MAX_CANDIDATE_CHARS,
+        "content_hash": digest,
+        "turn_id": turn_id,
+    } for row in rows[:MAX_PATTERN_ROWS_PER_FILE]]
+
+
+def record_patterns(
+    session_id: str, turn_id: str, path: str | Path, rows: list[dict[str, Any]], *,
+    content_hash: str, state_root: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Hash compared, because the vote may have read older text."""
+    if not isinstance(session_id, str) or not session_id:
+        return []
+    target = _canonical_path(path)
+    source = current_source(target)
+    if source is None or source[0] != content_hash:
+        return []
+    fresh = _pattern_rows(target, content_hash, turn_id, rows)
+    added: list[dict[str, Any]] = []
+    session_state.update_state(session_id, _refresher(str(target), content_hash, turn_id, fresh, added), state_root)
+    return added
+
+
 def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
     state = session_state.read_state(session_id, state_root)
     rows = state.get(STATE_KEY)
@@ -419,7 +467,7 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     return [
         _migrate_row(row)
         for row in rows
-        if isinstance(row, dict) and row.get("role") in {"comment", "document"}
+        if isinstance(row, dict) and row.get("role") in {"comment", "document", "pattern"}
     ]
 
 
@@ -428,20 +476,91 @@ def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> l
     return list(_stored_overflow(state).values())
 
 
-def read_stop(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
-    """Bounded because an unbounded journal would blow the Stop payload."""
-    rows = read(session_id, state_root=state_root)
-    bounded: list[dict[str, Any]] = []
-    for row in rows:
-        if row.get("role") != "document":
-            continue
-        bounded.append({
-            "role": "document",
+def _reviewed_key(row: dict[str, Any]) -> str:
+    """Pattern keys apart, because a vote can land after its review."""
+    key = f"{row.get('path', '')}\n{row.get('content_hash', '')}"
+    return f"pattern\n{key}" if row.get("role") == "pattern" else key
+
+
+def _reviewed(state: dict) -> list[str]:
+    stored = state.get(REVIEWED_KEY)
+    return [key for key in stored if isinstance(key, str)] if isinstance(stored, list) else []
+
+
+def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
+    if row.get("role") == "pattern":
+        line = row.get("line")
+        return {
+            "role": "pattern",
             "path": str(row.get("path", ""))[:512],
             "content_hash": str(row.get("content_hash", ""))[:64],
-            "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
-        })
-    return bounded[-MAX_STOP_ROWS:]
+            "rule": str(row.get("rule", ""))[:64],
+            "line": line if isinstance(line, int) and not isinstance(line, bool) else 1,
+            "text": str(row.get("text", ""))[:MAX_CANDIDATE_CHARS],
+        }
+    return {
+        "role": "document",
+        "path": str(row.get("path", ""))[:512],
+        "content_hash": str(row.get("content_hash", ""))[:64],
+        "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
+    }
+
+
+def _within_budget(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Whole rows only, because a cut document reads as a finished one."""
+    kept: list[dict[str, Any]] = []
+    total = 0
+    for row in rows:
+        total += len(row.get("source_context") or row.get("text") or "")
+        if total > MAX_STOP_TOTAL_CHARS and kept:
+            break
+        kept.append(row)
+    return kept
+
+
+def _latest_documents(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("role") == "document":
+            identity = _row_identity(row)
+            latest.pop(identity, None)
+            latest[identity] = row
+    return list(latest.values())
+
+
+def _rounds_left(row: dict[str, Any], reviewed: set[str]) -> bool:
+    """Two rounds, because a third rewrite rarely converges."""
+    key = _reviewed_key(row)
+    prefix = f"{row.get('path', '')}\n"
+    return key in reviewed or sum(1 for seen in reviewed if seen.startswith(prefix)) < MAX_DOCUMENT_ROUNDS
+
+
+def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Current turn or unreviewed, because a failed Stop must not drop work."""
+    state = session_state.read_state(session_id, state_root)
+    reviewed = set(_reviewed(state))
+    current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
+    rows = read(session_id, state_root=state_root)
+
+    def due(row: dict[str, Any]) -> bool:
+        return (bool(current) and row.get("turn_id") == current) or _reviewed_key(row) not in reviewed
+
+    patterns = [_stop_row(row) for row in rows if row.get("role") == "pattern" and due(row)]
+    documents = [
+        _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed)
+    ]
+    return _within_budget(patterns + documents[:MAX_STOP_ROWS])
+
+
+def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:
+    """Keyed by digest, because an edited document needs a new review."""
+    keys = list(dict.fromkeys(_reviewed_key(row) for row in rows))
+
+    def update(state: dict) -> dict:
+        merged = [key for key in _reviewed(state) if key not in keys] + keys
+        return {**state, REVIEWED_KEY: merged[-MAX_REVIEWED_DIGESTS:]}
+
+    session_state.update_state(session_id, update, state_root)
 
 
 read_for_stop = read_stop

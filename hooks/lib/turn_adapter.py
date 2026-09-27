@@ -32,6 +32,33 @@ def _codex() -> TurnAdapter:
     return TurnAdapter(review=codex_luna.review, reviews_turns=True)
 
 
+def _on_claude(environment: Any) -> bool:
+    """Gated, because only Claude reads Claude settings."""
+    try:
+        return host.current_host(environment) == host.CLAUDE
+    except host.UnknownHostError:
+        return False
+
+
+def _claude_default() -> Any:
+    try:
+        from . import claude_default
+    except ImportError:
+        import claude_default
+    return claude_default
+
+
+def prepare_session(environment: Any = None) -> None:
+    """Tolerant, because a vendored Codex tree lacks the adapter."""
+    if not _on_claude(environment):
+        return
+    try:
+        adapter = _claude_default()
+    except ImportError:
+        return
+    adapter.ensure_with_notice()
+
+
 def for_turn(environment: Any = None, *, injected_provider: bool = False) -> TurnAdapter:
     """Honour an injected provider because a caller supplying one has already chosen the reviewer."""
     if injected_provider or host.is_codex_host(environment):

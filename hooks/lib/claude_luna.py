@@ -1,7 +1,5 @@
-"""Run ADW's Luna-backed Claude command handlers."""
+"""Command handlers, because Luna has no native Claude agent route."""
 from __future__ import annotations
-# pylint: disable=too-many-return-statements,too-many-branches,unidiomatic-typecheck
-# The hook entrypoint keeps malformed payload handling and fallback responses together.
 
 import os
 from pathlib import Path
@@ -10,7 +8,7 @@ from typing import Any
 
 from . import journal, claude_native, payloads
 from .config import effective_hook_config
-from .document_review import request_for as document_request
+from .document_review import data_boundary_enabled, document_work
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -30,63 +28,89 @@ MAX_LIVE_PATH_CHARS = 4096
 MAX_LIVE_FILE_BYTES = 128 * 1024
 MAX_LIVE_SCAN_BYTES = 512 * 1024
 MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
+STOP_LABEL = "ADW current-session journal"
+Work = tuple[JudgeRequest, Any]
+_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def _descend(descriptor: int, part: str) -> int:
+    child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
+    try:
+        is_directory = stat.S_ISDIR(os.fstat(child).st_mode)
+    except OSError:
+        os.close(child)
+        raise
+    if not is_directory:
+        os.close(child)
+        raise ValueError("live candidate parent is not a directory")
+    os.close(descriptor)
+    return child
+
+
+def _open_parent(target: Path) -> int:
+    """One hop at a time, because a swapped symlink must not redirect the read."""
+    parts = [part for part in target.parent.parts if part not in (target.anchor, "")]
+    if any(part in (".", "..") for part in parts):
+        raise ValueError("unsafe path component")
+    descriptor = os.open("/", _DIRECTORY_FLAGS)
+    for part in parts:
+        try:
+            descriptor = _descend(descriptor, part)
+        except OSError:
+            os.close(descriptor)
+            raise
+    return descriptor
+
+
+def _read_up_to(handle: int, limit: int) -> bytes | None:
+    data = bytearray()
+    while len(data) <= limit:
+        chunk = os.read(handle, min(65536, limit + 1 - len(data)))
+        if not chunk:
+            break
+        data.extend(chunk)
+    return None if len(data) > limit else bytes(data)
+
+
+def _read_leaf(descriptor: int, name: str, limit: int) -> bytes | None:
+    """Metadata compared twice, because a file swapped mid-read is not the edit."""
+    leaf = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+    if not stat.S_ISREG(leaf.st_mode):
+        return None
+    handle = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=descriptor)
+    try:
+        opened = os.fstat(handle)
+        if _file_metadata(opened) != _file_metadata(leaf) or opened.st_size > limit:
+            return None
+        data = _read_up_to(handle, limit)
+        final = os.fstat(handle)
+        if data is None or _file_metadata(final) != _file_metadata(opened) or len(data) != final.st_size:
+            return None
+        return data
+    finally:
+        os.close(handle)
+
+
+def _close_quietly(descriptor: int) -> None:
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
 
 
 def _bounded_file_text(path: Path, limit: int) -> tuple[str, int] | None:
-    """Read one regular file through no-follow directory descriptors."""
-    descriptor = -1
     try:
         target = Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
-        if not target.is_absolute():
-            target = Path.cwd() / target
-        descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        for part in target.parent.parts:
-            if part in (target.anchor, ""):
-                continue
-            if part in (".", ".."):
-                raise ValueError("unsafe path component")
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
-            try:
-                if not stat.S_ISDIR(os.fstat(child).st_mode):
-                    raise ValueError("live candidate parent is not a directory")
-            except BaseException:
-                os.close(child)
-                raise
-            os.close(descriptor)
-            descriptor = child
-        leaf = os.stat(target.name, dir_fd=descriptor, follow_symlinks=False)
-        if not stat.S_ISREG(leaf.st_mode):
-            return None
-        handle = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=descriptor)
-        try:
-            opened = os.fstat(handle)
-            if _file_metadata(opened) != _file_metadata(leaf) or opened.st_size > limit:
-                return None
-            data = bytearray()
-            while len(data) <= limit:
-                chunk = os.read(handle, min(65536, limit + 1 - len(data)))
-                if not chunk:
-                    break
-                data.extend(chunk)
-            if len(data) > limit:
-                return None
-            final = os.fstat(handle)
-            if _file_metadata(final) != _file_metadata(opened) or len(data) != final.st_size:
-                return None
-        finally:
-            os.close(handle)
-        try:
-            return bytes(data).decode("utf-8"), len(data)
-        except UnicodeDecodeError:
-            return None
+        descriptor = _open_parent(target)
+    except (OSError, ValueError):
+        return None
+    try:
+        data = _read_leaf(descriptor, target.name, limit)
+        return None if data is None else (data.decode("utf-8"), len(data))
     except (OSError, ValueError):
         return None
     finally:
-        if descriptor >= 0:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+        _close_quietly(descriptor)
 
 
 def _file_metadata(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
@@ -97,54 +121,62 @@ def _file_metadata(metadata: os.stat_result) -> tuple[int, int, int, int, int, i
 
 
 def _byte_size(value: str) -> int:
-    # Avoid allocating an encoded copy for obviously huge host payloads.
+    """Over the cap on a lone surrogate, because it is malformed input."""
     if len(value) > MAX_LIVE_RAW_EDIT_BYTES:
         return MAX_LIVE_RAW_EDIT_BYTES + 1
     try:
         return len(value.encode("utf-8"))
     except UnicodeError:
-        # Host JSON may contain lone surrogates; treat them as malformed input.
         return MAX_LIVE_RAW_EDIT_BYTES + 1
 
 
+def _raw_tool_input(payload: dict) -> dict[str, object]:
+    fields = payloads.exact_string_dict(payload)
+    for key in ("tool_input", "toolInput", "input"):
+        candidate = payloads.exact_string_dict(fields.get(key))
+        if candidate:
+            return candidate
+    return {}
+
+
+def _raw_text_within_bounds(tool: str, value: str) -> bool:
+    if _byte_size(value) > MAX_LIVE_RAW_EDIT_BYTES:
+        return False
+    marker_count = sum(value.count(marker) for marker in (
+        "*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:",
+    ))
+    if marker_count > MAX_LIVE_PATHS:
+        return False
+    return not (tool == "Bash" and value.count("\n") > MAX_LIVE_PATHS * 8)
+
+
+def _raw_parts_within_bounds(value: list) -> bool:
+    if len(value) > MAX_LIVE_PATHS * 8:
+        return False
+    total = 0
+    for part in value:
+        if type(part) is not str:
+            return False
+        total += _byte_size(part)
+        if total > MAX_LIVE_RAW_EDIT_BYTES:
+            return False
+    return True
+
+
 def _bounded_raw_edit(payload: object) -> bool:
-    """Reject pathological patch/Bash bodies before edited_paths parses them."""
+    """Checked first, because edited_paths would parse a huge body."""
     if type(payload) is not dict:
         return False
     tool = payloads.tool_name(payload)
     if tool not in {"apply_patch", "Bash"}:
         return True
-    fields = payloads.exact_string_dict(payload)
-    tool_input: dict[str, object] = {}
-    for key in ("tool_input", "toolInput", "input"):
-        candidate = payloads.exact_string_dict(fields.get(key))
-        if candidate:
-            tool_input = candidate
-            break
+    tool_input = _raw_tool_input(payload)
     for key in ("patch", "command", "input"):
         value = tool_input.get(key)
         if type(value) is str:
-            if _byte_size(value) > MAX_LIVE_RAW_EDIT_BYTES:
-                return False
-            marker_count = sum(value.count(marker) for marker in (
-                "*** Add File:", "*** Update File:", "*** Delete File:", "*** Move to:",
-            ))
-            if marker_count > MAX_LIVE_PATHS:
-                return False
-            if tool == "Bash" and value.count("\n") > MAX_LIVE_PATHS * 8:
-                return False
-            return True
+            return _raw_text_within_bounds(tool, value)
         if type(value) is list:
-            if len(value) > MAX_LIVE_PATHS * 8:
-                return False
-            total = 0
-            for part in value:
-                if type(part) is not str:
-                    return False
-                total += _byte_size(part)
-                if total > MAX_LIVE_RAW_EDIT_BYTES:
-                    return False
-            return True
+            return _raw_parts_within_bounds(value)
     return True
 
 
@@ -160,37 +192,41 @@ def _safe_edited_paths(payload: object) -> tuple[str, ...]:
     return tuple(paths)
 
 
+def _live_path(raw_path: object, cwd: Path) -> Path | None:
+    if not isinstance(raw_path, str) or len(raw_path) > MAX_LIVE_PATH_CHARS:
+        return None
+    try:
+        return payloads.resolved_path(raw_path, cwd)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _file_candidates(path: Path, text: str) -> list[Candidate]:
+    return [
+        Candidate(candidate.path, candidate.line, candidate.text[:journal.MAX_CANDIDATE_CHARS])
+        for candidate in candidates(str(path), text)
+    ]
+
+
 def _read_candidates(payload: object) -> tuple[Candidate, ...]:
     if type(payload) is not dict or payloads.tool_name(payload) not in EDIT_TOOLS:
         return ()
     cwd_text = payloads.cwd(payload)
     if not cwd_text:
         return ()
-    cwd = Path(cwd_text)
     found: list[Candidate] = []
-    paths = _safe_edited_paths(payload)
     scanned = 0
-    for raw_path in paths:
+    for raw_path in _safe_edited_paths(payload):
         if scanned >= MAX_LIVE_SCAN_BYTES:
             break
-        if not isinstance(raw_path, str) or len(raw_path) > MAX_LIVE_PATH_CHARS:
+        path = _live_path(raw_path, Path(cwd_text))
+        bounded = None if path is None else _bounded_file_text(path, min(MAX_LIVE_FILE_BYTES, MAX_LIVE_SCAN_BYTES - scanned))
+        if path is None or bounded is None:
             continue
-        try:
-            path = payloads.resolved_path(raw_path, cwd)
-        except (OSError, RuntimeError, TypeError, ValueError):
-            continue
-        if path.suffix.lower() != ".py":
-            continue
-        limit = min(MAX_LIVE_FILE_BYTES, MAX_LIVE_SCAN_BYTES - scanned)
-        bounded = _bounded_file_text(path, limit)
-        if bounded is None:
-            continue
-        text, read_bytes = bounded
-        scanned += read_bytes
-        for candidate in candidates(str(path), text):
-            found.append(Candidate(candidate.path, candidate.line, candidate.text[:journal.MAX_CANDIDATE_CHARS]))
-            if len(found) >= MAX_LIVE_CANDIDATES:
-                return tuple(found)
+        scanned += bounded[1]
+        found.extend(_file_candidates(path, bounded[0]))
+        if len(found) >= MAX_LIVE_CANDIDATES:
+            return tuple(found[:MAX_LIVE_CANDIDATES])
     return tuple(found)
 
 
@@ -213,29 +249,17 @@ def _stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str,
         return []
 
 
-def stop_request(payload: object, state_root: str | Path | None) -> tuple[JudgeRequest, list[dict[str, Any]]] | None:
-    rows = _stop_rows(payload, state_root)
-    if not rows:
-        return None
-    documents = [
-        f"Path: {row['path']}\n\n{row['source_context']}"
-        for row in rows
-        if row.get("path") and row.get("source_context")
-    ]
-    source = "\n\n".join(documents)[:MAX_DOCUMENT_CHARS]
-    if not source.strip():
-        return None
-    return document_request("ADW current-session journal", source), rows
+def stop_request(payload: object, state_root: str | Path | None) -> list[Work] | None:
+    """Split across requests, because a cut document reads as reviewed."""
+    return document_work(_stop_rows(payload, state_root), MAX_DOCUMENT_CHARS, STOP_LABEL) or None
 
 
-def _state_root(payload: object, explicit: str | Path | None) -> str | Path | None:
-    if explicit is not None:
-        return explicit
+def _hook_config(payload: object) -> dict:
     cwd = payloads.cwd(payload) if type(payload) is dict else ""
     try:
-        return effective_hook_config({}, cwd or None).get("state_root")
+        return effective_hook_config({}, cwd or None)
     except (OSError, RuntimeError, TypeError, ValueError):
-        return None
+        return {}
 
 
 def _failure(
@@ -265,6 +289,64 @@ def _failure(
     return stop_block(message)
 
 
+def _built(event: str, payload: object, state_root: str | Path | None) -> list[Work] | None:
+    if event == "PostToolUse":
+        built = post_request(payload)
+        return [built] if built else None
+    return stop_request(payload, state_root)
+
+
+def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> JudgeResult | None:
+    if provider is None:
+        from .luna_provider import LunaJudge
+        provider = LunaJudge()
+    result = operation.invoke(provider.judge, request)
+    if result is not None and not isinstance(result, JudgeResult):
+        raise LunaProviderFailure("Luna handler received an invalid judge result", category="worker_protocol")
+    return result
+
+
+def _feedback(request: JudgeRequest, result: JudgeResult, sources: Any) -> str:
+    if request.review_kind is ReviewKind.COMMENT:
+        return _comment_feedback(result, sources)
+    return _document_feedback(result, sources)
+
+
+def _judge_all(operation: Any, provider: object | None, work: list[Work]) -> list[str] | None:
+    """None when Luna is no longer selected, because another preset owns the turn."""
+    feedback = []
+    for request, sources in work:
+        result = _invoke(operation, provider, request)
+        if result is None:
+            return None
+        feedback.append(_feedback(request, result, sources))
+    return [text for text in feedback if text]
+
+
+def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[str] | dict:
+    role = "comment" if event == "PostToolUse" else "document"
+    try:
+        with claude_native.luna_operation(**paths) as operation:
+            if operation is None:
+                return {}
+            try:
+                feedback = _judge_all(operation, provider, work)
+                return {} if feedback is None else feedback
+            except Exception as exc:
+                return _failure(event, role, exc, **paths)
+    except (OSError, ValueError) as exc:
+        return _failure(event, role, exc, **paths)
+
+
+def _mark_reviewed(payload: object, work: list[Work], state_root: str | Path | None) -> None:
+    """Best effort, because a lost mark only costs one more review."""
+    rows = [row for _request, sources in work for row in sources]
+    try:
+        journal.mark_reviewed(payloads.session_id(payload), rows, state_root=state_root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        pass
+
+
 def run(
     payload: object,
     *,
@@ -274,42 +356,20 @@ def run(
     preset_path: str | Path | None = None,
 ) -> dict:
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
-    if event not in {"PostToolUse", "Stop"}:
+    cfg = _hook_config(payload)
+    if event not in {"PostToolUse", "Stop"} or not data_boundary_enabled(cfg):
         return {}
-    role = "comment" if event == "PostToolUse" else "document"
+    root = state_root if state_root is not None else cfg.get("state_root")
+    work = _built(event, payload, root)
+    if work is None:
+        return {}
+    outcome = _judged(event, work, provider, {"settings_path": settings_path, "preset_path": preset_path})
+    if isinstance(outcome, dict):
+        return outcome
     if event == "PostToolUse":
-        built = post_request(payload)
-    else:
-        built = stop_request(payload, _state_root(payload, state_root))
-    if built is None:
-        return {}
-    request = built[0]
-    try:
-        with claude_native.luna_operation(
-            settings_path=settings_path, preset_path=preset_path,
-        ) as operation:
-            if operation is None:
-                return {}
-            if provider is None:
-                from .luna_provider import LunaJudge
-                provider = LunaJudge()
-            try:
-                result = operation.invoke(provider.judge, request)
-                if result is None:
-                    return {}
-                if not isinstance(result, JudgeResult):
-                    raise LunaProviderFailure("Luna handler received an invalid judge result", category="worker_protocol")
-            except Exception as exc:
-                return _failure(
-                    event, role, exc, settings_path=settings_path, preset_path=preset_path,
-                )
-    except (OSError, ValueError) as exc:
-        return _failure(event, role, exc, settings_path=settings_path, preset_path=preset_path)
-    if request.review_kind is ReviewKind.COMMENT:
-        feedback = _comment_feedback(result, built[1])
-        return context(feedback, event) if feedback else {}
-    feedback = _document_feedback(result, built[1])
-    return stop_block(feedback) if feedback else {}
+        return context(_bounded("\n\n".join(outcome)), event) if outcome else {}
+    _mark_reviewed(payload, work, root)
+    return stop_block(_bounded("\n\n".join(outcome))) if outcome else {}
 
 
 def main() -> int:

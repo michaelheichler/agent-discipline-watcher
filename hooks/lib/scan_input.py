@@ -12,7 +12,6 @@ except ImportError:
     from findings import Finding
 
 LEGACY_ENV_NAMES = {
-    "ADW_FILE_BLOCK_LINES": "CLEANCODER_FILE_BLOCK_LINES",
     "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
 }
 FILE_LENGTH_WARNING = 500
@@ -20,7 +19,7 @@ FILE_LENGTH_CRITICAL = 750
 FILE_LENGTH_BLOCK = 1000
 CONTENT_SAMPLE_BYTES = 8192
 
-# An asset suffix alone must not exempt text stored under it.
+# Content is checked too, because text can hide under these.
 BINARY_ASSET_EXTS = frozenset({
     ".png", ".jpg", ".jpeg", ".jpe", ".gif", ".webp", ".avif", ".heic", ".heif",
     ".bmp", ".ico", ".icns", ".tif", ".tiff", ".psd", ".exr",
@@ -104,7 +103,6 @@ def file_line_count(path: Path) -> tuple[int, bool] | None:
 
 
 def fallback_findings_from_count(path: Path, count: int, capped: bool = True) -> list[dict]:
-    """Build a length or scan finding from an already-held file count without reopening the path."""
     policy = file_length_policy(count)
     if policy is not None and policy[0] == "file_too_long":
         rule, action = policy

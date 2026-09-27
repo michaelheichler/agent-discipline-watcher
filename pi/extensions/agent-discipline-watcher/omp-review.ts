@@ -4,6 +4,8 @@ import type { WatcherResult } from "./watcher";
 
 export type OmpReviewContext = OmpContext & { cwd: string };
 export type OmpReviewRun = (ctx: OmpReviewContext, payload: Record<string, unknown>, signal?: AbortSignal) => Promise<WatcherResult>;
+const MAX_DOCUMENT_NOTES = 6;
+const LOGIN_CATEGORIES = ["model", "authentication", "provider"];
 type ReviewOptions = { bridge?: ReviewBridge; complete?: CompleteSimple; timeoutMs?: number; deadlineMs?: number };
 type ReviewJob = {
   ctx: OmpReviewContext;
@@ -26,11 +28,70 @@ function retryable(error: unknown): boolean {
   return !(error instanceof OmpProviderFailure) || !["model", "authentication", "request", "cancelled", "stale"].includes(error.category);
 }
 
+function errorText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 300);
+}
+
+function validateOutput(job: ReviewJob, request: ReviewRequest, output: string): WatcherResult {
+  return validatedReview(job.bridge({
+    operation: "validate", payload: job.payload, digest: job.prepared.digest,
+    request_id: request.id, output,
+  }));
+}
+
+function documentNotes(output: string): unknown[] | undefined {
+  try {
+    const notes: unknown = (JSON.parse(output) as { notes?: unknown } | null)?.notes;
+    return Array.isArray(notes) && notes.length > 0 ? notes.slice(0, MAX_DOCUMENT_NOTES) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function acceptsEmptyNotes(job: ReviewJob, request: ReviewRequest): boolean {
+  try {
+    validateOutput(job, request, JSON.stringify({ notes: [] }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function keptNotes(job: ReviewJob, request: ReviewRequest, notes: unknown[]): WatcherResult {
+  const kept: WatcherResult[] = [];
+  const causes = new Set<string>();
+  for (const note of notes) {
+    try {
+      kept.push(validateOutput(job, request, JSON.stringify({ notes: [note] })));
+    } catch (error) {
+      causes.add(errorText(error));
+    }
+  }
+  const dropped = `agent-discipline-watcher OMP review dropped ${notes.length - kept.length} unusable note(s): ${[...causes].join(" | ")}`;
+  const combined = combinedResult(kept);
+  if (combined.decision === "block") return { ...combined, reason: `${combined.reason}\n\n${dropped}` };
+  return combinedResult([combined, { systemMessage: dropped }]);
+}
+
+function reviewedOutput(job: ReviewJob, request: ReviewRequest, output: string): WatcherResult {
+  try {
+    return validateOutput(job, request, output);
+  } catch (error) {
+    const notes = documentNotes(output);
+    if (notes && acceptsEmptyNotes(job, request)) return keptNotes(job, request, notes);
+    throw new OmpProviderFailure(errorText(error), "rejected");
+  }
+}
+
+function assertUnchanged(job: ReviewJob): void {
+  const current = prepareReview(job.bridge({ operation: "prepare", payload: job.payload }));
+  if (!current.enabled) throw new OmpProviderFailure("OMP review was disabled by policy", "disabled");
+  if (current.digest !== job.prepared.digest) throw new OmpProviderFailure("source or policy changed during OMP review; retry the file", "stale");
+}
+
 async function reviewRequest(job: ReviewJob, request: ReviewRequest): Promise<WatcherResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const current = prepareReview(job.bridge({ operation: "prepare", payload: job.payload }));
-    if (!current.enabled) throw new OmpProviderFailure("OMP review was disabled by policy", "disabled");
-    if (current.digest !== job.prepared.digest) throw new OmpProviderFailure("source or policy changed during OMP review; retry the file", "stale");
+    if (attempt > 0) assertUnchanged(job);
     const remaining = job.deadline - Date.now();
     if (remaining <= 0) throw new OmpProviderFailure("OMP review deadline expired before every candidate was reviewed", "timeout");
     try {
@@ -41,10 +102,7 @@ async function reviewRequest(job: ReviewJob, request: ReviewRequest): Promise<Wa
         signal: job.signal,
       }, job.options.complete);
       if (!response) throw new OmpProviderFailure("OMP review returned no completion");
-      return validatedReview(job.bridge({
-        operation: "validate", payload: job.payload, digest: job.prepared.digest,
-        request_id: request.id, output: response.text,
-      }));
+      return reviewedOutput(job, request, response.text);
     } catch (error) {
       if (attempt === 1 || !retryable(error)) throw error;
     }
@@ -76,12 +134,14 @@ function failureResult(error: unknown): WatcherResult {
     stale: "the source or policy changed during review",
     timeout: "timed out before the review completed",
     response: "received an unusable model response",
+    rejected: `received an unusable model response (${errorText(error)})`,
     disabled: "was disabled by policy",
     provider: "the provider failed while reviewing the file",
   }[category] ?? "the provider failed while reviewing the file";
+  const advice = LOGIN_CATEGORIES.includes(category) ? "Check the selected model and OMP login, then retry the file or Stop." : "Retry the file or Stop.";
   return {
     decision: "block",
-    reason: `agent-discipline-watcher OMP review incomplete: ${reason}. Check the selected model and OMP login, then retry the file or Stop.`,
+    reason: `agent-discipline-watcher OMP review incomplete: ${reason}. ${advice}`,
   };
 }
 

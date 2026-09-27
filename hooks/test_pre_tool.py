@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 import pre_tool
 from lib.hookio import PARSE_FAILURE
 
@@ -77,13 +79,29 @@ def test_pretool_entrypoint_denial_returns_feedback_without_ending_turn() -> Non
     response = json.loads(result.stdout)
     assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "what_comment" in response["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Comment restates the code" in response["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_payload_without_tool_name_is_rejected() -> None:
     response = pre_tool.run({})
 
     assert response["decision"] == "block"
+
+
+@pytest.mark.parametrize("tool_input", [
+    {"description": "no command"},
+    {"command": None},
+    {"command": 7},
+    {"command": ["rm", "-rf", "x"]},
+    {"cmd": "rm -rf x"},
+])
+def test_bash_without_a_string_command_is_denied_before_dispatch(tool_input: dict) -> None:
+    with patch.object(pre_tool.pre_bash, "run") as bash_gate:
+        response = pre_tool.run({"tool_name": "Bash", "tool_input": tool_input})
+
+    bash_gate.assert_not_called()
+    assert response["decision"] == "block"
+    assert response["reason"] == pre_tool.payload_failure(pre_tool.UNREADABLE_PAYLOAD)
 
 
 def test_known_writer_with_malformed_tool_input_is_rejected() -> None:
@@ -125,5 +143,5 @@ def test_bash_commit_message_violation_blocks_without_rewriting(tmp_path) -> Non
     })
 
     assert response["decision"] == "block"
-    assert "commit_message.md:1 punctuation/prose_semicolon" in response["reason"]
+    assert "commit_message.md:1 Semicolon in prose" in response["reason"]
     assert "updatedInput" not in response["hookSpecificOutput"]

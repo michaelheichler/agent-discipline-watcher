@@ -7,6 +7,11 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+try:
+    from .judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+except ImportError:
+    from judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
 CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
@@ -16,6 +21,7 @@ WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
+DOCUMENTS_FLAG = "--documents"
 HANDLER_TIMEOUT = 120
 STRUCTURED_OUTPUT_CONTRACT = (
     "OUTPUT CONTRACT. Use the native StructuredOutput tool exactly once at the end of the review. "
@@ -32,10 +38,10 @@ def validate_preset(value: str) -> str:
     return value
 
 
-def model_for(preset: str, role: str) -> str:
+def model_for(preset: str) -> str:
     """luna-native names a model the harness injects, because LeverFrame puts Luna in the Claude model list."""
     if preset == "mixed":
-        return CLAUDE_HAIKU_MODEL if role == "comment" else CLAUDE_SONNET_MODEL
+        return CLAUDE_SONNET_MODEL
     if preset == "haiku":
         return CLAUDE_HAIKU_MODEL
     if preset == "luna-native":
@@ -47,39 +53,70 @@ def luna_command() -> str:
     return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(LUNA_HANDLER_PATH))}"
 
 
+def _numbered(steps: list[str]) -> str:
+    return "".join(f"{index}. {step}\n" for index, step in enumerate(steps, start=1))
+
+
 def comment_prompt(preset: str) -> str:
     validate_preset(preset)
+    steps = [
+        "Read the named path.",
+        "Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent "
+        "behind a comment. Text a question puts to the user counts as reader-facing English.",
+        "Choose one output shape below.",
+    ]
     return (
         f"{MANAGED_MARKER}\n"
-        "You are ADW's post-write comment verifier.\n"
-        "Matching hooks run in parallel. Inspect only the just-written eligible file named by this raw host event; "
-        "do not expect another hook to have prepared context and do not duplicate the raw event content. "
-        "Use read-only inspection. Do not edit files, settings, or unrelated paths.\n"
-        "Parse the hook input supplied after this prompt. If it is empty, malformed, unrelated to a write, "
-        "or has no ADW candidate, use the successful StructuredOutput shape.\n"
-        "Do not deny or undo the completed write.\n"
-        + STRUCTURED_OUTPUT_CONTRACT
-        + "Hook input: $ARGUMENTS"
+        "Review one completed write for reader-facing English and comment discipline.\n\n"
+        "SCOPE. Inspect only the path named in the hook input. Read only. Never edit a file, never change "
+        "a setting, never undo the write that already landed.\n\n"
+        "STEPS, in order.\n" + _numbered(steps) + "\n"
+        + STRUCTURED_OUTPUT_CONTRACT + "\n"
+        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. A reply that "
+        "opens with wording such as \"The answer is\" fails this hook and denies nothing, so it wastes the call. "
+        "When the input is empty, malformed, unrelated to a write, or carries no candidate, use the successful "
+        "StructuredOutput shape. When uncertain, use the successful StructuredOutput shape.\n\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
+def _reader_steps(preset: str) -> list[str]:
+    """Documents only on mixed, because a whole file costs the most."""
+    if preset != "mixed":
+        return [
+            "Run this exact helper with the session_id from the hook input as its only argument: "
+            + JOURNAL_READER_PATH,
+        ]
+    return [
+        f"Run this exact helper with {DOCUMENTS_FLAG} and then the session_id from the hook input as its two "
+        "arguments: " + JOURNAL_READER_PATH,
+        f"Judge each document row as one whole document. {DOCUMENT_RUBRIC}",
+    ]
+
+
 def stop_prompt(preset: str) -> str:
-    validate_preset(preset)
+    selected = validate_preset(preset)
+    steps = [
+        "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
+        "successful StructuredOutput shape.",
+        *_reader_steps(selected),
+        "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
+        "asks for and four violating and four clean examples. Decide whether the row text is violating or "
+        f"clean for that rule alone. {PATTERN_RUBRIC}",
+        "Batch all rows the helper returns into one judgement rather than one call each.",
+        "When any row fails, name its path, line, and rule in the reason.",
+        "Choose one output shape below.",
+    ]
     return (
         f"{MANAGED_MARKER}\n"
-        "You are ADW's Stop verifier.\n"
-        "Check stop_hook_active before doing any work. If it is true, skip every remaining step and "
-        "use the successful StructuredOutput shape. "
-        f"Read only the current session's bounded ADW candidate journal by running the exact helper {JOURNAL_READER_PATH} "
-        "with the session_id from this hook input as its sole argument. Do not open state files directly, scan "
-        "unrelated files, or read files not named by the helper output. "
-        "Use read-only inspection. Do not scan unrelated files or edit files or settings.\n"
-        "Batch all current prose and document candidates in one review. Empty or malformed ADW-owned input "
-        "uses the successful StructuredOutput shape. A clean review uses the same shape. A failed review uses "
-        "the failure shape below.\n"
-        "Use the session_id from this hook input to locate only its journal.\n"
-        + STRUCTURED_OUTPUT_CONTRACT
-        + "Hook input: $ARGUMENTS"
+        "Review one finished turn for reader-facing English across every row the journal helper prints.\n\n"
+        "SCOPE. Judge only the rows the journal helper prints. Never open a file, never open a state file, "
+        "never edit anything.\n\n"
+        "STEPS, in order.\n" + _numbered(steps) + "\n"
+        + STRUCTURED_OUTPUT_CONTRACT + "\n"
+        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. When the helper "
+        "returns nothing, when the input is malformed, or when uncertain, use the successful StructuredOutput shape.\n\n"
+        "Hook input: $ARGUMENTS"
     )
 
 
@@ -164,15 +201,16 @@ def _agent(model: str, prompt: str) -> dict[str, Any]:
     return {"type": "agent", "model": model, "timeout": HANDLER_TIMEOUT, "prompt": prompt}
 
 
-def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    selected = validate_preset(preset)
-    if selected == "luna":
+def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
+    """Stop only for agents, because the journal holds each write."""
+    if preset == "luna":
         handler = {"type": "command", "command": luna_command(), "timeout": HANDLER_TIMEOUT}
-        comment, document = handler, handler
-    else:
-        comment = _agent(model_for(selected, "comment"), comment_prompt(selected))
-        document = _agent(model_for(selected, "document"), stop_prompt(selected))
-    return {
-        "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [comment]}],
-        "Stop": [{"hooks": [document]}],
-    }
+        return {
+            "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
+            "Stop": [{"hooks": [handler]}],
+        }
+    return {"Stop": [{"hooks": [_agent(model_for(preset), stop_prompt(preset))]}]}
+
+
+def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
+    return _preset_hooks(validate_preset(preset))

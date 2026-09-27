@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,12 +16,12 @@ from transformers import AutoTokenizer
 MODULE_NAME = "lfm2_bidirectional"
 MAX_LENGTH = 8192
 MAX_BATCH = 32
-MAX_INPUTS = 8192
 MAX_TEXT_CHARS = 16_384
 MAX_BODY_BYTES = 1_048_576
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 NOT_FOUND = {"error": "not found"}
+NONCE_ENV = "ADW_EMBEDDING_NONCE"
 _LOCK = threading.Lock()
 
 
@@ -59,8 +60,6 @@ def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
     """Encode a bounded collection in fixed-size tokenizer batches."""
-    if len(texts) > MAX_INPUTS:
-        raise ValueError(f"input contains more than {MAX_INPUTS} texts")
     if any(not isinstance(text, str) for text in texts):
         raise ValueError("input must contain only strings")
     if any(len(text) > MAX_TEXT_CHARS for text in texts):
@@ -130,7 +129,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path != HEALTH_PATH:
             self._send(404, NOT_FOUND)
             return
-        self._send(200, {"status": "ok"})
+        self._send(200, {"status": "ok", "nonce": os.environ.get(NONCE_ENV, "")})
 
     def _embeddings(self) -> dict:
         """Parse and encode one bounded JSON request."""

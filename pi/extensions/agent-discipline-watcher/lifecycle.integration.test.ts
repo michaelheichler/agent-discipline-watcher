@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createExtension } from "./index";
 import { MAX_REJECTED_TOOLS } from "./lifecycle";
+import { registerLifecycleHandlers } from "./lifecycle-handlers";
 import { type WatcherResult } from "./watcher";
 
 type Handler = (event: unknown, ctx?: unknown) => Promise<unknown>;
@@ -68,7 +69,7 @@ test("does not clear a failed target when another target scans successfully", as
     }
     return {};
   });
-  await handlers.get("tool_result")!(
+  const failed = await handlers.get("tool_result")!(
     { toolName: "write", input: { path: "a.md", content: "saved" }, content: [{ type: "text", text: "saved" }] },
     ctx,
   );
@@ -77,9 +78,10 @@ test("does not clear a failed target when another target scans successfully", as
     ctx,
   );
 
+  expect(JSON.stringify(failed)).toContain("PostToolUse watcher could not verify the completed tool result: a is still unverified");
   expect(await handlers.get("session_stop")!({}, ctx)).toEqual({
     decision: "block",
-    reason: "agent-discipline-watcher could not verify every mutating tool result. Re-verify the touched file before stopping.",
+    reason: "PostToolUse watcher could not verify the completed tool result: a is still unverified",
   });
   expect(events.some(event => event.startsWith("Stop:"))).toBe(false);
 });
@@ -129,6 +131,24 @@ test("scans an ordinary Bash write target resolved by the shared hook parser", a
   expect(await handlers.get("session_stop")!({}, ctx)).toBeUndefined();
   expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
   expect(scannedPaths).toEqual([FIXTURE_A]);
+});
+
+test("resolves Bash targets once per tool call across call and result", async () => {
+  let bridgeCalls = 0;
+  const handlers = new Map<string, Handler>();
+  const pi = { on: (name: string, handler: Handler) => handlers.set(name, handler) };
+  const targets = () => {
+    bridgeCalls += 1;
+    return { paths: ["lifecycle.ts"] };
+  };
+  registerLifecycleHandlers(pi as never, () => ({}), async () => ({}), targets);
+  const input = { command: "printf body > lifecycle.ts", cwd: import.meta.dir };
+  await handlers.get("tool_call")!({ toolName: "bash", toolCallId: "bash-once", input }, ctx);
+  await handlers.get("tool_result")!(
+    { toolName: "bash", toolCallId: "bash-once", input, content: [{ type: "text", text: "written" }] },
+    ctx,
+  );
+  expect(bridgeCalls).toBe(1);
 });
 
 test("blocks a relative Bash target after a working-directory change", async () => {

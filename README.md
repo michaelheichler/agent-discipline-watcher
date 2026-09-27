@@ -8,9 +8,9 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Regex.** 98 patterns run on every write. Because this layer is deterministic and asks no model to release a finding, it is the one that decides the gate.
 
-**Meaning.** Off by default. The watcher embeds each sentence and votes it against one pattern's own violating and clean neighbours. A judge then decides whether the survivors instantiate the named pattern. This layer catches what the regex misses, because a paraphrase has no literal to match.
+**Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
-**Document.** New in 0.18.7. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. An order that hides the argument, a missing bridge between paragraphs, a referent the document uses before introducing it, a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The watcher skips a document unchanged since its last reading, and after two rounds it stands down and leaves the call to you.
+**Document.** Opt in on Claude Code through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. An order that hides the argument, a missing bridge between paragraphs, a referent the document uses before introducing it, a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
 
 A rule speaks only where a measurement covers it, and blocks only where that measurement earned the block.
 
@@ -24,7 +24,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset uses Haiku for comment checks and Sonnet for prose and document reviews. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
+The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset runs the Stop review on Sonnet, and it is the one preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
 
 ## What the rules were measured against
 
@@ -50,11 +50,17 @@ Text rules do not apply to binary assets such as screenshots, PDFs, fonts, archi
 
 The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
 
-The meaning layer, the judged gate, and the document reader all run on the async PostToolUse route, so none of them delays a write. That route wakes the session afterwards with what it found, and the document reader also leaves a blocker the Stop hook reports. That feedback arrives about 10 seconds after a prose write and costs up to five judge calls. The write itself waits for none of it.
+The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. The route reads each edited prose file, runs the embedding vote, and writes the surviving sentences to the journal. It prints nothing and returns no decision.
 
-A session scratchpad is exempt from that route. A file under a `scratchpad` directory in the system temp root gets the deterministic scan and no judge call, because throwaway working notes are not worth the tokens.
+1. Claude Code runs the route as an async PostToolUse hook after each file edit tool. The hook has a 180 second timeout. The write never waits for it.
+2. Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route.
+3. OMP has no async route. Its `OmpReview` prepare step runs the same vote inline and waits at most 10 seconds for the model.
 
-The scanner reads every prose extension it knows on that route, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as if they were prose.
+On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
+
+The candidate journal records every prose write, including a file under a `scratchpad` directory in the system temp root. The document reviewers therefore read scratch notes too. The `JudgeReview` route skips them, so a scratch note gets no pattern rows.
+
+The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as if they were prose.
 
 ## Comment policy
 
@@ -62,7 +68,7 @@ Comments run through the same scan, and they are the one surface where the watch
 
 Code comments and docstrings may contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Config, exemptions, and model output cannot release these rules.
 
-The Luna comment reviewer covers Python and supported comment-bearing source files, including TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. It masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
+The Luna comment reviewer covers Python and supported comment-bearing source files, including TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
 
 The opening clause decides it. A comment that opens on the code and its behaviour fails even when a `because` clause follows, in the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
 
@@ -194,26 +200,51 @@ subject to target validation.
 
 A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the required version. This prevents silent loss of enforcement.
 
-The plugin ships its own reviewer, so a plain install already judges on Haiku
-and needs no preset step. Select a different one with
+The plugin manifest ships command hooks only. The reviewer lives in
+`~/.claude/settings.json` as the managed block, the hook entries whose first
+line or command carries the `adw-managed-hook-v1` marker. When a Claude Code
+session starts and settings hold no managed block, the SessionStart hook
+writes the `haiku` preset. A plain install needs no preset step. Claude Code
+picks up the settings change without a restart. SessionStart leaves an
+existing managed block alone, so a preset you chose or edited stays. When
+SessionStart cannot read the settings file, it prints one line to stderr and
+the session goes on without a reviewer. Select a different preset with
 `/agent-discipline-watcher:adw-judge haiku|mixed|luna|luna-native|status`.
+Each selection replaces the managed block, so settings never hold two
+reviewer sets.
 
-`haiku` runs one model for both roles. `mixed` spends Haiku on the per-write
-comment check and Sonnet on the per-turn document check. `luna-native` names
-the Luna model directly. It works where a harness such as LeverFrame injects
+Each agent preset registers one reviewer, on Stop. No agent runs per write.
+The PostToolUse command hook records comment candidates in the journal, and the
+async `JudgeReview` route adds pattern candidates. The Stop agent judges both
+from those rows. The journal helper prints the rows, and beside them one rule
+entry per rule with four violating and four clean examples. The agent judges
+every row in one batch against `PATTERN_RUBRIC` and opens no file.
+
+`haiku` runs the Stop review on Haiku. `mixed` runs it on Sonnet.
+
+Only `mixed` adds the whole-document review. Its Stop agent passes
+`--documents` to the helper, which then prints document rows too.
+
+`luna-native` names the Luna model directly. It works where a harness such as LeverFrame injects
 Luna into the Claude model list. `luna` emits no native agent at all. It uses a
 command handler on the subscription-backed Codex runtime and switches to
 `mixed` only after Luna is unavailable.
 
-`status` counts the reviewers a session carries rather than echoing the stored
-preset, so an unwired gate says so. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
+The Luna routes send source text off the machine. The Claude Luna handler and
+the Codex Stop review run only when `data_boundary.enabled` is `true` in
+`.agent-discipline.json`, the same gate the OMP review uses.
+
+`status` counts the reviewers in the managed block rather than echoing the
+stored preset, so an unwired gate says so. An agent preset counts one. `luna`
+counts two, one command handler on PostToolUse and one on Stop. Set `ADW_CLAUDE_HAIKU_ONLY=1` when an
 install needs the explicit Haiku-only environment.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
 Missing runtime, subscription login, model availability, or provider
 transport emits a bounded user notice and pauses provider retries for five
-minutes in that session. Deterministic checks remain active. ADW records
-completion only after a successful review. Run `./install.sh --codex -y`
+minutes in that session. Deterministic checks remain active. A Luna timeout
+or an unusable reply blocks the Stop instead, and each retry reviews again
+until one succeeds. ADW records completion only after a successful review. Run `./install.sh --codex -y`
 to repair the runtime, then complete Codex ChatGPT login.
 
 ADW keeps confirmed findings active until the affected source changes.
@@ -243,7 +274,7 @@ Set these in the `env` block of `~/.claude/settings.json`, because that block is
 
 With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs.
 
-The managed worker is shared across projects and stays loaded while a live turn holds a lease. Stop and SessionEnd release that lease, even if embeddings were disabled after loading. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime, so a missed Stop no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
+Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease, even if the user turned embeddings off after loading. Shutdown confirms process exit before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime, so a missed Stop no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
 
 ### Thresholds
 
@@ -300,10 +331,10 @@ The watcher migrates an existing `~/.agent-discipline` once, on first run.
 
 Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
 
-Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates, the judge confirms them on the async route, and the watcher reports only what survives. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
+Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge confirms them before the watcher reports anything. Today only the OMP review route runs that judge. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
 In OMP, `/adw configure` and `/agent-discipline configure` edit this project policy through the same Python configuration engine. The screen covers family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, and the data boundary. Always-blocking rules stay locked. Unknown keys and environment values are not rendered.
 
-`three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Behind the judge it clears 121 held-out candidates at 1.0000 precision with 0 false positives. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
+`three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Its precision behind the judge has no measurement yet. `pattern_exemplars.json` records no judge precision for it, so no number here backs a block. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
 
 ## Self protection
 
@@ -336,7 +367,7 @@ OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls
 ## Verification
 
 ```bash
-cd hooks && python3 -m pytest . lib -q
+cd hooks && uvx --python 3.11 --with pytest pytest . lib -q
 python3 -m pytest pi/test_merge_settings.py -q
 bash -n install.sh hooks/run.sh pi/install.sh
 bun test pi/extensions/agent-discipline-watcher/index.test.ts

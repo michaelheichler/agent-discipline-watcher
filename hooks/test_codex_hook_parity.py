@@ -25,6 +25,12 @@ def isolated_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
 
 
+@pytest.fixture(autouse=True)
+def _open_data_boundary(tmp_path: Path) -> None:
+    """Opened here, because the gate has its own test file."""
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
+
+
 def _command_groups(config: dict, event: str) -> list[dict]:
     return [
         {**group, "hooks": [hook for hook in group["hooks"] if hook["type"] == "command"]}

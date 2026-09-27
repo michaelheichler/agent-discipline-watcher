@@ -4,13 +4,12 @@ import operator
 
 from lib.hookio import PARSE_FAILURE, deny, fail_closed
 from lib.payloads import cwd, exact_string_dict
-from lib.python_payload import is_known_read_only_python
+from lib.python_payload import python_rejection
 
 PYTHON_TOOL = "Python"
 PYTHON_DENIAL = (
     "agent-discipline-watcher could not prove this Python tool call is read-only. "
-    "Use the Write or Edit tool for file content."
-    " For isolated Python reads, use python3 -I -S in Bash."
+    "The checker rejected {rejection}. Use the Write or Edit tool for file content."
 )
 
 
@@ -37,4 +36,5 @@ def run(payload: dict, config: dict | None = None) -> dict:
 def _checked_run(payload: dict) -> dict:
     if payload is PARSE_FAILURE:
         raise ValueError("unreadable hook payload")
-    return {} if is_known_read_only_python(_code(payload), cwd=cwd(payload) or None) else deny(PYTHON_DENIAL)
+    rejection = python_rejection(_code(payload), cwd=cwd(payload) or None)
+    return deny(PYTHON_DENIAL.format(rejection=rejection)) if rejection else {}

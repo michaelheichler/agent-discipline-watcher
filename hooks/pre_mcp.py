@@ -9,31 +9,30 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from failure import (
-    _MAX_TIMESTAMP,
+from lib import session_state
+from lib.config import StorageRoots
+from lib.hookio import (
+    PARSE_FAILURE, UNREADABLE_PAYLOAD, allow, claude_pretool_response, config_failure, deny, payload_failure,
+    read_payload, write_payload,
+)
+from lib.mcp_health import (
+    MAX_TIMESTAMP,
     MCP_HEALTH_KEY,
     TrustedPayload,
-    _config_roots,
-    _is_exact_int,
-    _is_exact_number,
-    _safe_config,
-    _valid_now,
+    config_roots,
+    is_exact_int,
+    is_exact_number,
     normalize_payload,
     parse_mcp_tool,
+    safe_config,
+    valid_now,
 )
-from lib import session_state
-from lib.config import StorageRoots, effective_config
-from lib.hookio import PARSE_FAILURE, allow, claude_pretool_response, deny, read_payload, write_payload
 from lib.mcp_paths import mcp_target_paths, mcp_write_contents
 from lib.payloads import exact_string_dict
 from lib.protected import path_findings
 from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
 
 PRE_TOOL_EVENT = "PreToolUse"
-UNDECIDABLE = (
-    "agent-discipline-watcher could not evaluate this MCP call and blocked it rather than letting it through. "
-    "Repair the gate config and retry. Cause: "
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,12 +54,12 @@ def _active_backoff(state: dict, server: str, now: float) -> tuple[int, float] |
         return None
     count = entry.get("failure_count")
     retry_after = entry.get("retry_after")
-    if not _is_exact_int(count) or count <= 0:
+    if not is_exact_int(count) or count <= 0:
         return None
-    if not _is_exact_number(retry_after):
+    if not is_exact_number(retry_after):
         return None
     deadline = float(retry_after)
-    if not math.isfinite(deadline) or deadline > _MAX_TIMESTAMP or now >= deadline:
+    if not math.isfinite(deadline) or deadline > MAX_TIMESTAMP or now >= deadline:
         return None
     return count, deadline
 
@@ -151,7 +150,7 @@ def _fail_safe(raw_payload: object) -> dict:
         raw_cwd = fields.get("cwd")
         return _protected_verdict(raw_payload, raw_cwd if isinstance(raw_cwd, str) else "")
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:
-        return deny(UNDECIDABLE + str(exc))
+        return deny(config_failure("MCP call", exc))
 
 
 def _protected_response(context: McpRunContext, turn_id: str) -> dict:
@@ -214,22 +213,20 @@ def _run_pre_mcp(context: McpRunContext) -> dict:
 def run(payload: dict, config: dict | None = None, now: float | None = None) -> dict:
     """Deny an MCP call that targets a protected path, or a known-unhealthy server until expiry, otherwise fail safe."""
     if payload is PARSE_FAILURE:
-        return deny(UNDECIDABLE + "unreadable hook payload")
+        return deny(payload_failure(UNREADABLE_PAYLOAD))
     try:
         trusted_payload = normalize_payload(payload)
         if not trusted_payload["session_id"]:
             return _protected_verdict(payload, trusted_payload["cwd"])
-        trusted_config = _safe_config(config)
-        cwd = str(trusted_payload["cwd"]) or None
-        effective_config(trusted_config, cwd)
-        roots = _config_roots(trusted_config)
+        trusted_config = safe_config(config)
+        roots = config_roots(trusted_config)
         clock = time.time() if now is None else now
         context = McpRunContext(
             raw_payload=payload,
             payload=trusted_payload,
             config=trusted_config,
             roots=roots,
-            current_time=_valid_now(clock),
+            current_time=valid_now(clock),
         )
         return _run_pre_mcp(context)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError) as exc:

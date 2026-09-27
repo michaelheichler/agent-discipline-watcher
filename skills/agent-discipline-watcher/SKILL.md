@@ -1,7 +1,7 @@
 ---
 name: agent-discipline-watcher
 description: >-
-  Use when an agent writes or edits files, commit text, or final prose and must
+  Use when an agent writes or edits files or commit text and must
   enforce the combined discipline contract. punctuation-discipline bans em dash
   and en dash characters. It also bans double-hyphen clause breaks and
   spaced-hyphen dash substitutes. Other violations include semicolon splices,
@@ -16,8 +16,8 @@ description: >-
 # Agent Discipline Watcher
 
 Apply this skill whenever you produce or revise agent output that may land in a
-file, commit, code review, user-facing prose, or final reply. It supports Claude
-Code, Codex, and Oh My Pi.
+file or a commit. The hooks scan files and commit text. No host scans the chat
+reply. It supports Claude Code, Codex, and Oh My Pi.
 
 In Oh My Pi, use `/adw configure` or `/agent-discipline configure` for project
 policy changes. These commands edit `.agent-discipline.json`. OMP's
@@ -43,7 +43,7 @@ policy changes. These commands edit `.agent-discipline.json`. OMP's
 
 ## Responding To Hook Findings
 
-Every hook finding is a blocker. Fix the named file or reply text, then rerun
+Every hook finding is a blocker. Fix the named file, then rerun
 the relevant check if the task requires proof. The scanner does not emit fuzzy
 or advisory results.
 

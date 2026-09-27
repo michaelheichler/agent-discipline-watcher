@@ -41,9 +41,10 @@ try:
         extract_regions,
         render_regions,
     )
+    from .brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from .prose_structure import _next_fence, _scan_prose_structure
     from .slop_phrase import scan_slop_phrases
-    from .slop_structure import _scan_slop_structure
+    from .slop_structure import _scan_slop_structure, mask_quoted
 except ImportError:
     import scan_input
     from comment_rules import (
@@ -78,9 +79,10 @@ except ImportError:
         extract_regions,
         render_regions,
     )
+    from brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from prose_structure import _next_fence, _scan_prose_structure
     from slop_phrase import scan_slop_phrases
-    from slop_structure import _scan_slop_structure
+    from slop_structure import _scan_slop_structure, mask_quoted
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
@@ -328,28 +330,39 @@ PUNCTUATION_RULES = (
 
 
 def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> list[dict]:
-    clean = _strip_inline_code(scan_line)
+    clean = mask_quoted(_strip_inline_code(scan_line))
     prose_part = _punctuation_prose_part(source_line.path, clean, prose)
     semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
     texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
-    rows = [
-        _finding(
-            "punctuation", rule, source_line.number,
-            detail + source_line.path, source_line.text, action,
-        )
-        for target, regexes, rule, detail, action in PUNCTUATION_RULES
-        if texts[target] and any(regex.search(texts[target]) for regex in regexes)
-    ]
+    rows = []
+    for target, regexes, rule, detail, action in PUNCTUATION_RULES:
+        found = _first_match(regexes, texts[target])
+        if found is not None:
+            rows.append(_finding(
+                "punctuation", rule, source_line.number,
+                detail + source_line.path, source_line.text, action, match=found,
+            ))
     return rows
+
+
+def _first_match(regexes: tuple[re.Pattern[str], ...], text: str) -> str | None:
+    if not text:
+        return None
+    for regex in regexes:
+        found = regex.search(text)
+        if found:
+            return found.group(0)
+    return None
 
 
 def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
     rows = []
     if source_line.text.lstrip().startswith(">"):
         return rows
-    scan_line = _strip_quoted(_strip_inline_code(scan_line))
+    scan_line = mask_quoted(_strip_inline_code(scan_line))
     for pattern, rule, action in ENGLISH_RULES:
-        if pattern.search(scan_line):
+        found = pattern.search(scan_line)
+        if found:
             rows.append(_finding(
                 "english",
                 rule,
@@ -357,6 +370,7 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
                 "Plain English rule in " + source_line.path,
                 source_line.text,
                 action,
+                match=found.group(0),
             ))
     return rows
 
@@ -380,23 +394,29 @@ def _long_functions(tree, func_limit: int) -> Iterator[ast.FunctionDef | ast.Asy
             continue
         yield node
 
-def _function_length_findings(path: str, config: dict, tree) -> list[dict]:
-    if tree is None:
-        return []
-    func_limit = _int_setting(config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
+def _long_function_rows(context: _ScanContext) -> list[tuple[int, str]]:
+    func_limit = _int_setting(context.config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
+    if context.tree is not None:
+        return [(node.lineno, node.name) for node in _long_functions(context.tree, func_limit)]
+    if PurePath(context.path.lower()).suffix in BRACE_LANGUAGE_EXTS:
+        return [(line, name) for line, name, _span in long_brace_functions(context.text, func_limit)]
+    return []
+
+
+def _function_length_findings(context: _ScanContext) -> list[dict]:
     return [
         _finding(
-            "clean_code", "function_too_long", node.lineno,
-            "Function is over the length cap in " + path,
-            node.name, "Extract helpers until each function does one thing.",
+            "clean_code", "function_too_long", line,
+            "Function is over the length cap in " + context.path,
+            name, "Extract helpers until each function does one thing.",
         )
-        for node in _long_functions(tree, func_limit)
+        for line, name in _long_function_rows(context)
     ]
 
 
 def _scan_clean_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
-    findings = _function_length_findings(context.path, context.config, context.tree)
+    findings = _function_length_findings(context)
     findings.extend(_scan_hollow_test_blocks(context.path, lines))
     return findings
 
@@ -495,11 +515,6 @@ def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -
         hidden = marker or fence or _is_table_separator_row(line)
         visible.append("" if hidden else line)
     return "\n".join(visible)
-
-
-def _strip_quoted(text: str) -> str:
-    text = re.sub(r'"[^"]*"', "  ", text)
-    return re.sub(r"'[^']*'", "  ", text)
 
 
 def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:

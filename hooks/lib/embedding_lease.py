@@ -61,22 +61,38 @@ def _is_live(row: dict, now: float) -> bool:
     return _process_alive(row.get("pid"))
 
 
-def acquire(
-    session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
-) -> None:
-    """Takes the owner pid rather than reading its own, because a hook process exits at once and its lease would be swept as dead."""
+def acquire(session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int) -> None:
+    """Caller pid, because the hook pid dies within the second."""
     directory = lease_root(root)
     directory.mkdir(parents=True, exist_ok=True)
     path = _lease_path(directory, session_id)
-    payload = json.dumps({"session_id": session_id, "pid": owner_pid, "renewed_at": now})
+    _write_lease(path, {"session_id": session_id, "pid": owner_pid, "renewed_at": now})
+
+
+def _write_lease(path: Path, row: dict) -> None:
+    payload = json.dumps(row)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(payload, encoding="utf-8")
     temporary.replace(path)
 
 
-def release(session_id: str, root: str | os.PathLike[str] | None) -> None:
+def renew(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
+    """A turn past the TTL would otherwise lose the model."""
     path = _lease_path(lease_root(root), session_id)
-    path.unlink(missing_ok=True)
+    row = _read_lease(path)
+    if row is None:
+        return False
+    _write_lease(path, {**row, "session_id": session_id, "renewed_at": now})
+    return True
+
+
+def release(session_id: str, root: str | os.PathLike[str] | None) -> bool:
+    path = _lease_path(lease_root(root), session_id)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _discard(path: Path) -> None:
@@ -96,7 +112,7 @@ def _surviving_session(path: Path, now: float) -> str | None:
 
 
 def live_sessions(now: float, root: str | os.PathLike[str] | None) -> tuple[str, ...]:
-    """Sweeps as it reads, because a crashed session would otherwise pin the model forever."""
+    """Sweeps because a crashed session would pin the model."""
     directory = lease_root(root)
     if not directory.is_dir():
         return ()
@@ -105,12 +121,6 @@ def live_sessions(now: float, root: str | os.PathLike[str] | None) -> tuple[str,
         for path in sorted(directory.glob("*" + LEASE_SUFFIX))
     )
     return tuple(name for name in found if name is not None)
-
-
-def may_unload(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Only the last live holder may unload, because another session mid-turn would lose the model underneath it."""
-    release(session_id, root)
-    return not live_sessions(now, root)
 
 
 def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> None:
@@ -126,7 +136,7 @@ def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> Non
 
 
 def has_live_leases(server_root: Path, now: float) -> bool:
-    """Sweep registered roots even without another hook; callers serialize this with lease acquisition."""
+    """Sweeps because an idle root must not pin the worker."""
     found = False
     for registration in sorted((server_root / ROOTS_DIRECTORY).glob("*" + ROOT_SUFFIX)):
         directory = registration.read_text(encoding="utf-8")

@@ -93,7 +93,6 @@ def test_ordinary_git_and_shell_work_passes(command):
 
 @pytest.mark.parametrize("command", [
     "CLEANCODER_FUNC_BLOCK_LINES=500 python3 -m pytest -q",
-    "CLEANCODER_FILE_BLOCK_LINES=9000 pytest",
     "ADW_MAX_SCAN_BYTES=1 pytest",
     "ADW_SENTENCE_WORD_CAP=500 pytest",
     "ADW_LIST_ITEM_CAP=500 pytest",
@@ -101,6 +100,14 @@ def test_ordinary_git_and_shell_work_passes(command):
 ])
 def test_cap_and_escape_overrides_block(command):
     assert rules(command) == ["cap_override"]
+
+
+@pytest.mark.parametrize("command", [
+    "ADW_FILE_BLOCK_LINES=9000 pytest",
+    "CLEANCODER_FILE_BLOCK_LINES=9000 pytest",
+])
+def test_file_block_line_names_without_a_reader_do_not_block(command):
+    assert rules(command) == []
 
 
 @pytest.mark.parametrize("command", [
@@ -279,6 +286,15 @@ def test_empty_command_is_allowed():
     assert rules("") == []
 
 
+@pytest.mark.parametrize("tool_input", [
+    {}, {"description": "x"}, {"command": None}, {"command": ["ls"]}, {"cmd": "ls"},
+])
+def test_run_denies_a_payload_without_a_string_command(tool_input):
+    result = pre_bash.run({"tool_input": tool_input})
+    assert result["decision"] == "block"
+    assert "could not evaluate this command" in result["reason"]
+
+
 def test_run_denies_and_allows_through_the_hook_contract(tmp_path):
     denied = pre_bash.run({"tool_input": {"command": "./install.sh -y"}})
     assert denied.get("decision") == "block"
@@ -324,12 +340,12 @@ def test_pre_bash_entry_denies_malformed_stdin() -> None:
     response = json.loads(result.stdout)
     assert "decision" not in response
     assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("Cause: unreadable hook payload")
+    assert response["hookSpecificOutput"]["permissionDecisionReason"].endswith("the cause was: unreadable hook payload")
 
 
-def test_pre_bash_entry_allows_empty_stdin() -> None:
+def test_pre_bash_entry_denies_empty_stdin_because_it_carries_no_command() -> None:
     result = subprocess.run(
         [sys.executable, "pre_bash.py"], input="", text=True,
         capture_output=True, cwd=str(Path(__file__).parent), check=False,
     )
-    assert json.loads(result.stdout) == {}
+    assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"

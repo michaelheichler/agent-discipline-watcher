@@ -1,4 +1,4 @@
-"""Runtime proof that commit blockers reach the staged tree and keep commands unchanged."""
+"""Real repos here because the gate reads the staged tree."""
 from __future__ import annotations
 
 import json
@@ -57,7 +57,27 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate('git commit -m "docs(x): add notes"')
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("notes.md:1 punctuation/banned_dash", result["reason"])
+        self.assertIn("notes.md:1 Dash character", result["reason"])
+
+    def test_renamed_file_with_a_new_finding_blocks_the_commit(self):
+        stage(self.repo, "old.md", CLEAN * 20)
+        git(self.repo, "commit", "-q", "-m", "seed")
+        git(self.repo, "mv", "old.md", "new.md")
+        stage(self.repo, "new.md", CLEAN * 20 + DIRTY)
+        self.assertIn("R", git(self.repo, "diff", "--cached", "--name-status"))
+
+        result = self.gate('git commit -m "docs(x): rename notes"')
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("new.md:21 Dash character", result["reason"])
+
+    def test_non_ascii_staged_path_is_scanned(self):
+        stage(self.repo, "notiz-ä.md", DIRTY)
+
+        result = self.gate('git commit -m "docs(x): add notes"')
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("notiz-ä.md:1 Dash character", result["reason"])
 
     def test_clean_staged_tree_is_allowed(self):
         stage(self.repo, "notes.md", CLEAN)
@@ -90,7 +110,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/prose_semicolon", result["reason"])
+        self.assertIn("commit_message.md:1 Semicolon in prose", result["reason"])
         self.assertNotIn("updatedInput", result["hookSpecificOutput"])
         self.assertEqual(pre_commit._commit_messages(command), ["we ship it; it works"])
 
@@ -100,7 +120,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/prose_semicolon", result["reason"])
+        self.assertIn("commit_message.md:1 Semicolon in prose", result["reason"])
         self.assertEqual(pre_commit._commit_messages(command), ["we can't; it works"])
 
     def test_list_ansi_c_commit_message_with_escaped_apostrophe_is_scanned(self):
@@ -109,8 +129,8 @@ class CommitGateRuntimeTests(unittest.TestCase):
         result = self.gate(command)
 
         self.assertEqual(result["decision"], "block")
-        self.assertIn("commit_message.md:1 punctuation/pronoun_apostrophe", result["reason"])
-        self.assertEqual(pre_commit._commit_messages(command), ["your's"])
+        self.assertIn("commit_message.md:1 Apostrophe on a pronoun", result["reason"])
+        self.assertEqual(pre_commit._commit_messages(command), ["your" + chr(39) + "s"])
 
     def test_git_off_path_fails_closed_instead_of_allowing(self):
         stage(self.repo, "notes.md", DIRTY)
@@ -197,7 +217,7 @@ class CommitGateRuntimeTests(unittest.TestCase):
         response = json.loads(result.stdout)
         self.assertNotIn("decision", response)
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertIn("banned_dash", response["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertIn("Dash character", response["hookSpecificOutput"]["permissionDecisionReason"])
 
 
 if __name__ == "__main__":

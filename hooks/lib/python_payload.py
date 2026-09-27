@@ -7,7 +7,9 @@ from .python_imports import imports_are_trusted
 
 Kind = str | tuple[str, tuple["Kind", ...]]
 READ_ONLY_OPEN_MODE_CHARS = frozenset("rbtU")
-SAFE_IMPORTS = frozenset({"json"})
+OPEN_KEYWORDS = frozenset({"buffering", "encoding", "errors", "newline", "closefd"})
+SAFE_IMPORTS = {"json": "json_module", "sys": "sys_module"}
+SYS_ATTRIBUTES: dict[str, Kind] = {"stdin": "file", "argv": ("sequence", ("text",))}
 PATH_IMPORT = ("pathlib", "Path")
 SAFE_BUILTINS = frozenset({
     "all", "any", "bool", "bytes", "dict", "enumerate", "float", "int", "len", "list", "max", "min",
@@ -52,6 +54,12 @@ FILE_METHODS = {
     "seekable": "value",
     "tell": "value",
 }
+JSON_METHODS: dict[str, Kind] = {
+    "get": "json",
+    "keys": ("sequence", ("json",)),
+    "items": ("sequence", (("tuple", ("json", "json")),)),
+    "values": ("sequence", ("json",)),
+}
 TEXT_METHODS = frozenset({
     "casefold", "capitalize", "count", "encode", "endswith", "find", "format", "index", "isalpha", "isdigit",
     "islower", "isspace", "istitle", "isupper", "join", "lower", "lstrip", "partition", "removeprefix",
@@ -64,9 +72,11 @@ BYTES_METHODS = frozenset({
     "strip", "upper",
 })
 SAFE_LITERAL_TYPES = (str, bytes, int, float, complex, bool, type(None))
-ASSIGNABLE_KINDS = frozenset({"bytes", "file", "path", "text", "value"})
+ASSIGNABLE_KINDS = frozenset({"bytes", "file", "json", "path", "text", "value"})
 
 SUSPICIOUS_BARE_LITERAL_RE = re.compile(r"(?:\b(?:write|exec|eval)\s*\(|__)")
+
+Comprehension = ast.GeneratorExp | ast.ListComp | ast.SetComp | ast.DictComp
 
 
 def common_kind(kinds: list[Kind] | tuple[Kind, ...]) -> Kind:
@@ -76,7 +86,7 @@ def common_kind(kinds: list[Kind] | tuple[Kind, ...]) -> Kind:
 def item_kind(kind: Kind | None) -> Kind | None:
     if isinstance(kind, tuple):
         return kind[1][0] if kind[0] == "sequence" else common_kind(kind[1])
-    return {"text": "text", "bytes": "value", "file": "text"}.get(kind)
+    return {"text": "text", "bytes": "value", "file": "text", "json": "json"}.get(kind)
 
 
 def assignable_kind(kind: Kind | None) -> bool:
@@ -98,63 +108,43 @@ def text_method_result(base: str, method: str) -> Kind:
 
 
 def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: bool = False) -> bool:
+    return not python_rejection(source, cwd=cwd, isolated=isolated)
+
+
+def python_rejection(source: str, *, cwd: str | None = None, isolated: bool = False) -> str:
     try:
         tree = ast.parse(source, mode="exec")
     except (MemoryError, RecursionError, SyntaxError, TypeError, ValueError):
-        return False
-    return _ReadOnlyChecker().statements(tree.body) and (isolated or imports_are_trusted(cwd))
+        return "code that does not parse"
+    checker = _ReadOnlyChecker()
+    if not checker.statements(tree.body):
+        return describe_node(checker.rejected) if checker.rejected else "an unsupported construct"
+    if not (isolated or imports_are_trusted(cwd)):
+        return "a project module that shadows a standard library import"
+    return ""
 
 
-class _ReadOnlyChecker:
+def describe_node(node: ast.AST) -> str:
+    try:
+        text = " ".join(ast.unparse(node).split())
+    except (RecursionError, ValueError):
+        text = ""
+    return f"{type(node).__name__} \"{text[:80]}\" on line {getattr(node, 'lineno', '?')}"
+
+
+class _ExpressionKinds:
     def __init__(self) -> None:
         self.bindings: dict[str, Kind] = {
             name: "builtin" for name in SAFE_BUILTINS
         }
         self.bindings["open"] = "open"
-        self.protected_names = set(self.bindings) | {"Path", "json"}
+        self.protected_names = set(self.bindings) | set(SAFE_IMPORTS) | {"Path"}
+        self.rejected: ast.AST | None = None
 
-    def statements(self, nodes: list[ast.stmt]) -> bool:
-        return all(self.statement(node) for node in nodes)
-
-    def statement(self, node: ast.stmt) -> bool:
-        result = False
-        if isinstance(node, ast.Expr):
-            result = self.expression(node.value) is not None and not self.suspicious_bare_literal(node.value)
-        elif isinstance(node, ast.Assert):
-            result = self.expression(node.test) is not None and self._optional_expression(node.msg)
-        elif isinstance(node, ast.Import):
-            result = self.imports(node)
-        elif isinstance(node, ast.ImportFrom):
-            result = self.import_from(node)
-        elif isinstance(node, ast.Pass):
-            result = True
-        elif isinstance(node, ast.Assign):
-            result = self.assignment(node)
-        elif isinstance(node, ast.If):
-            result = (
-                self.expression(node.test) is not None
-                and self.statements(node.body)
-                and self.statements(node.orelse)
-            )
-        elif isinstance(node, ast.With):
-            result = self.with_statement(node)
-        elif isinstance(node, ast.For):
-            result = (
-                self.bind_target(node.target, item_kind(self.expression(node.iter)))
-                and self.statements(node.body) and self.statements(node.orelse)
-            )
+    def noted(self, node: ast.AST, result: Kind | bool | None) -> Kind | bool | None:
+        if not result and self.rejected is None:
+            self.rejected = node
         return result
-
-    def suspicious_bare_literal(self, node: ast.expr) -> bool:
-        if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
-            return False
-        value = node.value.decode(errors="ignore") if isinstance(node.value, bytes) else node.value
-        return bool(SUSPICIOUS_BARE_LITERAL_RE.search(value))
-
-    def assignment(self, node: ast.Assign) -> bool:
-        if len(node.targets) != 1:
-            return False
-        return self.bind_target(node.targets[0], self.expression(node.value))
 
     def bind_target(self, node: ast.expr, kind: Kind | None) -> bool:
         if not assignable_kind(kind):
@@ -167,48 +157,6 @@ class _ReadOnlyChecker:
                 self.bind_target(target, value) for target, value in zip(node.elts, kind[1])
             )
         return False
-
-    def imports(self, node: ast.Import) -> bool:
-        if len(node.names) != 1:
-            return False
-        alias = node.names[0]
-        if alias.name not in SAFE_IMPORTS or alias.asname is not None:
-            return False
-        self.bindings[alias.name] = "json_module"
-        return True
-
-    def import_from(self, node: ast.ImportFrom) -> bool:
-        if node.level or len(node.names) != 1:
-            return False
-        alias = node.names[0]
-        if (node.module, alias.name) == PATH_IMPORT and alias.asname is None:
-            self.bindings[alias.name] = "path_ctor"
-            self.protected_names.add(alias.name)
-            return True
-        if node.module == "json" and alias.name in {"load", "loads"} and alias.asname is None:
-            self.bindings[alias.name] = f"json_{alias.name}"
-            self.protected_names.add(alias.name)
-            return True
-        return False
-
-    def with_statement(self, node: ast.With) -> bool:
-        if len(node.items) != 1:
-            return False
-        item = node.items[0]
-        kind = self.expression(item.context_expr)
-        if kind != "file" or not isinstance(item.optional_vars, ast.Name):
-            return False
-        name = item.optional_vars.id
-        if name in self.protected_names:
-            return False
-        previous = self.bindings.get(name)
-        self.bindings[name] = "file"
-        result = self.statements(node.body)
-        if previous is None:
-            self.bindings.pop(name, None)
-        else:
-            self.bindings[name] = previous
-        return result
 
     def expression(self, node: ast.expr) -> Kind | None:
         handlers = (
@@ -224,12 +172,12 @@ class _ReadOnlyChecker:
             ((ast.BinOp, ast.BoolOp), self.binary),
             (ast.Compare, self.compare),
             (ast.IfExp, self.conditional),
-            (ast.GeneratorExp, self.generator),
+            ((ast.GeneratorExp, ast.ListComp, ast.SetComp, ast.DictComp), self.generator),
         )
         for node_type, handler in handlers:
             if isinstance(node, node_type):
-                return handler(node)
-        return None
+                return self.noted(node, handler(node))
+        return self.noted(node, None)
 
     def constant(self, node: ast.Constant) -> str | None:
         if isinstance(node.value, (str, bytes)):
@@ -284,19 +232,28 @@ class _ReadOnlyChecker:
         kinds = [self.expression(value) for value in (node.test, node.body, node.orelse)]
         return common_kind(kinds[1:]) if None not in kinds else None
 
-    def generator(self, node: ast.GeneratorExp) -> Kind | None:
+    def generator(self, node: Comprehension) -> Kind | None:
         previous = self.bindings.copy()
         try:
-            for generator in node.generators:
-                kind = item_kind(self.expression(generator.iter))
-                if generator.is_async or not self.bind_target(generator.target, kind):
-                    return None
-                if not all(self.expression(condition) is not None for condition in generator.ifs):
-                    return None
-            kind = self.expression(node.elt)
-            return ("sequence", (kind,)) if assignable_kind(kind) else None
+            return self.comprehension_result(node) if self.bind_comprehension(node.generators) else None
         finally:
             self.bindings = previous
+
+    def bind_comprehension(self, generators: list[ast.comprehension]) -> bool:
+        for generator in generators:
+            kind = item_kind(self.expression(generator.iter))
+            if generator.is_async or not self.bind_target(generator.target, kind):
+                return False
+            if not all(self.expression(condition) is not None for condition in generator.ifs):
+                return False
+        return True
+
+    def comprehension_result(self, node: Comprehension) -> Kind | None:
+        if isinstance(node, ast.DictComp):
+            kinds = (self.expression(node.key), self.expression(node.value))
+            return "value" if all(assignable_kind(kind) for kind in kinds) else None
+        kind = self.expression(node.elt)
+        return ("sequence", (kind,)) if assignable_kind(kind) else None
 
     def call(self, node: ast.Call) -> Kind | None:
         if not self.arguments(node.args, node.keywords):
@@ -342,14 +299,14 @@ class _ReadOnlyChecker:
             return None
         source_kind = self.expression(node.args[0])
         if kind == "json_load":
-            return "value" if source_kind == "file" else None
-        return "value" if source_kind in {"text", "bytes", "value"} else None
+            return "json" if source_kind == "file" else None
+        return "json" if source_kind in {"text", "bytes", "value"} else None
 
     def attribute_call(self, node: ast.Call) -> Kind | None:
         if not isinstance(node.func, ast.Attribute):
             return None
         method = self.attribute(node.func)
-        if method is None:
+        if not isinstance(method, str):
             return None
         if method in {"json_load", "json_loads"}:
             return self.json_call(method, node)
@@ -358,17 +315,20 @@ class _ReadOnlyChecker:
         base, _, name = method.partition("_")
         if base in {"text", "bytes"}:
             return text_method_result(base, name)
-        return FILE_METHODS.get(name) if base == "file" else None
+        return {"json": JSON_METHODS, "file": FILE_METHODS}.get(base, {}).get(name)
 
-    def attribute(self, node: ast.Attribute) -> str | None:
+    def attribute(self, node: ast.Attribute) -> Kind | None:
         base = self.expression(node.value)
         if base == "json_module" and node.attr in {"load", "loads"}:
             return f"json_{node.attr}"
+        if base == "sys_module":
+            return SYS_ATTRIBUTES.get(node.attr)
         if base == "path_ctor" and node.attr in PATH_CLASS_METHODS:
             return f"path_{node.attr}"
         methods = {
             "path": PATH_METHODS,
             "file": FILE_METHODS,
+            "json": JSON_METHODS,
             "text": {name: "value" for name in TEXT_METHODS},
             "bytes": {name: "value" for name in BYTES_METHODS},
         }.get(base)
@@ -393,20 +353,20 @@ class _ReadOnlyChecker:
     def read_open(self, args: list[ast.expr], keywords: list[ast.keyword]) -> bool:
         if not args or any(isinstance(arg, ast.Starred) for arg in args) or not self.expression(args[0]):
             return False
-        mode = next((arg for arg in args[1:2]), None)
-        for keyword in keywords:
-            if keyword.arg == "mode":
-                if mode is not None:
-                    return False
-                mode = keyword.value
-            elif keyword.arg in {"buffering", "encoding", "errors", "newline", "closefd"}:
-                if self.expression(keyword.value) is None:
-                    return False
-            else:
-                return False
-        if len(args) > 2 or mode is None:
-            return mode is None and len(args) == 1
+        if len(args) > 2 or not all(self.open_keyword(keyword) for keyword in keywords):
+            return False
+        modes = [*args[1:2], *(keyword.value for keyword in keywords if keyword.arg == "mode")]
+        if len(modes) > 1:
+            return False
+        if not modes:
+            return True
+        mode = modes[0]
         return isinstance(mode, ast.Constant) and isinstance(mode.value, str) and set(mode.value) <= READ_ONLY_OPEN_MODE_CHARS
+
+    def open_keyword(self, keyword: ast.keyword) -> bool:
+        if keyword.arg == "mode":
+            return True
+        return keyword.arg in OPEN_KEYWORDS and self.expression(keyword.value) is not None
 
     def slice(self, node: ast.slice) -> bool:
         if isinstance(node, ast.Slice):
@@ -420,5 +380,93 @@ class _ReadOnlyChecker:
             return False
         return node.format_spec is None or self.expression(node.format_spec) is not None
 
-    def _optional_expression(self, node: ast.expr | None) -> bool:
-        return node is None or self.expression(node) is not None
+
+class _ReadOnlyChecker(_ExpressionKinds):
+    def statements(self, nodes: list[ast.stmt]) -> bool:
+        return all(self.statement(node) for node in nodes)
+
+    def statement(self, node: ast.stmt) -> bool:
+        handlers = (
+            (ast.Expr, self.expression_statement),
+            (ast.Assert, self.assert_statement),
+            (ast.Import, self.imports),
+            (ast.ImportFrom, self.import_from),
+            (ast.Pass, self.pass_statement),
+            (ast.Assign, self.assignment),
+            (ast.If, self.if_statement),
+            (ast.With, self.with_statement),
+            (ast.For, self.for_statement),
+        )
+        for node_type, handler in handlers:
+            if isinstance(node, node_type):
+                return bool(self.noted(node, handler(node)))
+        return bool(self.noted(node, False))
+
+    def expression_statement(self, node: ast.Expr) -> bool:
+        return self.expression(node.value) is not None and not self.suspicious_bare_literal(node.value)
+
+    def assert_statement(self, node: ast.Assert) -> bool:
+        return self.expression(node.test) is not None and (node.msg is None or self.expression(node.msg) is not None)
+
+    def pass_statement(self, _node: ast.Pass) -> bool:
+        return True
+
+    def if_statement(self, node: ast.If) -> bool:
+        return self.expression(node.test) is not None and self.statements(node.body) and self.statements(node.orelse)
+
+    def for_statement(self, node: ast.For) -> bool:
+        return (
+            self.bind_target(node.target, item_kind(self.expression(node.iter)))
+            and self.statements(node.body) and self.statements(node.orelse)
+        )
+
+    def suspicious_bare_literal(self, node: ast.expr) -> bool:
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
+            return False
+        value = node.value.decode(errors="ignore") if isinstance(node.value, bytes) else node.value
+        return bool(SUSPICIOUS_BARE_LITERAL_RE.search(value))
+
+    def assignment(self, node: ast.Assign) -> bool:
+        if len(node.targets) != 1:
+            return False
+        return self.bind_target(node.targets[0], self.expression(node.value))
+
+    def imports(self, node: ast.Import) -> bool:
+        if any(alias.name not in SAFE_IMPORTS or alias.asname is not None for alias in node.names):
+            return False
+        for alias in node.names:
+            self.bindings[alias.name] = SAFE_IMPORTS[alias.name]
+        return True
+
+    def import_from(self, node: ast.ImportFrom) -> bool:
+        if node.level or len(node.names) != 1:
+            return False
+        alias = node.names[0]
+        if (node.module, alias.name) == PATH_IMPORT and alias.asname is None:
+            self.bindings[alias.name] = "path_ctor"
+            self.protected_names.add(alias.name)
+            return True
+        if node.module == "json" and alias.name in {"load", "loads"} and alias.asname is None:
+            self.bindings[alias.name] = f"json_{alias.name}"
+            self.protected_names.add(alias.name)
+            return True
+        return False
+
+    def with_statement(self, node: ast.With) -> bool:
+        if len(node.items) != 1:
+            return False
+        item = node.items[0]
+        kind = self.expression(item.context_expr)
+        if kind != "file" or not isinstance(item.optional_vars, ast.Name):
+            return False
+        name = item.optional_vars.id
+        if name in self.protected_names:
+            return False
+        previous = self.bindings.get(name)
+        self.bindings[name] = "file"
+        result = self.statements(node.body)
+        if previous is None:
+            self.bindings.pop(name, None)
+        else:
+            self.bindings[name] = previous
+        return result

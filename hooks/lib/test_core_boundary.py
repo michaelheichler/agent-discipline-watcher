@@ -60,7 +60,7 @@ def test_no_core_module_imports_a_host_module(path: Path) -> None:
 
 
 KNOWN_ADAPTERS = frozenset({
-    "claude_cache", "claude_luna", "claude_native", "claude_presets", "claude_quarantine",
+    "claude_cache", "claude_default", "claude_luna", "claude_native", "claude_presets", "claude_quarantine",
     "claude_transaction", "codex_luna", "codex_luna_documents", "omp_review", "omp_review_findings", "omp_review_requests",
 })
 
@@ -98,7 +98,7 @@ def test_only_the_declared_seam_reaches_a_host() -> None:
     """Name the one exemption because an unlisted second seam would reopen the coupling silently."""
     seam = LIB_DIR / f"{DECLARED_SEAM}.py"
 
-    assert _imported_modules(seam) & KNOWN_ADAPTERS <= {"codex_luna"}
+    assert _imported_modules(seam) & KNOWN_ADAPTERS <= {"codex_luna", "claude_default"}
 
 
 def test_the_collector_names_no_host_and_no_state_directory() -> None:

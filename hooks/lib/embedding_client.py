@@ -13,12 +13,12 @@ from urllib.parse import urlsplit
 try:
     from .embedding_lease import acquire, register_root
     from .embedding_lease import release as release_lease
-    from .embedding_server import LOCK_NAME, default_root, running_url, stop
+    from .embedding_server import LOCK_NAME, default_root, is_loopback_host, parse_endpoint, running_url
     from .model_store import exclusive
 except ImportError:
     from embedding_lease import acquire, register_root
     from embedding_lease import release as release_lease
-    from embedding_server import LOCK_NAME, default_root, running_url, stop
+    from embedding_server import LOCK_NAME, default_root, is_loopback_host, parse_endpoint, running_url
     from model_store import exclusive
 
 DEFAULT_MODEL = "LFM2.5-Embedding-350M"
@@ -31,7 +31,6 @@ MAX_REQUEST_BYTES = 1_048_576
 MAX_RESPONSE_BYTES = 4 * 1_048_576
 MAX_RESPONSE_ROWS = MAX_INPUTS
 MAX_VECTOR_DIMENSIONS = 4096
-MAX_URL_CHARS = 2048
 LOCAL_ONLY_ENV = "ADW_EMBEDDING_LOCAL_ONLY"
 APPROVED_HOSTS_ENV = "ADW_EMBEDDING_APPROVED_HOSTS"
 APPROVED_PROVIDERS_ENV = "ADW_EMBEDDING_APPROVED_PROVIDERS"
@@ -62,43 +61,13 @@ def _approved_hosts() -> frozenset[str]:
     return frozenset(part.strip().rstrip(".").lower() for part in listed.split(",") if part.strip())
 
 
-def _is_loopback_host(hostname: object) -> bool:
-    """Recognize literal loopback hosts without trusting DNS resolution."""
-    if not isinstance(hostname, str):
-        return False
-    normalized = hostname.rstrip(".").lower()
-    if normalized == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(normalized).is_loopback
-    except ValueError:
-        return False
-
-
-def _approved_url(url: object) -> bool:  # pylint: disable=too-many-return-statements
+def _approved_url(url: object) -> bool:
     """Allow loopback endpoints or HTTPS hosts explicitly approved for remote egress."""
-    if not isinstance(url, str) or len(url) > MAX_URL_CHARS:
+    parsed = parse_endpoint(url)
+    if parsed is None:
         return False
-    if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in url):
-        return False
-    try:
-        parsed = urlsplit(url)
-        hostname = parsed.hostname
-        port = parsed.port
-    except ValueError:
-        return False
-    if (  # pylint: disable=too-many-boolean-expressions
-        parsed.scheme not in {"http", "https"}
-        or not parsed.netloc
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or (port is not None and not 1 <= port <= 65_535)
-        or hostname is None
-    ):
-        return False
-    if _is_loopback_host(hostname):
+    hostname = parsed.hostname
+    if is_loopback_host(hostname):
         return True
     if _local_only() or parsed.scheme != "https":
         return False
@@ -134,7 +103,7 @@ def embeddings_urls(config: dict | None = None) -> tuple[str, ...]:
         if not _approved_url(url):
             continue
         hostname = urlsplit(url).hostname
-        if not _is_loopback_host(hostname) and not _allows_remote(config):
+        if not is_loopback_host(hostname) and not _allows_remote(config):
             continue
         approved.append(url)
     return tuple(approved)
@@ -147,7 +116,7 @@ def model_name() -> str:
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Prevent an approved endpoint from forwarding source text elsewhere."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
         return None
 
 
@@ -311,9 +280,7 @@ def probe() -> str | None:
     return None
 
 
-def ensure_loaded(
-    session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int
-) -> str | None:
+def ensure_loaded(session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int) -> str | None:
     """Retain demand through cold startup, and serialize acquisition with the last holder's unload."""
     server_root = default_root()
     with exclusive(server_root / LOCK_NAME):
@@ -322,10 +289,9 @@ def ensure_loaded(
     return probe()
 
 
-def release(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
-    """Recheck every project's leases under the server lock so a concurrent opener cannot lose its worker."""
+def release(session_id: str, root: str | os.PathLike[str] | None) -> bool:
+    """Lease only, since a worker kill outlasts the 10 s Stop hook."""
     server_root = default_root()
     with exclusive(server_root / LOCK_NAME):
         register_root(server_root, root)
-        release_lease(session_id, root)
-    return stop(server_root, idle_at=now)
+        return release_lease(session_id, root)

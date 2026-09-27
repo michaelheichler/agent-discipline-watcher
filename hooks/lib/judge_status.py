@@ -35,7 +35,7 @@ def _count(document: dict, matches: Callable[[dict], bool]) -> int:
 
 
 def plugin_reviewers(manifest_path: Path | None = None) -> int:
-    """Read from the loaded plugin rather than this checkout, because a checkout answers yes on a machine with no install."""
+    """Kept, because an old cached plugin still ships agents."""
     target = _installed_manifest() if manifest_path is None else manifest_path
     if target is None:
         return 0
@@ -65,7 +65,7 @@ def _cache_roots() -> tuple[Path, ...]:
 
 
 def settings_reviewers(settings_path: Path, is_managed: Callable[[object], bool]) -> int:
-    """Counted separately, because a user who applied a preset carries reviewers the manifest never names."""
+    """Counted here, because settings hold the only reviewer."""
     return _count(_load(settings_path), is_managed)
 
 

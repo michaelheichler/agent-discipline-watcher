@@ -3,7 +3,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import reporting
+from .finding_output import ReviewNote, review_row
+
 MAX_FEEDBACK_CHARS = 900
+MAX_LISTED_ROWS = 5
+COMMENT_LEAD = "ADW Luna comment review:"
+DOCUMENT_LEAD = "ADW Luna document review:"
+PATTERN_LEAD = "ADW Luna pattern review:"
+COMMENT_ACTION = "Rewrite the comment to say why the code exists, or delete it."
+DOCUMENT_ACTION = "Fix the named document issue."
 
 
 def bounded(value: object) -> str:
@@ -11,20 +20,53 @@ def bounded(value: object) -> str:
     return " ".join(str(value).split())[:MAX_FEEDBACK_CHARS]
 
 
-def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
+def _listing(lead: str, rows: list[str]) -> str:
+    """Write the full report when rows are cut, because the reader needs a path to every finding."""
+    listed = rows[:MAX_LISTED_ROWS]
+    body = "\n".join([lead, *(f"{number}. {row}" for number, row in enumerate(listed, 1))])
+    extra = len(rows) - len(listed)
+    if not extra and len(body) <= MAX_FEEDBACK_CHARS:
+        return body
+    report = reporting.write_full_report([{"message": row} for row in rows])
+    tail = f"{extra} more findings: {report}" if extra else f"Full report: {report}"
+    return body[:max(MAX_FEEDBACK_CHARS - len(tail) - 1, 0)] + "\n" + tail
+
+
+def _item_rows(result: Any, found: tuple[Any, ...], verdict: str, action: str) -> list[str]:
     """Drop a row whose index misses because a stray index would name the wrong line."""
     rows = result.payload.get("items")
     if not isinstance(rows, list):
-        return ""
+        return []
     feedback = []
     for row in rows:
-        if not isinstance(row, dict) or row.get("verdict") != "describes_code":
+        if not isinstance(row, dict) or row.get("verdict") != verdict:
             continue
         index = row.get("index")
         if type(index) is not int or not 0 <= index < len(found):
             continue
-        feedback.append(f"{found[index].path}:{found[index].line}: {bounded(row.get('reason', 'Rewrite this comment.'))}")
-    return bounded("ADW Luna comment review: " + " | ".join(feedback)) if feedback else ""
+        candidate = found[index]
+        reason = bounded(row.get("reason", "The judge named no reason."))
+        note = ReviewNote(f"{candidate.path}:{candidate.line}", bounded(candidate.text), reason, action)
+        feedback.append(review_row(note))
+    return feedback
+
+
+def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
+    feedback = _item_rows(result, found, "describes_code", COMMENT_ACTION)
+    return _listing(COMMENT_LEAD, feedback) if feedback else ""
+
+
+def pattern_feedback(result: Any, found: tuple[Any, ...], action: str) -> str:
+    feedback = _item_rows(result, found, "violating", bounded(action))
+    return _listing(PATTERN_LEAD, feedback) if feedback else ""
+
+
+def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        source = str(row.get("source_context", "")) if isinstance(row, dict) else ""
+        if quote and quote in source:
+            return f"{row.get('path', '')}:{source[:source.index(quote)].count(chr(10)) + 1}"
+    return "document"
 
 
 def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
@@ -37,7 +79,7 @@ def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
         if not isinstance(row, dict) or not row.get("problem"):
             continue
         quote = bounded(row.get("quote", ""))
-        problem = bounded(row.get("problem", ""))
-        fix = bounded(row.get("fix", "Fix the named document issue."))
-        feedback.append(f"{quote}: {problem} Fix: {fix}")
-    return bounded("ADW Luna document review: " + " | ".join(feedback)) if feedback else ""
+        location = _quote_location(str(row.get("quote", "")), rows)
+        note = ReviewNote(location, quote, bounded(row["problem"]), bounded(row.get("fix", DOCUMENT_ACTION)))
+        feedback.append(review_row(note))
+    return _listing(DOCUMENT_LEAD, feedback) if feedback else ""

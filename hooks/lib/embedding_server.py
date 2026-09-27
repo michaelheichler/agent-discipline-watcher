@@ -6,6 +6,7 @@ import ipaddress
 import json
 import math
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -15,9 +16,11 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 from typing import NamedTuple
 
 try:
@@ -42,12 +45,14 @@ READY_POLL_SECONDS = 0.25
 READY_PROBE_TIMEOUT = 1.0
 STOP_GRACE_SECONDS = 10.0
 STOP_POLL_SECONDS = 0.1
+PS_TIMEOUT_SECONDS = 2.0
+NONCE_ENV = "ADW_EMBEDDING_NONCE"
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 WORKER_NAME = "embedding_worker.py"
 CONTEXT_TOKENS = "4096"
 MAX_RECORD_BYTES = 16 * 1024
-MAX_RECORD_URL_CHARS = 2048
+MAX_URL_CHARS = 2048
 MAX_PLATFORM_CHARS = 128
 MAX_PORT = 65_535
 LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -78,6 +83,14 @@ class ServerRecord(NamedTuple):
     url: str
     platform: str
     started_at: float
+    process_start: str
+    nonce: str
+
+
+def _plain_text(value: object, *, required: bool) -> bool:
+    if not isinstance(value, str) or len(value) > MAX_PLATFORM_CHARS or (required and not value):
+        return False
+    return not any(ord(character) < 32 or ord(character) == 127 for character in value)
 
 
 def _valid_port(value: object) -> bool:
@@ -85,8 +98,8 @@ def _valid_port(value: object) -> bool:
     return type(value) is int and 1 <= value <= MAX_PORT  # pylint: disable=unidiomatic-typecheck
 
 
-def _is_loopback_host(hostname: object) -> bool:
-    """Recognize literal loopback addresses without resolving attacker-controlled DNS."""
+def is_loopback_host(hostname: object) -> bool:
+    """Literal match only, because DNS answers can be forged."""
     if not isinstance(hostname, str):
         return False
     normalized = hostname.rstrip(".").lower()
@@ -98,18 +111,17 @@ def _is_loopback_host(hostname: object) -> bool:
         return False
 
 
-def _loopback_url(url: object, *, port: int | None = None, path: str | None = None) -> bool:  # pylint: disable=too-many-return-statements
-    """Require a credential-free HTTP URL on literal loopback with optional exact fields."""
-    if not isinstance(url, str) or len(url) > MAX_RECORD_URL_CHARS:
-        return False
+def parse_endpoint(url: object) -> SplitResult | None:
+    """One parser, so that client and server refuse alike."""
+    if not isinstance(url, str) or len(url) > MAX_URL_CHARS:
+        return None
     if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in url):
-        return False
+        return None
     try:
         parsed = urlsplit(url)
-        hostname = parsed.hostname
-        parsed_port = parsed.port
+        port = parsed.port
     except ValueError:
-        return False
+        return None
     if (  # pylint: disable=too-many-boolean-expressions
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
@@ -117,11 +129,18 @@ def _loopback_url(url: object, *, port: int | None = None, path: str | None = No
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
-        or parsed_port is None
-        or not _is_loopback_host(hostname)
+        or (port is not None and not _valid_port(port))
+        or parsed.hostname is None
     ):
+        return None
+    return parsed
+
+
+def _loopback_url(url: object, *, port: int | None = None, path: str | None = None) -> bool:
+    parsed = parse_endpoint(url)
+    if parsed is None or parsed.port is None or not is_loopback_host(parsed.hostname):
         return False
-    if port is not None and parsed_port != port:
+    if port is not None and parsed.port != port:
         return False
     return path is None or parsed.path == path
 
@@ -136,12 +155,9 @@ def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-ret
         return False
     if not _loopback_url(record.url, port=record.port, path=EMBEDDINGS_PATH):
         return False
-    if (
-        not isinstance(record.platform, str)
-        or not record.platform
-        or len(record.platform) > MAX_PLATFORM_CHARS
-        or any(ord(character) < 32 or ord(character) == 127 for character in record.platform)
-    ):
+    if not _plain_text(record.platform, required=True) or not _plain_text(record.process_start, required=True):
+        return False
+    if not _plain_text(record.nonce, required=False):
         return False
     if type(record.started_at) not in (int, float):  # pylint: disable=unidiomatic-typecheck
         return False
@@ -149,7 +165,6 @@ def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-ret
         return math.isfinite(record.started_at) and record.started_at >= 0
     except (OverflowError, TypeError):
         return False
-    return True
 
 
 def _read_record_bytes(path: Path) -> bytes | None:
@@ -185,12 +200,9 @@ def read_record(root: Path) -> ServerRecord | None:
         return None
     if not isinstance(row, dict):
         return None
-    fields = {"pid", "port", "url", "platform", "started_at"}
-    if set(row) != fields:
+    if set(row) != set(ServerRecord._fields):
         return None
-    record = ServerRecord(
-        row["pid"], row["port"], row["url"], row["platform"], row["started_at"]
-    )
+    record = ServerRecord(**row)
     return record if _valid_record(record) else None
 
 
@@ -228,27 +240,65 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def _answers(url: str) -> bool:
-    """Probe only the worker's validated loopback health endpoint."""
+def process_start(pid: int) -> str | None:
+    """Paired with the pid, because the kernel reuses pids."""
+    try:
+        listed = subprocess.run(
+            ("ps", "-o", "lstart=", "-p", str(pid)), capture_output=True, text=True,
+            timeout=PS_TIMEOUT_SECONDS, env={**os.environ, "LC_ALL": "C"}, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return listed.stdout.strip() or None
+
+
+def _owned(record: ServerRecord) -> bool:
+    return process_alive(record.pid) and process_start(record.pid) == record.process_start
+
+
+def _echoes(raw: bytes, nonce: str) -> bool:
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return False
+    return isinstance(body, dict) and body.get("nonce") == nonce
+
+
+def _healthy(response, nonce: str) -> bool:
+    if response.status >= 500:
+        return False
+    return not nonce or _echoes(response.read(MAX_RECORD_BYTES), nonce)
+
+
+def _answers(url: str, nonce: str = "") -> bool:
+    """Nonce checked because another process may hold the port."""
     if not _loopback_url(url, path=HEALTH_PATH):
         return False
     try:
         with urllib.request.urlopen(url, timeout=READY_PROBE_TIMEOUT) as response:
-            return response.status < 500
+            return _healthy(response, nonce)
     except (urllib.error.URLError, OSError, ValueError):
         return False
 
 
-def _wait_ready(health: str, child: subprocess.Popen, deadline: float) -> None:
-    """Wait for a bounded loopback health probe or terminate the unready child."""
-    if not _loopback_url(health, path=HEALTH_PATH):
-        child.terminate()
-        raise ValueError("embedding server health URL is not a loopback endpoint")
+class _Unwanted(Exception):
+    """Its own type, since lost demand is not a launch failure."""
+
+
+def _always_wanted() -> bool:
+    return True
+
+
+def _wait_ready(child: subprocess.Popen, record: ServerRecord, deadline: float, wanted: Callable[[], bool]) -> None:
+    """Watches demand, because only the supervisor ends workers."""
+    health = f"http://127.0.0.1:{record.port}{HEALTH_PATH}"
     while time.time() < deadline:
         if child.poll() is not None:
             raise ValueError(f"embedding server exited with {child.returncode} before answering {health}")
-        if _answers(health):
+        if _answers(health, record.nonce):
             return
+        if not wanted():
+            raise _Unwanted
         time.sleep(READY_POLL_SECONDS)
     child.terminate()
     raise ValueError(f"embedding server did not answer {health} within {READY_TIMEOUT_SECONDS} seconds")
@@ -280,31 +330,37 @@ def _python_command(interpreter: Path, weights: Path, port: int) -> tuple[str, .
     return (str(interpreter), str(Path(__file__).parent / WORKER_NAME), str(weights), str(port))
 
 
-def command(entry: ModelPlatform, root: Path, port: int) -> tuple[str, ...]:
-    """Resolve artifacts only after accepting a valid loopback listen port."""
-    if not _valid_port(port):
-        raise ValueError("port must be between 1 and 65535")
+def provision(entry: ModelPlatform, root: Path) -> Callable[[int], tuple[str, ...]]:
+    """Port left open, because a download can outlast a free port."""
     weights = ensure_weights(entry, root)
     runtime = ensure_runtime(entry, root)
     if isinstance(entry.runtime, ArchiveRuntime):
-        return _archive_command(runtime, weights, entry, port)
-    return _python_command(runtime, weights, port)
+        return partial(_archive_command, runtime, weights, entry)
+    return partial(_python_command, runtime, weights)
 
 
-def _spawn(arguments: tuple[str, ...], root: Path) -> subprocess.Popen:
+def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "", *, fresh_log: bool = False) -> subprocess.Popen:
     """Starts its own session because the hook that spawns it exits within the second and must not drag the model down with it."""
-    with (root / LOG_NAME).open("ab") as log:
-        return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+    environment = {**os.environ, NONCE_ENV: nonce}
+    with (root / LOG_NAME).open("wb" if fresh_log else "ab") as log:
+        return subprocess.Popen(arguments, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True, env=environment)
+
+
+def _launch_nonce(entry: ModelPlatform) -> str:
+    """Empty for llama-server, because its /health cannot echo one."""
+    return "" if isinstance(entry.runtime, ArchiveRuntime) else secrets.token_hex(16)
 
 
 def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...]) -> tuple[subprocess.Popen, ServerRecord]:
     """Publish ownership before readiness so Stop can terminate a worker still loading its weights."""
-    child = _spawn(arguments, root)
-    if type(child.pid) is not int or child.pid <= 0:  # pylint: disable=unidiomatic-typecheck
+    nonce = _launch_nonce(entry)
+    child = _spawn(arguments, root, nonce, fresh_log=True)
+    started = process_start(child.pid) if type(child.pid) is int and child.pid > 0 else None  # pylint: disable=unidiomatic-typecheck
+    if started is None:
         child.terminate()
         raise ValueError("embedding server returned an invalid process id")
     record = ServerRecord(
-        child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time()
+        child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time(), started, nonce
     )
     try:
         _write_record(root, record)
@@ -316,28 +372,31 @@ def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, .
     return child, record
 
 
-def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False) -> None:
+def _discard_unready(child: subprocess.Popen, record: ServerRecord, root: Path, locked: bool) -> bool:
+    with nullcontext() if locked else exclusive(root / LOCK_NAME):
+        owned = read_record(root) == record
+        _terminate(child.pid)
+        if owned:
+            discard_record(root)
+    return owned
+
+
+def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked: bool = False, wanted: Callable[[], bool] = _always_wanted) -> None:
     try:
-        _wait_ready(
-            f"http://127.0.0.1:{record.port}{HEALTH_PATH}", child,
-            time.time() + READY_TIMEOUT_SECONDS,
-        )
+        _wait_ready(child, record, time.time() + READY_TIMEOUT_SECONDS, wanted)
+    except _Unwanted:
+        _discard_unready(child, record, root, locked)
     except Exception:
-        with nullcontext() if locked else exclusive(root / LOCK_NAME):
-            owned = read_record(root) == record
-            _terminate(child.pid)
-            if owned:
-                discard_record(root)
-        if not owned:
-            return
-        raise
+        if _discard_unready(child, record, root, locked):
+            raise
 
 
 def start(entry: ModelPlatform, root: Path) -> ServerRecord:
     """Start a worker and clean up both process and record on any readiness failure."""
     root.mkdir(parents=True, exist_ok=True)
+    arguments = provision(entry, root)
     port = _free_port()
-    child, record = _launch(entry, root, port, command(entry, root, port))
+    child, record = _launch(entry, root, port, arguments(port))
     _ready(child, record, root, locked=True)
     return record
 
@@ -361,35 +420,22 @@ def _terminate(pid: int) -> bool:
 
 def _stop(root: Path) -> bool:
     record = read_record(root)
-    stopped = _terminate(record.pid) if record is not None else False
+    stopped = _terminate(record.pid) if record is not None and _owned(record) else False
     discard_record(root)
     return stopped
 
 
-def stop(root: Path, *, idle_at: float | None = None) -> bool:
-    """Keep the record until exit is confirmed; serialize shutdown with startup and lease acquisition."""
+def stop(root: Path) -> bool:
+    """Locked, because a shutdown must not race a launch."""
     with exclusive(root / LOCK_NAME):
-        if idle_at is not None and has_live_leases(root, idle_at):
-            return False
         return _stop(root)
 
 
 def running_url(root: Path) -> str | None:
     record = read_record(root)
-    if record is None or not process_alive(record.pid):
+    if record is None or not _owned(record):
         return None
     return record.url
-
-
-def ensure_running(entry: ModelPlatform, root: Path) -> str:
-    """Sweeps a record whose process is gone, because a crashed server has to be respawned rather than reported absent forever."""
-    root.mkdir(parents=True, exist_ok=True)
-    with exclusive(root / LOCK_NAME):
-        url = running_url(root)
-        if url is not None:
-            return url
-        discard_record(root)
-        return start(entry, root).url
 
 
 def start_detached(root: Path) -> None:
@@ -400,13 +446,18 @@ def start_detached(root: Path) -> None:
 
 def _start_leased(entry: ModelPlatform, root: Path) -> None:
     """Provision outside the lifecycle lock, then recheck demand before launching a model after a slow download."""
-    port = _free_port()
-    arguments = command(entry, root, port)
+    arguments = provision(entry, root)
     with exclusive(root / LOCK_NAME):
         if not has_live_leases(root, time.time()) or running_url(root) is not None:
             return
-        child, record = _launch(entry, root, port, arguments)
-    _ready(child, record, root)
+        port = _free_port()
+        child, record = _launch(entry, root, port, arguments(port))
+    _ready(child, record, root, wanted=partial(_demanded, root))
+
+
+def _demanded(root: Path) -> bool:
+    with exclusive(root / LOCK_NAME):
+        return has_live_leases(root, time.time())
 
 
 def supervise(entry: ModelPlatform, root: Path) -> None:

@@ -14,8 +14,8 @@ def _manifest(path: Path, *groups: dict) -> Path:
     return path
 
 
-def test_the_shipped_manifest_carries_its_reviewers(tmp_path: Path) -> None:
-    """Count the manifest because installing the plugin is the whole setup for a default user."""
+def test_an_old_manifest_with_an_agent_counts_it(tmp_path: Path) -> None:
+    """Count it because an old cached plugin still runs its agent."""
     manifest = _manifest(tmp_path / "hooks.json", {"hooks": [COMMAND]}, {"hooks": [AGENT]})
 
     assert judge_status.plugin_reviewers(manifest) == 1
@@ -28,13 +28,29 @@ def test_a_manifest_without_an_agent_reports_zero(tmp_path: Path) -> None:
     assert judge_status.plugin_reviewers(manifest) == 0
 
 
+def test_the_shipped_manifest_carries_no_reviewer() -> None:
+    """Report zero because settings hold the only reviewer."""
+    shipped = Path(__file__).parents[1] / "hooks.json"
+
+    assert judge_status.plugin_reviewers(shipped) == 0
+
+
+def test_status_counts_the_one_haiku_reviewer(tmp_path: Path, monkeypatch) -> None:
+    """Report one because a second set doubles the spend."""
+    monkeypatch.setenv(judge_status.PLUGIN_ROOT_ENV, str(Path(__file__).parents[2]))
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("haiku", settings_path=settings, preset_path=preset)
+
+    assert claude_native.status(settings_path=settings, preset_path=preset)["reviewers"] == "1"
+
+
 def test_a_missing_manifest_reports_zero_rather_than_raising(tmp_path: Path) -> None:
     """Survive the absence because a status read must never crash the command that explains the gate."""
     assert judge_status.plugin_reviewers(tmp_path / "absent.json") == 0
 
 
 def test_a_machine_with_no_install_reports_zero(tmp_path: Path, monkeypatch) -> None:
-    """Read the install because this checkout carries two reviewers whether or not anyone installed it."""
+    """Read the install because a checkout is not a running plugin."""
     monkeypatch.delenv(judge_status.PLUGIN_ROOT_ENV, raising=False)
     monkeypatch.setenv(judge_status.CONFIG_ENV, str(tmp_path / "empty-config"))
 

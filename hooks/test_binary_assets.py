@@ -69,9 +69,9 @@ def test_binary_asset_does_not_hide_other_files_or_commit_prose(
     response = _commit(repo, config, "We ship it; it works")
 
     assert response["decision"] == "block"
-    assert "module.py:1 clean_code/file_too_long" in response["reason"]
-    assert "notes.md:1 punctuation/prose_semicolon" in response["reason"]
-    assert "commit_message.md:1 punctuation/prose_semicolon" in response["reason"]
+    assert "module.py:1 File past the hard limit" in response["reason"]
+    assert "notes.md:1 Semicolon in prose" in response["reason"]
+    assert "commit_message.md:1 Semicolon in prose" in response["reason"]
     assert "baseline.png" not in response["reason"]
 
 

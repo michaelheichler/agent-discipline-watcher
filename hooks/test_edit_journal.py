@@ -78,7 +78,7 @@ class EditJournalTests(unittest.TestCase):
         }
         response = record.run(payload, self.cfg)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("clean_code/deferred_work_comment", response["reason"])
+        self.assertIn("Deferred work comment", response["reason"])
         self.assertEqual(len(self._journal_rows()), 1)
 
     def test_a_strict_comment_finding_blocks_and_is_recorded(self):
@@ -94,7 +94,7 @@ class EditJournalTests(unittest.TestCase):
         config = {**self.cfg, "rule_gates": {"what_comment": "observe"}}
         response = record.run(payload, config)
         self.assertEqual(response["decision"], "block")
-        self.assertIn("clean_code/what_comment", response["reason"])
+        self.assertIn("Comment restates the code", response["reason"])
         decisions = [row for row in self._ledger_rows() if row["event"] == "PostToolUse"]
         self.assertEqual([(row["rule"], row["outcome"]) for row in decisions],
                           [("what_comment", "block")])
@@ -140,9 +140,9 @@ class EditJournalTests(unittest.TestCase):
         }
         response = record.run(payload, {**self.cfg, "max_scan_bytes": 10})
         self.assertEqual(response["decision"], "block")
-        self.assertIn("file_too_long", response["reason"])
+        self.assertIn("File past the hard limit", response["reason"])
         reasons, paths = blocker_state.snapshot("s1", "", self.state_root)
-        self.assertIn("file_too_long", reasons[0])
+        self.assertIn("File past the hard limit", reasons[0])
         self.assertEqual(paths, [str(target)])
 
     def test_unscannable_source_remains_blocked(self):
@@ -155,7 +155,7 @@ class EditJournalTests(unittest.TestCase):
             "tool_input": {"file_path": str(target)},
         }
         response = record.run(payload, self.cfg)
-        self.assertIn("unscannable_file", response["reason"])
+        self.assertIn("File cannot be scanned", response["reason"])
 
     def test_project_config_cannot_redirect_blocker_state(self):
         project = self.root / "project"
@@ -314,7 +314,7 @@ class EditJournalTests(unittest.TestCase):
         response = record.run(payload, self.cfg)
         message = response.get("reason", "")
         self.assertEqual(target.read_bytes(), original)
-        self.assertIn("deferred_work_comment", message)
+        self.assertIn("Deferred work comment", message)
 
 
 if __name__ == "__main__":
