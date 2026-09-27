@@ -11,7 +11,7 @@ from lib import update_runtime
 
 
 @pytest.fixture
-def managed_home(tmp_path, monkeypatch):
+def managed_home(tmp_path):
     home = tmp_path / "account"
     installed = home / ".adw/install/agent-discipline-watcher"
     module = installed / "hooks/lib/update_runtime.py"
@@ -19,10 +19,6 @@ def managed_home(tmp_path, monkeypatch):
     module.write_text("runtime = True\n", encoding="utf-8")
     (installed / ".adw-install-marker").write_text("agent-discipline-watcher\n", encoding="utf-8")
     assert module.is_file()
-    monkeypatch.setattr(update_runtime, "_account_home", lambda: home)
-    monkeypatch.setattr(update_runtime, "__file__", str(module))
-    release = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
-    monkeypatch.setattr(update_runtime.update_release, "latest_release", lambda: release)
     return home
 
 
@@ -134,11 +130,10 @@ def test_preflight_rejects_a_symlink_inside_the_legacy_source(managed_home, tmp_
         update_runtime._preflight_paths(update_runtime._selected_paths(managed_home, ("omp",)), managed_home)
 
 
-def test_update_passes_the_validated_legacy_root_to_the_installer(managed_home, monkeypatch):
-    repository = Path(__file__).resolve().parents[2]
-    checkout = managed_home / "Development/checkout"
+def _omp_linked_checkout(home: Path, repository: Path) -> Path:
+    checkout = home / "Development/checkout"
     shutil.copytree(repository, checkout, ignore=shutil.ignore_patterns(*update_runtime.EXCLUDED_NAMES))
-    agent = managed_home / ".omp/agent"
+    agent = home / ".omp/agent"
     link = agent / "extensions/agent-discipline-watcher"
     link.parent.mkdir(parents=True)
     link.symlink_to(checkout / "pi/extensions/agent-discipline-watcher")
@@ -146,25 +141,27 @@ def test_update_passes_the_validated_legacy_root_to_the_installer(managed_home, 
         json.dumps({"extensions": [str(checkout / "pi/extensions/agent-discipline-watcher/index.ts")]}),
         encoding="utf-8",
     )
+    return checkout
+
+
+def test_update_passes_the_validated_legacy_root_to_the_installer(managed_home):
+    repository = Path(__file__).resolve().parents[2]
+    checkout = _omp_linked_checkout(managed_home, repository)
     captured = {}
     updates = managed_home / ".adw/updates"
     updates.mkdir(parents=True)
     release = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
 
-    monkeypatch.setattr(
-        update_runtime.update_release,
-        "stage_release",
-        lambda _release, destination: shutil.copytree(repository, destination, ignore=shutil.ignore_patterns(*update_runtime.EXCLUDED_NAMES)),
-    )
-    original_installer = update_runtime._run_installer
-
     def run_installer(source, hosts, environment):
         captured.update(environment)
-        original_installer(source, hosts, environment)
+        update_runtime._run_installer(source, hosts, environment)
 
-    monkeypatch.setattr(update_runtime, "_run_installer", run_installer)
+    steps = update_runtime.UpdateSteps(
+        stage_release=lambda _release, destination: shutil.copytree(repository, destination, ignore=shutil.ignore_patterns(*update_runtime.EXCLUDED_NAMES)),
+        run_installer=run_installer,
+    )
 
-    update_runtime._perform_update(managed_home, updates, ("omp",), release)
+    update_runtime._perform_update(managed_home, updates, ("omp",), release, steps)
 
     assert captured["ADW_LEGACY_INSTALL_DIR"] == str(checkout)
     installed = managed_home / update_runtime.INSTALL_PATH

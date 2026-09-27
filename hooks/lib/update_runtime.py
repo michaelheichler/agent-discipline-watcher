@@ -11,7 +11,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from install_runtime import EXCLUDED_NAMES, INSTALL_MARKER, INSTALL_MARKER_CONTENT
@@ -158,38 +160,45 @@ def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None
     return [home / path for path in paths]
 
 
+def _linked_legacy_root(path: Path, home: Path, suffix: Path) -> Path | None:
+    target = path.resolve(strict=True)
+    root = target
+    for _part in suffix.parts:
+        root = root.parent
+    raw_target = os.readlink(path)
+    valid = (
+        root / suffix == target
+        and os.path.isabs(raw_target)
+        and raw_target == str(root / suffix)
+        and root.is_relative_to(home)
+    )
+    return root if valid else None
+
+
+def _is_legacy_checkout(root: Path, home: Path) -> bool:
+    _check_path(root, home)
+    manifest_path = root / ".claude-plugin/plugin.json"
+    _check_external_file(manifest_path, root)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("name") != PLUGIN_NAME:
+        return False
+    _check_external_file(root / "hooks/run.sh", root)
+    _check_external_file(root / EXTENSION_PATH / "index.ts", root)
+    return _omp_registration_matches(home, root)
+
+
 def _safe_legacy_source(path: Path, home: Path) -> Path | None:
     relative = path.relative_to(home).as_posix()
     suffix = LEGACY_LINK_TARGETS.get(relative)
     if suffix is None or not path.is_symlink():
         return None
-    root: Path | None = None
-    valid = False
     try:
-        target = path.resolve(strict=True)
-        root = target
-        for _part in suffix.parts:
-            root = root.parent
-        raw_target = os.readlink(path)
-        valid = (
-            root / suffix == target
-            and os.path.isabs(raw_target)
-            and raw_target == str(root / suffix)
-            and root.is_relative_to(home)
-        )
-        if valid:
-            _check_path(root, home)
-            manifest_path = root / ".claude-plugin/plugin.json"
-            _check_external_file(manifest_path, root)
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            valid = isinstance(manifest, dict) and manifest.get("name") == PLUGIN_NAME
-        if valid:
-            _check_external_file(root / "hooks/run.sh", root)
-            _check_external_file(root / EXTENSION_PATH / "index.ts", root)
-            valid = _omp_registration_matches(home, root)
+        root = _linked_legacy_root(path, home, suffix)
+        if root is None or not _is_legacy_checkout(root, home):
+            return None
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
         return None
-    return root if valid else None
+    return root
 
 
 def _check_external_file(path: Path, root: Path) -> None:
@@ -303,6 +312,15 @@ def _install_claude(home: Path, source: Path, commit: str, environment: dict[str
     install_pinned_plugin(home, source, commit, environment)
 
 
+@dataclass(frozen=True, slots=True)
+class UpdateSteps:
+    account_home: Callable[[], Path] = _account_home
+    latest_release: Callable[[], update_release.Release] = update_release.latest_release
+    stage_release: Callable[[update_release.Release, Path], None] = update_release.stage_release
+    install_claude: Callable[[Path, Path, str, dict[str, str]], None] = _install_claude
+    run_installer: Callable[[Path, tuple[str, ...], dict[str, str]], None] = _run_installer
+
+
 def _inventory(root: Path) -> dict[str, tuple[str, int]]:
     files: dict[str, tuple[str, int]] = {}
     for directory, directories, names in os.walk(root, followlinks=False):
@@ -406,27 +424,40 @@ def _record_release(updates: Path, release: update_release.Release, hosts: tuple
         temporary.unlink(missing_ok=True)
 
 
-def _perform_update(home: Path, updates: Path, hosts: tuple[str, ...], release: update_release.Release) -> None:
+def _update_environment(home: Path, hosts: tuple[str, ...]) -> tuple[dict[str, str], list[Path]]:
+    environment = _installer_environment(home)
+    claude_root = _claude_root(home) if "claude" in hosts else None
+    if claude_root is not None:
+        environment["CLAUDE_CONFIG_DIR"] = str(claude_root)
+    paths = _selected_paths(home, hosts, claude_root)
+    legacy_root = _preflight_paths(paths, home)
+    if legacy_root is not None:
+        environment["ADW_LEGACY_INSTALL_DIR"] = str(legacy_root)
+    return environment, paths
+
+
+def _install_hosts(
+    steps: UpdateSteps, home: Path, source: Path, commit: str, hosts: tuple[str, ...], environment: dict[str, str],
+) -> None:
+    if "claude" in hosts:
+        steps.install_claude(home, source, commit, environment)
+        environment["ADW_SKIP_PLUGIN"] = "1"
+    steps.run_installer(source, hosts, environment)
+
+
+def _perform_update(
+    home: Path, updates: Path, hosts: tuple[str, ...], release: update_release.Release, steps: UpdateSteps,
+) -> None:
     workspace = Path(tempfile.mkdtemp(prefix="update-", dir=updates))
     retain_backup = False
     try:
         source = workspace / "release"
-        update_release.stage_release(release, source)
+        steps.stage_release(release, source)
         expected = _source_inventory(source, hosts)
-        environment = _installer_environment(home)
-        claude_root = _claude_root(home) if "claude" in hosts else None
-        if claude_root is not None:
-            environment["CLAUDE_CONFIG_DIR"] = str(claude_root)
-        paths = _selected_paths(home, hosts, claude_root)
-        legacy_root = _preflight_paths(paths, home)
-        if legacy_root is not None:
-            environment["ADW_LEGACY_INSTALL_DIR"] = str(legacy_root)
+        environment, paths = _update_environment(home, hosts)
         backups = _backup_paths(paths, workspace / "backup")
         try:
-            if "claude" in hosts:
-                _install_claude(home, source, release.commit, environment)
-                environment["ADW_SKIP_PLUGIN"] = "1"
-            _run_installer(source, hosts, environment)
+            _install_hosts(steps, home, source, release.commit, hosts, environment)
             _verify_install(home, source, hosts, expected)
             _record_release(updates, release, hosts)
         except BaseException:
@@ -441,18 +472,18 @@ def _perform_update(home: Path, updates: Path, hosts: tuple[str, ...], release: 
             shutil.rmtree(workspace)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, steps: UpdateSteps = UpdateSteps()) -> int:
     args = _arguments(argv)
     try:
-        home = _account_home()
+        home = steps.account_home()
         if not args.dry_run:
             _require_installed(home)
-        release = update_release.latest_release()
+        release = steps.latest_release()
         if args.dry_run:
             print(f"Would install {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
             return 0
         with _update_lock(home) as updates:
-            _perform_update(home, updates, args.hosts, release)
+            _perform_update(home, updates, args.hosts, release, steps)
         print(f"Installed {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
         return 0
     except Exception as error:

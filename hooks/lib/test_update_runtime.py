@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import fcntl
 import json
 import os
@@ -12,6 +13,9 @@ import pytest
 from lib import update_runtime
 
 
+RELEASE = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
+
+
 @pytest.fixture
 def managed_home(tmp_path, monkeypatch):
     home = tmp_path / "account"
@@ -20,11 +24,12 @@ def managed_home(tmp_path, monkeypatch):
     module.parent.mkdir(parents=True)
     module.write_text("runtime = True\n", encoding="utf-8")
     (installed / ".adw-install-marker").write_text("agent-discipline-watcher\n", encoding="utf-8")
-    monkeypatch.setattr(update_runtime, "_account_home", lambda: home)
     monkeypatch.setattr(update_runtime, "__file__", str(module))
-    release = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
-    monkeypatch.setattr(update_runtime.update_release, "latest_release", lambda: release)
     return home
+
+
+def _steps(home: Path, **overrides: object) -> update_runtime.UpdateSteps:
+    return update_runtime.UpdateSteps(account_home=lambda: home, latest_release=lambda: RELEASE, **overrides)
 
 
 @pytest.mark.parametrize("arguments", [[], ["update"], ["update", "--dry-run"], ["update", "--code"], ["update", "--codex", "--source", "/tmp/repo"]])
@@ -35,7 +40,7 @@ def test_update_requires_explicit_hosts_and_rejects_source_override(arguments):
 
 
 def test_dry_run_reports_release_without_creating_update_state(managed_home, capsys):
-    assert update_runtime.main(["update", "--omp", "--dry-run"]) == 0
+    assert update_runtime.main(["update", "--omp", "--dry-run"], steps=_steps(managed_home)) == 0
     output = capsys.readouterr().out
     assert "v1.2.3" in output
     assert "a" * 40 in output
@@ -44,7 +49,7 @@ def test_dry_run_reports_release_without_creating_update_state(managed_home, cap
 
 def test_checkout_cannot_execute_live_update(managed_home, monkeypatch, capsys):
     monkeypatch.setattr(update_runtime, "__file__", str(managed_home / "checkout/update_runtime.py"))
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert update_runtime.main(["update", "--omp"], steps=_steps(managed_home)) == 2
     assert "installed" in capsys.readouterr().err
     assert not (managed_home / ".adw/updates").exists()
 
@@ -71,7 +76,7 @@ def test_symlinked_updates_directory_is_refused(managed_home, tmp_path, capsys):
     foreign = tmp_path / "foreign"
     foreign.mkdir()
     (managed_home / ".adw/updates").symlink_to(foreign, target_is_directory=True)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert update_runtime.main(["update", "--omp"], steps=_steps(managed_home)) == 2
     assert "symlink" in capsys.readouterr().err
     assert list(foreign.iterdir()) == []
 
@@ -97,6 +102,24 @@ def _fixture_release(source):
     return source
 
 
+def _simulate_omp(home: Path, installed: Path) -> None:
+    agent = home / ".omp/agent"
+    link = agent / "extensions/agent-discipline-watcher"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.unlink(missing_ok=True)
+    link.symlink_to(installed / "pi/extensions/agent-discipline-watcher")
+    settings = json.loads((agent / "settings.json").read_text()) if (agent / "settings.json").exists() else {}
+    settings["extensions"] = [str(installed / "pi/extensions/agent-discipline-watcher/index.ts")]
+    (agent / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+
+
+def _simulate_codex(home: Path, installed: Path, source: Path) -> None:
+    codex = home / ".codex"
+    codex.mkdir(exist_ok=True)
+    template = (source / "hooks/codex-hooks.json").read_text().replace("__SKILL_DIR__", str(installed))
+    (codex / "hooks.json").write_text(template, encoding="utf-8")
+
+
 def _simulate_install(source, hosts, environment):
     installed = Path(environment["ADW_INSTALL_DIR"])
     shutil.rmtree(installed)
@@ -112,27 +135,24 @@ def _simulate_install(source, hosts, environment):
         judge.unlink(missing_ok=True)
         judge.symlink_to(installed / "bin/adw-judge")
     if "omp" in hosts:
-        agent = home / ".omp/agent"
-        link = agent / "extensions/agent-discipline-watcher"
-        link.parent.mkdir(parents=True, exist_ok=True)
-        link.unlink(missing_ok=True)
-        link.symlink_to(installed / "pi/extensions/agent-discipline-watcher")
-        settings = json.loads((agent / "settings.json").read_text()) if (agent / "settings.json").exists() else {}
-        settings["extensions"] = [str(installed / "pi/extensions/agent-discipline-watcher/index.ts")]
-        (agent / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+        _simulate_omp(home, installed)
     if "codex" in hosts:
-        codex = home / ".codex"
-        codex.mkdir(exist_ok=True)
-        template = (source / "hooks/codex-hooks.json").read_text().replace("__SKILL_DIR__", str(installed))
-        (codex / "hooks.json").write_text(template, encoding="utf-8")
+        _simulate_codex(home, installed, source)
 
 
 @pytest.fixture
-def available_update(managed_home, tmp_path, monkeypatch):
+def available_update(managed_home, tmp_path):
     source = _fixture_release(tmp_path / "published")
-    monkeypatch.setattr(update_runtime.update_release, "stage_release", lambda release, destination: shutil.copytree(source, destination))
-    monkeypatch.setattr(update_runtime, "_run_installer", _simulate_install)
-    return SimpleNamespace(home=managed_home, source=source, installed=managed_home / update_runtime.INSTALL_PATH)
+    steps = _steps(
+        managed_home,
+        stage_release=lambda release, destination: shutil.copytree(source, destination),
+        run_installer=_simulate_install,
+    )
+    return SimpleNamespace(home=managed_home, source=source, installed=managed_home / update_runtime.INSTALL_PATH, steps=steps)
+
+
+def _update(available_update, arguments: list[str], **overrides: object) -> int:
+    return update_runtime.main(arguments, steps=dataclasses.replace(available_update.steps, **overrides))
 
 
 def test_update_verifies_files_and_wiring_before_recording_release(available_update):
@@ -144,7 +164,7 @@ def test_update_verifies_files_and_wiring_before_recording_release(available_upd
     settings = home / ".omp/agent/settings.json"
     settings.parent.mkdir(parents=True)
     settings.write_text('{"theme":"dark"}', encoding="utf-8")
-    assert update_runtime.main(["update", "--omp", "--codex"]) == 0
+    assert _update(available_update, ["update", "--omp", "--codex"]) == 0
     receipt = json.loads((home / ".adw/updates/installed.json").read_text())
     assert receipt["tag"] == "v1.2.3"
     assert receipt["commit"] == "a" * 40
@@ -155,7 +175,7 @@ def test_update_verifies_files_and_wiring_before_recording_release(available_upd
         assert (home / ".adw" / name / "keep.json").read_text() == '{"pending":true}'
 
 
-def test_download_failure_does_not_replace_install_or_wiring(available_update, monkeypatch):
+def test_download_failure_does_not_replace_install_or_wiring(available_update):
     installed_module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = installed_module.read_bytes()
 
@@ -164,14 +184,13 @@ def test_download_failure_does_not_replace_install_or_wiring(available_update, m
         (destination / "partial").write_text("incomplete", encoding="utf-8")
         raise RuntimeError("download failed")
 
-    monkeypatch.setattr(update_runtime.update_release, "stage_release", failed_stage)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"], stage_release=failed_stage) == 2
     assert installed_module.read_bytes() == previous
     assert not (available_update.home / ".omp").exists()
     assert not (available_update.home / ".adw/updates/installed.json").exists()
 
 
-def test_failed_install_restores_runtime_settings_and_managed_link(available_update, monkeypatch):
+def test_failed_install_restores_runtime_settings_and_managed_link(available_update):
     installed_module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = installed_module.read_bytes()
     agent = available_update.home / ".omp/agent"
@@ -187,8 +206,7 @@ def test_failed_install_restores_runtime_settings_and_managed_link(available_upd
         _simulate_install(source, hosts, environment)
         raise RuntimeError("installation failed")
 
-    monkeypatch.setattr(update_runtime, "_run_installer", failed_install)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"], run_installer=failed_install) == 2
     assert installed_module.read_bytes() == previous
     assert settings.read_bytes() == original
     assert link.is_symlink()
@@ -196,20 +214,19 @@ def test_failed_install_restores_runtime_settings_and_managed_link(available_upd
     assert not (available_update.home / ".adw/updates/installed.json").exists()
 
 
-def test_missing_command_link_rolls_back_the_update(available_update, monkeypatch, capsys):
+def test_missing_command_link_rolls_back_the_update(available_update, capsys):
     previous = (available_update.installed / "hooks/lib/update_runtime.py").read_bytes()
 
     def missing_link(source, hosts, environment):
         _simulate_install(source, hosts, environment)
         (available_update.home / ".adw/bin/adw").unlink()
 
-    monkeypatch.setattr(update_runtime, "_run_installer", missing_link)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"], run_installer=missing_link) == 2
     assert "command" in capsys.readouterr().err
     assert (available_update.installed / "hooks/lib/update_runtime.py").read_bytes() == previous
 
 
-def test_changed_installed_bytes_roll_back_the_update(available_update, monkeypatch, capsys):
+def test_changed_installed_bytes_roll_back_the_update(available_update, capsys):
     module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = module.read_bytes()
 
@@ -217,8 +234,7 @@ def test_changed_installed_bytes_roll_back_the_update(available_update, monkeypa
         _simulate_install(source, hosts, environment)
         module.write_text("runtime = False\n", encoding="utf-8")
 
-    monkeypatch.setattr(update_runtime, "_run_installer", altered_install)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"], run_installer=altered_install) == 2
     assert "verified release" in capsys.readouterr().err
     assert module.read_bytes() == previous
     assert not (available_update.home / ".adw/updates/installed.json").exists()
@@ -230,7 +246,7 @@ def test_foreign_settings_symlink_is_never_modified(available_update, tmp_path, 
     settings = available_update.home / ".omp/agent/settings.json"
     settings.parent.mkdir(parents=True)
     settings.symlink_to(foreign)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"]) == 2
     assert "symlink" in capsys.readouterr().err
     assert settings.is_symlink()
     assert foreign.read_text() == '{"private":true}'
@@ -242,7 +258,7 @@ def test_symlinked_update_lock_is_refused(available_update, tmp_path, capsys):
     updates = available_update.home / ".adw/updates"
     updates.mkdir(mode=0o700)
     (updates / "update.lock").symlink_to(foreign)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"]) == 2
     assert "symlink" in capsys.readouterr().err
     assert foreign.read_text() == "keep"
 
@@ -253,12 +269,12 @@ def test_another_update_lock_prevents_a_second_update(available_update, capsys):
     descriptor = os.open(updates / "update.lock", os.O_CREAT | os.O_RDWR, 0o600)
     with os.fdopen(descriptor, "w") as stream:
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert update_runtime.main(["update", "--omp"]) == 2
+        assert _update(available_update, ["update", "--omp"]) == 2
         assert "already running" in capsys.readouterr().err
     assert not (updates / "installed.json").exists()
 
 
-def test_claude_plugin_is_verified_before_installer_receives_skip_flag(available_update, monkeypatch):
+def test_claude_plugin_is_verified_before_installer_receives_skip_flag(available_update):
     catalog = available_update.home / ".adw/update-marketplace/.claude-plugin/marketplace.json"
 
     def pinned_plugin(home, source, commit, environment):
@@ -274,13 +290,11 @@ def test_claude_plugin_is_verified_before_installer_receives_skip_flag(available
         assert environment["ADW_SKIP_PLUGIN"] == "1"
         _simulate_install(source, hosts, environment)
 
-    monkeypatch.setattr(update_runtime, "_install_claude", pinned_plugin)
-    monkeypatch.setattr(update_runtime, "_run_installer", after_plugin)
-    assert update_runtime.main(["update", "--claude"]) == 0
+    assert _update(available_update, ["update", "--claude"], install_claude=pinned_plugin, run_installer=after_plugin) == 0
     assert json.loads((available_update.home / ".adw/updates/installed.json").read_text())["hosts"] == ["claude"]
 
 
-def test_installer_failure_restores_a_successfully_pinned_claude_catalog(available_update, monkeypatch):
+def test_installer_failure_restores_a_successfully_pinned_claude_catalog(available_update):
     catalog = available_update.home / ".adw/update-marketplace/.claude-plugin/marketplace.json"
     catalog.parent.mkdir(parents=True)
     catalog.write_text("previous", encoding="utf-8")
@@ -291,14 +305,12 @@ def test_installer_failure_restores_a_successfully_pinned_claude_catalog(availab
     def failed_install(source, hosts, environment):
         raise RuntimeError("installer failure")
 
-    monkeypatch.setattr(update_runtime, "_install_claude", pinned_plugin)
-    monkeypatch.setattr(update_runtime, "_run_installer", failed_install)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=pinned_plugin, run_installer=failed_install) == 2
     assert catalog.read_text() == "previous"
 
 
 @pytest.mark.parametrize("host", ["codex", "omp"])
-def test_missing_host_routing_restores_previous_runtime(available_update, monkeypatch, capsys, host):
+def test_missing_host_routing_restores_previous_runtime(available_update, capsys, host):
     module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = module.read_bytes()
 
@@ -309,8 +321,7 @@ def test_missing_host_routing_restores_previous_runtime(available_update, monkey
         else:
             (available_update.home / ".codex/hooks.json").write_text('{"hooks":{}}', encoding="utf-8")
 
-    monkeypatch.setattr(update_runtime, "_run_installer", incomplete_install)
-    assert update_runtime.main(["update", f"--{host}"]) == 2
+    assert _update(available_update, ["update", f"--{host}"], run_installer=incomplete_install) == 2
     assert host.lower() in capsys.readouterr().err.lower()
     assert module.read_bytes() == previous
 
@@ -318,7 +329,7 @@ def test_missing_host_routing_restores_previous_runtime(available_update, monkey
 def test_nonexecutable_released_command_does_not_replace_runtime(available_update, capsys):
     (available_update.source / "bin/adw").chmod(0o644)
     previous = (available_update.installed / "hooks/lib/update_runtime.py").read_bytes()
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"]) == 2
     assert "executable" in capsys.readouterr().err
     assert (available_update.installed / "hooks/lib/update_runtime.py").read_bytes() == previous
 
@@ -326,7 +337,7 @@ def test_nonexecutable_released_command_does_not_replace_runtime(available_updat
 def test_release_without_updater_cannot_remove_the_update_path(available_update, capsys):
     (available_update.source / "hooks/update.py").unlink()
     previous = (available_update.installed / "hooks/lib/update_runtime.py").read_bytes()
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"]) == 2
     assert "supported updater" in capsys.readouterr().err
     assert (available_update.installed / "hooks/lib/update_runtime.py").read_bytes() == previous
 
@@ -337,7 +348,7 @@ def test_settings_link_into_runtime_is_not_a_managed_extension_link(available_up
     module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = module.read_bytes()
     settings.symlink_to(module)
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert _update(available_update, ["update", "--omp"]) == 2
     assert "symlink" in capsys.readouterr().err
     assert module.read_bytes() == previous
 
@@ -345,12 +356,12 @@ def test_settings_link_into_runtime_is_not_a_managed_extension_link(available_up
 def test_an_invalid_install_marker_refuses_before_download(managed_home, capsys):
     marker = managed_home / update_runtime.INSTALL_PATH / ".adw-install-marker"
     marker.write_text("foreign", encoding="utf-8")
-    assert update_runtime.main(["update", "--omp"]) == 2
+    assert update_runtime.main(["update", "--omp"], steps=_steps(managed_home)) == 2
     assert "ownership marker" in capsys.readouterr().err
     assert not (managed_home / ".adw/updates").exists()
 
 
-def test_plugin_failure_never_runs_the_host_installer(available_update, monkeypatch):
+def test_plugin_failure_never_runs_the_host_installer(available_update):
     module = available_update.installed / "hooks/lib/update_runtime.py"
     previous = module.read_bytes()
 
@@ -361,26 +372,23 @@ def test_plugin_failure_never_runs_the_host_installer(available_update, monkeypa
         module.write_text("installer ran", encoding="utf-8")
         pytest.fail("unverified plugin reached the installer")
 
-    monkeypatch.setattr(update_runtime, "_install_claude", failed_plugin)
-    monkeypatch.setattr(update_runtime, "_run_installer", forbidden_installer)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=failed_plugin, run_installer=forbidden_installer) == 2
     assert module.read_bytes() == previous
 
 
-def test_real_omp_installer_updates_only_the_temporary_home(managed_home, monkeypatch):
+def test_real_omp_installer_updates_only_the_temporary_home(managed_home):
     repository = Path(__file__).resolve().parents[2]
 
     def staged_checkout(release, destination):
         shutil.copytree(repository, destination, ignore=shutil.ignore_patterns(*update_runtime.EXCLUDED_NAMES))
 
-    monkeypatch.setattr(update_runtime.update_release, "stage_release", staged_checkout)
     settings = managed_home / ".omp/agent/settings.json"
     settings.parent.mkdir(parents=True)
     settings.write_text('{"theme":"dark","extensions":["other-extension"]}', encoding="utf-8")
     evidence = managed_home / ".adw/ledger/keep.json"
     evidence.parent.mkdir()
     evidence.write_text('{"pending":true}', encoding="utf-8")
-    assert update_runtime.main(["update", "--omp"]) == 0
+    assert update_runtime.main(["update", "--omp"], steps=_steps(managed_home, stage_release=staged_checkout)) == 0
     installed = managed_home / update_runtime.INSTALL_PATH
     command = managed_home / ".adw/bin/adw"
     assert command.is_symlink()
@@ -394,7 +402,7 @@ def test_real_omp_installer_updates_only_the_temporary_home(managed_home, monkey
     assert not (managed_home / ".codex").exists()
 
 
-def test_alternate_claude_profile_controls_install_and_rollback(available_update, monkeypatch):
+def test_alternate_claude_profile_controls_install_and_rollback(available_update):
     home = available_update.home
     calls = []
     profile = home / ".config/claude-code"
@@ -412,54 +420,52 @@ def test_alternate_claude_profile_controls_install_and_rollback(available_update
         calls.append("installer")
         raise RuntimeError("installer failure")
 
-    monkeypatch.setattr(update_runtime, "_install_claude", pinned_plugin)
-    monkeypatch.setattr(update_runtime, "_run_installer", failed_install)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=pinned_plugin, run_installer=failed_install) == 2
     assert settings.read_text() == '{"theme":"dark"}'
     assert calls == ["plugin", "installer"]
     assert not (home / ".claude").exists()
 
 
-def test_claude_update_requires_its_preset_launcher(available_update, monkeypatch, capsys):
+def test_claude_update_requires_its_preset_launcher(available_update, capsys):
     (available_update.source / "bin/adw-judge").unlink()
-    monkeypatch.setattr(update_runtime, "_install_claude", lambda *args: None)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None) == 2
     assert "adw-judge" in capsys.readouterr().err
     assert not (available_update.home / ".adw/updates/installed.json").exists()
 
 
-def test_claude_update_rejects_a_missing_preset_link(available_update, monkeypatch, capsys):
-    monkeypatch.setattr(update_runtime, "_install_claude", lambda *args: None)
-
+def test_claude_update_rejects_a_missing_preset_link(available_update, capsys):
     def missing_link(source, hosts, environment):
         _simulate_install(source, hosts, environment)
         (available_update.home / ".adw/bin/adw-judge").unlink()
 
-    monkeypatch.setattr(update_runtime, "_run_installer", missing_link)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None, run_installer=missing_link) == 2
     assert "adw-judge" in capsys.readouterr().err
     assert not (available_update.home / ".adw/updates/installed.json").exists()
 
 
+def _claude_profile_files(profile: Path, plugin: str) -> dict[Path, bytes]:
+    cache = profile / "plugins/cache/agent-discipline-watcher"
+    old_guard = cache / "agent-discipline-watcher/old/hooks/guard.py"
+    files = {
+        old_guard: b"original guard\n",
+        profile / "plugins/installed_plugins.json": json.dumps({"version": 2, "plugins": {plugin: [{
+            "scope": "user", "gitCommitSha": "b" * 40, "installPath": str(old_guard.parent.parent),
+        }]}}).encode(),
+        profile / "settings.json": json.dumps({"theme": "dark", "enabledPlugins": {plugin: True, "other@market": True}}).encode(),
+    }
+    for path, content in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    return files
+
+
 @pytest.mark.parametrize("relative", [".claude", ".config/claude-code"])
-def test_failed_claude_reinstall_restores_cache_and_registration(available_update, monkeypatch, relative):
+def test_failed_claude_reinstall_restores_cache_and_registration(available_update, relative):
     profile = available_update.home / relative
     plugin = "agent-discipline-watcher@agent-discipline-watcher"
     cache = profile / "plugins/cache/agent-discipline-watcher"
-    old_guard = cache / "agent-discipline-watcher/old/hooks/guard.py"
     new_guard = cache / "agent-discipline-watcher/new/hooks/guard.py"
-    registry = profile / "plugins/installed_plugins.json"
-    settings = profile / "settings.json"
-    previous = {
-        old_guard: b"original guard\n",
-        registry: json.dumps({"version": 2, "plugins": {plugin: [{
-            "scope": "user", "gitCommitSha": "b" * 40, "installPath": str(old_guard.parent.parent),
-        }]}}).encode(),
-        settings: json.dumps({"theme": "dark", "enabledPlugins": {plugin: True, "other@market": True}}).encode(),
-    }
-    for path, content in previous.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
+    previous = _claude_profile_files(profile, plugin)
     calls = []
 
     def failed_reinstall(_home, _source, _commit, environment):
@@ -467,12 +473,11 @@ def test_failed_claude_reinstall_restores_cache_and_registration(available_updat
         shutil.rmtree(cache)
         new_guard.parent.mkdir(parents=True)
         new_guard.write_bytes(b"unverified replacement\n")
-        registry.write_text(json.dumps({"version": 2, "plugins": {}}), encoding="utf-8")
-        settings.write_text(json.dumps({"enabledPlugins": {plugin: False}}), encoding="utf-8")
+        (profile / "plugins/installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {}}), encoding="utf-8")
+        (profile / "settings.json").write_text(json.dumps({"enabledPlugins": {plugin: False}}), encoding="utf-8")
         raise RuntimeError("reinstall verification failed")
 
-    monkeypatch.setattr(update_runtime, "_install_claude", failed_reinstall)
-    assert update_runtime.main(["update", "--claude"]) == 2
+    assert _update(available_update, ["update", "--claude"], install_claude=failed_reinstall) == 2
     assert calls == [str(profile)]
     assert {path: path.read_bytes() for path in previous} == previous
     assert not new_guard.exists()
