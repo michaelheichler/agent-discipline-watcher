@@ -18,23 +18,26 @@ DOCUMENT = {"role": "document", "path": "/work/notes.md", "content_hash": "abc",
 
 
 @pytest.fixture(name="served")
-def _served(monkeypatch) -> list[list[dict]]:
-    marked: list[list[dict]] = []
-    monkeypatch.setattr(read_claude_journal, "mark_reviewed", lambda _session, rows: marked.append(rows))
-    return marked
+def _served() -> list[list[dict]]:
+    return []
+
+
+def _serve(argv: list[str], stored: list[dict], served: list[list[dict]], **seams: object) -> int:
+    return read_claude_journal.main(
+        argv, read=lambda _session: stored, mark=lambda _session, rows: served.append(rows), **seams,
+    )
 
 
 def _output(capsys) -> list[dict]:
     return json.loads(capsys.readouterr().out)
 
 
-def test_each_rule_in_the_rows_arrives_with_four_examples_per_side(monkeypatch, capsys, served) -> None:
-    monkeypatch.setattr(read_claude_journal, "read_for_stop", lambda _session: [PATTERN, {**PATTERN, "line": 4}])
+def test_each_rule_in_the_rows_arrives_with_four_examples_per_side(capsys, served) -> None:
     expected = pattern_semantic.rule_prompt(
         "ai_closer", pattern_semantic.load_exemplars(), pattern_semantic.load_manifest(),
     )
 
-    read_claude_journal.main(["session"])
+    _serve(["session"], [PATTERN, {**PATTERN, "line": 4}], served)
 
     rules = [row for row in _output(capsys) if row["role"] == "rule"]
     assert rules == [{
@@ -45,31 +48,25 @@ def test_each_rule_in_the_rows_arrives_with_four_examples_per_side(monkeypatch, 
     assert served == [[PATTERN, {**PATTERN, "line": 4}]]
 
 
-def test_rows_without_a_pattern_carry_no_examples(monkeypatch, capsys, served) -> None:
-    monkeypatch.setattr(read_claude_journal, "read_for_stop", lambda _session: [])
-    monkeypatch.setattr(read_claude_journal, "load_exemplars", lambda: pytest.fail("loaded exemplars"))
-
-    read_claude_journal.main(["session"])
+def test_rows_without_a_pattern_carry_no_examples(capsys, served) -> None:
+    _serve(["session"], [], served, exemplar_source=lambda: pytest.fail("loaded exemplars"))
 
     assert _output(capsys) == []
     assert served == [[]]
 
 
-def test_a_rule_without_a_rubric_is_served_without_examples(monkeypatch, capsys, served) -> None:
+def test_a_rule_without_a_rubric_is_served_without_examples(capsys, served) -> None:
     unknown = {**PATTERN, "rule": "retired_rule"}
-    monkeypatch.setattr(read_claude_journal, "read_for_stop", lambda _session: [unknown])
 
-    read_claude_journal.main(["session"])
+    _serve(["session"], [unknown], served)
 
     assert _output(capsys) == [unknown]
     assert served == [[unknown]]
 
 
-def test_document_rows_arrive_only_when_asked_for(monkeypatch, capsys, served) -> None:
-    monkeypatch.setattr(read_claude_journal, "read_for_stop", lambda _session: [DOCUMENT])
-
-    read_claude_journal.main(["session"])
-    read_claude_journal.main([claude_presets.DOCUMENTS_FLAG, "session"])
+def test_document_rows_arrive_only_when_asked_for(capsys, served) -> None:
+    _serve(["session"], [DOCUMENT], served)
+    _serve([claude_presets.DOCUMENTS_FLAG, "session"], [DOCUMENT], served)
 
     lines = capsys.readouterr().out.splitlines()
     assert [json.loads(line) for line in lines] == [[], [DOCUMENT]]
