@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path, PurePath
 from typing import NamedTuple
 
@@ -13,14 +14,14 @@ try:
     from .embedding_client import Vector, embed, embeddings_urls, model_name
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
+    from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
     from embedding_client import Vector, embed, embeddings_urls, model_name
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
-    from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, PatternRule, confirm_all
+    from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
 
@@ -137,6 +138,9 @@ def _vectors(texts: tuple[str, ...], config: dict | None = None) -> dict[str, Ve
     return dict(zip(texts, answered)) if answered else {}
 
 
+VectorSource = Callable[..., dict[str, Vector]]
+
+
 def _cache_path(config: dict | None) -> Path:
     return exemplar_cache_root() / f"{EXEMPLAR_PATH.name}.{_cache_digest(config)}.json"
 
@@ -167,14 +171,14 @@ def _write_cache(path: Path, vectors: dict[str, Vector]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None) -> dict[str, Vector]:
+def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None, *, vectors: VectorSource = _vectors) -> dict[str, Vector]:
     """Cached, because every scan reuses the same exemplars."""
     path = _cache_path(config)
     cached = _cached_vectors(path)
     wanted = tuple(sorted({row.text for row in exemplars} - set(cached)))
     if not wanted:
         return cached
-    fresh = _vectors(wanted) if config is None else _vectors(wanted, config)
+    fresh = vectors(wanted) if config is None else vectors(wanted, config)
     if not fresh:
         return cached
     merged = {**cached, **fresh}
@@ -182,15 +186,23 @@ def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None
     return merged
 
 
-def candidates(path: str, text: str, config: dict | None = None) -> dict[str, tuple[PatternCandidate, ...]]:
+class Layer(NamedTuple):
+    exemplars: Callable[[], tuple[Exemplar, ...]] = load_exemplars
+    manifest: Callable[[], dict] = load_manifest
+    exemplar_vectors: Callable[..., dict[str, Vector]] = exemplar_vectors
+    vectors: VectorSource = _vectors
+    confirm: Callable[..., JudgedOutcome] = confirm_all
+
+
+def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer = Layer()) -> dict[str, tuple[PatternCandidate, ...]]:
     """Unjudged, because the Stop reviewer judges once per turn."""
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
         return {}
-    rules = measured_rules(load_manifest())
-    exemplars = tuple(row for row in load_exemplars() if row.rule in rules)
-    cached = exemplar_vectors(exemplars) if config is None else exemplar_vectors(exemplars, config)
-    current = _vectors(tuple({item.text for item in sentences})) if config is None else _vectors(
+    rules = measured_rules(layer.manifest())
+    exemplars = tuple(row for row in layer.exemplars() if row.rule in rules)
+    cached = layer.exemplar_vectors(exemplars) if config is None else layer.exemplar_vectors(exemplars, config)
+    current = layer.vectors(tuple({item.text for item in sentences})) if config is None else layer.vectors(
         tuple({item.text for item in sentences}), config
     )
     vectors = {**cached, **current}
@@ -200,18 +212,18 @@ def candidates(path: str, text: str, config: dict | None = None) -> dict[str, tu
     return {rule: found for rule, found in voted.items() if found}
 
 
-def scan(path: str, text: str, config: dict | None = None) -> tuple[Finding, ...]:
+def scan(path: str, text: str, config: dict | None = None, *, layer: Layer = Layer()) -> tuple[Finding, ...]:
     """Kept because the evals measure the judged pipeline."""
-    voted = candidates(path, text, config)
+    voted = candidates(path, text, config, layer=layer)
     if not voted:
         return ()
-    exemplars = load_exemplars()
-    manifest = load_manifest()
+    exemplars = layer.exemplars()
+    manifest = layer.manifest()
     work = tuple((rule_prompt(rule, exemplars, manifest), found) for rule, found in voted.items())
     blocking = blocking_rules(manifest)
     model = str((config.get("adw_model") if isinstance(config, dict) else None) or JUDGED_GATE_MODEL)
     return tuple(
         Finding(rule, candidate.line, candidate.text, rule in blocking)
-        for rule, kept in sorted(confirm_all(work, model).kept.items())
+        for rule, kept in sorted(layer.confirm(work, model).kept.items())
         for candidate in kept
     )

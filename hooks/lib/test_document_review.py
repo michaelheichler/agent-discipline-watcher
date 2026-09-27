@@ -49,31 +49,29 @@ def test_an_answer_without_an_array_is_an_error_rather_than_a_clean_verdict() ->
         document_review.parse_notes(json.dumps({"is_error": False, "result": "looks fine"}), DOCUMENT)
 
 
-def test_an_absent_reviewer_names_nothing(monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "available", lambda: False)
-
-    assert document_review.review("a.md", DOCUMENT) == ()
+def test_an_absent_reviewer_names_nothing() -> None:
+    assert document_review.review("a.md", DOCUMENT, ready=lambda: False) == ()
 
 
-def test_disabled_project_boundary_blocks_document_egress(monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "available", lambda: True)
-    monkeypatch.setattr(document_review, "_run", lambda _prompt: pytest.fail("reviewed with disabled boundary"))
+def test_disabled_project_boundary_blocks_document_egress() -> None:
+    assert document_review.review(
+        "a.md", DOCUMENT, {"data_boundary": {"enabled": False}},
+        ready=lambda: True, complete=lambda _prompt, _model: pytest.fail("reviewed with disabled boundary"),
+    ) == ()
 
-    assert document_review.review("a.md", DOCUMENT, {"data_boundary": {"enabled": False}}) == ()
-
-def test_enabled_project_boundary_reaches_the_reviewer(monkeypatch) -> None:
+def test_enabled_project_boundary_reaches_the_reviewer() -> None:
     prompts: list[str] = []
-    monkeypatch.setattr(document_review, "available", lambda: True)
-    monkeypatch.setattr(document_review, "_run", lambda prompt, _model: prompts.append(prompt) or _answer([]))
 
-    assert document_review.review("a.md", DOCUMENT, {"data_boundary": {"enabled": True}}) == ()
+    assert document_review.review(
+        "a.md", DOCUMENT, {"data_boundary": {"enabled": True}},
+        ready=lambda: True, complete=lambda prompt, _model: prompts.append(prompt) or _answer([]),
+    ) == ()
     assert prompts and "Document: a.md" in prompts[0]
 
-def test_an_empty_document_costs_no_call(monkeypatch) -> None:
-    monkeypatch.setattr(document_review, "available", lambda: True)
-    monkeypatch.setattr(document_review, "_run", lambda _prompt: pytest.fail("reviewed an empty document"))
-
-    assert document_review.review("a.md", "   \n") == ()
+def test_an_empty_document_costs_no_call() -> None:
+    assert document_review.review(
+        "a.md", "   \n", ready=lambda: True, complete=lambda _prompt, _model: pytest.fail("reviewed an empty document"),
+    ) == ()
 
 
 def test_a_rewritten_document_is_remembered_under_its_own_digest() -> None:

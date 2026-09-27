@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest import mock
 
 import stop
 import subagent_stop
@@ -52,8 +51,8 @@ def test_subagent_stop_checks_only_its_own_blockers(tmp_path: Path) -> None:
 
 def test_subagent_stop_blocks_when_state_cannot_be_read(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    with mock.patch.object(blocker_state, "details", side_effect=OSError("read only")):
-        response = subagent_stop.run(_payload(), config)
+    Path(config["state_root"]).write_text("not a directory", encoding="utf-8")
+    response = subagent_stop.run(_payload(), config)
     assert response["decision"] == "block"
     assert "state could not be verified" in response["reason"]
 

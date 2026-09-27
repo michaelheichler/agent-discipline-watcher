@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -20,6 +21,13 @@ class VoteTurn(NamedTuple):
     config: dict | None
 
 
+class Voter(NamedTuple):
+    open_turn: Callable[[str, str | None], str | None] = embedding_session.open_turn
+    renew_turn: Callable[[str, str | None], bool] = embedding_session.renew_turn
+    probe: Callable[[], str | None] = probe
+    candidates: Callable[..., dict] = candidates
+
+
 def _state_root(config: dict | None) -> str | None:
     root = (config or {}).get("state_root")
     return root if isinstance(root, str) else None
@@ -33,28 +41,28 @@ def turn_for(payload: object, config: dict | None) -> VoteTurn:
     return VoteTurn(session_id, turn_id, config)
 
 
-def model_ready(turn: VoteTurn, wait_seconds: float) -> bool:
+def model_ready(turn: VoteTurn, wait_seconds: float, voter: Voter = Voter()) -> bool:
     """Waits, because Stop unloads the model every turn."""
     deadline = time.monotonic() + wait_seconds
     lease_root = embedding_session.lease_root_for(turn.config or {})
-    answered = embedding_session.open_turn(turn.session_id, lease_root)
-    embedding_session.renew_turn(turn.session_id, lease_root)
+    answered = voter.open_turn(turn.session_id, lease_root)
+    voter.renew_turn(turn.session_id, lease_root)
     while answered is None:
         if time.monotonic() + READY_POLL_SECONDS > deadline:
             return False
         time.sleep(READY_POLL_SECONDS)
-        answered = probe()
+        answered = voter.probe()
     return True
 
 
-def vote(turn: VoteTurn, path: Path) -> list[dict]:
+def vote(turn: VoteTurn, path: Path, voter: Voter = Voter()) -> list[dict]:
     source = journal.current_source(path)
     if source is None:
         return []
     digest, text = source
     rows = [
         {"rule": rule, "line": found.line, "text": found.text}
-        for rule, voted in sorted(candidates(str(path), text, turn.config).items())
+        for rule, voted in sorted(voter.candidates(str(path), text, turn.config).items())
         for found in voted
     ]
     if not rows:

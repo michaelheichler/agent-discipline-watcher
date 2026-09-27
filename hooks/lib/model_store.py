@@ -9,7 +9,7 @@ import sys
 import tarfile
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -111,13 +111,13 @@ def download(artifact: Artifact, destination: Path) -> None:
     raise failure
 
 
-def ensure_artifact(artifact: Artifact, directory: Path) -> Path:
+def ensure_artifact(artifact: Artifact, directory: Path, fetch: Callable[[Artifact, Path], None] = download) -> Path:
     destination = directory / artifact.name
     if verified(destination, artifact):
         return destination
     with exclusive(directory / (artifact.name + LOCK_SUFFIX)):
         if not verified(destination, artifact):
-            download(artifact, destination)
+            fetch(artifact, destination)
     return destination
 
 
@@ -143,13 +143,13 @@ def _extract(archive: Path, directory: Path) -> None:
             bundle.extract(member, directory, filter="data")
 
 
-def _ensure_archive_runtime(runtime: ArchiveRuntime, directory: Path) -> Path:
+def _ensure_archive_runtime(runtime: ArchiveRuntime, directory: Path, fetch: Callable[[Artifact, Path], None]) -> Path:
     server = directory / runtime.server
     if server.is_file():
         return server
     with exclusive(directory.parent / (runtime.archive.name + LOCK_SUFFIX)):
         if not server.is_file():
-            _extract(ensure_artifact(runtime.archive, directory), directory)
+            _extract(ensure_artifact(runtime.archive, directory, fetch), directory)
     if not server.is_file():
         raise ValueError(f"{runtime.archive.name}: archive carries no {runtime.server}")
     server.chmod(0o755)
@@ -179,9 +179,9 @@ def _ensure_python_runtime(runtime: PythonRuntime, directory: Path) -> Path:
     return interpreter
 
 
-def ensure_runtime(entry: ModelPlatform, root: Path) -> Path:
+def ensure_runtime(entry: ModelPlatform, root: Path, *, fetch: Callable[[Artifact, Path], None] = download) -> Path:
     directory = runtime_root(entry, root)
     directory.mkdir(parents=True, exist_ok=True)
     if isinstance(entry.runtime, ArchiveRuntime):
-        return _ensure_archive_runtime(entry.runtime, directory)
+        return _ensure_archive_runtime(entry.runtime, directory, fetch)
     return _ensure_python_runtime(entry.runtime, directory)

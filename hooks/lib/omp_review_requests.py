@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -122,12 +123,12 @@ def _voted_work(path: str, text: str, config: dict, exemplars: tuple) -> list[Re
     return work
 
 
-def _pattern_work(path: str, text: str, config: dict) -> list[ReviewWork]:
-    exemplars = load_exemplars()
+def _pattern_work(path: str, text: str, config: dict, exemplar_source: Callable[[], tuple]) -> list[ReviewWork]:
+    exemplars = exemplar_source()
     return _voted_work(path, text, config, exemplars) + _regex_work(path, text, config, exemplars)
 
 
-def build_work(path: Path, text: str, config: dict) -> tuple[ReviewWork, ...]:
+def build_work(path: Path, text: str, config: dict, *, exemplar_source: Callable[[], tuple] = load_exemplars) -> tuple[ReviewWork, ...]:
     if _is_exempt(str(path), config):
         return ()
     exempt = _exempt_families(str(path), config)
@@ -136,7 +137,7 @@ def build_work(path: Path, text: str, config: dict) -> tuple[ReviewWork, ...]:
         work.extend(_comment_work(str(path), text, config))
     if path.suffix.lower() in PROSE_EXTS and "english" not in exempt and gate_state("english", config) != "off":
         work.extend(_document_work(str(path), text, config))
-        work.extend(_pattern_work(str(path), text, config))
+        work.extend(_pattern_work(str(path), text, config, exemplar_source))
     if len(work) > MAX_REQUESTS:
         raise ValueError(f"review needs {len(work)} requests, above the limit of {MAX_REQUESTS}; split the file")
     return tuple(work)

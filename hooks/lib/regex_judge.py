@@ -1,15 +1,16 @@
 """A rule at the judged gate needs a reader before it speaks, because 278 of 60000 human sentences carry an ordinary three-item series."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import NamedTuple
 
 try:
     from .config import JUDGED_STATE, effective_config, rule_state
-    from .pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, confirm_all
+    from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, confirm_all
     from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
 except ImportError:
     from config import JUDGED_STATE, effective_config, rule_state
-    from pattern_judge import JUDGED_GATE_MODEL, PatternCandidate, confirm_all
+    from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, confirm_all
     from pattern_semantic import load_exemplars, load_manifest, rule_prompt
 
 
@@ -35,7 +36,7 @@ def _candidates(path: str, findings: list[dict], rule: str) -> tuple[PatternCand
     )
 
 
-def confirm(path: str, findings: list[dict], config: dict | None = None) -> tuple[JudgedFinding, ...]:
+def confirm(path: str, findings: list[dict], config: dict | None = None, *, judge_all: Callable[..., JudgedOutcome] = confirm_all) -> tuple[JudgedFinding, ...]:
     """Kept silent without a judge, because an unread hit on this gate would report ordinary prose as slop."""
     rules = judged_rules(config) & {str(finding.get("rule")) for finding in findings}
     if not rules:
@@ -50,6 +51,6 @@ def confirm(path: str, findings: list[dict], config: dict | None = None) -> tupl
     model = str(effective_config(config).get("adw_model") or JUDGED_GATE_MODEL)
     return tuple(
         JudgedFinding(rule, candidate.line, candidate.text)
-        for rule, kept in sorted(confirm_all(work, model).kept.items())
+        for rule, kept in sorted(judge_all(work, model).kept.items())
         for candidate in kept
     )

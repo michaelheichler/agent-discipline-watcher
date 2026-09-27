@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
@@ -104,19 +105,22 @@ def parse_verdicts(raw: str, size: int) -> tuple[bool, ...]:
     return tuple(parsed[index] == VIOLATING for index in range(size))
 
 
-def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...], model: str) -> tuple[bool, ...]:
-    raw = _run(build_prompt(rule, batch), model)
+Completion = Callable[[str, str], str | None]
+
+
+def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...], model: str, complete: Completion) -> tuple[bool, ...]:
+    raw = complete(build_prompt(rule, batch), model)
     return parse_verdicts(raw, len(batch)) if raw is not None else (False,) * len(batch)
 
 
-def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: str) -> tuple[PatternCandidate, ...]:
+def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: str, *, ready: Callable[[], bool] = available, complete: Completion = _run) -> tuple[PatternCandidate, ...]:
     """Nothing survives an absent judge, because the candidate stage alone measured 0.62."""
-    if not candidates or not available():
+    if not candidates or not ready():
         return ()
     kept: list[PatternCandidate] = []
     for start in range(0, len(candidates), BATCH_SIZE):
         batch = candidates[start : start + BATCH_SIZE]
-        kept.extend(candidate for candidate, real in zip(batch, _batch_verdicts(rule, batch, model)) if real)
+        kept.extend(candidate for candidate, real in zip(batch, _batch_verdicts(rule, batch, model, complete)) if real)
     return tuple(kept)
 
 

@@ -6,7 +6,7 @@ import pytest
 
 import pre_tool
 import record
-from lib import catalog, patch_content, session_state, shell_parse, write_shape
+from lib import catalog, patch_content, shell_parse, write_shape
 from testing import make_repo, run_git
 
 
@@ -17,7 +17,7 @@ def _title(rule: str) -> str:
 @pytest.fixture
 def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setenv("ADW_CODEX_HOOK", "1")
-    monkeypatch.setattr(session_state, "plugin_data_home", lambda: tmp_path / "data")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     return {
         "baseline": "report",
         "ledger_root": str(tmp_path / "ledger"),

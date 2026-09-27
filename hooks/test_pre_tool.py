@@ -2,7 +2,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -59,8 +59,9 @@ def test_deeply_nested_stdin_blocks_instead_of_crashing_the_entrypoint() -> None
 
 
 def test_dispatcher_crash_denies_instead_of_raising() -> None:
-    with patch.object(pre_tool, "_dispatch", side_effect=RecursionError("too deep")):
-        response = pre_tool.run({"tool_name": "Write", "tool_input": {"file_path": "a.py", "content": "x"}})
+    gates = pre_tool.Gates(write=Mock(side_effect=RecursionError("too deep")))
+
+    response = pre_tool.run({"tool_name": "Write", "tool_input": {"file_path": "a.py", "content": "x"}}, gates=gates)
 
     assert response["decision"] == "block"
     assert "Cause: too deep" in response["reason"]
@@ -96,8 +97,9 @@ def test_payload_without_tool_name_is_rejected() -> None:
     {"cmd": "rm -rf x"},
 ])
 def test_bash_without_a_string_command_is_denied_before_dispatch(tool_input: dict) -> None:
-    with patch.object(pre_tool.pre_bash, "run") as bash_gate:
-        response = pre_tool.run({"tool_name": "Bash", "tool_input": tool_input})
+    bash_gate = Mock()
+
+    response = pre_tool.run({"tool_name": "Bash", "tool_input": tool_input}, gates=pre_tool.Gates(bash=bash_gate))
 
     bash_gate.assert_not_called()
     assert response["decision"] == "block"
@@ -119,16 +121,15 @@ def test_direct_writer_preserves_a_security_denial() -> None:
         "decision": "block",
         "hookSpecificOutput": {"permissionDecision": "deny"},
     }
-    with patch.object(pre_tool.pre_write, "run", return_value=denial):
-        assert pre_tool.run({"tool_name": "Write", "tool_input": {"content": "x"}}) is denial
+    gates = pre_tool.Gates(write=Mock(return_value=denial))
+
+    assert pre_tool.run({"tool_name": "Write", "tool_input": {"content": "x"}}, gates=gates) is denial
 
 
 def test_bash_runs_safety_and_commit_checks_once() -> None:
-    with (
-        patch.object(pre_tool.pre_bash, "run", return_value={}) as bash,
-        patch.object(pre_tool.pre_commit, "run", return_value={}) as commit,
-    ):
-        response = pre_tool.run({"tool_name": "Bash", "tool_input": {"command": "true"}})
+    bash, commit = Mock(return_value={}), Mock(return_value={})
+
+    response = pre_tool.run({"tool_name": "Bash", "tool_input": {"command": "true"}}, gates=pre_tool.Gates(bash=bash, commit=commit))
     bash.assert_called_once()
     commit.assert_called_once()
     assert response == {}

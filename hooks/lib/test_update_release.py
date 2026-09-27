@@ -18,6 +18,14 @@ from lib import update_release
 COMMIT = "a" * 40
 TAG = "v1.2.3"
 ROOT = "agent-discipline-watcher-" + COMMIT
+DEFAULT_FILES = {
+    "install.sh": b"#!/bin/sh\n",
+    "hosts/claude/install.sh": b"#!/bin/sh\n",
+    "hosts/codex/install.sh": b"#!/bin/sh\n",
+    "hosts/omp/install.sh": b"#!/bin/sh\n",
+    ".claude-plugin/plugin.json": b'{"name":"agent-discipline-watcher"}\n',
+    "README.md": b"# Agent Discipline Watcher\nCurrent release: **1.2.3**\n",
+}
 
 
 class Response:
@@ -47,6 +55,11 @@ class Response:
         self.close()
 
 
+class FailingList(list):
+    def append(self, value) -> None:
+        raise RuntimeError("output setup failed")
+
+
 def _release_json(**overrides: object) -> bytes:
     payload = {
         "tag_name": TAG,
@@ -66,49 +79,57 @@ def _tag_json(kind: str = "commit", sha: str = COMMIT) -> bytes:
     return json.dumps({"object": {"type": kind, "sha": sha}}).encode()
 
 
+def _add_special_entries(bundle: tarfile.TarFile, entries: list[tuple[str, str, bytes | None]]) -> None:
+    for name, kind, link in entries:
+        info = tarfile.TarInfo(ROOT + "/" + name)
+        if kind == "symlink":
+            info.type = tarfile.SYMTYPE
+            info.linkname = str(link or "target")
+        elif kind == "hardlink":
+            info.type = tarfile.LNKTYPE
+            info.linkname = str(link or "target")
+        else:
+            info.type = tarfile.FIFOTYPE
+        bundle.addfile(info)
+
+
 def _archive(
     *,
     files: dict[str, bytes] | None = None,
     modes: dict[str, int] | None = None,
     entries: list[tuple[str, str, bytes | None]] | None = None,
 ) -> bytes:
-    defaults = {
-        "install.sh": b"#!/bin/sh\n",
-        "hosts/claude/install.sh": b"#!/bin/sh\n",
-        "hosts/codex/install.sh": b"#!/bin/sh\n",
-        "hosts/omp/install.sh": b"#!/bin/sh\n",
-        ".claude-plugin/plugin.json": b'{"name":"agent-discipline-watcher"}\n',
-        "README.md": b"# Agent Discipline Watcher\nCurrent release: **1.2.3**\n",
-    }
-    defaults.update(files or {})
-    files = defaults
+    contents = {**DEFAULT_FILES, **(files or {})}
     modes = modes or {}
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as bundle:
         root = tarfile.TarInfo(ROOT + "/")
         root.type = tarfile.DIRTYPE
         bundle.addfile(root)
-        for name, content in files.items():
-            path = ROOT + "/" + name
-            info = tarfile.TarInfo(path)
+        for name, content in contents.items():
+            info = tarfile.TarInfo(ROOT + "/" + name)
             info.size = len(content)
             info.mode = modes.get(name, 0o644)
             bundle.addfile(info, io.BytesIO(content))
-        for name, kind, link in entries or []:
-            info = tarfile.TarInfo(ROOT + "/" + name)
-            if kind == "symlink":
-                info.type = tarfile.SYMTYPE
-                info.linkname = str(link or "target")
-            elif kind == "hardlink":
-                info.type = tarfile.LNKTYPE
-                info.linkname = str(link or "target")
-            else:
-                info.type = tarfile.FIFOTYPE
-            bundle.addfile(info)
+        _add_special_entries(bundle, entries or [])
     return output.getvalue()
 
 
-def test_latest_release_resolves_a_lightweight_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+def _serve(body: bytes) -> update_release.Fetch:
+    return lambda *_args: body
+
+
+def _stage(destination: Path, body: bytes) -> None:
+    update_release.stage_release(update_release.Release(TAG, COMMIT), destination, fetch=_serve(body))
+
+
+def _private_stage(tmp_path: Path) -> Path:
+    destination = tmp_path / "stage"
+    destination.mkdir(mode=0o700)
+    return destination
+
+
+def test_latest_release_resolves_a_lightweight_tag() -> None:
     responses = iter([Response(_release_json()), Response(_ref_json())])
     seen: list[str] = []
 
@@ -116,19 +137,16 @@ def test_latest_release_resolves_a_lightweight_tag(monkeypatch: pytest.MonkeyPat
         seen.append(url)
         return next(responses).body
 
-    monkeypatch.setattr(update_release, "_get_bytes", fake_get)
-
-    assert update_release.latest_release() == update_release.Release(TAG, COMMIT)
+    assert update_release.latest_release(fetch=fake_get) == update_release.Release(TAG, COMMIT)
     assert seen[0].endswith("/releases/latest")
     assert seen[1].endswith("/git/ref/tags/v1.2.3")
 
 
-def test_latest_release_peels_annotated_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_latest_release_peels_annotated_tags() -> None:
     tag_sha = "b" * 40
     responses = iter([Response(_release_json()), Response(_ref_json("tag", tag_sha)), Response(_tag_json())])
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: next(responses).body)
 
-    assert update_release.latest_release().commit == COMMIT
+    assert update_release.latest_release(fetch=lambda *_args: next(responses).body).commit == COMMIT
 
 
 @pytest.mark.parametrize("payload", [
@@ -137,23 +155,18 @@ def test_latest_release_peels_annotated_tags(monkeypatch: pytest.MonkeyPatch) ->
     {"tag_name": "v1.2.3", "draft": False, "prerelease": True, "published_at": "x"},
     {"tag_name": "v1.2.3", "draft": False, "prerelease": False, "published_at": None},
 ])
-def test_latest_release_rejects_unpublished_or_unstable_metadata(
-    monkeypatch: pytest.MonkeyPatch, payload: dict[str, object],
-) -> None:
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: json.dumps(payload).encode())
-
+def test_latest_release_rejects_unpublished_or_unstable_metadata(payload: dict[str, object]) -> None:
     with pytest.raises(ValueError):
-        update_release.latest_release()
+        update_release.latest_release(fetch=_serve(json.dumps(payload).encode()))
 
 
-def test_latest_release_rejects_a_non_commit_after_four_tag_hops(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_latest_release_rejects_a_non_commit_after_four_tag_hops() -> None:
     tag_sha = "b" * 40
     responses = [Response(_release_json()), Response(_ref_json("tag", tag_sha))]
     responses.extend(Response(_tag_json("tag", tag_sha)) for _ in range(4))
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: responses.pop(0).body)
 
     with pytest.raises(ValueError, match="tag depth"):
-        update_release.latest_release()
+        update_release.latest_release(fetch=lambda *_args: responses.pop(0).body)
 
 
 def test_get_bytes_uses_fixed_https_transport(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -224,7 +237,7 @@ def test_redirect_handler_rejects_a_host_escape() -> None:
     (f"{update_release.ARCHIVE_ROOT}/{COMMIT}", f"{update_release.ARCHIVE_ROOT}/{'b' * 40}"),
     (update_release.LATEST_URL, update_release.LATEST_URL),
 ])
-def test_release_redirects_cannot_change_repository_or_revision(source, target):
+def test_release_redirects_cannot_change_repository_or_revision(source, target) -> None:
     handler = update_release._RedirectHandler()
     request = urllib.request.Request(source)
     with pytest.raises(ValueError, match="redirects"):
@@ -233,46 +246,35 @@ def test_release_redirects_cannot_change_repository_or_revision(source, target):
 
 def test_archive_member_bounds_are_checked_before_advancing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(update_release, "MAX_MEMBER_BYTES", 3)
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files={"install.sh": b"1234"}))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="member exceeds"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive(files={"install.sh": b"1234"}))
     assert list(destination.iterdir()) == []
 
 
 def test_archive_member_count_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(update_release, "MAX_MEMBERS", 1)
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive())
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="too many members"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert list(destination.iterdir()) == []
 
 
 def test_extracted_size_is_bounded_before_extraction(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(update_release, "MAX_EXTRACTED_BYTES", 10)
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive())
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="extracted size"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert list(destination.iterdir()) == []
 
 
-def test_stage_release_strips_one_archive_root_and_keeps_exec_bits(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    archive = _archive(modes={"install.sh": 0o755})
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: archive)
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+def test_stage_release_strips_one_archive_root_and_keeps_exec_bits(tmp_path: Path) -> None:
+    destination = _private_stage(tmp_path)
 
-    update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+    _stage(destination, _archive(modes={"install.sh": 0o755}))
 
     assert (destination / "install.sh").read_bytes() == b"#!/bin/sh\n"
     assert stat.S_IMODE((destination / "install.sh").stat().st_mode) == 0o755
@@ -280,16 +282,12 @@ def test_stage_release_strips_one_archive_root_and_keeps_exec_bits(
     assert not (destination / ROOT).exists()
 
 
-def test_stage_release_rejects_a_nonempty_destination(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive())
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+def test_stage_release_rejects_a_nonempty_destination(tmp_path: Path) -> None:
+    destination = _private_stage(tmp_path)
     (destination / "keep").write_text("keep", encoding="utf-8")
 
     with pytest.raises(ValueError, match="empty"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
 
 
 @pytest.mark.parametrize("entries", [
@@ -298,99 +296,78 @@ def test_stage_release_rejects_a_nonempty_destination(
     [("fifo", "fifo", None)],
 ])
 def test_stage_release_rejects_non_regular_members(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, entries: list[tuple[str, str, bytes | None]],
+    tmp_path: Path, entries: list[tuple[str, str, bytes | None]],
 ) -> None:
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(entries=entries))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="member type"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive(entries=entries))
 
 
 @pytest.mark.parametrize("name", ["../outside", "/absolute", ROOT + "/../outside"])
-def test_stage_release_rejects_traversal_and_absolute_members(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str,
-) -> None:
-    files = {name: b"bad"}
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files=files))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+def test_stage_release_rejects_traversal_and_absolute_members(tmp_path: Path, name: str) -> None:
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="path"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive(files={name: b"bad"}))
 
 
-def test_stage_release_rejects_duplicate_members(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_stage_release_rejects_duplicate_members(tmp_path: Path) -> None:
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as bundle:
         for _ in range(2):
             info = tarfile.TarInfo(ROOT + "/install.sh")
             info.size = 1
             bundle.addfile(info, io.BytesIO(b"x"))
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: output.getvalue())
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="duplicate"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, output.getvalue())
 
 
-def test_stage_release_rejects_multiple_archive_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_stage_release_rejects_multiple_archive_roots(tmp_path: Path) -> None:
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as bundle:
         for root in (ROOT, "other-root"):
             info = tarfile.TarInfo(root + "/install.sh")
             info.size = 1
             bundle.addfile(info, io.BytesIO(b"x"))
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: output.getvalue())
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="root"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, output.getvalue())
 
 
-def test_stage_release_rejects_wrong_plugin_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_stage_release_rejects_wrong_plugin_name(tmp_path: Path) -> None:
     files = {".claude-plugin/plugin.json": b'{"name":"other"}\n'}
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files=files))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="plugin name"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive(files=files))
 
 
-def test_stage_release_rejects_a_readme_version_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_stage_release_rejects_a_readme_version_mismatch(tmp_path: Path) -> None:
     files = {"README.md": b"Current release: **9.9.9**\n"}
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files=files))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="README"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive(files=files))
 
 
-def test_stage_release_rejects_an_oversized_archive_before_extraction(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: b"x" * (update_release.MAX_ARCHIVE_BYTES + 1))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+def test_stage_release_rejects_an_oversized_archive_before_extraction(tmp_path: Path) -> None:
+    destination = _private_stage(tmp_path)
 
     with pytest.raises(ValueError, match="archive"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, b"x" * (update_release.MAX_ARCHIVE_BYTES + 1))
     assert list(destination.iterdir()) == []
 
 
-def test_stage_release_does_not_execute_extracted_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_stage_release_does_not_execute_extracted_files(tmp_path: Path) -> None:
     marker = tmp_path / "executed"
     files = {"install.sh": f"#!/bin/sh\ntouch {marker}\n".encode()}
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: _archive(files=files))
-    destination = tmp_path / "stage"
-    destination.mkdir(mode=0o700)
+    destination = _private_stage(tmp_path)
 
-    update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+    _stage(destination, _archive(files=files))
 
     assert not marker.exists()
 
@@ -414,11 +391,10 @@ def _metadata_archive(kind: bytes) -> bytes:
 
 
 @pytest.mark.parametrize("kind", [tarfile.XHDTYPE, tarfile.XGLTYPE, tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK])
-def test_compressed_extended_headers_are_bounded_before_tar_parsing(monkeypatch, tmp_path, kind):
+def test_compressed_extended_headers_are_bounded_before_tar_parsing(monkeypatch, tmp_path, kind) -> None:
     archive = _metadata_archive(kind)
     assert len(archive) < 4096
     monkeypatch.setattr(update_release, "MAX_TAR_BYTES", 4096, raising=False)
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: archive)
 
     def forbidden_parse(*args, **kwargs):
         pytest.fail("compressed metadata reached the tar parser before the expansion limit")
@@ -426,40 +402,39 @@ def test_compressed_extended_headers_are_bounded_before_tar_parsing(monkeypatch,
     monkeypatch.setattr(update_release.tarfile, "open", forbidden_parse)
     destination = tmp_path / "stage"
     with pytest.raises(ValueError, match="decompressed size"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, archive)
     assert not destination.exists()
 
 
-def test_concatenated_gzip_members_share_the_tar_expansion_budget(monkeypatch, tmp_path):
+def test_concatenated_gzip_members_share_the_tar_expansion_budget(monkeypatch, tmp_path) -> None:
     archive = _archive() + gzip.compress(b"x" * 32768)
     monkeypatch.setattr(update_release, "MAX_TAR_BYTES", 16384, raising=False)
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: archive)
     destination = tmp_path / "stage"
     with pytest.raises(ValueError, match="decompressed size"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, archive)
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("failure", ["fdopen", "tracking"])
-def test_extract_file_closes_handles_when_output_setup_fails(monkeypatch, tmp_path, failure):
-    class FailingList(list):
-        def append(self, value):
-            raise RuntimeError("output setup failed")
-
-    target = tmp_path / "output"
-    descriptor = os.open(target, os.O_CREAT | os.O_WRONLY, 0o600)
+def _one_file_member() -> tuple[types.SimpleNamespace, update_release._Member, io.BytesIO]:
     source = io.BytesIO(b"content")
     bundle = types.SimpleNamespace(extractfile=lambda info: source)
     info = tarfile.TarInfo(ROOT + "/output")
     info.size = 7
-    member = update_release._Member(info, (ROOT, "output"))
+    return bundle, update_release._Member(info, (ROOT, "output")), source
+
+
+def _failed_fdopen(*_args: object) -> None:
+    raise RuntimeError("output setup failed")
+
+
+@pytest.mark.parametrize("failure", ["fdopen", "tracking"])
+def test_extract_file_closes_handles_when_output_setup_fails(monkeypatch, tmp_path, failure) -> None:
+    target = tmp_path / "output"
+    descriptor = os.open(target, os.O_CREAT | os.O_WRONLY, 0o600)
+    bundle, member, source = _one_file_member()
     monkeypatch.setattr(update_release.os, "open", lambda *args: descriptor)
-
-    def failed_fdopen(*args):
-        raise RuntimeError("output setup failed")
-
     if failure == "fdopen":
-        monkeypatch.setattr(update_release.os, "fdopen", failed_fdopen)
+        monkeypatch.setattr(update_release.os, "fdopen", _failed_fdopen)
     try:
         with pytest.raises(RuntimeError, match="output setup"):
             update_release._extract_file(bundle, member, target, tmp_path, FailingList() if failure == "tracking" else [])

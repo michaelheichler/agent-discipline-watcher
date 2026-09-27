@@ -7,7 +7,7 @@ import pytest
 
 import record
 import stop
-from lib import journal, reporting, session_state
+from lib import journal, session_state
 from lib.judge_contracts import ReviewKind
 from test_task4_codex import Provider, _result
 from test_codex_hooks_merge import run_merge
@@ -18,11 +18,6 @@ SUPPORTED_EVENTS = {
     "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
     "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
 }
-
-
-@pytest.fixture(autouse=True)
-def isolated_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
 
 
 @pytest.fixture(autouse=True)

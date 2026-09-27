@@ -194,8 +194,8 @@ def _request_once(url: str, payload: dict, timeout: float) -> dict | None:
         return None
 
 
-def _request(url: str, payload: dict, timeout: float) -> dict | None:
-    for delay in RETRY_DELAYS_SECONDS:
+def _request(url: str, payload: dict, timeout: float, retry_delays: tuple[float, ...]) -> dict | None:
+    for delay in retry_delays:
         body = _request_once(url, payload, timeout)
         if body is not None:
             return body
@@ -203,9 +203,9 @@ def _request(url: str, payload: dict, timeout: float) -> dict | None:
     return _request_once(url, payload, timeout)
 
 
-def _first_answering(urls: tuple[str, ...], payload: dict, timeout: float) -> dict | None:
+def _first_answering(urls: tuple[str, ...], payload: dict, timeout: float, retry_delays: tuple[float, ...]) -> dict | None:
     for url in urls:
-        body = _request(url, payload, timeout)
+        body = _request(url, payload, timeout, retry_delays)
         if body is not None:
             return body
     return None
@@ -244,7 +244,7 @@ def _vectors(body: dict) -> tuple[Vector, ...]:
     return tuple(_vector(row) for row in rows)
 
 
-def embed(texts: tuple[str, ...], config: dict | None = None) -> tuple[Vector, ...] | None:
+def embed(texts: tuple[str, ...], config: dict | None = None, *, retry_delays: tuple[float, ...] = RETRY_DELAYS_SECONDS) -> tuple[Vector, ...] | None:
     """Embed bounded input chunks while preserving ordered endpoint failover."""
     if not texts:
         return ()
@@ -259,6 +259,7 @@ def embed(texts: tuple[str, ...], config: dict | None = None) -> tuple[Vector, .
             urls,
             {"model": model_name(), "input": list(batch)},
             REQUEST_TIMEOUT_SECONDS,
+            retry_delays,
         )
         if body is None:
             return None

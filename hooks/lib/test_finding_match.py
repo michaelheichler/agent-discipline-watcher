@@ -42,8 +42,7 @@ def test_match_survives_a_dict_round_trip() -> None:
     assert Finding.from_dict(row).to_dict()["match"] == UTILIZE
 
 
-def test_full_report_keeps_the_matched_span(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path)
+def test_full_report_keeps_the_matched_span() -> None:
     finding = {
         "path": "a.md", "line": 2, "family": "english", "rule": "utilize",
         "action": "Use 'use'.", "snippet": "We " + UTILIZE + " it", "match": UTILIZE,

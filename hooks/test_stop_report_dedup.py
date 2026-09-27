@@ -1,15 +1,11 @@
 import json
 from pathlib import Path
 
-import pytest
-
 import stop
 from lib import blocker_state, reporting
 
 
-def test_stop_reports_each_file_length_finding_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    reports = tmp_path / "reports"
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: reports)
+def test_stop_reports_each_file_length_finding_once(tmp_path: Path) -> None:
     config = {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")}
     paths = [tmp_path / "first.py", tmp_path / "second.py"]
     for number, source in enumerate(paths):

@@ -36,6 +36,10 @@ class PromptRule(NamedTuple):
     reminder: str
 
 
+Scanner = Callable[[str, str, dict], list]
+Ledger = Callable[..., dict]
+
+
 class ModeSelection(NamedTuple):
     caller_supplied: bool
     value: object
@@ -52,6 +56,7 @@ class _PromptEvaluation:
     config: dict[str, object]
     selection: ModeSelection
     session: SessionContext
+    scan: Scanner = scan_all
 
 
 PROMPT_RULES = (
@@ -192,12 +197,12 @@ def _data_boundary_findings(
     return {DATA_BOUNDARY_FINDING: "Use the Read tool explicitly."}
 
 
-def _scanner_findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
+def _scanner_findings(text: str, cfg: dict[str, object], scan: Scanner) -> dict[tuple[str, str], str]:
     raw_findings: list[dict[str, object]] | None = None
     with suppress(Exception):
         if scannable_text(text, cfg) is None:
             return {}
-        raw_findings = scan_all(PROMPT_PATH, text, cfg)
+        raw_findings = scan(PROMPT_PATH, text, cfg)
     if raw_findings is None:
         sys.stderr.write("agent-discipline-watcher: prompt scan failed\n")
         return {}
@@ -220,11 +225,11 @@ def _family_state(family: str, cfg: dict[str, object]) -> str:
     return state if state in ("off", "observe", "enforce") else "enforce"
 
 
-def _findings(text: str, cfg: dict[str, object]) -> dict[tuple[str, str], str]:
+def _findings(text: str, cfg: dict[str, object], scan: Scanner) -> dict[tuple[str, str], str]:
     combined = _phrase_findings(text)
     for key, value in _data_boundary_findings(text, cfg).items():
         combined.setdefault(key, value)
-    for key, value in _scanner_findings(text, cfg).items():
+    for key, value in _scanner_findings(text, cfg, scan).items():
         combined.setdefault(key, value)
     return dict(sorted(combined.items()))
 
@@ -247,17 +252,9 @@ def _record(
         recorded = False
         with suppress(Exception):
             reporting.record_decision(
-                session_id=session.session_id,
-                hook="prompt_submit",
-                event=PROMPT_EVENT,
-                family=family,
-                rule=rule,
-                path=PROMPT_PATH,
-                tool_use_id="",
-                outcome=outcome,
-                duration_ms=duration_ms,
-                turn_id=session.turn_id,
-                root=root,
+                session_id=session.session_id, hook="prompt_submit", event=PROMPT_EVENT,
+                family=family, rule=rule, path=PROMPT_PATH, tool_use_id="", outcome=outcome,
+                duration_ms=duration_ms, turn_id=session.turn_id, root=root,
             )
             recorded = True
         if not recorded:
@@ -306,10 +303,10 @@ def _evaluation_inputs(
 
 
 def _run_with_prompt_ledger(
-    session_id: str, cfg: dict[str, object], gate: Callable[[str], dict],
+    session_id: str, cfg: dict[str, object], gate: Callable[[str], dict], ledger: Ledger,
 ) -> dict:
     try:
-        return reporting.run_with_ledger(
+        return ledger(
             hook="prompt_submit",
             payload={"session_id": session_id},
             gate=gate,
@@ -325,7 +322,7 @@ def _evaluate(evaluation: _PromptEvaluation) -> dict:
     if not evaluation.text:
         return {}
     started = time.monotonic()
-    findings = _findings(evaluation.text, evaluation.config)
+    findings = _findings(evaluation.text, evaluation.config, evaluation.scan)
     duration_ms = int((time.monotonic() - started) * 1000)
     if not findings:
         return {}
@@ -345,7 +342,7 @@ def _evaluate(evaluation: _PromptEvaluation) -> dict:
     }
 
 
-def run(payload: object, config: object = None) -> dict:
+def run(payload: object, config: object = None, *, scan: Scanner = scan_all, ledger: Ledger = reporting.run_with_ledger) -> dict:
     response: dict[str, object] = {}
     try:
         text, session_id, cfg, selection = _evaluation_inputs(payload, config)
@@ -357,14 +354,14 @@ def run(payload: object, config: object = None) -> dict:
                 return response
             evaluated = True
             response = _evaluate(
-                _PromptEvaluation(text, cfg, selection, SessionContext(session_id, turn_id))
+                _PromptEvaluation(text, cfg, selection, SessionContext(session_id, turn_id), scan)
             )
             return response
 
         if not session_id:
             return gate("")
         open_turn(session_id, lease_root_for(cast(dict, cfg)))
-        return _run_with_prompt_ledger(session_id, cfg, gate)
+        return _run_with_prompt_ledger(session_id, cfg, gate, ledger)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError, re.error):
         sys.stderr.write("agent-discipline-watcher: prompt hook failed\n")
         return response

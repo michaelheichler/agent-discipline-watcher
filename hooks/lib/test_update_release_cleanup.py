@@ -5,18 +5,16 @@ from pathlib import Path
 import pytest
 
 from lib import update_release
-from lib.test_update_release import COMMIT, TAG, _archive
+from lib.test_update_release import _archive, _stage
 
 
 @pytest.fixture
-def destination(tmp_path, monkeypatch):
-    archive = _archive()
-    monkeypatch.setattr(update_release, "_get_bytes", lambda *_args: archive)
+def destination(tmp_path) -> Path:
     return tmp_path / "stage"
 
 
 @pytest.mark.parametrize("replacement", ["symlink", "directory"])
-def test_failed_creation_does_not_clean_a_racing_destination(destination, tmp_path, monkeypatch, replacement):
+def test_failed_creation_does_not_clean_a_racing_destination(destination, tmp_path, monkeypatch, replacement) -> None:
     foreign = tmp_path / "foreign"
     foreign.mkdir()
     (foreign / "sentinel").write_text("keep", encoding="utf-8")
@@ -32,13 +30,13 @@ def test_failed_creation_does_not_clean_a_racing_destination(destination, tmp_pa
 
     monkeypatch.setattr(Path, "mkdir", swap_before_mkdir)
     with pytest.raises(FileExistsError):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert (destination / "sentinel").read_text() == "keep"
     assert destination.is_symlink() == (replacement == "symlink")
 
 
 @pytest.mark.parametrize("replacement", ["symlink", "directory"])
-def test_cleanup_rejects_replacements_of_the_created_directory(destination, tmp_path, monkeypatch, replacement):
+def test_cleanup_rejects_replacements_of_the_created_directory(destination, tmp_path, monkeypatch, replacement) -> None:
     foreign = tmp_path / "foreign"
     foreign.mkdir()
     (foreign / "sentinel").write_text("keep", encoding="utf-8")
@@ -59,23 +57,23 @@ def test_cleanup_rejects_replacements_of_the_created_directory(destination, tmp_
 
     monkeypatch.setattr(update_release, "_destination_state", swap_after_creation)
     with pytest.raises(ValueError):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert (destination / "sentinel").read_text() == "keep"
     assert original.is_dir()
 
 
-def test_cleanup_preserves_untracked_files_even_in_its_created_directory(destination, monkeypatch):
+def test_cleanup_preserves_untracked_files_even_in_its_created_directory(destination, monkeypatch) -> None:
     def failed_extraction(bundle, archive, target):
         (target / "untracked").write_text("keep", encoding="utf-8")
         raise OSError("extraction failed")
 
     monkeypatch.setattr(update_release, "_extract", failed_extraction)
     with pytest.raises(OSError, match="extraction failed"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert (destination / "untracked").read_text() == "keep"
 
 
-def test_failed_extraction_removes_only_its_tracked_files_and_empty_root(destination, monkeypatch):
+def test_failed_extraction_removes_only_its_tracked_files_and_empty_root(destination, monkeypatch) -> None:
     extract_file = update_release._extract_file
 
     def failed_file(*args):
@@ -84,5 +82,5 @@ def test_failed_extraction_removes_only_its_tracked_files_and_empty_root(destina
 
     monkeypatch.setattr(update_release, "_extract_file", failed_file)
     with pytest.raises(OSError, match="extraction failed"):
-        update_release.stage_release(update_release.Release(TAG, COMMIT), destination)
+        _stage(destination, _archive())
     assert not destination.exists()

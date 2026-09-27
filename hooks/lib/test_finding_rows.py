@@ -1,5 +1,3 @@
-import pytest
-
 from lib import catalog, reporting, scanner
 
 UTILIZE = "util" + "ize"
@@ -53,12 +51,6 @@ def test_ungated_titles_stay_distinct_from_gated_titles() -> None:
     assert not set(catalog.RULES) & set(catalog.UNGATED_RULES)
 
 
-@pytest.fixture(name="reports")
-def _reports(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path)
-
-
-@pytest.mark.usefixtures("reports")
 def test_compact_block_numbers_the_rows() -> None:
     reason, report = reporting.compact_block([_finding(line=1), _finding(line=2)], {})
     lines = reason.split("\n")
@@ -67,7 +59,6 @@ def test_compact_block_numbers_the_rows() -> None:
     assert lines[3] == "Full report: " + report
 
 
-@pytest.mark.usefixtures("reports")
 def test_compact_block_caps_at_five_and_points_to_the_report() -> None:
     findings = [_finding(line=line) for line in range(1, 9)]
     reason, report = reporting.compact_block(findings, {"max_rows": 8})
@@ -77,7 +68,6 @@ def test_compact_block_caps_at_five_and_points_to_the_report() -> None:
     assert len(lines) == 7
 
 
-@pytest.mark.usefixtures("reports")
 def test_long_rows_cannot_push_the_report_path_out() -> None:
     findings = [_finding(line=line, action="y" * 3000) for line in range(1, 9)]
     reason, report = reporting.compact_block(findings, {"max_rows": 8})

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import NamedTuple
 
 try:
@@ -110,14 +111,14 @@ def parse_verdicts(text: str, candidates: tuple[Candidate, ...]) -> tuple[Verdic
     )
 
 
-def judge(candidates: tuple[Candidate, ...], model: str | None = None) -> tuple[Verdict, ...] | None:
+def judge(candidates: tuple[Candidate, ...], model: str | None = None, *, ready: Callable[[], bool] = available, complete: Callable[[str, str], str | None] = _run) -> tuple[Verdict, ...] | None:
     """Screen the selection first because only a haiku agent may reach the provider."""
     if not candidates:
         return ()
-    if not available():
+    if not ready():
         return None
     selected = str(model or JUDGE_MODEL)
-    raw = _run(build_prompt(candidates), selected)
+    raw = complete(build_prompt(candidates), selected)
     if raw is None:
         return None
     return parse_verdicts(_result_text(raw), candidates)

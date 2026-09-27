@@ -27,6 +27,7 @@ class Route:
     workspace: Path
     calls: list[str]
     monkeypatch: pytest.MonkeyPatch
+    voter: pattern_vote.Voter
 
     def write(self, name: str) -> Path:
         target = self.workspace / name
@@ -35,13 +36,15 @@ class Route:
         return target
 
     def vote_closers(self) -> None:
-        self.monkeypatch.setattr(
-            pattern_vote, "candidates",
-            lambda path, text, _config: {"ai_closer": (PatternCandidate(path, 1, text.strip()),)},
+        self.voter = self.voter._replace(
+            candidates=lambda path, text, _config: {"ai_closer": (PatternCandidate(path, 1, text.strip()),)},
         )
 
     def forbid_vote(self) -> None:
-        self.monkeypatch.setattr(pattern_vote, "candidates", lambda *_args: pytest.fail("voted"))
+        self.voter = self.voter._replace(candidates=lambda *_args: pytest.fail("voted"))
+
+    def run(self, payload: object) -> None:
+        judge_review.run(payload, voter=self.voter)
 
     def feed(self, payload: dict) -> None:
         self.monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
@@ -49,17 +52,16 @@ class Route:
 
 @pytest.fixture(name="route")
 def _route(tmp_path, monkeypatch) -> Route:
-    root = tmp_path / "state"
     calls: list[str] = []
-    monkeypatch.setattr(session_state, "_default_root", lambda: root)
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(pattern_judge, "confirm_all", lambda *_args: pytest.fail("called a model"))
     monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
-    monkeypatch.setattr(
-        embedding_session, "open_turn", lambda session, _root: calls.append(f"open:{session}") or WARM_URL,
-    )
-    monkeypatch.setattr(embedding_session, "renew_turn", lambda session, _root: calls.append(f"renew:{session}"))
     monkeypatch.setattr(pattern_vote.time, "sleep", lambda _seconds: None)
-    return Route(root, tmp_path / "work", calls, monkeypatch)
+    voter = pattern_vote.Voter(
+        open_turn=lambda session, _root: calls.append(f"open:{session}") or WARM_URL,
+        renew_turn=lambda session, _root: calls.append(f"renew:{session}"),
+    )
+    return Route(session_state.plugin_data_home() / "state", tmp_path / "work", calls, monkeypatch, voter)
 
 
 def _payload(path: Path, session_id: str = "vote") -> dict:
@@ -87,7 +89,7 @@ def test_importing_the_route_registers_the_embedding_consumer() -> None:
 def test_every_voted_sentence_lands_in_the_journal(route: Route) -> None:
     route.vote_closers()
 
-    judge_review.run(_payload(route.write("notes.md")))
+    route.run(_payload(route.write("notes.md")))
 
     [row] = _patterns("vote")
     assert (row["rule"], row["line"], row["text"], row["turn_id"]) == ("ai_closer", 1, CLOSER, "turn-1")
@@ -96,29 +98,27 @@ def test_every_voted_sentence_lands_in_the_journal(route: Route) -> None:
 def test_a_prose_write_keeps_the_embedding_lease(route: Route) -> None:
     route.vote_closers()
 
-    judge_review.run(_payload(route.write("notes.md")))
+    route.run(_payload(route.write("notes.md")))
 
     assert route.calls == ["open:vote", "renew:vote"]
 
 
 def test_a_cold_model_is_awaited_before_the_vote(route: Route) -> None:
     answers = iter([None, None, WARM_URL])
-    route.monkeypatch.setattr(embedding_session, "open_turn", lambda *_args: None)
-    route.monkeypatch.setattr(pattern_vote, "probe", lambda: next(answers))
+    route.voter = route.voter._replace(open_turn=lambda *_args: None, probe=lambda: next(answers))
     route.vote_closers()
 
-    judge_review.run(_payload(route.write("notes.md")))
+    route.run(_payload(route.write("notes.md")))
 
     assert _patterns("vote")
 
 
 def test_a_model_that_never_answers_skips_the_vote(route: Route) -> None:
-    route.monkeypatch.setattr(embedding_session, "open_turn", lambda *_args: None)
-    route.monkeypatch.setattr(pattern_vote, "probe", lambda: None)
+    route.voter = route.voter._replace(open_turn=lambda *_args: None, probe=lambda: None)
     route.monkeypatch.setattr(judge_review, "READY_WAIT_SECONDS", 0.0)
     route.forbid_vote()
 
-    judge_review.run(_payload(route.write("notes.md")))
+    route.run(_payload(route.write("notes.md")))
 
     assert not _patterns("vote")
 
@@ -127,7 +127,7 @@ def test_a_switched_off_layer_never_opens_a_turn(route: Route) -> None:
     route.monkeypatch.delenv(embedding_session.ENABLE_ENV)
     route.forbid_vote()
 
-    judge_review.run(_payload(route.write("notes.md")))
+    route.run(_payload(route.write("notes.md")))
 
     assert route.calls == []
 
@@ -135,7 +135,7 @@ def test_a_switched_off_layer_never_opens_a_turn(route: Route) -> None:
 def test_a_code_file_is_never_voted(route: Route) -> None:
     route.forbid_vote()
 
-    judge_review.run(_payload(route.write("tool.py")))
+    route.run(_payload(route.write("tool.py")))
 
     assert route.calls == []
     assert not route.root.exists()
@@ -145,7 +145,7 @@ def test_a_session_scratch_file_is_never_voted(route: Route) -> None:
     route.monkeypatch.setattr(judge_review, "TEMP_ROOTS", (route.workspace,))
     route.forbid_vote()
 
-    judge_review.run(_payload(route.write("scratchpad/notes.md")))
+    route.run(_payload(route.write("scratchpad/notes.md")))
 
     assert route.calls == []
     assert not route.root.exists()
@@ -154,14 +154,14 @@ def test_a_session_scratch_file_is_never_voted(route: Route) -> None:
 def test_a_write_without_a_session_is_left_alone(route: Route) -> None:
     route.forbid_vote()
 
-    judge_review.run(_payload(route.write("notes.md"), session_id=""))
+    route.run(_payload(route.write("notes.md"), session_id=""))
 
     assert route.calls == []
     assert not route.root.exists()
 
 
 def test_a_broken_payload_is_left_alone(route: Route) -> None:
-    judge_review.run(PARSE_FAILURE)
+    route.run(PARSE_FAILURE)
 
     assert route.calls == []
     assert not route.root.exists()
@@ -171,7 +171,7 @@ def test_the_route_exits_cleanly_and_prints_nothing(route: Route, capsys) -> Non
     route.vote_closers()
     route.feed(_payload(route.write("notes.md")))
 
-    assert judge_review.main() == 0
+    assert judge_review.main(work=route.run) == 0
 
     assert capsys.readouterr().out == ""
     assert _patterns("vote")
@@ -207,11 +207,10 @@ def test_the_codex_budget_ends_the_route_before_its_hook_timeout(route: Route) -
     release = threading.Event()
     route.monkeypatch.setenv(host.CODEX_ENV, "1")
     route.monkeypatch.setattr(judge_review, "CODEX_BUDGET_SECONDS", 0.05)
-    route.monkeypatch.setattr(judge_review, "run", lambda _payload: release.wait(5))
     route.feed({})
     started = time.monotonic()
 
-    assert judge_review.main() == 0
+    assert judge_review.main(work=lambda _payload: release.wait(5)) == 0
 
     assert time.monotonic() - started < 1
     assert judge_review.CODEX_BUDGET_SECONDS < judge_review.CODEX_HOOK_TIMEOUT_SECONDS
@@ -222,10 +221,10 @@ def test_a_failed_vote_still_exits_cleanly(route: Route, capsys) -> None:
     def broken(*_args) -> dict:
         raise ValueError("embedding server returned 1 vectors for 2 inputs")
 
-    route.monkeypatch.setattr(pattern_vote, "candidates", broken)
+    route.voter = route.voter._replace(candidates=broken)
     route.feed(_payload(route.write("notes.md")))
 
-    assert judge_review.main() == 0
+    assert judge_review.main(work=route.run) == 0
 
     captured = capsys.readouterr()
     assert captured.out == ""

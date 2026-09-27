@@ -323,6 +323,9 @@ def _archive_command(server: Path, weights: Path, entry: ModelPlatform, port: in
     )
 
 
+Fetcher = Callable[[ModelPlatform, Path], Path]
+
+
 def _python_command(interpreter: Path, weights: Path, port: int) -> tuple[str, ...]:
     """Build a Python worker command for a validated loopback port."""
     if not _valid_port(port):
@@ -330,10 +333,10 @@ def _python_command(interpreter: Path, weights: Path, port: int) -> tuple[str, .
     return (str(interpreter), str(Path(__file__).parent / WORKER_NAME), str(weights), str(port))
 
 
-def provision(entry: ModelPlatform, root: Path) -> Callable[[int], tuple[str, ...]]:
+def provision(entry: ModelPlatform, root: Path, *, fetch_weights: Fetcher = ensure_weights, fetch_runtime: Fetcher = ensure_runtime) -> Callable[[int], tuple[str, ...]]:
     """Port left open, because a download can outlast a free port."""
-    weights = ensure_weights(entry, root)
-    runtime = ensure_runtime(entry, root)
+    weights = fetch_weights(entry, root)
+    runtime = fetch_runtime(entry, root)
     if isinstance(entry.runtime, ArchiveRuntime):
         return partial(_archive_command, runtime, weights, entry)
     return partial(_python_command, runtime, weights)
@@ -391,10 +394,13 @@ def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked:
             raise
 
 
-def start(entry: ModelPlatform, root: Path) -> ServerRecord:
+Provisioner = Callable[[ModelPlatform, Path], Callable[[int], tuple[str, ...]]]
+
+
+def start(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision) -> ServerRecord:
     """Start a worker and clean up both process and record on any readiness failure."""
     root.mkdir(parents=True, exist_ok=True)
-    arguments = provision(entry, root)
+    arguments = prepare(entry, root)
     port = _free_port()
     child, record = _launch(entry, root, port, arguments(port))
     _ready(child, record, root, locked=True)
@@ -444,9 +450,9 @@ def start_detached(root: Path) -> None:
     _spawn((sys.executable, str(Path(__file__).resolve()), str(root)), root)
 
 
-def _start_leased(entry: ModelPlatform, root: Path) -> None:
+def _start_leased(entry: ModelPlatform, root: Path, prepare: Provisioner) -> None:
     """Provision outside the lifecycle lock, then recheck demand before launching a model after a slow download."""
-    arguments = provision(entry, root)
+    arguments = prepare(entry, root)
     with exclusive(root / LOCK_NAME):
         if not has_live_leases(root, time.time()) or running_url(root) is not None:
             return
@@ -460,7 +466,7 @@ def _demanded(root: Path) -> bool:
         return has_live_leases(root, time.time())
 
 
-def supervise(entry: ModelPlatform, root: Path) -> None:
+def supervise(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision) -> None:
     """Only one monitor may provision and sweep; relinquish its lock atomically with the final idle check."""
     root.mkdir(parents=True, exist_ok=True)
     with (root / SUPERVISOR_LOCK_NAME).open("w", encoding="utf-8") as handle:
@@ -478,7 +484,7 @@ def supervise(entry: ModelPlatform, root: Path) -> None:
                         return
                     running = running_url(root) is not None
                 if not running:
-                    _start_leased(entry, root)
+                    _start_leased(entry, root, prepare)
                 time.sleep(LEASE_POLL_SECONDS)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

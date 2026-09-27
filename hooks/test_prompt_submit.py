@@ -164,23 +164,13 @@ def test_multiple_matches_are_deduplicated_and_rule_order_is_stable(tmp_path: Pa
     ]
     decisions = [row for row in rows if row["event"] == "UserPromptSubmit"]
     assert [row["rule"] for row in decisions] == ["comment_out_code", "skip_tests"]
-    assert all(
-        set(row)
-        == {
-            "ts",
-            "session_id",
-            "hook",
-            "event",
-            "family",
-            "rule",
-            "path",
-            "tool_use_id",
-            "turn_id",
-            "outcome",
-            "duration_ms",
-        }
-        for row in decisions
-    )
+    assert all(set(row) == DECISION_FIELDS for row in decisions)
+
+
+DECISION_FIELDS = {
+    "ts", "session_id", "hook", "event", "family", "rule", "path",
+    "tool_use_id", "turn_id", "outcome", "duration_ms",
+}
 
 
 def test_explicit_block_mode_is_only_block_authority():
@@ -571,24 +561,13 @@ def test_longer_backtick_runs_do_not_hide_file_tokens(text: str):
     assert response["decision"] == "block"
 
 
-def test_scanner_findings_become_static_rule_reminders(monkeypatch: pytest.MonkeyPatch):
+def test_scanner_findings_become_static_rule_reminders():
     secret = "private-token-123"
-    monkeypatch.setattr(
-        prompt_submit,
-        "scan_all",
-        lambda *_args, **_kwargs: [
-            {
-                "family": "secrets",
-                "rule": "credential",
-                "snippet": secret,
-                "action": secret,
-            }
-        ],
-    )
-    monkeypatch.setattr(
-        prompt_submit, "gate_state", lambda *_args, **_kwargs: "enforce"
-    )
-    response = prompt_submit.run(payload(secret))
+
+    def scan(*_args, **_kwargs) -> list[dict]:
+        return [{"family": "secrets", "rule": "credential", "snippet": secret, "action": secret}]
+
+    response = prompt_submit.run(payload(secret), {"secrets": True}, scan=scan)
     assert "secrets/credential" in context(response)
     assert secret not in context(response)
 
@@ -714,17 +693,17 @@ def test_valid_session_always_emits_one_heartbeat_including_clean(tmp_path: Path
 
 
 def test_scanner_exception_never_discloses_exception_or_prompt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
     marker = "PRIVATE-" + "SCANNER-" + "MARKER"
 
     def fail_scan(*_args, **_kwargs):
         raise RuntimeError(marker)
 
-    monkeypatch.setattr(prompt_submit, "scan_all", fail_scan)
     response = prompt_submit.run(
         payload(f"skip tests {marker}", session_id="s1"),
         {"ledger_root": str(tmp_path), "state_root": str(tmp_path / "state")},
+        scan=fail_scan,
     )
     captured = capsys.readouterr()
     assert marker not in captured.err
@@ -734,12 +713,7 @@ def test_scanner_exception_never_discloses_exception_or_prompt(
             assert marker not in path.read_text(encoding="utf-8")
 
 
-def test_ledger_and_state_failures_never_change_decision(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setattr(
-        prompt_submit.reporting, "append_row", mock.Mock(side_effect=OSError("disk"))
-    )
+def test_ledger_and_state_failures_never_change_decision():
     response = prompt_submit.run(
         payload("skip tests", session_id="s1"),
         {"state_root": "/unusable", "ledger_root": "/unusable"},
@@ -751,26 +725,24 @@ def test_ledger_and_state_failures_never_change_decision(
 @pytest.mark.parametrize("invoke_gate", [False, True])
 def test_reporting_failure_evaluates_once_and_preserves_response(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     invoke_gate: bool,
 ):
     marker = "PRIVATE-REPORTING-MARKER"
-    evaluate = mock.Mock(wraps=prompt_submit._evaluate)
+    scan = mock.Mock(wraps=prompt_submit.scan_all)
 
     def fail_reporting(*, gate, **_kwargs):
         if invoke_gate:
             gate("turn-1")
         raise RuntimeError(marker)
 
-    monkeypatch.setattr(prompt_submit, "_evaluate", evaluate)
-    monkeypatch.setattr(prompt_submit.reporting, "run_with_ledger", fail_reporting)
     response = prompt_submit.run(
         payload(f"skip tests {marker}", session_id="s1"),
         {"ledger_root": str(tmp_path), "state_root": str(tmp_path / "state")},
+        scan=scan, ledger=fail_reporting,
     )
     captured = capsys.readouterr()
-    assert evaluate.call_count == 1
+    assert scan.call_count == 1
     assert "skip_tests" in context(response)
     assert captured.err == "agent-discipline-watcher: prompt reporting failed\n"
     assert marker not in captured.err

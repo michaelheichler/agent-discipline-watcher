@@ -42,10 +42,13 @@ def _server(monkeypatch: pytest.MonkeyPatch):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     port = httpd.server_address[1]
     monkeypatch.setenv("ADW_EMBEDDING_URL", f"http://127.0.0.1:{port}/v1/embeddings")
-    monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", (0.0, 0.0))
     yield httpd
     httpd.shutdown()
     httpd.server_close()
+
+
+def _embed(texts: tuple[str, ...], config: dict | None = None) -> tuple | None:
+    return embedding_client.embed(texts, config, retry_delays=(0.0, 0.0))
 
 
 def _closed_port() -> int:
@@ -57,7 +60,7 @@ def _closed_port() -> int:
 
 
 def test_embed_returns_one_vector_per_input(server) -> None:
-    vectors = embedding_client.embed(("alpha", "bee"))
+    vectors = _embed(("alpha", "bee"))
 
     assert vectors == ((5.0, 0.5), (3.0, 0.5))
     _path, payload = server.received[0]
@@ -66,15 +69,14 @@ def test_embed_returns_one_vector_per_input(server) -> None:
 
 
 def test_an_empty_request_never_reaches_the_server(server) -> None:
-    assert embedding_client.embed(()) == ()
+    assert _embed(()) == ()
     assert server.received == []
 
 
 def test_an_absent_server_degrades_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URL", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
-    monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", ())
 
-    assert embedding_client.embed(("alpha",)) is None
+    assert _embed(("alpha",)) is None
 
 
 def test_a_refused_first_host_falls_through_to_the_second(server, monkeypatch) -> None:
@@ -84,31 +86,30 @@ def test_a_refused_first_host_falls_through_to_the_second(server, monkeypatch) -
         f"http://127.0.0.1:{_closed_port()}/v1/embeddings,{live}",
     )
 
-    assert embedding_client.embed(("alpha",)) == ((5.0, 0.5),)
+    assert _embed(("alpha",)) == ((5.0, 0.5),)
     assert len(server.received) == 1
 
 
 def test_both_hosts_absent_degrades_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", ())
     monkeypatch.setenv(
         "ADW_EMBEDDING_URLS",
         f"http://127.0.0.1:{_closed_port()}/v1/embeddings,http://127.0.0.1:{_closed_port()}/v1/embeddings",
     )
 
-    assert embedding_client.embed(("alpha",)) is None
+    assert _embed(("alpha",)) is None
 
 
 def test_a_client_error_is_raised_rather_than_swallowed(server) -> None:
     server.responses.append((404, {"error": "unknown model"}))
 
     with pytest.raises(OSError):
-        embedding_client.embed(("alpha",))
+        _embed(("alpha",))
 
 
 def test_a_server_error_is_retried_and_then_reported_as_absent(server) -> None:
     server.responses.extend([(503, {}), (503, {}), (503, {})])
 
-    assert embedding_client.embed(("alpha",)) is None
+    assert _embed(("alpha",)) is None
     assert len(server.received) == 3
 
 
@@ -116,14 +117,14 @@ def test_a_missing_vector_raises_instead_of_returning_short(server) -> None:
     server.responses.append((200, {"data": [{"embedding": [1.0]}]}))
 
     with pytest.raises(ValueError):
-        embedding_client.embed(("alpha", "bee"))
+        _embed(("alpha", "bee"))
 
 
 def test_a_response_without_a_data_list_raises(server) -> None:
     server.responses.append((200, {"object": "list"}))
 
     with pytest.raises(ValueError):
-        embedding_client.embed(("alpha",))
+        _embed(("alpha",))
 
 
 def test_release_drops_the_lease_and_leaves_the_worker_to_the_supervisor(server, tmp_path, monkeypatch) -> None:
@@ -143,7 +144,6 @@ def test_releasing_a_lease_never_taken_reports_false(tmp_path) -> None:
 
 def test_an_absent_server_keeps_the_lease_while_provisioning(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ADW_EMBEDDING_URL", f"http://127.0.0.1:{_closed_port()}/v1/embeddings")
-    monkeypatch.setattr(embedding_client, "RETRY_DELAYS_SECONDS", ())
 
     assert embedding_client.ensure_loaded("solo", 1000.0, tmp_path, os.getpid()) is None
     assert embedding_lease.live_sessions(1001.0, tmp_path) == ("solo",)
@@ -166,7 +166,7 @@ def test_an_unapproved_embedding_url_never_receives_private_text(server, monkeyp
     monkeypatch.delenv("ADW_EMBEDDING_URLS", raising=False)
     monkeypatch.setenv(variable, "https://unapproved.example/v1/embeddings")
 
-    assert embedding_client.embed(("PRIVATE-SOURCE",)) is None
+    assert _embed(("PRIVATE-SOURCE",)) is None
     assert server.received == []
 
 
@@ -175,13 +175,13 @@ def test_disabled_project_boundary_blocks_remote_source_egress(server, monkeypat
     monkeypatch.setenv("ADW_EMBEDDING_APPROVED_HOSTS", "approved.example")
     monkeypatch.setenv("ADW_EMBEDDING_URL", "https://approved.example/v1/embeddings")
 
-    assert embedding_client.embed(("PRIVATE-SOURCE",), {"data_boundary": {"enabled": False}}) is None
+    assert _embed(("PRIVATE-SOURCE",), {"data_boundary": {"enabled": False}}) is None
     assert server.received == []
 
 
 def test_oversized_input_is_rejected_before_network_io(server) -> None:
     with pytest.raises(ValueError):
-        embedding_client.embed(("x",) * (embedding_client.MAX_INPUTS + 1))
+        _embed(("x",) * (embedding_client.MAX_INPUTS + 1))
 
     assert server.received == []
 
@@ -216,4 +216,4 @@ def test_oversized_embedding_response_is_rejected(server) -> None:
     )
 
     with pytest.raises(ValueError):
-        embedding_client.embed(("alpha",))
+        _embed(("alpha",))

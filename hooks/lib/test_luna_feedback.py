@@ -4,14 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from lib import luna_feedback, reporting
+from lib import luna_feedback
 from lib.judge import Candidate
 
 
 @pytest.fixture(name="reports")
-def _reports(tmp_path: Path, monkeypatch) -> Path:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path)
-    return tmp_path
+def _reports(tmp_path: Path) -> Path:
+    return tmp_path / "reports"
 
 
 def _comments(count: int) -> tuple[tuple[Candidate, ...], SimpleNamespace]:

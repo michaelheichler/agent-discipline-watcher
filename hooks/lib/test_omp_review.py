@@ -27,12 +27,12 @@ def validate(path, prepared, output, index=0):
     }, ENABLED)
 
 
-def test_disabled_boundary_does_not_read_source(tmp_path, monkeypatch):
+def test_disabled_boundary_does_not_read_source(tmp_path):
     def unexpected_read(_path):
         raise AssertionError("source must remain unread")
 
-    monkeypatch.setattr(omp_review, "read_source", unexpected_read)
-    assert prepare(tmp_path / "missing.py", {"data_boundary": {"enabled": False}}) == {
+    request = {"operation": "prepare", "payload": payload_for(tmp_path / "missing.py")}
+    assert omp_review.run(request, {"data_boundary": {"enabled": False}}, read=unexpected_read) == {
         "enabled": False, "requests": [],
     }
 
@@ -183,10 +183,7 @@ def test_ambiguous_document_quote_requires_more_context(tmp_path):
         validate(path, prepared, {"notes": [{"quote": "Ready.", "problem": "Unclear status.", "fix": "Name the ready component."}]})
 
 
-def test_large_finding_batch_keeps_every_row_in_a_report(tmp_path, monkeypatch):
-    from lib import reporting
-
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
+def test_large_finding_batch_keeps_every_row_in_a_report(tmp_path):
     path = tmp_path / "source.py"
     path.write_text((f"# {COMMENT}\n" * 40), encoding="utf-8")
     prepared = prepare(path)
@@ -218,11 +215,8 @@ def test_document_finding_includes_the_reviewed_quote(tmp_path):
     assert f'{path}:1 Found "on Friday". Problem: Unclear date. Action: Give the date.' in result["reason"]
 
 
-def test_observed_finding_notice_reserves_room_for_policy_suffix(tmp_path, monkeypatch):
-    from lib import reporting
-
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
-    work = ReviewWork(JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context="Q"), "a.md", blocking=False)
+def test_observed_finding_notice_reserves_room_for_policy_suffix(tmp_path):
+    work =ReviewWork(JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context="Q"), "a.md", blocking=False)
     result = validated_findings(work, json.dumps({"notes": [{"quote": "Q", "problem": "p" * 800, "fix": "F"}]}))
     assert len(result["systemMessage"].encode("utf-8")) <= 900
     report = next((tmp_path / "reports").glob("*.json"))

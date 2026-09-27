@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 try:
@@ -44,20 +45,20 @@ def owner_pid() -> int:
     return os.getppid()
 
 
-def _needs_supervisor(answered: str | None) -> bool:
+def _needs_supervisor(answered: str | None, managed_url: Callable[[Path], str | None]) -> bool:
     """Skipped for a user URL, because provisioning costs 1.1 GB."""
     if any(os.environ.get(name, "").strip() for name in USER_URL_ENVS):
         return False
-    return answered is None or answered == running_url(default_root())
+    return answered is None or answered == managed_url(default_root())
 
 
-def open_turn(session_id: str, root: str | None) -> str | None:
+def open_turn(session_id: str, root: str | None, *, load: Callable[..., str | None] = ensure_loaded, managed_url: Callable[[Path], str | None] = running_url) -> str | None:
     """Provisions in the background and answers None for this turn, because a first install downloads most of a gigabyte."""
     if not CONSUMER_REGISTERED or not session_id or not enabled():
         return None
     try:
-        answered = ensure_loaded(session_id, time.time(), root, owner_pid())
-        if _needs_supervisor(answered):
+        answered = load(session_id, time.time(), root, owner_pid())
+        if _needs_supervisor(answered, managed_url):
             start_detached(default_root())
         return answered
     except Exception as exc:
@@ -80,12 +81,12 @@ def renew_turn(session_id: str, root: str | None) -> bool:
         return False
 
 
-def close_turn(session_id: str, root: str | None) -> bool:
+def close_turn(session_id: str, root: str | None, *, unload: Callable[[str, str | None], bool] = release) -> bool:
     """Swallowed because a cleanup fault must not block gates."""
     if not session_id:
         return False
     try:
-        return release(session_id, root)
+        return unload(session_id, root)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: embedding cleanup failed: {exc}\n")
         return False

@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from lib import embedding_session, payloads, pattern_vote
@@ -44,23 +45,23 @@ def _config(payload: object) -> dict | None:
         return None
 
 
-def run(payload: object) -> None:
+def run(payload: object, *, voter: pattern_vote.Voter = pattern_vote.Voter()) -> None:
     if payload is PARSE_FAILURE or not embedding_session.enabled():
         return
     paths = _prose_paths(payload) if payloads.session_id(payload) else []
     if not paths:
         return
     turn = pattern_vote.turn_for(payload, _config(payload))
-    if not pattern_vote.model_ready(turn, READY_WAIT_SECONDS):
+    if not pattern_vote.model_ready(turn, READY_WAIT_SECONDS, voter):
         return
     for path in paths:
-        pattern_vote.vote(turn, path)
+        pattern_vote.vote(turn, path, voter)
 
 
-def _run_quietly(payload: object) -> None:
+def _run_quietly(payload: object, work: Callable[[object], None]) -> None:
     """Swallowed, because a failed vote must never block."""
     try:
-        run(payload)
+        work(payload)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: pattern vote skipped: {exc}\n")
 
@@ -70,8 +71,8 @@ def _budget() -> float:
     return CODEX_BUDGET_SECONDS if os.environ.get(CODEX_ENV) else HOOK_TIMEOUT_SECONDS
 
 
-def main() -> int:
-    worker = threading.Thread(target=_run_quietly, args=(read_payload(),), daemon=True)
+def main(*, work: Callable[[object], None] = run) -> int:
+    worker = threading.Thread(target=_run_quietly, args=(read_payload(), work), daemon=True)
     worker.start()
     worker.join(_budget())
     return 0
