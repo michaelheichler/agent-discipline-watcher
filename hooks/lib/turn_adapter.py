@@ -70,6 +70,14 @@ def prepare_session(environment: Any = None, *, session_id: str = "", config: di
     adapter.ensure_with_notice()
 
 
+def prepare_turn(session_id: str, config: dict | None, environment: Any = None) -> bool:
+    """Codex only, because Stop unloads the model every turn."""
+    if _current_host(environment) != host.CODEX:
+        return False
+    _warm_codex(session_id, config)
+    return True
+
+
 def for_turn(environment: Any = None, *, injected_provider: bool = False) -> TurnAdapter:
     """Honour an injected provider because a caller supplying one has already chosen the reviewer."""
     if injected_provider or host.is_codex_host(environment):
