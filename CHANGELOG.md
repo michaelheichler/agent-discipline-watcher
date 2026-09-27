@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.21.0 (2026-09-27)
+
+### Changed
+
+- Model advisors read candidate rows from the session journal instead of whole files. The embedding vote runs on an async PostToolUse route on Claude Code and inline on Codex, and writes each surviving sentence as a pattern row. The Claude Stop reviewer, the OMP provider, and Codex Luna judge those rows with four examples per side per rule. Whole-document review stays opt-in through the `mixed` preset.
+- The plugin ships command hooks only. SessionStart writes one Stop reviewer into Claude settings on first run and repoints it after a plugin update. A preset replaces that block. No preset runs a per-write agent any more, and the stand-down check is gone.
+- Finding rows show the catalog title, the matched phrase in quotes, and the action, with the rule id last. Blocks number their rows, cap at five, and keep the report path after clipping. Resume, clear, and compact inject one line instead of the full contract.
+- When a consumer registers, the embedding model loads. The lease renews on every PostToolUse, and Stop releases the lease without terminating the worker. The server record carries the process start time and a launch nonce, so a reused pid receives no signal and no prompt text.
+
+### Fixed
+
+- Project configuration merges nested maps over the defaults, so one `rule_gates` entry no longer replaces the whole map.
+- A `<record-error>` blocker clears once every touched path rescans clean.
+- The pre-tool gate denies a Bash payload without a string command before dispatch. Pre-commit scans renamed and non-ASCII staged paths.
+- The Python read-only checker accepts `json.load(...).get`, comprehensions, and `import sys`. Denials name the rejected node.
+- `passive_voice` no longer treats `read` as a participle, and the scanner masks quoted text before structure and punctuation rules.
+- `function_too_long` measures TypeScript and JavaScript functions by brace span.
+- The Stop journal filters by turn and applies one 48,000 character budget. Luna comment review covers every language the extractor supports. Codex keeps a review blocker after a Luna timeout, matching OMP. The `data_boundary` switch gates Claude Luna and Codex Luna as well as OMP.
+- Commit message checks preserve Conventional Commit prefixes and trailers.
+- OMP derives hashline paths from one parser, drops an ambiguous judge quote without a retry, and reports the runner failure reason.
+
+### Removed
+
+- The orphan review CLI (`review.py`, `bm25.py`, `render.py`), the `ADW_FILE_BLOCK_LINES` mapping, and twelve dead symbols.
+
 ## 0.20.24 (2026-09-15)
 
 ### Fixed
