@@ -14,6 +14,7 @@ from pathlib import Path
 
 try:
     from . import session_state
+    from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
         clip as _clip, deduplicated as _deduplicated, format_row,
@@ -21,6 +22,7 @@ try:
     )
 except ImportError:
     import session_state
+    from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
     from finding_output import (
         clip as _clip, deduplicated as _deduplicated, format_row,
@@ -34,7 +36,6 @@ REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
-MAX_LISTED_ROWS = 5
 MAX_CURRENT_LEDGER_BYTES = 256 * 1024
 MAX_CURRENT_LEDGER_ROWS = 512
 
