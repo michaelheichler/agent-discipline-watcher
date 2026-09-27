@@ -1,7 +1,6 @@
 """A line rule cannot see an argument that arrives in the wrong order, because every regex here reads one sentence at a time."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -27,9 +26,6 @@ except ImportError:
 REVIEW_MODEL = JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
 MAX_NOTES = 6
-MAX_REVIEW_ROUNDS = 2
-STATE_KEY = "document_review"
-BLOCKER_KEY_PREFIX = "<document-review>:"
 WHITESPACE_RE = re.compile(r"\s+")
 # Two named axes to prevent the model grading subject matter.
 SYSTEM_PROMPT = (
@@ -168,26 +164,6 @@ def review(path: str, text: str, config: dict | None = None, *, ready: Callable[
         return parse_notes(raw, text)
     except (ValueError, TypeError):
         return ()
-
-
-def digest_of(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-
-
-def previous(state: dict, path: str) -> tuple[str, int]:
-    rows = state.get(STATE_KEY)
-    row = rows.get(path) if isinstance(rows, dict) else None
-    if not isinstance(row, dict):
-        return "", 0
-    rounds = row.get("rounds")
-    return str(row.get("digest", "")), rounds if isinstance(rounds, int) else 0
-
-
-def remember(state: dict, path: str, digest: str, rounds: int) -> dict:
-    rows = state.get(STATE_KEY)
-    rows = dict(rows) if isinstance(rows, dict) else {}
-    rows[path] = {"digest": digest, "rounds": rounds}
-    return {**state, STATE_KEY: rows}
 
 
 def message(path: str, notes: tuple[Note, ...]) -> str:

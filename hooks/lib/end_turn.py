@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from . import blocker_state, document_review, payloads, scan_input, session_state
+from . import blocker_state, payloads, scan_input
 from .baseline import strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
@@ -64,28 +64,8 @@ def _remaining_reason(session_id: str, agent_id: str, root) -> str:
     return "\n".join(dict.fromkeys(pending.values()))
 
 
-def _document_digest(path: Path) -> str:
-    try:
-        return document_review.digest_of(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        return ""
-
-
-def _stale_document_keys(pending: dict[str, str], state: dict) -> set[str]:
-    prefix = document_review.BLOCKER_KEY_PREFIX
-    stale = set()
-    for key in pending:
-        if not key.startswith(prefix):
-            continue
-        path = Path(key[len(prefix):])
-        digest = _document_digest(path)
-        if not digest or digest != document_review.previous(state, str(path))[0]:
-            stale.add(key)
-    return stale
-
-
-def _residual_reasons(pending: dict[str, str], paths: list[str], stale: set[str]) -> list[str]:
-    resolved = set(paths) | stale | {"<batch>"}
+def _residual_reasons(pending: dict[str, str], paths: list[str]) -> list[str]:
+    resolved = set(paths) | {"<batch>"}
     return [value for key, value in pending.items() if key not in resolved]
 
 
@@ -93,15 +73,14 @@ def _scope_reason(payload: dict, cfg: dict, agent_id: str) -> str:
     session_id = payloads.session_id(payload)
     root = cfg.get("state_root")
     pending, paths, revision = blocker_state.details(session_id, agent_id, root)
-    stale = _stale_document_keys(pending, session_state.read_state_strict(session_id, root))
     cwd = payloads.cwd(payload)
     findings, existing = _blocking_rows(paths, Path(cwd or "."), cfg)
     findings.extend(_batch_findings(BatchScanRequest(session_id, cwd, tuple(existing), cfg)))
     if findings:
         reason = compact_block(findings, cfg)[0]
-        return "\n".join(dict.fromkeys([reason, *_residual_reasons(pending, paths, stale)]))
+        return "\n".join(dict.fromkeys([reason, *_residual_reasons(pending, paths)]))
     path_keys = set(paths)
-    cleared = [key for key in pending if key in path_keys or key in stale]
+    cleared = [key for key in pending if key in path_keys]
     if paths:
         cleared.extend(["<batch>", *blocker_state.RESCAN_RELEASED_KEYS])
     blocker_state.reconcile(session_id, agent_id, revision, cleared, paths, root)
