@@ -4,12 +4,7 @@ import pytest
 
 import record
 import stop
-from lib import journal, reporting
-
-
-@pytest.fixture(autouse=True)
-def isolated_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
+from lib import journal
 
 
 def _payload(tmp_path: Path, patch: str) -> tuple[dict, dict]:

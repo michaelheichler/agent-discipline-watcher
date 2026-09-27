@@ -5,15 +5,10 @@ import pytest
 
 import record
 import stop
-from lib import codex_luna, journal, reporting, session_state, turn_retry
+from lib import codex_luna, journal, session_state, turn_retry
 from lib.judge_contracts import ReviewKind
 from lib.luna_storage import LunaProviderFailure
 from test_task4_codex import MixedProvider, Provider, _result
-
-
-@pytest.fixture(autouse=True)
-def isolated_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(reporting, "_reports_dir", lambda: tmp_path / "reports")
 
 
 @pytest.fixture(autouse=True)
