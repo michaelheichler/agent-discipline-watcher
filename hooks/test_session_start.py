@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 import session_start
-from lib import claude_native, claude_presets, host
+from lib import claude_native, claude_presets, embedding_lease, embedding_session, host
 
 
 class SessionStartLifecycleTests(unittest.TestCase):
@@ -169,6 +169,53 @@ def test_another_host_writes_no_claude_settings(monkeypatch: pytest.MonkeyPatch)
     session_start.run({"source": "startup"})
 
     assert not settings.exists()
+
+
+def _on_codex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(host.CODEX_ENV, "1")
+    for other in (host.OMP_ENV, host.CLAUDE_ENV, host.COWORK_ENV):
+        monkeypatch.delenv(other, raising=False)
+
+
+@pytest.fixture(name="cold_worker")
+def _cold_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[list, dict]:
+    """Faked, because a test must never load the real model."""
+    monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
+    for name in embedding_session.USER_URL_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(embedding_session, "provisioned", lambda: True)
+    launched: list = []
+    monkeypatch.setattr(embedding_session, "start_detached", launched.append)
+    return launched, {"state_root": str(tmp_path / "state")}
+
+
+def _leases(config: dict, now: float) -> tuple[str, ...]:
+    return embedding_lease.live_sessions(now, embedding_session.lease_root_for(config))
+
+
+def test_a_codex_start_warms_the_model_without_waiting(cold_worker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Warmed, because Codex votes inline within 9 seconds."""
+    launched, config = cold_worker
+    _on_codex(monkeypatch)
+
+    started = time.monotonic()
+    output = session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert time.monotonic() - started < 2.0
+    assert output["hookSpecificOutput"]["additionalContext"] == session_start.CONTRACT
+    assert launched == [embedding_session.default_root()]
+    assert _leases(config, time.time()) == ("s1",)
+
+
+def test_a_claude_start_leaves_the_model_to_the_async_route(cold_worker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skipped, because the Claude vote waits 120 seconds."""
+    launched, config = cold_worker
+    _on_claude(monkeypatch)
+
+    session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert launched == []
+    assert _leases(config, time.time()) == ()
 
 
 if __name__ == "__main__":
