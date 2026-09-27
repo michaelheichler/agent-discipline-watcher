@@ -283,22 +283,25 @@ class UnusableStateTests(unittest.TestCase):
             )
         self.assertEqual(rows, [])
 
+    def _unwritable_root(self) -> Path:
+        blocked = self.state_root / "blocked"
+        blocked.write_text("not a directory", encoding="utf-8")
+        return blocked
+
     def test_write_failure_is_swallowed(self):
-        with mock.patch.object(session_state, "update_state", side_effect=PermissionError("nope")):
-            with mock.patch.object(config.sys, "stderr"):
-                rows = config.record_state_transitions(
-                    "s1", {"gates": {"punctuation": "observe"}},
-                    state_root=self.state_root, ledger_root=self.ledger_root,
-                )
+        with mock.patch.object(config.sys, "stderr"):
+            rows = config.record_state_transitions(
+                "s1", {"gates": {"punctuation": "observe"}},
+                state_root=self._unwritable_root(), ledger_root=self.ledger_root,
+            )
         self.assertEqual(rows, [])
 
     def test_resolution_still_usable_when_state_layer_fails(self):
-        with mock.patch.object(session_state, "update_state", side_effect=PermissionError("nope")):
-            with mock.patch.object(config.sys, "stderr"):
-                config.record_state_transitions(
-                    "s1", {"gates": {"clean_code": "observe"}},
-                    state_root=self.state_root, ledger_root=self.ledger_root,
-                )
+        with mock.patch.object(config.sys, "stderr"):
+            config.record_state_transitions(
+                "s1", {"gates": {"clean_code": "observe"}},
+                state_root=self._unwritable_root(), ledger_root=self.ledger_root,
+            )
         self.assertEqual(
             config.resolve_outcome(
                 {"family": "clean_code", "rule": "x"},
