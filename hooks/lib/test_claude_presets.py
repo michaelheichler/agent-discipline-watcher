@@ -27,27 +27,25 @@ def test_a_stored_sonnet_preset_reads_as_the_preset_that_replaced_it(tmp_path) -
     assert claude_native._read_preset_unlocked(stored) == "mixed"
 
 
-def test_mixed_spends_the_cheaper_model_on_the_more_frequent_role() -> None:
-    """Split the roles because a comment check runs per write while a document check runs per turn."""
-    assert claude_presets.model_for("mixed", "comment") == "claude-haiku-4-5-20251001"
-    assert claude_presets.model_for("mixed", "document") == "claude-sonnet-4-6"
+def test_mixed_judges_the_turn_with_sonnet() -> None:
+    """Sonnet, because mixed also reads whole documents."""
+    assert claude_presets.model_for("mixed") == "claude-sonnet-4-6"
 
 
-def test_haiku_runs_one_model_for_both_roles() -> None:
+def test_haiku_judges_the_turn_with_haiku() -> None:
     """Keep it uniform because this preset exists to hold cost flat."""
-    assert claude_presets.model_for("haiku", "comment") == "claude-haiku-4-5-20251001"
-    assert claude_presets.model_for("haiku", "document") == "claude-haiku-4-5-20251001"
+    assert claude_presets.model_for("haiku") == "claude-haiku-4-5-20251001"
 
 
 def test_luna_native_names_the_model_the_harness_injects() -> None:
     """Name it because LeverFrame puts Luna in the Claude model list and an agent hook can then ask for it."""
-    assert claude_presets.model_for("luna-native", "comment") == claude_presets.LUNA_NATIVE_MODEL
+    assert claude_presets.model_for("luna-native") == claude_presets.LUNA_NATIVE_MODEL
 
 
 def test_luna_refuses_a_native_model_because_it_runs_a_command() -> None:
     """Separate the two because the SDK preset reaches Luna through a handler rather than the host."""
     with pytest.raises(ValueError, match="command handlers"):
-        claude_presets.model_for("luna", "comment")
+        claude_presets.model_for("luna")
 
 
 @pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
@@ -100,12 +98,10 @@ def test_the_haiku_preset_names_the_reader_by_absolute_path() -> None:
     assert "CLAUDE_PLUGIN_ROOT" not in prompt
 
 
-@pytest.mark.parametrize("preset", ("mixed", "luna", "luna-native"))
-def test_a_written_preset_supersedes_the_shipped_reviewer(preset: str) -> None:
-    """Yield the plugin entries because the host cannot switch off one plugin hook."""
-    settings = {"hooks": claude_presets.generated_hooks(preset)}
-
-    assert claude_presets.supersedes_plugin(settings)
+@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
+def test_no_stop_reviewer_carries_a_stand_down_step(preset: str) -> None:
+    """Gone, because one reviewer set has nothing to yield to."""
+    assert "--superseded" not in claude_presets.stop_prompt(preset)
 
 
 @pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))

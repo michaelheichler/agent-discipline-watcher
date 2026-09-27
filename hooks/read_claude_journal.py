@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import claude_native, claude_presets  # noqa: E402  # pylint: disable=wrong-import-position
+from lib import claude_presets  # noqa: E402  # pylint: disable=wrong-import-position
 from lib.journal import mark_reviewed, read_for_stop  # noqa: E402  # pylint: disable=wrong-import-position
 from lib.pattern_semantic import load_exemplars, load_manifest, rule_prompt  # noqa: E402  # pylint: disable=wrong-import-position
 
@@ -33,16 +33,9 @@ def _rule_entries(rows: list[dict]) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="read_claude_journal")
-    parser.add_argument(claude_presets.SUPERSEDED_FLAG, dest="superseded", action="store_true")
     parser.add_argument(claude_presets.DOCUMENTS_FLAG, dest="documents", action="store_true")
-    parser.add_argument("session_id", nargs="?")
+    parser.add_argument("session_id")
     args = parser.parse_args(argv)
-    if args.superseded:
-        superseded = claude_presets.plugin_superseded(claude_native.settings_path())
-        sys.stdout.write(("true" if superseded else "false") + "\n")
-        return 0
-    if not args.session_id:
-        parser.error("a session id is required")
     try:
         stored = read_for_stop(args.session_id)
     except ValueError as exc:

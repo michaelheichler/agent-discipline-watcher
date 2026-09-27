@@ -84,3 +84,11 @@ def test_the_shell_helper_passes_the_documents_flag_through(tmp_path) -> None:
     )
 
     assert result.stdout.strip() == "[]"
+
+
+def test_the_retired_stand_down_flag_is_refused() -> None:
+    """Refused, because no shipped reviewer asks any more."""
+    with pytest.raises(SystemExit) as refused:
+        read_claude_journal.main(["--superseded"])
+
+    assert refused.value.code == 2

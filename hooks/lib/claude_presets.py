@@ -21,9 +21,6 @@ WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
-SHIPPED_READER_PATH = "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/read_claude_journal.sh"
-SHIPPED_PRESET = "haiku"
-SUPERSEDED_FLAG = "--superseded"
 DOCUMENTS_FLAG = "--documents"
 HANDLER_TIMEOUT = 120
 STRUCTURED_OUTPUT_CONTRACT = (
@@ -41,10 +38,10 @@ def validate_preset(value: str) -> str:
     return value
 
 
-def model_for(preset: str, role: str) -> str:
+def model_for(preset: str) -> str:
     """luna-native names a model the harness injects, because LeverFrame puts Luna in the Claude model list."""
     if preset == "mixed":
-        return CLAUDE_HAIKU_MODEL if role == "comment" else CLAUDE_SONNET_MODEL
+        return CLAUDE_SONNET_MODEL
     if preset == "haiku":
         return CLAUDE_HAIKU_MODEL
     if preset == "luna-native":
@@ -60,24 +57,9 @@ def _numbered(steps: list[str]) -> str:
     return "".join(f"{index}. {step}\n" for index, step in enumerate(steps, start=1))
 
 
-def _yield_steps(shipped: bool) -> list[str]:
-    """Only the shipped reviewer yields, because a preset entry is the replacement."""
-    if not shipped:
-        return []
-    return [
-        f"Run this exact helper with {SUPERSEDED_FLAG} as its only argument: {SHIPPED_READER_PATH}. "
-        "When it prints true, a configured preset replaces this reviewer, so skip every remaining step "
-        "and use the successful StructuredOutput shape."
-    ]
-
-
-def _reader_path(shipped: bool) -> str:
-    return SHIPPED_READER_PATH if shipped else JOURNAL_READER_PATH
-
-
 def comment_prompt(preset: str) -> str:
+    validate_preset(preset)
     steps = [
-        *_yield_steps(validate_preset(preset) == SHIPPED_PRESET),
         "Read the named path.",
         "Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent "
         "behind a comment. Text a question puts to the user counts as reader-facing English.",
@@ -98,27 +80,26 @@ def comment_prompt(preset: str) -> str:
     )
 
 
-def _reader_steps(preset: str, shipped: bool) -> list[str]:
+def _reader_steps(preset: str) -> list[str]:
     """Documents only on mixed, because a whole file costs the most."""
     if preset != "mixed":
         return [
             "Run this exact helper with the session_id from the hook input as its only argument: "
-            + _reader_path(shipped),
+            + JOURNAL_READER_PATH,
         ]
     return [
         f"Run this exact helper with {DOCUMENTS_FLAG} and then the session_id from the hook input as its two "
-        "arguments: " + _reader_path(shipped),
+        "arguments: " + JOURNAL_READER_PATH,
         f"Judge each document row as one whole document. {DOCUMENT_RUBRIC}",
     ]
 
 
-def stop_prompt(preset: str, shipped: bool = False) -> str:
+def stop_prompt(preset: str) -> str:
     selected = validate_preset(preset)
     steps = [
         "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
         "successful StructuredOutput shape.",
-        *_yield_steps(shipped),
-        *_reader_steps(selected, shipped),
+        *_reader_steps(selected),
         "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
         "asks for and four violating and four clean examples. Decide whether the row text is violating or "
         f"clean for that rule alone. {PATTERN_RUBRIC}",
@@ -190,25 +171,6 @@ def preset_managed_hash(preset: str | None) -> str:
     return managed_hash({"hooks": generated_hooks(preset) if preset in PRESETS else {}})
 
 
-def supersedes_plugin(settings: object) -> bool:
-    """Judged by the yield step, because an installer copy of the shipped entry carries it too."""
-    return any(
-        SUPERSEDED_FLAG not in str(hook.get("prompt") or hook.get("command") or "")
-        for entries in managed_hooks(settings).values()
-        for hook in entries
-        if isinstance(hook, dict)
-    )
-
-
-def plugin_superseded(settings_path: Path) -> bool:
-    """False on a bad read, because a skipped reviewer is worse than a doubled one."""
-    try:
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
-    return supersedes_plugin(settings)
-
-
 def _kept_group(group: object) -> object | None:
     if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
         return group
@@ -247,7 +209,7 @@ def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
             "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
             "Stop": [{"hooks": [handler]}],
         }
-    return {"Stop": [{"hooks": [_agent(model_for(preset, "document"), stop_prompt(preset))]}]}
+    return {"Stop": [{"hooks": [_agent(model_for(preset), stop_prompt(preset))]}]}
 
 
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
