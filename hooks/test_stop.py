@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -111,8 +110,8 @@ def test_project_config_cannot_redirect_stop_state(tmp_path: Path) -> None:
 
 def test_stop_blocks_when_state_cannot_be_read(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    with mock.patch.object(blocker_state, "scope_ids", side_effect=OSError("read only")):
-        response = stop.run(_payload(), config)
+    Path(config["state_root"]).write_text("not a directory", encoding="utf-8")
+    response = stop.run(_payload(), config)
     assert response["decision"] == "block"
     assert "state could not be verified" in response["reason"]
 
