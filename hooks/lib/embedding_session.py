@@ -11,10 +11,14 @@ try:
     from .embedding_client import ensure_loaded, release
     from .embedding_lease import renew
     from .embedding_server import default_root, running_url, start_detached
+    from .model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
+    from .model_store import VENV_DIRNAME, runtime_root, weights_root
 except ImportError:
     from embedding_client import ensure_loaded, release
     from embedding_lease import renew
     from embedding_server import default_root, running_url, start_detached
+    from model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
+    from model_store import VENV_DIRNAME, runtime_root, weights_root
 
 ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
@@ -27,6 +31,32 @@ def enabled() -> bool:
     if os.environ.get(DISABLE_ENV, "").strip():
         return False
     return bool(os.environ.get(ENABLE_ENV, "").strip())
+
+
+def _sized(path: Path, size: int) -> bool:
+    try:
+        return path.stat().st_size == size
+    except OSError:
+        return False
+
+
+def _runtime_present(entry: ModelPlatform, root: Path) -> bool:
+    directory = runtime_root(entry, root)
+    if isinstance(entry.runtime, ArchiveRuntime):
+        return (directory / entry.runtime.server).is_file()
+    return (directory / VENV_DIRNAME / "bin" / "python").is_file()
+
+
+def provisioned(platform: Callable[[], ModelPlatform] = current_platform) -> bool:
+    """Size only, because hashing 709 MB stalls SessionStart."""
+    try:
+        entry = platform()
+    except ValueError:
+        return False
+    root = default_root()
+    weights = weights_root(entry, root)
+    sized = all(_sized(weights / artifact.name, artifact.size) for artifact in entry.weights)
+    return sized and _runtime_present(entry, root)
 
 
 LEASE_DIRECTORY_NAME = "embedding-leases"

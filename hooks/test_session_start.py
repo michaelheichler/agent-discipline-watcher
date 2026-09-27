@@ -207,6 +207,20 @@ def test_a_codex_start_warms_the_model_without_waiting(cold_worker, monkeypatch:
     assert _leases(config, time.time()) == ("s1",)
 
 
+def test_a_codex_start_without_the_model_stays_quiet(cold_worker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Skipped, because SessionStart must never download."""
+    launched, config = cold_worker
+    _on_codex(monkeypatch)
+    monkeypatch.setattr(embedding_session, "provisioned", lambda: False)
+
+    output = session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    assert output["hookSpecificOutput"]["additionalContext"] == session_start.CONTRACT
+    assert capsys.readouterr().err == ""
+    assert launched == []
+    assert _leases(config, time.time()) == ()
+
+
 def test_a_claude_start_leaves_the_model_to_the_async_route(cold_worker, monkeypatch: pytest.MonkeyPatch) -> None:
     """Skipped, because the Claude vote waits 120 seconds."""
     launched, config = cold_worker

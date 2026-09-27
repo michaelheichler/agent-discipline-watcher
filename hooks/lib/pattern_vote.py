@@ -41,6 +41,13 @@ def turn_for(payload: object, config: dict | None) -> VoteTurn:
     return VoteTurn(session_id, turn_id, config)
 
 
+def warm(session_id: str, config: dict | None, voter: Voter = Voter()) -> None:
+    """Early, because a Codex vote gets 9 s and a load takes more."""
+    if not session_id or not embedding_session.enabled() or not embedding_session.provisioned():
+        return
+    voter.open_turn(session_id, embedding_session.lease_root_for(config or {}))
+
+
 def model_ready(turn: VoteTurn, wait_seconds: float, voter: Voter = Voter()) -> bool:
     """Waits, because Stop unloads the model every turn."""
     deadline = time.monotonic() + wait_seconds

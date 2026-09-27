@@ -32,12 +32,20 @@ def _codex() -> TurnAdapter:
     return TurnAdapter(review=codex_luna.review, reviews_turns=True)
 
 
-def _on_claude(environment: Any) -> bool:
-    """Gated, because only Claude reads Claude settings."""
+def _current_host(environment: Any) -> str:
     try:
-        return host.current_host(environment) == host.CLAUDE
+        return host.current_host(environment)
     except host.UnknownHostError:
-        return False
+        return ""
+
+
+def _warm_codex(session_id: str, config: dict | None) -> None:
+    """Imported late, because only Codex votes inside the write."""
+    try:
+        from . import pattern_vote
+    except ImportError:
+        return
+    pattern_vote.warm(session_id, config)
 
 
 def _claude_default() -> Any:
@@ -48,9 +56,12 @@ def _claude_default() -> Any:
     return claude_default
 
 
-def prepare_session(environment: Any = None) -> None:
+def prepare_session(environment: Any = None, *, session_id: str = "", config: dict | None = None) -> None:
     """Tolerant, because a vendored Codex tree lacks the adapter."""
-    if not _on_claude(environment):
+    running = _current_host(environment)
+    if running == host.CODEX:
+        _warm_codex(session_id, config)
+    if running != host.CLAUDE:
         return
     try:
         adapter = _claude_default()
