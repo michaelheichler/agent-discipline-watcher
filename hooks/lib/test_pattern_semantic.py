@@ -70,6 +70,26 @@ def test_only_a_measured_rule_blocks() -> None:
     assert pattern_semantic.blocking_rules(manifest) == frozenset({"measured_high"})
 
 
+GATED = {"rules": {"measured_high": {"judge_precision": 0.94}, "measured_low": {"judge_precision": 0.60}}}
+
+
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({}, True),
+    ({"measured_high": "enforce"}, True),
+    ({"measured_high": "judged"}, True),
+    ({"measured_high": "observe"}, False),
+    ({"measured_high": "off"}, False),
+    ({"measured_high": {"prose": "observe"}}, False),
+    ({"measured_high": {"code": "observe"}}, True),
+))
+def test_a_project_rule_gate_outranks_the_measurement(gates: dict, expected: bool) -> None:
+    assert pattern_semantic.rule_blocks(GATED, "measured_high", {"rule_gates": gates}) is expected
+
+
+def test_an_enforce_gate_cannot_lift_a_rule_below_the_floor() -> None:
+    assert not pattern_semantic.rule_blocks(GATED, "measured_low", {"rule_gates": {"measured_low": "enforce"}})
+
+
 def test_the_shipped_gate_matches_the_recorded_measurement() -> None:
     manifest = pattern_semantic.load_manifest()
     blocking = pattern_semantic.blocking_rules(manifest)
@@ -207,6 +227,23 @@ def test_the_vote_embeds_only_the_exemplars_a_measured_rule_needs() -> None:
     pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n", layer=layer)
 
     assert {row.rule for row in embedded[0]} == {"ai_closer"}
+
+
+@pytest.mark.usefixtures("opted_in")
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({"ai_closer": "off"}, set()),
+    ({"ai_closer": {"prose": "off"}}, set()),
+    ({"ai_closer": "observe"}, {"ai_closer"}),
+    ({}, {"ai_closer"}),
+))
+def test_a_rule_gated_off_never_becomes_a_pattern_row(gates: dict, expected: set[str]) -> None:
+    layer = VOTING._replace(
+        exemplar_vectors=lambda _exemplars, _config: VECTORS, vectors=lambda _texts, _config: VECTORS,
+    )
+
+    voted = pattern_semantic.candidates("a.md", "Feel free to ask me anything else.\n", {"rule_gates": gates}, layer=layer)
+
+    assert set(voted) == expected
 
 
 def test_the_candidate_stage_is_silent_until_the_reader_opts_in() -> None:

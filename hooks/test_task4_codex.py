@@ -409,7 +409,7 @@ def test_codex_gives_the_real_luna_judge_the_remaining_review_budget(
     monkeypatch.setattr(codex_luna, "REVIEW_DEADLINE_SECONDS", 5.0)
     monkeypatch.setattr(codex_luna.time, "monotonic", lambda: next(clock))
 
-    feedback = codex_luna._judge_work(None, work)
+    feedback, _reported = codex_luna._judge_work(None, work)
 
     assert feedback
     assert [round(judge.timeout_seconds, 1) for judge in TimedJudge.instances] == [4.9, 3.0]

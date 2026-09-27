@@ -16,7 +16,7 @@ from .hookio import stop_block, system_message
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .pattern_judge import PatternCandidate, request_for as pattern_request
-from .pattern_semantic import load_exemplars, load_manifest, rule_prompt
+from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
 from .luna_storage import LunaProviderFailure
 from .turn_retry import (
@@ -356,29 +356,56 @@ def _feedback(request: JudgeRequest, result: JudgeResult, sources: list[Any]) ->
     return _document_feedback(result, sources)
 
 
-def _judge_work(provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> str:
+def _judged(provider: object | None, request: JudgeRequest, deadline: float) -> JudgeResult:
+    """Raised bare, because the caller holds the partial feedback."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise LunaProviderFailure("the Luna review deadline expired before all candidates were reviewed", category="timeout")
+    judge = provider if provider is not None else LunaJudge(timeout_seconds=remaining)
+    result = judge.judge(request)
+    if not isinstance(result, JudgeResult):
+        raise LunaProviderFailure("Luna provider returned an invalid result", category="worker_protocol")
+    return result
+
+
+def _judge_work(
+    provider: object | None, work: tuple[tuple[JudgeRequest, list[Any]], ...], observed: frozenset[str] = frozenset(),
+) -> tuple[str, str]:
     feedback_rows: list[str] = []
+    reported: list[str] = []
     confirmed: list[dict] = []
     deadline = time.monotonic() + REVIEW_DEADLINE_SECONDS
     for request, candidates_or_rows in work:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            cause = LunaProviderFailure("the Luna review deadline expired before all candidates were reviewed", category="timeout")
-            raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
         try:
-            judge = provider if provider is not None else LunaJudge(timeout_seconds=remaining)
-            result = judge.judge(request)
+            result = _judged(provider, request, deadline)
         except LunaProviderFailure as exc:
             raise InterruptedReview(exc, "\n\n".join(feedback_rows), confirmed) from exc
-        if not isinstance(result, JudgeResult):
-            cause = LunaProviderFailure("Luna provider returned an invalid result", category="worker_protocol")
-            raise InterruptedReview(cause, "\n\n".join(feedback_rows), confirmed)
         feedback = _feedback(request, result, candidates_or_rows)
-        if feedback:
-            feedback_rows.append(feedback)
-            if request.review_kind is ReviewKind.DOCUMENT:
-                confirmed.append({"feedback": _bounded(feedback), "sources": feedback_sources(result.payload, candidates_or_rows)})
-    return "\n\n".join(feedback_rows)
+        if not feedback:
+            continue
+        if request.rule_name in observed:
+            reported.append(feedback)
+            continue
+        feedback_rows.append(feedback)
+        if request.review_kind is ReviewKind.DOCUMENT:
+            confirmed.append({"feedback": _bounded(feedback), "sources": feedback_sources(result.payload, candidates_or_rows)})
+    return "\n\n".join(feedback_rows), "\n\n".join(reported)
+
+
+def _verdict(feedback: str, reported: str) -> dict:
+    """Observed rules report, because the project chose observe."""
+    notice = system_message(_bounded(reported)) if reported else {}
+    return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
+
+
+def _observed_rules(payload: object, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> frozenset[str]:
+    """Read per turn, because rule gates live in project config."""
+    config = effective_hook_config({}, payloads.cwd(payload) or None)
+    manifest = load_manifest()
+    return frozenset(
+        request.rule_name for request, _sources in work
+        if request.review_kind is ReviewKind.PATTERN and not rule_blocks(manifest, request.rule_name, config)
+    )
 
 
 def _preflight(
@@ -416,6 +443,7 @@ def _perform_review(
     attempts: int,
     work: tuple[tuple[JudgeRequest, list[Any]], ...],
     provider: object | None,
+    observed: frozenset[str] = frozenset(),
 ) -> dict:
     token, reservation_error = _reserve_review(
         session_id, turn_id, state_root, previous_failure, attempts,
@@ -423,12 +451,12 @@ def _perform_review(
     if reservation_error is not None or token is None:
         return reservation_error or _failure_block("the Luna review reservation could not be acquired", attempts + 1)
     try:
-        feedback = _judge_work(provider, work)
+        feedback, reported = _judge_work(provider, work, observed)
     except BaseException:
         _rollback(session_id, turn_id, token, state_root)
         raise
     if _finish_success(session_id, turn_id, token, state_root):
-        return stop_block(_bounded(feedback)) if feedback else {}
+        return _verdict(feedback, reported)
     _rollback(session_id, turn_id, token, state_root)
     reason = "the successful Luna review could not be committed"
     _record_failure(session_id, turn_id, reason, state_root)
@@ -474,7 +502,7 @@ def _reviewed(payload: object, session_id: str, turn_id: str, state_root: str | 
     if work is None:
         return _failure_block(previous_failure.get("reason", empty_reason), attempts) if previous_failure else {}
     return _perform_review(
-        session_id, turn_id, state_root, previous_failure, attempts, work, provider,
+        session_id, turn_id, state_root, previous_failure, attempts, work, provider, _observed_rules(payload, work),
     )
 
 

@@ -18,14 +18,14 @@ def _pattern_work(work: tuple) -> list:
     return [item for item in work if item.request.review_kind is ReviewKind.PATTERN]
 
 
-def _journaled(tmp_path: Path, extra: dict | None = None) -> tuple[Path, dict]:
+def _journaled(tmp_path: Path, extra: dict | None = None, rule: str = "ai_closer") -> tuple[Path, dict]:
     path = tmp_path / "notes.md"
     path.write_text(f"{CLOSER}\n", encoding="utf-8")
     source = journal.current_source(path)
     assert source is not None
     state_root = tmp_path / "state"
     journal.record_patterns(
-        "omp", "turn", path, [{"rule": "ai_closer", "line": 1, "text": CLOSER}],
+        "omp", "turn", path, [{"rule": rule, "line": 1, "text": CLOSER}],
         content_hash=source[0], state_root=state_root,
     )
     return path, {"session_id": "omp", "state_root": str(state_root), **(extra or {})}
@@ -43,7 +43,6 @@ def test_pattern_work_comes_from_the_journal_rows_for_the_path(tmp_path: Path) -
     assert item.request.rule_name == "ai_closer"
     assert [(candidate.line, candidate.text) for candidate in item.candidates] == [(1, CLOSER)]
     assert len(item.request.violating_examples) == len(item.request.clean_examples) == 4
-    assert item.blocking
 
 
 def test_rows_for_other_text_never_become_work(tmp_path: Path) -> None:
@@ -56,11 +55,25 @@ def test_rows_for_other_text_never_become_work(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(("gates", "expected"), (
-    ({"rule_gates": {"ai_closer": "observe"}}, [True]),
+    ({}, [True]),
+    ({"rule_gates": {"utilize": "enforce"}}, [True]),
+    ({"rule_gates": {"utilize": "observe"}}, [False]),
     ({"gates": {"english": "observe"}}, [False]),
     ({"gates": {"english": "off"}}, []),
 ))
-def test_a_voted_rule_follows_its_measurement_and_family(tmp_path: Path, gates: dict, expected: list[bool]) -> None:
+def test_a_voted_rule_follows_its_rule_gate_measurement_and_family(tmp_path: Path, gates: dict, expected: list[bool]) -> None:
+    path, config = _journaled(tmp_path, gates, rule="utilize")
+
+    work = _pattern_work(build_work(path, path.read_text(encoding="utf-8"), config))
+
+    assert [item.blocking for item in work] == expected
+
+
+@pytest.mark.parametrize(("gates", "expected"), (
+    ({}, [False]),
+    ({"rule_gates": {"ai_closer": "enforce"}}, [True]),
+))
+def test_the_shipped_observe_gate_on_ai_closer_reports_its_voted_rows(tmp_path: Path, gates: dict, expected: list[bool]) -> None:
     path, config = _journaled(tmp_path, gates)
 
     work = _pattern_work(build_work(path, path.read_text(encoding="utf-8"), config))
