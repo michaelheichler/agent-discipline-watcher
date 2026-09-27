@@ -1,4 +1,4 @@
-"""Split out, because claude_native is at its size gate."""
+"""Seed or repoint the block, because the plugin ships none."""
 from __future__ import annotations
 
 import copy
