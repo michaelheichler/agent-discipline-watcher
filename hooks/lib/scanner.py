@@ -245,6 +245,17 @@ def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _L
     )
 
 
+def _mask_hidden_ranges(text: str, hidden_ranges: tuple[tuple[int, int], ...]) -> str:
+    if not hidden_ranges:
+        return text
+    visible = list(text)
+    for start, end in hidden_ranges:
+        if not 0 <= start <= end <= len(text):
+            raise ValueError("hidden range falls outside the source text")
+        visible[start:end] = ["\n" if char == "\n" else " " for char in text[start:end]]
+    return "".join(visible)
+
+
 def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context: _ScanContext) -> list[dict]:
     findings: list[dict] = []
     if "punctuation" in context.active_families:
@@ -260,7 +271,23 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
     return findings
 
 
-def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
+def _scan_english_families(path: str, masked: str, context: _ScanContext) -> list[dict]:
+    if "english" not in context.active_families or not context.prose:
+        return []
+    findings = _scan_prose_structure(path, masked, context.config)
+    findings.extend(cast(list[dict], _scan_slop_structure(path, masked)))
+    if slop_phrase_candidate(masked):
+        findings.extend(cast(list[dict], scan_slop_phrases(path, masked, context.config)))
+    return findings
+
+
+def scan_all(
+    path: str,
+    text: str,
+    config: dict | None = None,
+    *,
+    hidden_ranges: tuple[tuple[int, int], ...] = (),
+) -> list[dict]:
     if scan_input.is_binary_content(path, text):
         return []
     context = _scan_context(path, text, config)
@@ -271,17 +298,14 @@ def scan_all(path: str, text: str, config: dict | None = None) -> list[dict]:
     if _is_exempt(path, context.config):
         return findings
     masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
+    masked = _mask_hidden_ranges(masked, hidden_ranges)
     sources = _line_sources(context, masked, comment_source)
     if "clean_code" in context.active_families and context.code_file:
         findings.extend(_scan_clean_code_file(context, comment_source))
     for number, line in enumerate(context.lines, 1):
         source_line = _SourceLine(path=path, number=number, text=line)
         findings.extend(_scan_line_families(source_line, sources, context))
-    if "english" in context.active_families and context.prose:
-        findings.extend(_scan_prose_structure(path, masked, context.config))
-        findings.extend(cast(list[dict], _scan_slop_structure(path, masked)))
-        if slop_phrase_candidate(masked):
-            findings.extend(cast(list[dict], scan_slop_phrases(path, masked, context.config)))
+    findings.extend(_scan_english_families(path, masked, context))
     return calibrated_findings(findings)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -20,6 +21,12 @@ from lib.shell_parse import SEPARATORS
 
 # Suffixed .md because prose rules key off the suffix.
 COMMIT_MESSAGE_PATH = "commit_message.md"
+CONVENTIONAL_SUBJECT_RE = re.compile(
+    r"\A(?P<prefix>[A-Za-z][A-Za-z0-9_-]*(?:\([^()\r\n]+\))?!?:[ \t]+)"
+)
+TRAILER_PREFIX_RE = re.compile(
+    r"^(?P<prefix>(?:BREAKING CHANGE|[^\s:]+)[ \t]*:[ \t]*)"
+)
 
 # Named because git exits 128 when it finds no repository.
 NOT_A_REPOSITORY_EXIT_CODE = 128
@@ -182,8 +189,41 @@ def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
         return []
     return [
         {**finding, "path": COMMIT_MESSAGE_PATH, "surface": SURFACE_COMMIT}
-        for finding in scan_all(COMMIT_MESSAGE_PATH, text, cfg)
+        for finding in scan_all(
+            COMMIT_MESSAGE_PATH, text, cfg, hidden_ranges=_commit_metadata_ranges(text)
+        )
     ]
+
+
+def _commit_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    subject = CONVENTIONAL_SUBJECT_RE.match(text)
+    ranges = [subject.span("prefix")] if subject else []
+    ranges.extend(_trailer_metadata_ranges(text))
+    return tuple(ranges)
+
+
+def _trailer_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    lines = text.splitlines(keepends=True)
+    end = len(lines) - 1
+    while end >= 0 and not lines[end].strip():
+        end -= 1
+    start = end
+    while start > 0 and lines[start - 1].strip():
+        start -= 1
+    if start <= 0:
+        return ()
+    offset = sum(len(line) for line in lines[:start])
+    ranges = []
+    saw_trailer = False
+    for line in lines[start:end + 1]:
+        match = TRAILER_PREFIX_RE.match(line)
+        if match:
+            ranges.append((offset + match.start("prefix"), offset + match.end("prefix")))
+            saw_trailer = True
+        elif not saw_trailer or not line.startswith((" ", "\t")):
+            return ()
+        offset += len(line)
+    return tuple(ranges)
 
 
 def _commit_messages(command: str | list[str]) -> list[str]:

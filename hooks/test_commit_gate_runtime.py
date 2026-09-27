@@ -114,6 +114,88 @@ class CommitGateRuntimeTests(unittest.TestCase):
         self.assertNotIn("updatedInput", result["hookSpecificOutput"])
         self.assertEqual(pre_commit._commit_messages(command), ["we ship it; it works"])
 
+    def test_conventional_subject_prefix_is_metadata(self):
+        subjects = (
+            "fix: preserve metadata",
+            "fix(parser): preserve metadata",
+            "fix!: preserve metadata",
+            "fix(parser)!: preserve metadata",
+        )
+
+        for subject in subjects:
+            with self.subTest(subject=subject):
+                findings = pre_commit._message_findings(["git", "commit", "-m", subject], {})
+                self.assertNotIn("prose_colon", {row["rule"] for row in findings})
+
+        scoped = pre_commit._message_findings(
+            ["git", "commit", "-m", "fix(utilize): preserve metadata"], {}
+        )
+        self.assertNotIn("utilize", {row["rule"] for row in scoped})
+
+    def test_conventional_subject_description_remains_scanned(self):
+        findings = pre_commit._message_findings(
+            ["git", "commit", "-m", "fix(parser): preserve this: it matters; it works"], {}
+        )
+
+        self.assertEqual(
+            {(row["rule"], row["line"]) for row in findings if row["family"] == "punctuation"},
+            {("prose_colon", 1), ("prose_semicolon", 1)},
+        )
+
+    def test_terminal_trailer_prefix_is_metadata_but_its_value_is_prose(self):
+        command = [
+            "git", "commit",
+            "-m", "fix: preserve metadata",
+            "-m", "Body label: still prose.",
+            "-m", "Co-authored-by: Reason: we ship it; it works",
+        ]
+
+        findings = pre_commit._message_findings(command, {})
+        punctuation = [row for row in findings if row["family"] == "punctuation"]
+
+        self.assertEqual(
+            {(row["rule"], row["line"]) for row in punctuation},
+            {("prose_colon", 3), ("prose_colon", 5), ("prose_semicolon", 5)},
+        )
+        semicolon = next(row for row in punctuation if row["rule"] == "prose_semicolon")
+        self.assertEqual(
+            semicolon["snippet"], "Co-authored-by: Reason: we ship it; it works"
+        )
+
+    def test_trailer_continuation_remains_scanned_on_its_original_line(self):
+        message = "Subject\n\nSigned-off-by: A Person\n  We ship it; it works"
+
+        findings = pre_commit._message_findings(["git", "commit", "-m", message], {})
+
+        self.assertIn(
+            ("prose_semicolon", 4),
+            {(row["rule"], row["line"]) for row in findings},
+        )
+        self.assertNotIn(
+            ("prose_colon", 3),
+            {(row["rule"], row["line"]) for row in findings},
+        )
+
+    def test_breaking_change_prefix_is_metadata_but_its_value_is_prose(self):
+        message = "fix!: update the API\n\nBREAKING CHANGE: Clients stop here; they must update"
+
+        findings = pre_commit._message_findings(["git", "commit", "-m", message], {})
+        punctuation = {(row["rule"], row["line"]) for row in findings if row["family"] == "punctuation"}
+
+        self.assertEqual(punctuation, {("prose_semicolon", 3)})
+
+    def test_only_unambiguous_terminal_trailer_blocks_are_metadata(self):
+        messages = (
+            "Subject\nCo-authored-by: A Person",
+            "Subject\n\nNot A Trailer: plain value",
+            "Subject\n\nCo-authored-by: A Person\nplain body text",
+        )
+
+        for message in messages:
+            with self.subTest(message=message):
+                findings = pre_commit._message_findings(["git", "commit", "-m", message], {})
+                self.assertIn("prose_colon", {row["rule"] for row in findings})
+
     def test_ansi_c_commit_message_with_escaped_apostrophe_is_scanned(self):
         command = r"git commit -m $'we can\'t; it works'"
 

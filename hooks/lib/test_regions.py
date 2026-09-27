@@ -41,6 +41,35 @@ def _rows(path: str, source: str) -> set[tuple[str, int]]:
     return {(row["rule"], row["line"]) for row in scan_all(path, source, {})}
 
 
+def test_hidden_ranges_preserve_original_findings_and_line_positions() -> None:
+    source = "fix: clean subject\nBody label: still prose.\n"
+
+    rows = scan_all(
+        "commit_message.md", source, {"english": False, "clean_code": False},
+        hidden_ranges=((0, len("fix: ")),),
+    )
+
+    colons = [row for row in rows if row["rule"] == "prose_colon"]
+    assert [(row["line"], row["snippet"]) for row in colons] == [
+        (2, "Body label: still prose.")
+    ]
+
+
+def test_hidden_ranges_do_not_hide_unconditional_findings() -> None:
+    marker = "craftsman" + "-ignore"
+    source = f"fix({marker}): clean subject\n"
+
+    rows = scan_all("commit_message.md", source, {}, hidden_ranges=((0, source.index(":") + 2),))
+
+    assert "suppression_escape_hatch" in {row["rule"] for row in rows}
+
+
+@pytest.mark.parametrize("hidden_range", ((-1, 1), (0, 100), (3, 2)))
+def test_hidden_ranges_reject_invalid_offsets(hidden_range: tuple[int, int]) -> None:
+    with pytest.raises(ValueError, match="hidden range"):
+        scan_all("commit_message.md", "fix: subject\n", {}, hidden_ranges=(hidden_range,))
+
+
 def test_html_regions_classify_embedded_languages_and_preserve_host_lines() -> None:
     regions = extract_regions("page.html", HTML_SOURCE)
 
