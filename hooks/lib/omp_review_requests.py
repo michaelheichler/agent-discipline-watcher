@@ -12,7 +12,7 @@ from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, output_schema
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
-from .pattern_semantic import blocking_rules, load_exemplars, load_manifest, rule_prompt
+from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
 from .regex_judge import judged_rules
 from .scanner import PROSE_EXTS, _exempt_families, _is_exempt, scan_all
 
@@ -109,7 +109,6 @@ def _journal_candidates(path: str, text: str, config: dict) -> dict[str, tuple[P
 def _voted_work(path: str, text: str, config: dict, exemplars: tuple) -> list[ReviewWork]:
     """Gated by precision, because a regex rule shares the name."""
     manifest = load_manifest()
-    blocking = blocking_rules(manifest)
     english = gate_state("english", config)
     if english == "off":
         return []
@@ -118,7 +117,7 @@ def _voted_work(path: str, text: str, config: dict, exemplars: tuple) -> list[Re
         if rule not in manifest["rules"]:
             continue
         prompt = rule_prompt(rule, exemplars, manifest)
-        blocks = english == "enforce" and rule in blocking
+        blocks = english == "enforce" and rule_blocks(manifest, rule, config)
         work.extend(ReviewWork(pattern_request(prompt, batch), path, batch, blocking=blocks) for batch in _batches(found))
     return work
 

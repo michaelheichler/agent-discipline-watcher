@@ -63,9 +63,8 @@ def test_codex_judges_pattern_rows_beside_documents_and_comments(tmp_path) -> No
     pattern = provider.calls[-1]
     assert (pattern.rule_name, pattern.candidates) == ("ai_closer", (CLOSER,))
     assert len(pattern.violating_examples) == len(pattern.clean_examples) == 4
-    assert response["decision"] == "block"
-    assert "ADW Luna pattern review" in response["reason"]
-    assert "note.md:2" in response["reason"]
+    assert "ADW Luna pattern review" in response["systemMessage"]
+    assert "note.md:2" in response["systemMessage"]
 
 
 def test_one_request_carries_every_row_of_one_rule(tmp_path) -> None:
@@ -81,6 +80,46 @@ def test_pattern_rows_from_another_turn_are_not_judged(tmp_path) -> None:
 
     assert provider.calls == []
     assert response == {}
+
+
+UTILIZE = {**PATTERN, "rule": "utilize", "text": "Utilizing fan feedback can enhance team engagement."}
+
+
+def _gated(tmp_path: Path, gates: dict) -> None:
+    config = {"data_boundary": {"enabled": True}, "rule_gates": gates}
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps(config), encoding="utf-8")
+
+
+@pytest.mark.parametrize("gates", ({}, {"utilize": "enforce"}))
+def test_a_rule_the_manifest_blocks_still_blocks_without_an_observe_gate(tmp_path, gates: dict) -> None:
+    _gated(tmp_path, gates)
+
+    response, _provider = _review(tmp_path, [UTILIZE])
+
+    assert response["decision"] == "block"
+    assert "note.md:2" in response["reason"]
+
+
+@pytest.mark.parametrize(("row", "gates"), ((UTILIZE, {"utilize": "observe"}), (PATTERN, {})))
+def test_an_observed_rule_reports_its_upheld_rows_without_blocking(tmp_path, row: dict, gates: dict) -> None:
+    _gated(tmp_path, gates)
+
+    response, _provider = _review(tmp_path, [row])
+
+    assert "decision" not in response
+    assert "ADW Luna pattern review" in response["systemMessage"]
+    assert "note.md:2" in response["systemMessage"]
+
+
+def test_an_observed_rule_reports_beside_a_rule_that_blocks(tmp_path) -> None:
+    _gated(tmp_path, {"utilize": "observe"})
+    inflated = {**UTILIZE, "rule": "inflated_diction", "line": 7, "text": "We leverage a robust paradigm."}
+
+    response, _provider = _review(tmp_path, [UTILIZE, inflated])
+
+    assert response["decision"] == "block"
+    assert "note.md:7" in response["reason"] and "note.md:2" not in response["reason"]
+    assert "note.md:2" in response["systemMessage"]
 
 
 def test_an_incomplete_pattern_row_fails_closed(tmp_path) -> None:

@@ -14,7 +14,7 @@ WARM_URL = "http://127.0.0.1:1/v1/embeddings"
 WARM = pattern_vote.Voter(
     open_turn=lambda *_args: WARM_URL,
     renew_turn=lambda *_args: True,
-    candidates=lambda path, _text, _config: {"ai_closer": (PatternCandidate(path, 1, CLOSER),)},
+    candidates=lambda path, _text, _config: {"inflated_diction": (PatternCandidate(path, 1, CLOSER),)},
 )
 
 

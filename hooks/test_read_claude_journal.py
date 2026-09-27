@@ -11,8 +11,8 @@ import read_claude_journal
 from lib import claude_presets, pattern_semantic
 
 PATTERN = {
-    "role": "pattern", "path": "/work/notes.md", "content_hash": "abc", "rule": "ai_closer",
-    "line": 3, "text": "Feel free to ask me anything else.",
+    "role": "pattern", "path": "/work/notes.md", "content_hash": "abc", "rule": "utilize",
+    "line": 3, "text": "Utilizing fan feedback can enhance team engagement.",
 }
 DOCUMENT = {"role": "document", "path": "/work/notes.md", "content_hash": "abc", "source_context": "Body."}
 
@@ -34,18 +34,51 @@ def _output(capsys) -> list[dict]:
 
 def test_each_rule_in_the_rows_arrives_with_four_examples_per_side(capsys, served) -> None:
     expected = pattern_semantic.rule_prompt(
-        "ai_closer", pattern_semantic.load_exemplars(), pattern_semantic.load_manifest(),
+        "utilize", pattern_semantic.load_exemplars(), pattern_semantic.load_manifest(),
     )
 
     _serve(["session"], [PATTERN, {**PATTERN, "line": 4}], served)
 
     rules = [row for row in _output(capsys) if row["role"] == "rule"]
     assert rules == [{
-        "role": "rule", "rule": "ai_closer", "action": expected.action,
+        "role": "rule", "rule": "utilize", "action": expected.action,
         "violating": list(expected.violating_examples), "clean": list(expected.clean_examples),
     }]
     assert len(rules[0]["violating"]) == len(rules[0]["clean"]) == 4
     assert served == [[PATTERN, {**PATTERN, "line": 4}]]
+
+
+def _project_row(tmp_path: Path, gates: dict) -> dict:
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"rule_gates": gates}), encoding="utf-8")
+    return {**PATTERN, "path": str(tmp_path / "notes.md")}
+
+
+@pytest.mark.parametrize("gates", ({"utilize": "observe"}, {"utilize": "off"}))
+def test_an_observed_rule_never_reaches_the_blocking_reviewer(tmp_path, capsys, served, gates: dict) -> None:
+    row = _project_row(tmp_path, gates)
+
+    _serve(["session"], [row, DOCUMENT], served)
+
+    assert _output(capsys) == []
+    assert served == [[row]]
+
+
+@pytest.mark.parametrize("gates", ({}, {"utilize": "enforce"}))
+def test_a_rule_without_an_observe_gate_still_reaches_the_reviewer(tmp_path, capsys, served, gates: dict) -> None:
+    row = _project_row(tmp_path, gates)
+
+    _serve(["session"], [row], served)
+
+    assert [item["rule"] for item in _output(capsys)] == ["utilize", "utilize"]
+
+
+def test_the_shipped_observe_gate_keeps_ai_closer_rows_from_the_reviewer(capsys, served) -> None:
+    closer = {**PATTERN, "rule": "ai_closer", "text": "Feel free to ask me anything else."}
+
+    _serve(["session"], [closer], served)
+
+    assert _output(capsys) == []
+    assert served == [[closer]]
 
 
 def test_rows_without_a_pattern_carry_no_examples(capsys, served) -> None:
