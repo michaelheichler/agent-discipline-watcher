@@ -8,7 +8,7 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Regex.** 98 patterns run on every write. Because this layer is deterministic and asks no model to release a finding, it is the one that decides the gate.
 
-**Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
+**Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row. The row stores the sentence text. It also records the rule and the line. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
 **Document.** Opt in on Claude Code through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
 
@@ -52,9 +52,9 @@ The scanner uses one region extractor for mixed-language files. Markup, attribut
 
 The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. The route reads each edited prose file, runs the embedding vote, and writes the surviving sentences to the journal. It prints nothing and returns no decision.
 
-1. Claude Code runs the route as an async PostToolUse hook after each file edit tool. The hook has a 180 second timeout. The write never waits for it.
-2. Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route.
-3. OMP has no async route. Its `OmpReview` prepare step runs the same vote inline and waits at most 10 seconds for the model.
+Claude Code runs the route as an async PostToolUse hook after each file edit tool, with a 180 second timeout. The write never waits for it.
+
+Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route. OMP has no async route. Its `OmpReview` prepare step runs the same vote inline and waits at most 10 seconds for the model.
 
 On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
 
@@ -353,8 +353,9 @@ Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payloa
 
 For read-only Python snippets in Bash, use isolated startup with `python3 -I -S`.
 For example, `python3 -I -S -c 'from pathlib import Path; print(Path("notes.md").read_text())'`
-reads a file without loading project startup modules. ADW rejects redirects that
-write opaque Python output to a file. Use Write or Edit for content changes.
+reads a file without loading project startup modules. ADW rejects a redirect
+that writes opaque Python output to a file, because the watcher cannot scan that
+content before it lands. Use Write or Edit.
 
 ## Active integrations
 
