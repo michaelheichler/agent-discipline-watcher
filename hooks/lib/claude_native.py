@@ -13,7 +13,7 @@ import shlex
 import stat
 import threading
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 try:
     from . import claude_presets, claude_transaction, judge_status
@@ -109,31 +109,52 @@ def _open_parent(path: Path, *, create: bool) -> int:
     if not target.is_absolute():
         raise ValueError(f"path must be absolute: {target}")
     descriptor = os.open(target.anchor or os.sep, _DIRECTORY_FLAGS)
+    for part in target.parent.parts:
+        if part not in (target.anchor, ""):
+            descriptor = _descend(descriptor, part, create=create)
+    return descriptor
+
+
+def _descend(parent_fd: int, part: str, *, create: bool) -> int:
     try:
-        for part in target.parent.parts:
-            if part in (target.anchor, ""):
-                continue
-            if part in (".", ".."):
-                raise ValueError(f"unsafe path component: {part}")
-            try:
-                child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
-            except FileNotFoundError:
-                if not create:
-                    raise
-                os.mkdir(part, 0o700, dir_fd=descriptor)
-                child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
-            try:
-                if not stat.S_ISDIR(os.fstat(child).st_mode):
-                    raise ValueError(f"path parent is not a directory: {part}")
-            except BaseException:
-                os.close(child)
-                raise
-            os.close(descriptor)
-            descriptor = child
-        return descriptor
+        return _open_child_directory(parent_fd, part, create=create)
+    finally:
+        os.close(parent_fd)
+
+
+def _open_child_directory(parent_fd: int, part: str, *, create: bool) -> int:
+    if part in (".", ".."):
+        raise ValueError(f"unsafe path component: {part}")
+    try:
+        child = os.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+    except FileNotFoundError:
+        if not create:
+            raise
+        os.mkdir(part, 0o700, dir_fd=parent_fd)
+        child = os.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
+    try:
+        if not stat.S_ISDIR(os.fstat(child).st_mode):
+            raise ValueError(f"path parent is not a directory: {part}")
     except BaseException:
-        os.close(descriptor)
+        os.close(child)
         raise
+    return child
+
+
+def _close_quietly(descriptor: int) -> None:
+    if descriptor < 0:
+        return
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
+def _unlink_quietly(parent_fd: int, name: str) -> None:
+    try:
+        os.unlink(name, dir_fd=parent_fd)
+    except FileNotFoundError:
+        pass
 
 
 def _leaf_lstat(parent_fd: int, name: str) -> os.stat_result | None:
@@ -197,52 +218,69 @@ def _read_regular_data(path: Path, *, allow_final_symlink: bool = False) -> tupl
         leaf = _leaf_lstat(parent_fd, target.name)
         if leaf is None:
             return None
-        if stat.S_ISLNK(leaf.st_mode):
-            if not allow_final_symlink:
-                raise ValueError(f"preset state leaf is not safely readable: {target}")
-            before = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
-            if not stat.S_ISREG(before.st_mode):
-                raise ValueError(f"preset state symlink target is not a regular file: {target}")
-            descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK, dir_fd=parent_fd)
-            opened = os.fstat(descriptor)
-            if _metadata_key(opened) != _metadata_key(before):
-                raise ValueError(f"preset state symlink target changed while reading: {target}")
-        elif stat.S_ISREG(leaf.st_mode):
-            descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS, dir_fd=parent_fd)
-            opened = os.fstat(descriptor)
-            if _metadata_key(opened) != _metadata_key(leaf):
-                raise ValueError(f"preset state leaf changed while reading: {target}")
-        else:
-            raise ValueError(f"preset state leaf is not a regular file: {target}")
-        if opened.st_size > MAX_STATE_BYTES:
-            raise ValueError(f"preset state leaf is too large: {target}")
-        data = bytearray()
-        while len(data) <= MAX_STATE_BYTES:
-            chunk = os.read(descriptor, min(65536, MAX_STATE_BYTES + 1 - len(data)))
-            if not chunk:
-                break
-            data.extend(chunk)
-        if len(data) > MAX_STATE_BYTES:
-            raise ValueError(f"preset state leaf is too large: {target}")
-        after = os.fstat(descriptor)
-        if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
-            raise ValueError(f"preset state leaf changed while reading: {target}")
+        descriptor, opened = _open_state_leaf(parent_fd, target, leaf, allow_final_symlink)
+        data, after = _read_leaf_bytes(descriptor, opened, target)
         if allow_final_symlink and stat.S_ISLNK(leaf.st_mode):
-            current_target = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
-            if _metadata_key(current_target) != _metadata_key(opened):
-                raise ValueError(f"preset state symlink target changed while reading: {target}")
-        return bytes(data).decode("utf-8"), _metadata_key(after)
+            _require_same_link_target(parent_fd, target, opened)
+        return data.decode("utf-8"), _metadata_key(after)
     finally:
-        if descriptor >= 0:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-        if parent_fd >= 0:
-            try:
-                os.close(parent_fd)
-            except OSError:
-                pass
+        _close_quietly(descriptor)
+        _close_quietly(parent_fd)
+
+
+def _open_state_leaf(parent_fd: int, target: Path, leaf: os.stat_result, allow_final_symlink: bool) -> tuple[int, os.stat_result]:
+    if stat.S_ISREG(leaf.st_mode):
+        flags = os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS
+        return _open_unchanged(parent_fd, target.name, flags, leaf, f"preset state leaf changed while reading: {target}")
+    if not stat.S_ISLNK(leaf.st_mode):
+        raise ValueError(f"preset state leaf is not a regular file: {target}")
+    if not allow_final_symlink:
+        raise ValueError(f"preset state leaf is not safely readable: {target}")
+    before = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"preset state symlink target is not a regular file: {target}")
+    flags = os.O_RDONLY | os.O_NONBLOCK
+    return _open_unchanged(parent_fd, target.name, flags, before, f"preset state symlink target changed while reading: {target}")
+
+
+def _open_unchanged(parent_fd: int, name: str, flags: int, expected: os.stat_result, message: str) -> tuple[int, os.stat_result]:
+    descriptor = os.open(name, flags, dir_fd=parent_fd)
+    try:
+        opened = os.fstat(descriptor)
+        if _metadata_key(opened) != _metadata_key(expected):
+            raise ValueError(message)
+    except BaseException:
+        _close_quietly(descriptor)
+        raise
+    return descriptor, opened
+
+
+def _read_bounded(descriptor: int) -> bytearray:
+    data = bytearray()
+    while len(data) <= MAX_STATE_BYTES:
+        chunk = os.read(descriptor, min(65536, MAX_STATE_BYTES + 1 - len(data)))
+        if not chunk:
+            break
+        data.extend(chunk)
+    return data
+
+
+def _read_leaf_bytes(descriptor: int, opened: os.stat_result, target: Path) -> tuple[bytes, os.stat_result]:
+    if opened.st_size > MAX_STATE_BYTES:
+        raise ValueError(f"preset state leaf is too large: {target}")
+    data = _read_bounded(descriptor)
+    if len(data) > MAX_STATE_BYTES:
+        raise ValueError(f"preset state leaf is too large: {target}")
+    after = os.fstat(descriptor)
+    if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
+        raise ValueError(f"preset state leaf changed while reading: {target}")
+    return bytes(data), after
+
+
+def _require_same_link_target(parent_fd: int, target: Path, opened: os.stat_result) -> None:
+    current_target = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
+    if _metadata_key(current_target) != _metadata_key(opened):
+        raise ValueError(f"preset state symlink target changed while reading: {target}")
 
 
 def _read_regular_text(path: Path, *, allow_final_symlink: bool = False) -> str | None:
@@ -308,17 +346,19 @@ def _recover_unlocked(settings: Path, preset: Path) -> None:
         return
     if payload is None:
         return
-    desired = str(payload["preset"])
-    base_preset = payload["base_preset"]
     current_preset = _read_preset_unlocked(preset)
-    if current_preset not in {base_preset, desired}:
+    if current_preset not in {payload["base_preset"], str(payload["preset"])}:
         _quarantine_transaction(preset)
         return
-    _current_hash, current_settings, current_generation = _settings_snapshot(settings)
+    _replay_transaction(settings, preset, payload, current_preset)
+
+
+def _replay_transaction(settings: Path, preset: Path, payload: dict[str, Any], current_preset: str | None) -> None:
+    desired = str(payload["preset"])
+    current_hash, current_settings, current_generation = _settings_snapshot(settings)
     current_managed_hash = _managed_hash(current_settings)
-    desired_managed_hash = _preset_managed_hash(desired)
-    base_managed_hash = payload.get("base_managed_hash") or _preset_managed_hash(base_preset)
-    if current_managed_hash == desired_managed_hash:
+    base_managed_hash = payload.get("base_managed_hash") or _preset_managed_hash(payload["base_preset"])
+    if current_managed_hash == _preset_managed_hash(desired):
         # The settings half already landed. Preserve unrelated external edits and
         # finish only the remaining preset/txn bookkeeping.
         if current_preset != desired:
@@ -328,9 +368,9 @@ def _recover_unlocked(settings: Path, preset: Path) -> None:
     if current_managed_hash != base_managed_hash:
         _quarantine_transaction(preset)
         return
-    rendered = json.dumps(settings_for_preset(current_settings, desired), indent=2, sort_keys=True) + "\n"
+    rendered = _render_for_preset(current_settings, desired)
     try:
-        _atomic_write_settings(settings, rendered, expected_generation=(_current_hash, current_generation))
+        _atomic_write_settings(settings, rendered, expected_generation=(current_hash, current_generation))
     except _SettingsChanged:
         # A caller will re-read and merge a newer external settings generation.
         _quarantine_transaction(preset)
@@ -365,6 +405,14 @@ def _reservation_active(reservation: _LunaReservation) -> bool:
         return _LUNA_RESERVATIONS.get(reservation.preset_path) is reservation
 
 
+def _claim_reservation(reservation: _LunaReservation) -> bool:
+    with _LUNA_RESERVATIONS_LOCK:
+        if reservation.preset_path in _LUNA_RESERVATIONS:
+            return False
+        _LUNA_RESERVATIONS[reservation.preset_path] = reservation
+        return True
+
+
 def _reserve_luna_operation(target_settings: Path, target_preset: Path) -> _LunaReservation | None:
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
@@ -372,17 +420,38 @@ def _reserve_luna_operation(target_settings: Path, target_preset: Path) -> _Luna
             return None
         generation = (*_settings_generation(target_settings), _read_regular_text(target_preset))
         reservation = _LunaReservation(target_settings, target_preset, generation)
-        with _LUNA_RESERVATIONS_LOCK:
-            if target_preset in _LUNA_RESERVATIONS:
-                return None
-            _LUNA_RESERVATIONS[target_preset] = reservation
-        return reservation
+        return reservation if _claim_reservation(reservation) else None
 
 
 def _release_luna_operation(reservation: _LunaReservation) -> None:
     with _LUNA_RESERVATIONS_LOCK:
         if _LUNA_RESERVATIONS.get(reservation.preset_path) is reservation:
             del _LUNA_RESERVATIONS[reservation.preset_path]
+
+
+def _reservation_current(reservation: _LunaReservation) -> bool:
+    _recover_unlocked(reservation.settings_path, reservation.preset_path)
+    if not _reservation_active(reservation) or _read_preset_unlocked(reservation.preset_path) != "luna":
+        return False
+    current_generation = (*_settings_generation(reservation.settings_path), _read_regular_text(reservation.preset_path))
+    return current_generation == reservation.generation
+
+
+def _start_provider(call: Callable[[object], object], request: object) -> tuple[threading.Thread, dict[str, object]]:
+    result: dict[str, object] = {}
+    started = threading.Event()
+
+    def worker() -> None:
+        started.set()
+        try:
+            result["value"] = call(request)
+        except BaseException as exc:  # propagate provider failures to the hook thread
+            result["error"] = exc
+
+    thread = threading.Thread(target=worker, name="adw-luna-provider", daemon=True)
+    thread.start()
+    started.wait()
+    return thread, result
 
 
 class _LunaOperation:
@@ -394,31 +463,11 @@ class _LunaOperation:
     def invoke(self, call: object, request: object) -> object | None:
         if not callable(call):
             raise TypeError("Luna provider call is not callable")
-        reservation = self.reservation
-        result: dict[str, object] = {}
-        started = threading.Event()
-
-        with _preset_lock(reservation.preset_path):
-            _recover_unlocked(reservation.settings_path, reservation.preset_path)
-            if not _reservation_active(reservation) or _read_preset_unlocked(reservation.preset_path) != "luna":
-                _release_luna_operation(reservation)
+        with _preset_lock(self.reservation.preset_path):
+            if not _reservation_current(self.reservation):
+                _release_luna_operation(self.reservation)
                 return None
-            current_generation = (*_settings_generation(reservation.settings_path), _read_regular_text(reservation.preset_path))
-            if current_generation != reservation.generation:
-                _release_luna_operation(reservation)
-                return None
-
-            def worker() -> None:
-                started.set()
-                try:
-                    result["value"] = call(request)
-                except BaseException as exc:  # propagate provider failures to the hook thread
-                    result["error"] = exc
-
-            thread = threading.Thread(target=worker, name="adw-luna-provider", daemon=True)
-            thread.start()
-            started.wait()
-
+            thread, result = _start_provider(call, request)
         thread.join()
         error = result.get("error")
         if isinstance(error, BaseException):
@@ -491,7 +540,6 @@ def default_preset(
 
 _model_for = claude_presets.model_for
 _luna_command = claude_presets.luna_command
-comment_prompt = claude_presets.comment_prompt
 stop_prompt = claude_presets.stop_prompt
 generated_hooks = claude_presets.generated_hooks
 
@@ -512,6 +560,10 @@ def settings_for_preset(settings: object, preset: str) -> dict[str, Any]:
         hooks[lifecycle].extend(groups)
     merged["hooks"] = hooks
     return merged
+
+
+def _render_for_preset(settings: object, preset: str) -> str:
+    return json.dumps(settings_for_preset(settings, preset), indent=2, sort_keys=True) + "\n"
 
 
 def _load_settings(path: Path) -> dict[str, Any]:
@@ -540,38 +592,55 @@ def _atomic_write_settings(
 ) -> None:
     """Atomically write settings while safely preserving a final settings alias."""
     target = _lexical(path)
-    parent_fd = -1
+    alias = _write_unless_alias(target, text, expected_generation)
+    if alias is None:
+        return
+    link_target, resolved_target = alias
+    _atomic_write_regular(resolved_target, text, expected_generation=expected_generation)
+    _verify_alias(target, link_target, resolved_target)
+
+
+def _write_unless_alias(
+    target: Path,
+    text: str,
+    expected_generation: tuple[str | None, tuple[int, int, int, int, int, int] | None] | None,
+) -> tuple[str, Path] | None:
+    parent_fd = _open_parent(target, create=True)
     try:
-        parent_fd = _open_parent(target, create=True)
         leaf = _leaf_lstat(parent_fd, target.name)
         if leaf is None or not stat.S_ISLNK(leaf.st_mode):
             _atomic_write_regular_open(
                 parent_fd, target.name, leaf, text, expected_generation=expected_generation,
             )
-            return
+            return None
         link_target = os.readlink(target.name, dir_fd=parent_fd)
-        resolved_target = _lexical(Path(link_target) if os.path.isabs(link_target) else target.parent / link_target)
         before = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=True)
         if not stat.S_ISREG(before.st_mode):
             raise ValueError(f"preset settings symlink target is not a regular file: {target}")
     finally:
-        if parent_fd >= 0:
-            os.close(parent_fd)
-    _atomic_write_regular(resolved_target, text, expected_generation=expected_generation)
+        os.close(parent_fd)
+    return link_target, _lexical(Path(link_target) if os.path.isabs(link_target) else target.parent / link_target)
+
+
+def _verify_alias(target: Path, link_target: str, resolved_target: Path) -> None:
     verify_parent = _open_parent(target, create=False)
     try:
         if os.readlink(target.name, dir_fd=verify_parent) != link_target:
             raise ValueError(f"preset settings symlink changed while writing: {target}")
         after = os.stat(target.name, dir_fd=verify_parent, follow_symlinks=True)
-        target_parent = _open_parent(resolved_target, create=False)
-        try:
-            target_after = os.stat(resolved_target.name, dir_fd=target_parent, follow_symlinks=False)
-        finally:
-            os.close(target_parent)
+        target_after = _stat_leaf(resolved_target)
         if not stat.S_ISREG(after.st_mode) or _metadata_key(after) != _metadata_key(target_after):
             raise ValueError(f"preset settings symlink target changed while writing: {target}")
     finally:
         os.close(verify_parent)
+
+
+def _stat_leaf(path: Path) -> os.stat_result:
+    parent_fd = _open_parent(path, create=False)
+    try:
+        return os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+    finally:
+        os.close(parent_fd)
 
 
 def _atomic_write_regular(
@@ -603,29 +672,52 @@ def _regular_generation(
         if not stat.S_ISREG(leaf.st_mode):
             return "", _metadata_key(leaf)
         descriptor = os.open(name, os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS, dir_fd=parent_fd)
-        opened = os.fstat(descriptor)
-        if _metadata_key(opened) != _metadata_key(leaf) or opened.st_size > MAX_STATE_BYTES:
-            raise _SettingsChanged(f"settings target changed while writing: {name}")
-        data = bytearray()
-        while len(data) <= MAX_STATE_BYTES:
-            chunk = os.read(descriptor, min(65536, MAX_STATE_BYTES + 1 - len(data)))
-            if not chunk:
-                break
-            data.extend(chunk)
-        if len(data) > MAX_STATE_BYTES:
-            raise _SettingsChanged(f"settings target changed while writing: {name}")
-        after = os.fstat(descriptor)
-        if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
-            raise _SettingsChanged(f"settings target changed while writing: {name}")
-        return hashlib.sha256(bytes(data)).hexdigest(), _metadata_key(after)
+        return _descriptor_generation(descriptor, leaf, name)
     except (OSError, UnicodeError) as exc:
         raise _SettingsChanged(f"settings target could not be checked while writing: {name}") from exc
     finally:
-        if descriptor >= 0:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+        _close_quietly(descriptor)
+
+
+def _descriptor_generation(descriptor: int, leaf: os.stat_result, name: str) -> tuple[str, tuple[int, int, int, int, int, int]]:
+    changed = f"settings target changed while writing: {name}"
+    opened = os.fstat(descriptor)
+    if _metadata_key(opened) != _metadata_key(leaf) or opened.st_size > MAX_STATE_BYTES:
+        raise _SettingsChanged(changed)
+    data = _read_bounded(descriptor)
+    if len(data) > MAX_STATE_BYTES:
+        raise _SettingsChanged(changed)
+    after = os.fstat(descriptor)
+    if _metadata_key(after) != _metadata_key(opened) or len(data) != after.st_size:
+        raise _SettingsChanged(changed)
+    return hashlib.sha256(bytes(data)).hexdigest(), _metadata_key(after)
+
+
+def _create_temporary(parent_fd: int, name: str, mode: int) -> tuple[str, int]:
+    for _attempt in range(32):
+        temporary_name = f".{name}.{secrets.token_hex(8)}.tmp"
+        try:
+            return temporary_name, os.open(
+                temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _LEAF_FLAGS,
+                mode, dir_fd=parent_fd,
+            )
+        except FileExistsError:
+            continue
+    raise OSError("could not allocate preset state temporary file")
+
+
+def _write_temporary(parent_fd: int, name: str, mode: int, text: str) -> str:
+    temporary_name, descriptor = _create_temporary(parent_fd, name, mode)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        _close_quietly(descriptor)
+        _unlink_quietly(parent_fd, temporary_name)
+        raise
+    return temporary_name
 
 
 def _atomic_write_regular_open(
@@ -636,34 +728,11 @@ def _atomic_write_regular_open(
     *,
     expected_generation: tuple[str | None, tuple[int, int, int, int, int, int] | None] | None = None,
 ) -> None:
-    temporary_name = ""
+    if leaf is not None and not stat.S_ISREG(leaf.st_mode):
+        raise ValueError(f"preset state leaf is not a regular file: {name}")
+    mode = leaf.st_mode & 0o777 if leaf is not None else 0o600
+    temporary_name = _write_temporary(parent_fd, name, mode, text)
     try:
-        if leaf is not None and not stat.S_ISREG(leaf.st_mode):
-            raise ValueError(f"preset state leaf is not a regular file: {name}")
-        mode = leaf.st_mode & 0o777 if leaf is not None else 0o600
-        for _attempt in range(32):
-            temporary_name = f".{name}.{secrets.token_hex(8)}.tmp"
-            try:
-                descriptor = os.open(
-                    temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _LEAF_FLAGS,
-                    mode, dir_fd=parent_fd,
-                )
-                break
-            except FileExistsError:
-                continue
-        else:
-            raise OSError("could not allocate preset state temporary file")
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(text)
-                handle.flush()
-                os.fsync(handle.fileno())
-        except BaseException:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-            raise
         # Refuse replacing a leaf that changed type while the temporary was written.
         current = _leaf_lstat(parent_fd, name)
         if current is not None and not stat.S_ISREG(current.st_mode):
@@ -671,37 +740,37 @@ def _atomic_write_regular_open(
         if expected_generation is not None and _regular_generation(parent_fd, name) != expected_generation:
             raise _SettingsChanged(f"settings target changed while writing: {name}")
         os.replace(temporary_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-        temporary_name = ""
-    finally:
-        if temporary_name:
-            try:
-                os.unlink(temporary_name, dir_fd=parent_fd)
-            except FileNotFoundError:
-                pass
+    except BaseException:
+        _unlink_quietly(parent_fd, temporary_name)
+        raise
+
+
+def _transaction_record(
+    selected: str,
+    base_preset: str | None,
+    current: dict[str, Any],
+    base: tuple[str | None, tuple[int, int, int, int, int, int] | None],
+) -> str:
+    base_hash, base_generation = base
+    return json.dumps({
+        "version": TRANSACTION_VERSION,
+        "preset": selected,
+        "base_preset": base_preset,
+        "base_settings_hash": base_hash,
+        "base_settings_metadata": list(base_generation) if base_generation is not None else None,
+        "base_managed_hash": _managed_hash(current),
+    }, indent=2, sort_keys=True) + "\n"
 
 
 def _set_preset_unlocked(selected: str, target_settings: Path, target_preset: Path) -> str:
     for _attempt in range(3):
         base_hash, current, base_generation = _settings_snapshot(target_settings)
+        base = (base_hash, base_generation)
         base_preset = _read_preset_unlocked(target_preset)
-        rendered = json.dumps(settings_for_preset(current, selected), indent=2, sort_keys=True) + "\n"
-        transaction = {
-            "version": TRANSACTION_VERSION,
-            "preset": selected,
-            "base_preset": base_preset,
-            "base_settings_hash": base_hash,
-            "base_settings_metadata": list(base_generation) if base_generation is not None else None,
-            "base_managed_hash": _managed_hash(current),
-        }
-        _atomic_write(
-            _transaction_path(target_preset),
-            json.dumps(transaction, indent=2, sort_keys=True) + "\n",
-        )
+        rendered = _render_for_preset(current, selected)
+        _atomic_write(_transaction_path(target_preset), _transaction_record(selected, base_preset, current, base))
         try:
-            _atomic_write_settings(
-                _canonical(target_settings), rendered,
-                expected_generation=(base_hash, base_generation),
-            )
+            _atomic_write_settings(_canonical(target_settings), rendered, expected_generation=base)
         except _SettingsChanged:
             continue
         _atomic_write(_canonical(target_preset), selected + "\n")
@@ -722,6 +791,27 @@ def set_preset(
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         return _set_preset_unlocked(selected, target_settings, target_preset)
+
+
+def ensure_managed_block(default: str, repoint: Callable[[dict[str, Any]], dict[str, Any]]) -> str | None:
+    """One lock, because a racing set_preset must not interleave."""
+    target_settings = _canonical(settings_path())
+    target_preset = _canonical(preset_path())
+    with _preset_lock(target_preset):
+        _recover_unlocked(target_settings, target_preset)
+        if not _managed_hooks(_load_settings(target_settings)):
+            return _set_preset_unlocked(default, target_settings, target_preset)
+        _rewrite_settings(target_settings, repoint)
+        return None
+
+
+def _rewrite_settings(path: Path, transform: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    digest, current, generation = _settings_snapshot(path)
+    updated = transform(current)
+    if updated == current:
+        return
+    rendered = json.dumps(updated, indent=2, sort_keys=True) + "\n"
+    _atomic_write_settings(path, rendered, expected_generation=(digest, generation))
 
 
 def status(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None, environment: Mapping[str, str] | None = None) -> dict[str, str]:

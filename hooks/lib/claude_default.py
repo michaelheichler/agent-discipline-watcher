@@ -1,8 +1,7 @@
-"""Split out, because claude_native is at its size gate."""
+"""Seed or repoint the block, because the plugin ships none."""
 from __future__ import annotations
 
 import copy
-import json
 import re
 import shlex
 import sys
@@ -53,25 +52,9 @@ def _repointed(settings: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
-def _repoint_block(settings_path: Any) -> None:
-    digest, current, generation = claude_native._settings_snapshot(settings_path)
-    updated = _repointed(current)
-    if updated == current:
-        return
-    rendered = json.dumps(updated, indent=2, sort_keys=True) + "\n"
-    claude_native._atomic_write_settings(settings_path, rendered, expected_generation=(digest, generation))
-
-
 def ensure_default_block() -> str | None:
     """Only into an empty slot, because any block is a choice."""
-    settings = claude_native._canonical(claude_native.settings_path())
-    preset = claude_native._canonical(claude_native.preset_path())
-    with claude_native._preset_lock(preset):
-        claude_native._recover_unlocked(settings, preset)
-        if claude_presets.managed_hooks(claude_native._load_settings(settings)):
-            _repoint_block(settings)
-            return None
-        return claude_native._set_preset_unlocked(DEFAULT_PRESET, settings, preset)
+    return claude_native.ensure_managed_block(DEFAULT_PRESET, _repointed)
 
 
 def ensure_with_notice() -> None:
