@@ -129,11 +129,12 @@ def _digest_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_an_archive_runtime_lands_executable_at_its_named_server(tmp_path, monkeypatch) -> None:
+def test_an_archive_runtime_lands_executable_at_its_named_server(tmp_path) -> None:
     entry, archive = _archive_platform("http://placeholder", tmp_path)
-    monkeypatch.setattr(model_store, "download", lambda _artifact, destination: destination.write_bytes(archive.read_bytes()))
 
-    server = model_store.ensure_runtime(entry, tmp_path / "root")
+    server = model_store.ensure_runtime(
+        entry, tmp_path / "root", fetch=lambda _artifact, destination: destination.write_bytes(archive.read_bytes()),
+    )
 
     assert server.is_file()
     assert server.stat().st_mode & 0o111
