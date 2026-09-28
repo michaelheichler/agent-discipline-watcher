@@ -252,8 +252,14 @@ def process_start(pid: int) -> str | None:
     return listed.stdout.strip() or None
 
 
-def _owned(record: ServerRecord) -> bool:
-    return process_alive(record.pid) and process_start(record.pid) == record.process_start
+def _owned(record: ServerRecord) -> bool | None:
+    """None when ps cannot answer, because a slow ps under memory pressure is no proof that the worker died."""
+    if not process_alive(record.pid):
+        return False
+    started = process_start(record.pid)
+    if started is None:
+        return None
+    return started == record.process_start
 
 
 def _echoes(raw: bytes, nonce: str) -> bool:
@@ -326,11 +332,10 @@ def _archive_command(server: Path, weights: Path, entry: ModelPlatform, port: in
 Fetcher = Callable[[ModelPlatform, Path], Path]
 
 
-def _python_command(interpreter: Path, weights: Path, port: int) -> tuple[str, ...]:
-    """Build a Python worker command for a validated loopback port."""
+def _python_command(interpreter: Path, weights: Path, root: Path, port: int) -> tuple[str, ...]:
     if not _valid_port(port):
         raise ValueError("port must be between 1 and 65535")
-    return (str(interpreter), str(Path(__file__).parent / WORKER_NAME), str(weights), str(port))
+    return (str(interpreter), str(Path(__file__).parent / WORKER_NAME), str(weights), str(port), str(root))
 
 
 def provision(entry: ModelPlatform, root: Path, *, fetch_weights: Fetcher = ensure_weights, fetch_runtime: Fetcher = ensure_runtime) -> Callable[[int], tuple[str, ...]]:
@@ -339,7 +344,7 @@ def provision(entry: ModelPlatform, root: Path, *, fetch_weights: Fetcher = ensu
     runtime = fetch_runtime(entry, root)
     if isinstance(entry.runtime, ArchiveRuntime):
         return partial(_archive_command, runtime, weights, entry)
-    return partial(_python_command, runtime, weights)
+    return partial(_python_command, runtime, weights, root)
 
 
 def _spawn(arguments: tuple[str, ...], root: Path, nonce: str = "", *, fresh_log: bool = False) -> subprocess.Popen:
@@ -426,7 +431,7 @@ def _terminate(pid: int) -> bool:
 
 def _stop(root: Path) -> bool:
     record = read_record(root)
-    stopped = _terminate(record.pid) if record is not None and _owned(record) else False
+    stopped = _terminate(record.pid) if record is not None and _owned(record) is True else False
     discard_record(root)
     return stopped
 
@@ -438,8 +443,9 @@ def stop(root: Path) -> bool:
 
 
 def running_url(root: Path) -> str | None:
+    """Unknown ownership counts as running, because a second launch would overwrite the record and orphan the first worker."""
     record = read_record(root)
-    if record is None or not _owned(record):
+    if record is None or _owned(record) is False:
         return None
     return record.url
 

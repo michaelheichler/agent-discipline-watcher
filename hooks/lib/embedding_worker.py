@@ -13,11 +13,14 @@ from pathlib import Path
 import mlx.core as mx  # WHY: lives in the runtime venv, never in the interpreter that runs the hooks.
 from transformers import AutoTokenizer
 
+import embedding_worker_watch
+
 MODULE_NAME = "lfm2_bidirectional"
 MAX_LENGTH = 8192
 MAX_BATCH = 32
 MAX_TEXT_CHARS = 16_384
 MAX_BODY_BYTES = 1_048_576
+CACHE_LIMIT_BYTES = 256 * 1024 * 1024
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
 NOT_FOUND = {"error": "not found"}
@@ -40,7 +43,8 @@ def _weights(directory: Path, module) -> dict:
     return module.sanitize(weights)
 
 
-def load(directory: Path):
+def load(directory: Path) -> tuple:
+    mx.set_cache_limit(CACHE_LIMIT_BYTES)
     module = _module(directory)
     config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
     model = module.EmbeddingModel(module.ModelArgs.from_dict(config))
@@ -55,7 +59,9 @@ def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
         encoded = tokenizer(texts, padding=True, truncation=True, max_length=MAX_LENGTH, return_tensors="np")
         vectors = model.encode(mx.array(encoded["input_ids"]), mx.array(encoded["attention_mask"]), normalize=True)
         mx.eval(vectors)
-        return vectors.tolist()
+        rows = vectors.tolist()
+        mx.clear_cache()
+        return rows
 
 
 def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
@@ -162,14 +168,16 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-def serve(directory: Path, port: int) -> None:
+def serve(directory: Path, port: int, root: Path) -> None:
     """Load the model and bind the worker only to a valid loopback port."""
     if type(port) is not int or not 1 <= port <= 65_535:  # pylint: disable=unidiomatic-typecheck
         raise ValueError("port must be between 1 and 65535")
     _Handler.model, _Handler.tokenizer = load(directory)
     _Handler.model_id = directory.name
-    ThreadingHTTPServer(("127.0.0.1", port), _Handler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+    embedding_worker_watch.start(root, server.shutdown)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
-    serve(Path(sys.argv[1]), int(sys.argv[2]))
+    serve(Path(sys.argv[1]), int(sys.argv[2]), Path(sys.argv[3]))
