@@ -318,6 +318,23 @@ def test_a_reused_pid_is_never_signalled_or_contacted(tmp_path, monkeypatch) -> 
     assert embedding_server.read_record(tmp_path) is None
 
 
+def test_an_unanswered_ps_keeps_the_worker_counted_as_running(tmp_path, monkeypatch) -> None:
+    record = _own_record()
+    embedding_server._write_record(tmp_path, record)
+    monkeypatch.setattr(embedding_server, "process_start", lambda _pid: None)
+
+    assert embedding_server.running_url(tmp_path) == record.url
+
+
+def test_an_unanswered_ps_drops_the_record_without_a_signal(tmp_path, monkeypatch) -> None:
+    embedding_server._write_record(tmp_path, _own_record())
+    monkeypatch.setattr(embedding_server, "process_start", lambda _pid: None)
+    monkeypatch.setattr(embedding_server, "_terminate", lambda _pid: pytest.fail("signalled an unconfirmed pid"))
+
+    assert embedding_server.stop(tmp_path) is False
+    assert embedding_server.read_record(tmp_path) is None
+
+
 def test_a_listener_without_the_launch_nonce_is_not_ready(stub, tmp_path, monkeypatch) -> None:
     stub.write_text(STUB.replace('os.environ.get("ADW_EMBEDDING_NONCE", "")', '"foreign"'), encoding="utf-8")
     monkeypatch.setattr(embedding_server, "READY_TIMEOUT_SECONDS", 1.0)
@@ -392,12 +409,12 @@ def _provisioned(entry: ModelPlatform, tmp_path: Path, runtime: str) -> tuple[st
     )(4321)
 
 
-def test_the_worker_command_names_the_interpreter_and_the_weights(tmp_path) -> None:
+def test_the_worker_command_names_the_interpreter_the_weights_and_the_record_root(tmp_path) -> None:
     arguments = _provisioned(ENTRY, tmp_path, "python")
 
     assert arguments[0] == str(tmp_path / "python")
     assert arguments[1].endswith(embedding_server.WORKER_NAME)
-    assert arguments[2:] == (str(tmp_path / "weights"), "4321")
+    assert arguments[2:] == (str(tmp_path / "weights"), "4321", str(tmp_path))
 
 
 def test_the_gguf_command_points_llama_server_at_the_quantized_file(tmp_path) -> None:

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- If `server.json` no longer names the embedding worker, or no supervisor holds `supervisor.lock`, the worker stops itself within about 10 seconds. Before, a worker that the supervisor lost ran until reboot. One such worker held 12 GB.
+- A `ps` call that does not answer in time no longer marks the worker as dead. Before, the supervisor then started a second worker and overwrote the record of the first.
+- The embedding worker caps the MLX buffer cache at 256 MB and empties it after each request. On a 32-text batch, the worker now stays at 813 MB. Before, it stayed at 4.66 GB.
+
 ## 0.23.0 (2026-09-28)
 
 ### Changed
