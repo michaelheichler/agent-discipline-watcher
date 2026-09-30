@@ -81,6 +81,29 @@ fn add_item_counts_one() {
 '''
 
 
+VIOLATING_CTOR_PYTHON = '''class OrderTests:
+    def setUp(self) -> None:
+        self.store = Store()
+        self.store.add_item("Shampoo", 10)
+
+    def test_purchase_succeeds(self) -> None:
+        self.store.purchase("Shampoo")
+        assert self.store.balance == 10
+'''
+
+CLEAN_CTOR_PYTHON = '''class OrderTests:
+    def store_with_item(self, name, price) -> "Store":
+        store = Store()
+        store.add_item(name, price)
+        return store
+
+    def test_purchase_succeeds(self) -> None:
+        store = self.store_with_item("Shampoo", 10)
+        store.purchase("Shampoo")
+        assert store.balance == 10
+'''
+
+
 def _hits(path: str, source: str) -> list[tuple[str, int]]:
     rows = test_rules.check_file(path, source, (structure.RULE_SET,))
     return [(row["rule"], row["line"]) for row in rows]
@@ -120,3 +143,11 @@ def test_a_rust_test_that_acts_and_asserts_twice_is_flagged() -> None:
 
 def test_one_rust_act_is_spared() -> None:
     assert _hits("src/cart.rs", CLEAN_ACT_RUST) == []
+
+
+def test_a_test_calling_the_setup_built_store_is_flagged() -> None:
+    assert _hits("tests/test_orders.py", VIOLATING_CTOR_PYTHON) == [("test_fixture_reuse_via_constructor", 7)]
+
+
+def test_a_store_built_by_a_factory_method_is_spared() -> None:
+    assert _hits("tests/test_orders.py", CLEAN_CTOR_PYTHON) == []

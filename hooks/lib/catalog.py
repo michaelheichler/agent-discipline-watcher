@@ -141,6 +141,10 @@ RULES: dict[str, Entry] = {
         "Asserting instead of showing",
         "Cuts this is genuinely hard and actually matters in place of evidence",
     ),
+    "test_fixture_reuse_via_constructor": Entry(
+        "Constructor-built fixture reused",
+        "Flags a test method that calls into an object setUp or __init__ built",
+    ),
     "three_item_list": Entry(
         "Three-item rhythm",
         "Sends the triad to a judge, because three items can be real or a cadence tic",
