@@ -21,6 +21,10 @@ RULES: dict[str, Entry] = {
         "Wrap-up flourish",
         "Cuts the closing gesture that restates the point instead of ending",
     ),
+    "assert_in_loop": Entry(
+        "Assertion inside a loop",
+        "Flags a test loop whose first failing case hides the rest",
+    ),
     "banned_adverb": Entry(
         "Empty intensifiers",
         "Cuts really, just, literally, simply, actually, and eleven more that add no meaning",
@@ -76,6 +80,14 @@ RULES: dict[str, Entry] = {
     "greeting_opener": Entry(
         "Greeting before the answer",
         "Cuts the salutation that delays the first useful sentence",
+    ),
+    "hardcoded_literal_in_source": Entry(
+        "Test restates the source",
+        "Flags a test that reads a source or config file and asserts a literal in its text",
+    ),
+    "hardcoded_name_presence": Entry(
+        "Test pins a hard-coded name",
+        "Flags a test that only checks a literal name or value sits in a static table",
     ),
     "hedge_stack": Entry(
         "Stacked hedges",

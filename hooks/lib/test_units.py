@@ -43,7 +43,7 @@ def extract(path: str, text: str) -> list[Unit]:
     """Return no units, because a broken file has no tests."""
     language = language_of(path)
     if language == PYTHON:
-        return _python_units(path, text)
+        return _python_units(path, text) if "def test_" in text else []
     if language == RUST:
         return _rust_units(path, text)
     return []

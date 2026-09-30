@@ -29,6 +29,7 @@ def managed_home(tmp_path, monkeypatch):
 
 
 def _steps(home: Path, **overrides: object) -> update_runtime.UpdateSteps:
+    overrides.setdefault("build_principles", lambda: "")
     return update_runtime.UpdateSteps(account_home=lambda: home, latest_release=lambda: RELEASE, **overrides)
 
 
@@ -173,6 +174,19 @@ def test_update_verifies_files_and_wiring_before_recording_release(available_upd
     assert json.loads(settings.read_text())["theme"] == "dark"
     for name in ("state", "ledger", "reports"):
         assert (home / ".adw" / name / "keep.json").read_text() == '{"pending":true}'
+
+
+def test_successful_update_prints_the_principle_kb_build_note(available_update, capsys):
+    assert _update(available_update, ["update", "--omp"], build_principles=lambda: "principle KB built: deviq 1") == 0
+    assert "principle KB built: deviq 1" in capsys.readouterr().out
+
+
+def test_principle_kb_build_failure_does_not_fail_the_update(available_update, capsys):
+    def failing_build() -> str:
+        raise RuntimeError("no network")
+
+    assert _update(available_update, ["update", "--omp"], build_principles=failing_build) == 0
+    assert "Installed v1.2.3" in capsys.readouterr().out
 
 
 def test_download_failure_does_not_replace_install_or_wiring(available_update):
