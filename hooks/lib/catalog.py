@@ -253,6 +253,14 @@ RULES: dict[str, Entry] = {
         "Docstring restates the signature",
         "Repeats the parameters rather than naming why the function exists",
     ),
+    "exposing_private_methods_for_testing": Entry(
+        "Private method called from a test",
+        "Blocks a test that calls or patches a name behind one leading underscore",
+    ),
+    "exposing_private_state_for_testing": Entry(
+        "Private attribute read from a test",
+        "Blocks a test that reads or sets a field behind one leading underscore",
+    ),
 }
 
 UNGATED_RULES: dict[str, Entry] = {
