@@ -44,6 +44,11 @@ def test_a_matching_name_does_not_authorize_an_updater(tmp_path: Path) -> None:
     assert rules("adw update --omp", tmp_path) == ["install_without_sandbox_home"]
 
 
+@pytest.mark.parametrize("prefix", ["~/.adw/bin/adw", "$HOME/.adw/bin/adw", '"$HOME/.adw/bin/adw"'])
+def test_an_expanded_updater_path_stays_blocked(tmp_path: Path, prefix: str) -> None:
+    assert rules(f"{prefix} update --omp", tmp_path) == ["install_without_sandbox_home"]
+
+
 def test_an_update_cannot_release_a_sibling_installer_or_state_deletion(updater: Path, tmp_path: Path) -> None:
     assert rules(f"{updater} update --omp && ./install.sh -y", tmp_path) == ["install_without_sandbox_home"]
     assert rules(f"{updater} update --omp && rm -rf ~/.adw/state", tmp_path) == ["state_deletion"]

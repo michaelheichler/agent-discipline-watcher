@@ -53,7 +53,13 @@ MAX_SHELL_PAYLOAD_DEPTH = 1
 RULES: dict[str, Rule] = {
     "install_without_sandbox_home": Rule(
         detail="Installer or updater lacks a trusted installation route",
-        action="Use the installed adw updater with explicit host flags, or run the installer yourself in Terminal. Test installers only in an isolated HOME.",
+        action=(
+            "Run the updater as one plain command, with the absolute path and host flags only, "
+            "for example /Users/NAME/.adw/bin/adw update --claude --codex --omp. "
+            "Write no ~, $HOME, variable, pipe, redirect, or second command in it. "
+            "To install from a checkout, ask the user to run ./install.sh in Terminal. "
+            "Test installers only in an isolated HOME."
+        ),
     ),
     "commit_gate_bypass": Rule(
         detail="Commit skips the pre-commit gate",
