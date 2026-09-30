@@ -1,0 +1,13 @@
+{
+  "content": "Decisions from the user on 2026-09-30.\n\n16. ADW caches each Luna language verdict under the hash of its paragraph. A paragraph costs at most one Luna call, however often the agent edits the file.\n17. On Codex, where PostToolUse runs synchronously, a weak paragraph first takes the document language. Luna classifies it in the background at the next prompt, the same way the embedding worker warms today.\n18. The stop-word length threshold stays open until the measurement on the German corpora is in. The starting candidate is 8 words without code and paths.",
+  "createdDate": "2026-09-30",
+  "id": "N-005",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling round 4 decisions",
+  "updatedDate": "2026-09-30"
+}

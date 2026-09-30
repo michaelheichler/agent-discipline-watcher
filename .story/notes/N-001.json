@@ -1,0 +1,13 @@
+{
+  "content": "Decisions from the user on 2026-09-30.\n\n1. Scope. English and German are the two prose languages. Every further language is an add-on package. German gets the same prose slop gate that English has today.\n2. Punctuation. German follows Duden typography. A density rule blocks when the Gedankenstrich count passes a threshold. The threshold comes from measurement, because the Duden gives no number.\n3. Surfaces. Prose files and commit messages get German rules. Code comments keep the English rules.\n4. Measurement. The user proposes a German Wikipedia dump from before 2018 as the human corpus. archive.org holds dewiki-20180920-pages-articles.xml.bz2 at 4.96 GB. ADW measures and does not train a model.\n5. Duden online. The user wants live lookups, because every harness runs online. A local fallback covers an outage. Feasibility depends on the duden.de terms of use.\n6. Detection. Automatic per text unit, German or English. The method is still open.",
+  "createdDate": "2026-09-30",
+  "id": "N-001",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling round 1 decisions",
+  "updatedDate": "2026-09-30"
+}

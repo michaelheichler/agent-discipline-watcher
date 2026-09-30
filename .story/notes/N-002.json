@@ -1,0 +1,13 @@
+{
+  "content": "Decisions from the user on 2026-09-30.\n\n7. Detection. Stop words decide per paragraph. When the signal is too weak, a classifier decides, and the user proposes Luna for that.\n8. Corpora. German Wikipedia before 2018 plus German Gutenberg text for the human side, and German chat answers for the AI side.\n9. Rule sources. humanizer-de and the Duden skill together, plus any book from the library MCP, /Volumes/library, or ~/Documents/eBooks that fits. A research agent is searching the libraries.\n\nFacts found on 2026-09-30.\n- The embedding model LFM2.5-Embedding-350M lists German on its LiquidAI model card.\n- duden.de sells an API from 39.95 euros a month for 100 requests a day, capped at 20000 characters a request. The shop terms reserve text and data mining and forbid redistribution.\n- The Duden skill repo michaelheichler/duden-rechtschreibung is private, carries no license, and its README says personal use only. A pipeline built it from the book EPUB.\n- humanizer-de is MIT, but references/patterns.md is CC BY-SA 4.0, adapted from Wikipedia. 72 patterns in 10 categories.\n- sedthh/gutenberg_multilang on Hugging Face is MIT and lists German.\n- archive.org holds dewiki-20180920-pages-articles.xml.bz2 at 4.96 GB.\n- ADW today fires only banned_dash and prose_semicolon on German text.",
+  "createdDate": "2026-09-30",
+  "id": "N-002",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling round 2 decisions and facts",
+  "updatedDate": "2026-09-30"
+}

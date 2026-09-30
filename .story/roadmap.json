@@ -1,0 +1,20 @@
+{
+  "blockers": [],
+  "date": "2026-09-30",
+  "phases": [
+    {
+      "description": "ADW judges prose in more than English. German comes first, built on the Duden skill duden-rechtschreibung, the Duden online, and the MIT-licensed humanizer-de plugin. Open design questions go through a grilling session before any ticket starts.",
+      "id": "multilingual",
+      "label": "PHASE 1",
+      "name": "Multi-lingual discipline",
+      "summary": "German prose rules from Duden and humanizer-de"
+    },
+    {
+      "description": "Initial project setup.",
+      "id": "p0",
+      "label": "PHASE 0",
+      "name": "Setup"
+    }
+  ],
+  "title": "agent-discipline-watcher"
+}

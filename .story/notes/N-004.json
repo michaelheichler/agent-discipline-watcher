@@ -1,0 +1,13 @@
+{
+  "content": "Decisions from the user on 2026-09-30.\n\n10. Language detection for weak paragraphs runs right after the tool call, never in the Stop review, because a Stop check comes after the tokens are spent. Stop words decide first. When their signal falls below a threshold, Luna classifies the paragraph after the write, and ADW sorts the paragraph into its language from that answer.\n11. No Duden API for now. It costs 39.95 euros a month.\n12. The private Duden skill never ships and ADW never reads it at runtime. It serves as a source for rules derived in our own words. ADW stays standalone.\n13. humanizer-de patterns stay close to the original. ADW keeps the same patterns and trigger words and rewrites only the descriptions in its own words, with credit to humanizer-de.\n14. German findings speak German, so the message itself shows which language ADW detected. Rule ids stay English.\n15. Generating fresh AI text with Luna, Sonnet, and Opus costs too many tokens. Research existing German AI text datasets on Kaggle and newer releases first.",
+  "createdDate": "2026-09-30",
+  "id": "N-004",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling round 3 decisions",
+  "updatedDate": "2026-09-30"
+}

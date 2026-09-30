@@ -1,0 +1,12 @@
+{
+  "content": "Sources checked on 2026-09-30, German Wikipedia articles \"Lesbarkeitsindex\" and \"Lix (Lesbarkeitsindex)\".\n\nWiener Sachtextformel, first form, by Richard Bamberger and Erich Vanecek. WSTF1 = 0.1935 MS + 0.1672 SL + 0.1297 IW - 0.0327 ES - 0.875. MS is the percent of words with three or more syllables. SL is the mean sentence length in words. IW is the percent of words with more than six letters. ES is the percent of one-syllable words. The scale runs from school grade 4 to 15. Three further forms drop terms.\n\nLIX by Björnsson. LIX = A/B + 100 C/A, with A words, B sentences, C words longer than six letters. Bands: under 40 youth books, 40 to 50 fiction, 50 to 60 nonfiction, over 60 technical text.\n\nBoth need only the standard library. WSTF needs a German syllable count. A vowel-group count with diphthongs ei, ie, au, eu, äu as one nucleus is the dependency-free option. Its error needs a measurement against a hyphenated sample before a rule relies on it.",
+  "createdDate": "2026-09-30",
+  "id": "N-003",
+  "status": "active",
+  "tags": [
+    "t-001",
+    "research"
+  ],
+  "title": "T-001 readability formulas",
+  "updatedDate": "2026-09-30"
+}
