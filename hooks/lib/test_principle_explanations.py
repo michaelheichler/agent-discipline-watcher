@@ -74,12 +74,6 @@ def test_long_text_is_cut_at_a_sentence_end_without_links(tmp_path: Path) -> Non
     assert (len(text.split()) <= 80, text.endswith("."), "http" in text) == (True, True, False)
 
 
-def test_front_matter_is_dropped_from_the_text(tmp_path: Path) -> None:
-    stored = "--- title: Small Parts weight: 3 --- Keep each part small. It reads alone."
-    body = _body([_finding()], _explainer(tmp_path, lambda _entry: _row(stored, "Small Parts")))
-    assert body.splitlines()[2] == "   Principle (DevIQ, Small Parts): Keep each part small. It reads alone."
-
-
 def test_entry_reads_source_title_and_text_from_the_cache(tmp_path: Path) -> None:
     connection = sqlite3.connect(tmp_path / principle_kb.DB_NAME)
     connection.execute("CREATE TABLE principle (source TEXT, entry_id TEXT, title TEXT, text TEXT)")

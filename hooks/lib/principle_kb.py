@@ -28,6 +28,7 @@ DEVIQ_SECTIONS = frozenset({
 })
 PRINCIPLES_REPO = "webpro/programming-principles"
 PRINCIPLES_COMMIT = "a0c299c981cc31f4d4bd5c265cba80d3e9471429"
+BUILD_FORMAT = "2"
 
 CODELOAD_HOST = "codeload.github.com"
 RAW_HOST = "raw.githubusercontent.com"
@@ -169,7 +170,9 @@ def _slugify(title: str) -> str:
     return re.sub(r"\s+", "-", kept.strip())
 
 
-def _front_matter(text: str) -> tuple[str, str]:
+def _front_matter(raw: str) -> tuple[str, str]:
+    """Normalize first, because DevIQ pages mix CRLF and bare CR."""
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
     match = FRONT_MATTER_RE.match(text)
     if match is None:
         return "", text
@@ -278,11 +281,13 @@ def _create_schema(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE UNIQUE INDEX principle_entry_id ON principle(entry_id)")
 
 
+def _pinned_meta() -> dict[str, str]:
+    """Format joins the shas, because a parser fix changes rows."""
+    return {"deviq_commit": DEVIQ_COMMIT, "principles_commit": PRINCIPLES_COMMIT, "format": BUILD_FORMAT}
+
+
 def _insert_rows(connection: sqlite3.Connection, rows: list[Row]) -> None:
-    connection.executemany(
-        "INSERT INTO meta (key, value) VALUES (?, ?)",
-        [("deviq_commit", DEVIQ_COMMIT), ("principles_commit", PRINCIPLES_COMMIT)],
-    )
+    connection.executemany("INSERT INTO meta (key, value) VALUES (?, ?)", sorted(_pinned_meta().items()))
     ordered = sorted(rows, key=lambda row: (row.source, row.entry_id))
     connection.executemany(
         "INSERT INTO principle (source, entry_id, title, text) VALUES (?, ?, ?, ?)",
@@ -322,8 +327,7 @@ def _skip_result(db_path: Path, reason: str) -> BuildResult:
 def build(*, root: Path | None = None, fetch: Fetch = _get_bytes) -> BuildResult:
     """Stored shas gate rebuilds, because equal commits match."""
     db_path = _cache_path(root)
-    pinned = {"deviq_commit": DEVIQ_COMMIT, "principles_commit": PRINCIPLES_COMMIT}
-    if _stored_meta(db_path) == pinned:
+    if _stored_meta(db_path) == _pinned_meta():
         return _skip_result(db_path, "pinned commits already built")
     try:
         deviq_rows = _fetch_deviq(fetch)

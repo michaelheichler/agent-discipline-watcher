@@ -19,7 +19,6 @@ MAX_MATCH_BYTES = 80
 MAX_EXPLANATION_WORDS = 80
 PRINCIPLE_MAP = Path(__file__).with_name("principle_map.json")
 SOURCE_LABELS = {"deviq": "DevIQ", "programming-principles": "Programming Principles"}
-FRONT_MATTER_RE = re.compile(r"^---\s.*?\s---\s+", re.DOTALL)
 URL_RE = re.compile(r"https?://\S+")
 SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 
@@ -156,7 +155,7 @@ def session_explainer(config: dict | None) -> Explainer | None:
 
 def _trimmed(text: str) -> str:
     """Cut at a sentence end, because half a thought misleads."""
-    body = URL_RE.sub("", FRONT_MATTER_RE.sub("", text, count=1))
+    body = URL_RE.sub("", text)
     kept = " ".join(body.split()[:MAX_EXPLANATION_WORDS])
     ends = [match.end() for match in SENTENCE_END_RE.finditer(kept)]
     return kept[:ends[-1]] if ends else ""

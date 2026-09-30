@@ -130,6 +130,14 @@ def test_fetch_deviq_keeps_only_allowed_markdown_and_excludes_index_and_images()
     assert "http" not in rows[0].text
 
 
+def test_front_matter_with_windows_line_endings_stays_out_of_the_text(tmp_path: Path):
+    page = b"---\r\ntitle: Static Cling\r\r\ndate: 2023-04-22\r\r\n---\r\nStatic cling ties a class to a static call.\r\n"
+    root = tmp_path / "cache"
+    archive = _deviq_archive({"content/antipatterns/static-cling.md": page})
+    principle_kb.build(root=root, fetch=_fetch_from(archive, PRINCIPLES_README.encode()))
+    assert principle_kb.lookup("antipatterns/static-cling", root=root) == "Static cling ties a class to a static call."
+
+
 def test_fetch_principles_skips_contents_and_slugs_each_heading():
     rows = principle_kb._fetch_principles(_fetch_from(b"", PRINCIPLES_README.encode()))
     entry_ids = [row.entry_id for row in rows]

@@ -10,5 +10,11 @@
   "hardcoded_literal_in_source": "code-smells/poorly-written-tests",
   "hardcoded_name_presence": "antipatterns/magic-strings",
   "hollow_test": "code-smells/poorly-written-tests",
-  "suppression_escape_hatch": "antipatterns/broken-windows"
+  "if_statements_in_tests": "testing/arrange-act-assert",
+  "incomplete_mock_call_verification": "code-smells/poorly-written-tests",
+  "mocking_concrete_classes": "principles/dependency-inversion-principle",
+  "multiple_act_sections_in_unit_test": "testing/arrange-act-assert",
+  "suppression_escape_hatch": "antipatterns/broken-windows",
+  "test_fixture_reuse_via_constructor": "code-smells/poorly-written-tests",
+  "time_as_ambient_context": "antipatterns/static-cling"
 }
