@@ -137,7 +137,10 @@ DEFAULTS = {
     "kill_switches": {},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
+    # Allow, because a default deny stalls every project.
+    "tests": "allow",
 }
+TESTS_POLICIES = ("allow", "deny")
 
 
 class RuleCalibration(NamedTuple):
@@ -280,6 +283,12 @@ def _validate_legacy_family_values(fields: dict[str, object]) -> None:
                 raise ConfigLoadError(f"legacy family {family} must be a JSON boolean")
 
 
+def _validate_tests_policy(fields: dict[str, object]) -> None:
+    """Fail on a typo, since a typo must not read as allow."""
+    if "tests" in fields and fields["tests"] not in TESTS_POLICIES:
+        raise ConfigLoadError("tests must be allow or deny")
+
+
 def _parse_project_config(path: Path, raw: bytes) -> ProjectConfig:
     """Decode one bounded project document and return its flattened policy settings."""
     _check_json_depth(raw)
@@ -296,6 +305,7 @@ def _parse_project_config(path: Path, raw: bytes) -> ProjectConfig:
         raise ConfigLoadError("project config must contain a JSON object")
     fields = exact_string_dict(data)
     _validate_legacy_family_values(fields)
+    _validate_tests_policy(fields)
     return ProjectConfig(path, fields, flatten_settings(fields), hashlib.sha256(raw).hexdigest(), True)
 
 

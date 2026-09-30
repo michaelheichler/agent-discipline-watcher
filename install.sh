@@ -108,5 +108,6 @@ done
 . "$install_dir/hosts/common.sh"
 mkdir -p "$HOME/.adw/bin"
 adw_replace_link "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
+adw_replace_link "$HOME/.adw/bin/adw-config" "$install_dir/bin/adw-config"
 
 echo "installed agent-discipline-watcher for: $(echo "$chosen" | tr '\n' ' ')"

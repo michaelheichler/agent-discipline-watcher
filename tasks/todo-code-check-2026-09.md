@@ -250,9 +250,9 @@ Size M. Dependencies none.
 
 The old `adw-cli` repository shipped `bin/agent-discipline` with `configure`, `status`, and `exempt-family`. A new `bin/adw-config` brings back the small subset the user needs now.
 
-- [ ] `adw-config status` prints the effective policy for the current project
-- [ ] `adw-config tests allow|deny` and `adw-config family NAME on|off` write the project policy file
-- [ ] An agent that runs `adw-config` through a tool call gets a block, because the agent must not widen its own gate
+- [x] `adw-config status` prints the effective policy for the current project
+- [x] `adw-config tests allow|deny` and `adw-config family NAME on|off` write the project policy file
+- [x] An agent that runs `adw-config` through a tool call gets a block, because the agent must not widen its own gate
 
 ### Task 18. Research on test writer identity per host
 

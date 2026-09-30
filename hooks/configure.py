@@ -143,17 +143,10 @@ def _rule_states(effective_cfg: object) -> dict[str, object]:
     return {rule: _rule_state_value(rule, effective_cfg) for rule in sorted(KNOWN_RULES)}
 
 
-def _load(target: Path):
-    try:
-        return config.load_project_config(target)
-    except config.ConfigLoadError as exc:
-        raise ConfigureError("invalid_project_config", "project config could not be read safely") from exc
-
-
 def _read_state(cwd: Path) -> dict[str, object]:
     """Read one canonical file because a merged view would hide which project owns a value."""
     target = config.project_config_path(cwd)
-    loaded = _load(target)
+    loaded = configure_store.load(target)
     values = configure_policy.known_values(loaded.settings)
     effective_cfg = config.effective_config(values)
     family_states = {
@@ -173,38 +166,16 @@ def _read_state(cwd: Path) -> dict[str, object]:
     }
 
 
-def _serialized(merged: dict[str, object]) -> bytes:
-    data = json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
-    if len(data) > config.MAX_PROJECT_CONFIG_BYTES:
-        raise ConfigureError("size_limit", "project config exceeds the size limit")
-    return data
-
-
-def _reject_unwritable(target: Path, serialized: bytes) -> None:
-    try:
-        candidate = config._parse_project_config(target, serialized)
-    except config.ConfigLoadError as exc:
-        raise ConfigureError("invalid_project_config", "project config could not be written safely") from exc
-    configure_policy.known_values(candidate.settings)
-
-
 def _write_state(request: dict[str, object]) -> dict[str, object]:
     """Gate on a capability because the screen must never become an unauthenticated write path."""
     configure_capability.consume_capability()
     cwd = _bounded_cwd(request)
     expected = configure_store.expected_digest(request)
     values = configure_policy.validate_policy_values(request.get("values", configure_policy.MISSING))
-    target = config.project_config_path(cwd)
-    with configure_store.locked(target):
-        current = _load(target)
-        if current.digest != expected:
-            raise ConfigureError("digest_conflict", "project config changed since it was read")
-        serialized = _serialized(configure_policy.merge_values(current.data, values))
-        _reject_unwritable(target, serialized)
-        configure_store.atomic_write(target, serialized)
-        response = _read_state(cwd)
-        response["written"] = True
-        return response
+    configure_store.write_values(config.project_config_path(cwd), values, expected)
+    response = _read_state(cwd)
+    response["written"] = True
+    return response
 
 
 def _describe(fields: dict[str, object]) -> dict[str, object]:

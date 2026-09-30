@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  if [ "${SOURCE#/}" = "$SOURCE" ]; then
+    SOURCE="$SOURCE_DIR/$SOURCE"
+  fi
+done
+DIR="$(CDPATH= cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+. "$DIR/hooks/resolve-python.sh"
+read -r FLOOR < "$DIR/.python-version"
+PYTHON="$(adw_resolve_python "$FLOOR")"
+[ -n "$PYTHON" ] || {
+  echo "adw-config: no Python $FLOOR or newer on PATH. Install one, or point ADW_PYTHON at it." >&2
+  exit 2
+}
+PYTHONPATH="$DIR/hooks${PYTHONPATH:+:$PYTHONPATH}" exec "$PYTHON" -m lib.adw_config "$@"
