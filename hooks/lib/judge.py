@@ -13,7 +13,7 @@ except ImportError:
     import judge_provider
     from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
 
-JUDGE_MODEL = "claude-haiku-4-5-20251001"
+JUDGE_MODEL = "claude-haiku-4-5"
 JUDGE_TIMEOUT_SECONDS = 120
 RECURSION_GUARD = judge_provider.RECURSION_GUARD
 # Named because the model inverted its own boolean.
