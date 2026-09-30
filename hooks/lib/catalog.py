@@ -109,6 +109,10 @@ RULES: dict[str, Entry] = {
         "Asides about the writing",
         "Cuts hint, plot twist, spoiler, and is a feature not a bug",
     ),
+    "multiple_act_sections_in_unit_test": Entry(
+        "Second act inside one test",
+        "Flags a test that calls the unit under test, asserts, then calls it and asserts again",
+    ),
     "narrator_distance": Entry(
         "Narrator steps back",
         "Cuts the move that comments on the subject instead of stating it",
@@ -136,6 +140,10 @@ RULES: dict[str, Entry] = {
     "telling_not_showing": Entry(
         "Asserting instead of showing",
         "Cuts this is genuinely hard and actually matters in place of evidence",
+    ),
+    "test_fixture_reuse_via_constructor": Entry(
+        "Constructor-built fixture reused",
+        "Flags a test method that calls into an object setUp or __init__ built",
     ),
     "three_item_list": Entry(
         "Three-item rhythm",
@@ -252,6 +260,10 @@ RULES: dict[str, Entry] = {
     "what_docstring": Entry(
         "Docstring restates the signature",
         "Repeats the parameters rather than naming why the function exists",
+    ),
+    "if_statements_in_tests": Entry(
+        "Branching test body",
+        "Reports a test that picks between two different asserts",
     ),
     "exposing_private_methods_for_testing": Entry(
         "Private method called from a test",

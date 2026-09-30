@@ -135,6 +135,8 @@ The catalog marks 16 entries STATIC. Two of them are definitions and no rule, `f
 
 Size S. The rules are `if_statements_in_tests`, `multiple_act_sections_in_unit_test`, `aaa_pattern`, and `test_fixture_reuse_via_constructor`. The file is `hooks/lib/test_rules/structure.py`.
 
+Status on 2026-09-30. Done on branch `worktree-agent-a702873532d4a865b`, commits `c2f6563`, `4c90170`, `9643d83`, `cea8b11`, `28d3390`, not merged. `aaa_pattern` stays dropped, and the catalog entry explains why. On hooks/, 0 hits for `if_statements_in_tests` and `multiple_act_sections_in_unit_test`, 2 hits for `test_fixture_reuse_via_constructor`, both sampled true positives.
+
 #### Task 8b. Private access rules
 
 Size S. The rules are `exposing_private_methods_for_testing`, `exposing_private_state_for_testing`, and `code_pollution`. The file is `hooks/lib/test_rules/private_access.py`.
