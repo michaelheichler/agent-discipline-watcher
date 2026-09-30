@@ -101,7 +101,7 @@ def _append_length_finding(path: str, body: str, before: FileLength, after: File
     rule, action = policy
     shown = f"at least {after.count}" if after.capped else str(after.count)
     finding = Finding(
-        family="clean_code",
+        family="code",
         rule=rule,
         line=1,
         detail=f"File has {shown} lines in {path}",

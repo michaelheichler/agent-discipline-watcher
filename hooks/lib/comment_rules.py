@@ -115,13 +115,13 @@ def _legacy_finding(family: str, values: tuple[object, ...], match: str | None =
 
 CLEAN_CODE_LINE_RULES = (
     (re.compile(r"(?://|#|/\*)\s*(?:TO" + "DO|FIX" + "ME|X" + "XX|HA" + "CK)\\b", re.IGNORECASE),
-     "deferred_work_comment", "Deferred work marker in ", "Remove the marker or create tracked work."),
+     "deferred_work_comment", "Deferred work marker in ", "Remove the marker or create tracked work.", "comment"),
     (re.compile(r"(?://|#|/\*)\s*(bug|case|fix|issue|step|note)\s+[A-Z0-9]\s*[:.\-]", re.IGNORECASE),
-     "bug_label_comment", "Comment labels a case by letter or number in ", "Encode the case as a named test."),
+     "bug_label_comment", "Comment labels a case by letter or number in ", "Encode the case as a named test.", "comment"),
     (re.compile(r"(?://|#|/\*)\s*.*\b(?:" + "|".join(("ha" + "cky", "not sure why", "work" + "around", "ug" + "ly")) + r")\b", re.IGNORECASE),
-     "apology_comment", "Comment apologizes for code in ", "Fix the code or state the reason plainly."),
+     "apology_comment", "Comment apologizes for code in ", "Fix the code or state the reason plainly.", "comment"),
     (COMMENTED_CODE_RE, "commented_code",
-     "Commented code remains in ", "Delete the commented code."),
+     "Commented code remains in ", "Delete the commented code.", "code"),
 )
 
 
@@ -201,7 +201,7 @@ def _multiline_comment_findings(path: str, text: str) -> list[dict]:
     if PurePath(path.lower()).suffix in SHELL_GLOB_COLLISION_EXTS:
         return []
     return [
-        _finding(Finding(family="clean_code", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None))
+        _finding(Finding(family="comment", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None))
         for match in BLOCK_COMMENT_RE.finditer(text)
         if "\n" in match.group(0) and LETTER_RE.search(match.group(0))
         and not _structured_block_comment(match.group(0))
@@ -281,7 +281,7 @@ def _what_comment_findings(path: str, comment_rows: list[tuple[int, str, str]]) 
             continue
         if not _comment_is_what(comment):
             continue
-        rows.append(_finding(Finding(family="clean_code", rule="what_comment", line=line_number, detail="Comment states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
+        rows.append(_finding(Finding(family="comment", rule="what_comment", line=line_number, detail="Comment states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
     return rows
 
 
@@ -290,12 +290,12 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
     if text is None:
         return []
     rows = [
-        _finding(Finding(family="clean_code", rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
+        _finding(Finding(family="comment", rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
         for matches, rule, detail, action in COMMENT_BODY_RULES
         if matches(text)
     ]
     rows.extend(
-        _finding(Finding(family="clean_code", rule=rule, line=line_number, detail="Readable comment rule in " + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
+        _finding(Finding(family="comment", rule=rule, line=line_number, detail="Readable comment rule in " + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
         for pattern, rule, action in READABILITY_RULES
         if pattern.search(text)
     )
@@ -307,18 +307,19 @@ def _weak_why_findings(path: str, comment_rows: list[tuple[int, str, str]]) -> l
     for line_number, line, comment in comment_rows:
         if not _has_why_marker(comment) or _has_strong_why_marker(comment):
             continue
-        findings.append(_finding(Finding(family="clean_code", rule="weak_why_comment", line=line_number, detail="Causal wording lacks a concrete reason in " + path, force=True, snippet=(line).strip()[:180], action="Name the constraint, invariant, or consequence, or delete the comment.", path=None, severity=None, tool_use_id=None)))
+        findings.append(_finding(Finding(family="comment", rule="weak_why_comment", line=line_number, detail="Causal wording lacks a concrete reason in " + path, force=True, snippet=(line).strip()[:180], action="Name the constraint, invariant, or consequence, or delete the comment.", path=None, severity=None, tool_use_id=None)))
     return findings
 
 
-def _clean_code_comment_findings(path: str, line_number: int, line: str) -> list[dict]:
-    comment = _comment_text(line)
+def _comment_line_findings(path: str, line_number: int, line: str, active: frozenset[str]) -> list[dict]:
+    if _comment_text(line) is None:
+        return []
     rows = [
-        _finding(Finding(family="clean_code", rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
-        for regex, rule, detail, action in CLEAN_CODE_LINE_RULES
-        if comment is not None and regex.search(line)
+        _finding(Finding(family=family, rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
+        for regex, rule, detail, action, family in CLEAN_CODE_LINE_RULES
+        if family in active and regex.search(line)
     ]
-    rows.extend(_comment_body_rows(path, line_number, line) if comment is not None else [])
+    rows.extend(_comment_body_rows(path, line_number, line) if "comment" in active else [])
     return rows
 
 
@@ -354,10 +355,10 @@ def _flush_comment_run(path: str, run: list[tuple[int, str]]) -> list[dict]:
     if len(run) < 2 or _is_header_run(run):
         return []
     line_number, line = run[0]
-    return [_finding(Finding(family="clean_code", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None))]
+    return [_finding(Finding(family="comment", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None))]
 
 
-def _scan_clean_code_blocks(path: str, text: str) -> list[dict]:
+def _scan_comment_blocks(path: str, text: str) -> list[dict]:
     findings: list[dict] = []
     for run in comment_runs(text):
         findings.extend(_flush_comment_run(path, run))
@@ -395,7 +396,7 @@ def _what_docstring_rows(path: str, hit: tuple[int, str]) -> list[dict]:
             continue
         if states_why(line):
             continue
-        rows.append(_finding(Finding(family="clean_code", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
+        rows.append(_finding(Finding(family="comment", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
     return rows
 
 
@@ -419,7 +420,7 @@ def _scan_docstrings(path: str, tree) -> list[dict]:
     for scope in _docstring_scopes(tree):
         narration = _narrating_docstring(scope)
         if narration:
-            findings.append(_finding(Finding(family="clean_code", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
+            findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
     return findings
 
 
@@ -433,7 +434,7 @@ def _lexical_docstring_findings(path: str, text: str) -> list[dict]:
         before = [row.strip() for row in text[:match.start()].splitlines() if row.strip()]
         if before and not _lexical_scope_header(before):
             continue
-        findings.append(_finding(Finding(family="clean_code", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
+        findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
     return findings
 
 

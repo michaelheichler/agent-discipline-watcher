@@ -269,17 +269,17 @@ UNGATED_RULES: dict[str, Entry] = {
 LOCKED_RULES = frozenset(config.ALWAYS_BLOCKING_RULES)
 
 FAMILIES: dict[str, Entry] = {
-    "punctuation": Entry(
-        "Punctuation discipline",
-        "Bans dash characters, semicolon splices, prose colons, and stray apostrophes",
+    "prose": Entry(
+        "Prose",
+        "Bans dash characters and semicolon splices, and cuts filler and generated-text patterns",
     ),
-    "english": Entry(
-        "Prose quality",
-        "Cuts filler, hedging, jargon, and generated-text patterns from reader-facing English",
+    "comment": Entry(
+        "Comment check",
+        "Blocks comments and docstrings that narrate code, park deferred work, or apologize",
     ),
-    "clean_code": Entry(
-        "Code hygiene",
-        "Blocks narration comments, dead code, hollow tests, and oversized files",
+    "code": Entry(
+        "Code check",
+        "Blocks dead code, hollow tests, suppression markers, and oversized functions and files",
     ),
 }
 

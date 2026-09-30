@@ -215,9 +215,8 @@ class StateTransitionTests(unittest.TestCase):
             "s1", {"gates": {"clean_code": "enforce"}, "kill_switches": {"clean_code": True}},
             state_root=self.state_root, ledger_root=self.ledger_root,
         )
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["family"], "clean_code")
-        self.assertEqual(rows[0]["to_state"], "off")
+        self.assertEqual({row["family"] for row in rows}, {"comment", "code"})
+        self.assertEqual({row["to_state"] for row in rows}, {"off"})
 
     def test_empty_session_id_logs_nothing(self):
         rows = config.record_state_transitions(
@@ -232,7 +231,7 @@ class StateTransitionTests(unittest.TestCase):
             state_root=self.state_root, ledger_root=self.ledger_root,
         )
         snapshot = session_state.read_state("s1", self.state_root).get("gate_states")
-        self.assertEqual(snapshot, {family: "enforce" for family in config.GATE_FAMILIES})
+        self.assertEqual(snapshot, dict.fromkeys(("punctuation", "english", "comment", "code"), "enforce"))
 
     def test_concurrent_resolutions_emit_no_duplicate_rows(self):
         import threading

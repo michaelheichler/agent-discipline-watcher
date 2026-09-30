@@ -282,6 +282,16 @@ class ObserveReportTests(unittest.TestCase):
         result = reporting.observe_report("english", self.root)
         self.assertEqual([row["turn_id"] for row in result], ["t1"])
 
+    def test_an_old_name_still_reads_rows_written_before_and_after_the_split(self) -> None:
+        """Match both eras because a ledger keeps rows across upgrades."""
+        for turn, family in (("t1", "clean_code"), ("t2", "comment"), ("t3", "code"), ("t4", "english")):
+            reporting.append_row({"family": family, "outcome": "would_block", "turn_id": turn}, self.root)
+        by_name = {
+            name: [row["turn_id"] for row in reporting.observe_report(name, self.root)]
+            for name in ("clean_code", "code", "prose")
+        }
+        self.assertEqual(by_name, {"clean_code": ["t1", "t2", "t3"], "code": ["t3"], "prose": ["t4"]})
+
 
 class FalseSignalRateTests(unittest.TestCase):
     def setUp(self):

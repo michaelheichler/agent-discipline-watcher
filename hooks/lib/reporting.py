@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from . import session_state
+    from . import families, session_state
     from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
@@ -21,6 +21,7 @@ try:
         safe_component as _safe_component, safe_text as _safe_text,
     )
 except ImportError:
+    import families
     import session_state
     from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
@@ -436,10 +437,11 @@ read_current_turn = read_session_turn
 def observe_report(
     family: str, root: str | os.PathLike[str] | None = None
 ) -> list[dict]:
+    wanted = families.covered(family)
     return [
         row
         for row in read_jsonl(LEDGER_FILENAME, root)
-        if row.get("outcome") == "would_block" and row.get("family") == family
+        if row.get("outcome") == "would_block" and row.get("family") in wanted
     ]
 
 
@@ -482,6 +484,6 @@ def false_signal_rate(
     false_count = sum(
         1
         for row in read_jsonl(ADJUDICATION_FILENAME, root)
-        if row.get("family") == family and row.get("label") is False
+        if row.get("family") in families.covered(family) and row.get("label") is False
     )
     return false_count * 20 / len(turn_ids)

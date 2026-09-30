@@ -42,7 +42,7 @@ def _comment_work(path: str, text: str, config: dict) -> list[ReviewWork]:
         batch = found[start:start + MAX_BATCH_CANDIDATES]
         if sum(len(item.text) for item in batch) > MAX_SOURCE_CHARS:
             raise ValueError("comment review exceeds the source limit; split the comments")
-        work.append(ReviewWork(comment_request(batch), path, batch, blocking=gate_state("clean_code", config) == "enforce"))
+        work.append(ReviewWork(comment_request(batch), path, batch, blocking=gate_state("comment", config) == "enforce"))
     return work
 
 
@@ -132,7 +132,7 @@ def build_work(path: Path, text: str, config: dict, *, exemplar_source: Callable
         return ()
     exempt = _exempt_families(str(path), config)
     work = []
-    if "clean_code" not in exempt and gate_state("clean_code", config) != "off":
+    if "comment" not in exempt and gate_state("comment", config) != "off":
         work.extend(_comment_work(str(path), text, config))
     if path.suffix.lower() in PROSE_EXTS and "english" not in exempt and gate_state("english", config) != "off":
         work.extend(_document_work(str(path), text, config))
