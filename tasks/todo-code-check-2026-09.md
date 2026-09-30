@@ -147,6 +147,8 @@ Status on 2026-09-30. Done on branch `worktree-agent-afc4bee7b19625656`, commit 
 
 Size S. The rules are `mocking_concrete_classes`, `incomplete_mock_call_verification`, `time_as_ambient_context`, and `reusing_database_context_across_sections`. The file is `hooks/lib/test_rules/doubles.py`. If a rule needs other files to decide, record it as CONTEXT in the catalog and skip it.
 
+Status on 2026-09-30. Done on branch `worktree-agent-acf8d806c07267418`, not merged. Kept `mocking_concrete_classes`, `incomplete_mock_call_verification`, and `time_as_ambient_context`. Dropped `reusing_database_context_across_sections` as CONTEXT, because no AAA-section marker exists in the AST to tell fixture reuse from a real defect. The audit found 0, 3, and 34 hits on `hooks/`, and a sample of 8 hits checked true.
+
 ### Task 9. Knowledge base build step
 
 Module `principle-kb`. Size M. Dependencies Task 5.

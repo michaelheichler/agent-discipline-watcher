@@ -73,7 +73,7 @@ Chapter 4, "The four pillars of a good unit test," pages 90 to 96.
 Serves all four pillars as a framework. It also states the trade-off between them.
 
 **Detection class**.
-STATIC. A tool can score a test's mock count, assertion count, and dependency count. Then the tool flags a test that scores zero on any one metric.
+STATIC. A tool can score a test's mock and assertion counts, then add its dependency count. The tool flags a test that scores zero on any one metric.
 
 **Detection signal**.
 The test has zero assertions. The test checks internal call order or private state. The test calls a real network service. The test's arrange section is bigger than its act and assert sections combined.
@@ -204,7 +204,7 @@ Chapter 6, "Styles of unit testing," pages 151 to 153.
 Puts resistance to refactoring at risk. Use this style only for calls that cross into an unmanaged, out-of-process dependency.
 
 **Detection class**.
-SEMANTIC. This needs to know whether the mocked dependency is in-process, managed, or unmanaged. That fact decides whether the test is sound or brittle.
+SEMANTIC. This needs to know how the mocked dependency reaches its target. An in-process call differs from an out-of-process call, and the team may run that out-of-process call under management or without it. That fact decides whether the test is sound or brittle.
 
 **Detection signal**.
 A test builds a mock and calls `Verify` on a method of an in-process collaborator.
@@ -1266,6 +1266,9 @@ services.AddDbContext<AppContext>(o => o.UseSqlServer(testConnectionString));
 ```
 
 ### 38. reusing_database_context_across_sections
+
+**ADW status**.
+Dropped to CONTEXT for Python and Rust test code. The C# signal needs marked arrange, act, and assert sections, and Python and Rust tests carry no such marker. A tool can only see repeated reads of one variable, and that pattern also fits ordinary, correct reuse of one fixture connection. No AST rule tells the two apart without reading the surrounding sections.
 
 **Definition**.
 A single database connection object reused across the arrange, act, and assert sections of a database test can hide a real bug. A fresh connection catches that bug, such as a change the code never saved.

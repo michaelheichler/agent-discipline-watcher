@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import ast
-import functools
 import re
 from collections.abc import Callable, Iterable, Iterator
 from typing import NamedTuple
 
-from . import Hit, Rule, RuleSet, Unit
+from . import Hit, Rule, RuleSet, Unit, module_tree
 from ._rust_literals import rust_hits
 
 LOOP = "assert_in_loop"
@@ -42,16 +41,8 @@ _COMPARE_KINDS = {
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
 
 
-@functools.lru_cache(maxsize=8)
-def _module(text: str) -> ast.Module | None:
-    try:
-        return ast.parse(text)
-    except (SyntaxError, ValueError):
-        return None
-
-
 def _test_node(unit: Unit, text: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    tree = _module(text)
+    tree = module_tree(text)
     for node in ast.walk(tree) if tree else ():
         if isinstance(node, _FUNCTIONS) and node.name == unit.name and node.lineno == unit.start:
             return node
@@ -314,7 +305,7 @@ def check(unit: Unit, text: str) -> list[Hit]:
     if test is None:
         return []
     lines = text.splitlines()
-    found = sorted({*_loop_hits(test), *_literal_hits(test, _module(text))}, key=lambda hit: (hit[1], hit[0]))
+    found = sorted({*_loop_hits(test), *_literal_hits(test, module_tree(text))}, key=lambda hit: (hit[1], hit[0]))
     return [Hit(rule, line, lines[line - 1]) for rule, line in found]
 
 

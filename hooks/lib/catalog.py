@@ -267,11 +267,23 @@ RULES: dict[str, Entry] = {
     ),
     "exposing_private_methods_for_testing": Entry(
         "Private method called from a test",
-        "Blocks a test that calls or patches a name behind one leading underscore",
+        "Reports a test that calls or patches a name behind one leading underscore",
     ),
     "exposing_private_state_for_testing": Entry(
         "Private attribute read from a test",
-        "Blocks a test that reads or sets a field behind one leading underscore",
+        "Reports a test that reads or sets a field behind one leading underscore",
+    ),
+    "mocking_concrete_classes": Entry(
+        "Mock built from a concrete class",
+        "Flags a mock or patch built straight from a class the file defines, not an interface",
+    ),
+    "incomplete_mock_call_verification": Entry(
+        "Mock call check skips the arguments",
+        "Flags a bare assert_called or assert_called_once with no argument check",
+    ),
+    "time_as_ambient_context": Entry(
+        "Test reads the real clock",
+        "Flags a direct call to the system clock instead of an injected time",
     ),
 }
 

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from lib import comment_rules, prose_structure, scanner
+from lib import comment_rules, prose_structure, scanner, test_rules
 from lib.markup import mask_python_strings
 from lib.config import ALWAYS_BLOCKING_RULES, effective_config
 from lib.scanner import scan_all
@@ -855,13 +855,31 @@ def test_identifier_split_keeps_acronym_before_digits():
     assert comment_rules._identifier_tokens("SHA256_digest") == {"sha", "256", "digest"}
 
 
-def test_python_ast_is_parsed_once_and_non_python_is_not_parsed(monkeypatch):
+def test_python_ast_is_parsed_by_scanner_and_the_code_check_registry(monkeypatch):
+    """Fix the parse count, because a file with no test function skips the registry."""
+    test_rules.module_tree.cache_clear()
     calls = []
     original = scanner.ast.parse
-    monkeypatch.setattr(scanner.ast, "parse", lambda text: calls.append(text) or original(text))
-    scan_all("sample.py", 'def _f():\n    """Scan."""\n', {})
+    monkeypatch.setattr(scanner.ast, "parse", lambda text, *rest, **options: calls.append(text) or original(text, *rest, **options))
+    scan_all("sample.py", 'def test_f():\n    """Scan."""\n', {})
     scan_all("sample.js", "const value = 1\n", {})
-    assert len(calls) == 1
+    assert len(calls) == 3
+
+
+def test_parse_count_does_not_grow_with_the_number_of_tests_in_a_file(monkeypatch):
+    """Guard the parse cost, because a write must stay cheap on a large file."""
+    test_rules.module_tree.cache_clear()
+    calls = []
+    original = scanner.ast.parse
+    monkeypatch.setattr(scanner.ast, "parse", lambda text, *rest, **options: calls.append(text) or original(text, *rest, **options))
+    one_test = "def test_a():\n    assert True\n"
+    twenty_tests = "".join(f"def test_a{n}():\n    assert True\n" for n in range(20))
+    scan_all("one.py", one_test, {})
+    count_for_one = len(calls)
+    calls.clear()
+    test_rules.module_tree.cache_clear()
+    scan_all("twenty.py", twenty_tests, {})
+    assert count_for_one == len(calls) == 3
 
 
 def _corpus_source(row):

@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import ast
-import functools
 import re
 
-from . import Hit, Rule, RuleSet, Unit
+from . import Hit, Rule, RuleSet, Unit, module_tree
 
 IF_NAME = "if_statements_in_tests"
 ACT_NAME = "multiple_act_sections_in_unit_test"
@@ -30,16 +29,8 @@ def _second_act_index(acts: list[int], asserts: list[int]) -> int | None:
     return second_act if second_assert is not None else None
 
 
-@functools.lru_cache(maxsize=8)
-def _module(text: str) -> ast.Module | None:
-    try:
-        return ast.parse(text)
-    except (SyntaxError, ValueError):
-        return None
-
-
 def _test_node(unit: Unit, text: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    tree = _module(text)
+    tree = module_tree(text)
     for node in ast.walk(tree) if tree else ():
         if isinstance(node, _FUNCTIONS) and node.name == unit.name and node.lineno == unit.start:
             return node
@@ -217,7 +208,7 @@ def check(unit: Unit, text: str) -> list[Hit]:
     act_line = _second_act_line(test)
     if act_line is not None:
         hits.append(Hit(ACT_NAME, act_line, lines[act_line - 1]))
-    ctor_line = _ctor_hit(unit, _module(text))
+    ctor_line = _ctor_hit(unit, module_tree(text))
     if ctor_line is not None:
         hits.append(Hit(CTOR_NAME, ctor_line, lines[ctor_line - 1]))
     return hits
