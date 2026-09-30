@@ -8,6 +8,7 @@ from lib.findings import Finding
 from lib.scan_input import file_length_policy, file_line_count, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
+from lib.temp_scope import outside_project_temp
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +27,7 @@ def shaped_write_findings(
     lengths: dict[Path, FileLength] = {}
     for write in literal_writes(command):
         body = scannable_text(write.text, config or {})
-        if body is None:
+        if body is None or outside_project_temp(write.path, resolved_cwd):
             continue
         shape = ShapedWrite(write, body, resolved_cwd, config)
         path = _resolved_path(write.path, resolved_cwd).resolve()

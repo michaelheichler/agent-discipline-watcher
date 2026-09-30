@@ -16,6 +16,7 @@ from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
 )
 from lib.scanner import file_length_findings, scan_all
+from lib.temp_scope import outside_project_temp
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)$", re.MULTILINE)
 
@@ -220,32 +221,55 @@ def _edit_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> list[di
         path_findings(str(resolved_path), cfg, content=_protected_edit_text(decoded, resolved_path)),
         decoded.path,
     )
+    if outside_project_temp(resolved_path, cwd):
+        return protected
     return protected + _edit_findings(decoded, resolved_path, cfg)
+
+
+class _ShapeScope(NamedTuple):
+    cwd: Path
+    cfg: dict
+    projected: dict
+
+
+def _patch_text(tool_input: dict) -> object:
+    patch = tool_input.get("patch") or tool_input.get("command") or tool_input.get("input") or ""
+    return "\n".join(str(part) for part in patch) if isinstance(patch, list) else patch
+
+
+def _projected_rows(scope: _ShapeScope) -> list[dict]:
+    rows: list[dict] = []
+    for path, content in scope.projected.items():
+        resolved_path = _resolved_path(path, scope.cwd)
+        rows.extend(_stamped(path_findings(str(resolved_path), scope.cfg, content=content), path))
+        if content is not None and not outside_project_temp(resolved_path, scope.cwd):
+            rows.extend(_stamped(file_length_findings(path, content), path))
+    return rows
+
+
+def _scanned_pending(path: str, text: str, scope: _ShapeScope) -> list[dict]:
+    scanned = _stamped(scan_all(path, text, scope.cfg), path)
+    if scope.projected.get(path) is None:
+        return scanned
+    return [row for row in scanned if row["rule"] not in {
+        "file_length_warning", "file_length_critical", "file_too_long",
+    }]
 
 
 def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
     whole_file = "content" in decoded.tool_input
-    patch = decoded.tool_input.get("patch") or decoded.tool_input.get("command") or decoded.tool_input.get("input") or ""
-    if isinstance(patch, list):
-        patch = "\n".join(str(part) for part in patch)
-    projected = projected_content(patch, cwd) if isinstance(patch, str) else {}
-    owned_rows: list[dict] = []
+    patch = _patch_text(decoded.tool_input)
+    scope = _ShapeScope(cwd, cfg, projected_content(patch, cwd) if isinstance(patch, str) else {})
+    owned_rows = _projected_rows(scope)
     inherited_rows: list[dict] = []
-    for path, content in projected.items():
-        resolved_path = _resolved_path(path, cwd)
-        owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
-        if content is not None:
-            owned_rows.extend(_stamped(file_length_findings(path, content), path))
     for path, text in pending_writes(decoded):
         resolved_path = _resolved_path(path, cwd)
-        if path not in projected:
+        if path not in scope.projected:
             content = text if whole_file else None
             owned_rows.extend(_stamped(path_findings(str(resolved_path), cfg, content=content), path))
-        scanned = _stamped(scan_all(path, text, cfg), path)
-        if projected.get(path) is not None:
-            scanned = [row for row in scanned if row["rule"] not in {
-                "file_length_warning", "file_length_critical", "file_too_long",
-            }]
+        if outside_project_temp(resolved_path, cwd):
+            continue
+        scanned = _scanned_pending(path, text, scope)
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue

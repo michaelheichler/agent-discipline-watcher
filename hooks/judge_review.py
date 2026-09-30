@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -13,28 +12,22 @@ from lib.config import effective_hook_config
 from lib.hookio import PARSE_FAILURE, read_payload
 from lib.host import CODEX_ENV
 from lib.scanner import PROSE_EXTS
+from lib.temp_scope import outside_project_temp
 
 HOOK_TIMEOUT_SECONDS = 180.0
 CODEX_HOOK_TIMEOUT_SECONDS = 10
 CODEX_BUDGET_SECONDS = CODEX_HOOK_TIMEOUT_SECONDS - 1.0
 VOTE_SECONDS = 60.0
 READY_WAIT_SECONDS = HOOK_TIMEOUT_SECONDS - VOTE_SECONDS
-SCRATCH_DIRNAME = "scratchpad"
-TEMP_ROOTS = (Path(tempfile.gettempdir()).resolve(), Path("/tmp"), Path("/private/tmp"))
-
-
-def _is_session_scratch(path: Path) -> bool:
-    if SCRATCH_DIRNAME not in path.parts:
-        return False
-    return any(str(path).startswith(str(root)) for root in TEMP_ROOTS)
-
-
 def _prose_paths(payload: object) -> list[Path]:
     cwd = payloads.cwd(payload)
     if not cwd:
         return []
     resolved = (payloads.resolved_path(raw, Path(cwd)) for raw in payloads.edited_paths(payload))
-    return [path for path in resolved if path.suffix.lower() in PROSE_EXTS and not _is_session_scratch(path)]
+    return [
+        path for path in resolved
+        if path.suffix.lower() in PROSE_EXTS and not outside_project_temp(path, cwd)
+    ]
 
 
 def _config(payload: object) -> dict | None:

@@ -9,6 +9,7 @@ from .baseline import strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
 from .scanner import read_scannable, scan_all
+from .temp_scope import outside_project_temp
 
 NOTICE_LEAD = "agent-discipline-watcher: subagents ended with findings you did not write."
 NOTICE_MAX_SCOPES = 5
@@ -30,7 +31,7 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
         path = Path(raw_path).expanduser()
         if not path.is_absolute():
             path = cwd / path
-        if not path.is_file():
+        if not path.is_file() or outside_project_temp(path, cwd):
             continue
         existing.append(str(path))
         text = read_scannable(path, cfg)

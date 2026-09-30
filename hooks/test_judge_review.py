@@ -141,11 +141,11 @@ def test_a_code_file_is_never_voted(route: Route) -> None:
     assert not route.root.exists()
 
 
-def test_a_session_scratch_file_is_never_voted(route: Route) -> None:
-    route.monkeypatch.setattr(judge_review, "TEMP_ROOTS", (route.workspace,))
+def test_a_temp_file_outside_the_project_is_never_voted(route: Route) -> None:
     route.forbid_vote()
+    scratch = route.write("../scratch/notes.md")
 
-    route.run(_payload(route.write("scratchpad/notes.md")))
+    route.run({**_payload(scratch), "cwd": str(route.workspace)})
 
     assert route.calls == []
     assert not route.root.exists()

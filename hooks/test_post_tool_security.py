@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import record
+from lib import temp_scope
 
 
 def _config(tmp_path: Path) -> dict:
@@ -25,7 +26,8 @@ def test_record_scans_the_approved_open_file(tmp_path: Path) -> None:
     assert "deferred_work_comment" in response["reason"]
 
 
-def test_record_scans_a_target_outside_cwd(tmp_path: Path) -> None:
+def test_record_scans_a_target_outside_cwd(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(temp_scope, "temp_roots", lambda: ())
     outside = tmp_path.with_name(f"{tmp_path.name}-outside.py")
     outside.write_text("# " + ("TO" + "DO") + " outside\n", encoding="utf-8")
     try:
