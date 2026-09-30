@@ -20,12 +20,13 @@ from .luna_process import terminate_process_group as _terminate_process_group
 from .luna_sdk import enum_value as _enum_value
 from .luna_sdk import item_type as _item_type
 from .luna_sdk import usage_dict as _usage_dict
-from .luna_storage import LunaProviderFailure, SecureJudgeStorage
+from .luna_storage import LunaProviderFailure, RuntimePaths, SecureJudgeStorage
 from .luna_validation import parse_luna_version, validate_candidate_indexes, validate_worker_result
 from .luna_worker_protocol import request_payload, response_result
 
 
 LUNA_MODEL = "gpt-5.6-luna"
+LUNA_MODEL_MEMO_NAME = "luna-model"
 LUNA_EFFORT = "high"
 PROVIDER_NAME = "openai-codex"
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -235,6 +236,19 @@ def _normalized_timeout(timeout_seconds: object) -> float | None:
     return normalized
 
 
+def _runtime_launch(runtime: RuntimePaths) -> SdkLaunch:
+    """Extracted, since judge() had drifted past the length gate."""
+    return SdkLaunch(
+        codex_home=runtime.codex_home, cwd=runtime.cwd,
+        config_overrides=CONFIG_OVERRIDES,
+        call_fd=runtime.call_fd,
+        codex_home_fd=runtime.codex_home_fd, cwd_fd=runtime.cwd_fd,
+        call_identity=runtime.call_identity,
+        codex_home_identity=runtime.codex_home_identity,
+        cwd_identity=runtime.cwd_identity,
+    )
+
+
 def _spawn_worker(worker_python: Path, launch: SdkLaunch) -> subprocess.Popen[str]:
     return subprocess.Popen(
         [str(worker_python), "-m", "lib.luna_worker"],
@@ -272,31 +286,33 @@ class LunaJudge:
         return self._timeout_seconds
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
-        floor_key = self._cache_key(request, LUNA_MODEL)
         storage_factory = SecureJudgeStorage if self._default_storage else lambda: SecureJudgeStorage(
             runtime_root=self._runtime_root, cache_root=self._cache_root,
         )
         with storage_factory() as storage:
-            cached = self._read_cache(storage, floor_key, request)
+            remembered_key = self._cache_key(request, self._remembered_model(storage))
+            cached = self._read_cache(storage, remembered_key, request)
             if cached is not None:
                 return replace(cached, cached=True)
             with storage.runtime(config_text=MINIMAL_CONFIG, auth_source=self._auth_source) as runtime:
-                launch = SdkLaunch(
-                    codex_home=runtime.codex_home, cwd=runtime.cwd,
-                    config_overrides=CONFIG_OVERRIDES,
-                    call_fd=runtime.call_fd,
-                    codex_home_fd=runtime.codex_home_fd, cwd_fd=runtime.cwd_fd,
-                    call_identity=runtime.call_identity,
-                    codex_home_identity=runtime.codex_home_identity,
-                    cwd_identity=runtime.cwd_identity,
-                )
+                launch = _runtime_launch(runtime)
                 if not isinstance(self._sdk, OpenAICodexSdk):
                     result = run_sdk_request(request, launch, self._sdk)
                 else:
                     result = self._run_worker(request, launch)
             result = self._validate_worker_result(request, result)
+            storage.write_cache(LUNA_MODEL_MEMO_NAME, result.model)
             self._write_cache(storage, self._cache_key(request, result.model), result)
             return result
+
+    @staticmethod
+    def _remembered_model(storage: SecureJudgeStorage) -> str:
+        """Remembered id, since a stale floor read would miss a moved model."""
+        cached = storage.read_cache(LUNA_MODEL_MEMO_NAME)
+        if cached is None:
+            return LUNA_MODEL
+        model = cached[0].strip()
+        return model if parse_luna_version(model) is not None else LUNA_MODEL
 
     def _worker_python(self) -> Path:
         try:

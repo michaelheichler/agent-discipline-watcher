@@ -669,3 +669,40 @@ def test_availability_error_names_the_models_it_saw(tmp_path: Path) -> None:
     assert "gpt-4-luna" in str(error.value)
     assert "gpt-9-luna" in str(error.value)
     assert sdk.session.starts == []
+
+
+def test_second_call_hits_cache_under_the_remembered_resolved_model(tmp_path: Path) -> None:
+    models = (_model_with("gpt-5.6-luna"), _model_with("gpt-6-luna"))
+    judge, sdk = _judge(tmp_path, models=models)
+    request = _request()
+
+    first = judge.judge(request)
+    hit = judge.judge(request)
+
+    assert first.model == "gpt-6-luna"
+    assert hit.cached is True
+    assert hit.model == "gpt-6-luna"
+    assert len(sdk.session.starts) == 1
+
+
+def test_stale_verdict_under_the_floor_id_does_not_serve_once_a_newer_model_is_remembered(tmp_path: Path) -> None:
+    models = (_model_with("gpt-6-luna"),)
+    judge, sdk = _judge(tmp_path, models=models)
+    request = _request()
+    judge.judge(request)
+
+    floor_key = judge._cache_key(request, luna_provider.LUNA_MODEL)
+    judge._cache_path(floor_key).write_text(
+        json.dumps({
+            "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "stale five point six verdict"}]},
+            "provider": "openai-codex", "model": luna_provider.LUNA_MODEL, "effort": "high",
+            "rubric_version": request.rubric_version, "usage": {}, "cached": False,
+        }),
+        encoding="utf-8",
+    )
+
+    result = judge.judge(request)
+
+    assert result.model == "gpt-6-luna"
+    assert result.payload["items"][0]["reason"] != "stale five point six verdict"
+    assert len(sdk.session.starts) == 1
