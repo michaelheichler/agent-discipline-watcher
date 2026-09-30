@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from lib import payloads
-from lib.config import effective_hook_config
+from lib.config import payload_hook_config
 from lib.end_turn import unresolved_reason
 from lib.hookio import PARSE_FAILURE, STATE_FAILURE, read_payload, stop_block, write_payload
 from lib.reporting import run_with_ledger
@@ -13,7 +13,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
     try:
         if payload is PARSE_FAILURE or not payloads.session_id(payload) or not payloads.agent_id(payload):
             return stop_block(STATE_FAILURE + "invalid SubagentStop payload")
-        cfg = effective_hook_config(config, payloads.cwd(payload) or None)
+        cfg = payload_hook_config(config, payload)
 
         def gate(_turn_id: str) -> dict:
             reason = unresolved_reason(payload, cfg)

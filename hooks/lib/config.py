@@ -23,12 +23,12 @@ try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
     from . import families, test_rules
     from .findings import Outcome
-    from .payloads import exact_string_dict
+    from .payloads import cwd as payload_cwd, exact_string_dict, session_id as payload_session_id
 except ImportError:
     import families
     import test_rules
     from findings import Outcome
-    from payloads import exact_string_dict
+    from payloads import cwd as payload_cwd, exact_string_dict, session_id as payload_session_id
 
 
 # Bypass every switch and exemption because scanner._unconditional_findings and resolve_outcome must always agree here.
@@ -380,6 +380,13 @@ def effective_hook_config(config: object, cwd: str | os.PathLike[str] | None) ->
     for key in ("state_root", "ledger_root"):
         value = caller.get(key)
         merged[key] = value if isinstance(value, str) else None
+    return merged
+
+
+def payload_hook_config(config: object, payload: object) -> dict:
+    """Carry the session, because explanations show once each."""
+    merged = effective_hook_config(config, payload_cwd(payload) or None)
+    merged["session_id"] = payload_session_id(payload)
     return merged
 
 

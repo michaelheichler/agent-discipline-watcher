@@ -18,7 +18,7 @@ from lib.canonical import (
     _is_exact_type,
     _validated_mapping,
 )
-from lib.config import effective_config, effective_hook_config, resolve_outcome
+from lib.config import effective_config, payload_hook_config, resolve_outcome
 from lib.findings import Finding
 from lib.hookio import advise, config_failure, read_payload, write_payload
 from lib.reporting import run_with_ledger
@@ -491,7 +491,7 @@ def run(payload: dict, config: dict | None = None) -> dict:
 
 def _run(payload: dict, config: dict | None) -> dict:
     payload = _sanitized_payload(payload)
-    cfg = effective_hook_config(config, payloads.cwd(payload) or None)
+    cfg = payload_hook_config(config, payload)
     return run_with_ledger(
         hook="batch",
         payload=payload,

@@ -150,7 +150,8 @@ def session_explainer(config: dict | None) -> Explainer | None:
     if not isinstance(session_id, str) or not session_id:
         return None
     claim = partial(session_state.claim_explained, session_id, root=fields.get("state_root"))
-    return Explainer(principle_kb.entry, claim, principle_map())
+    lookup = partial(principle_kb.entry, root=fields.get("principle_root"))
+    return Explainer(lookup, claim, principle_map())
 
 
 def _trimmed(text: str) -> str:

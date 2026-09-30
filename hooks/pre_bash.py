@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from lib import reporting
-from lib.config import effective_hook_config
+from lib.config import payload_hook_config
 from lib.findings import Finding, Rule
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
@@ -122,7 +122,7 @@ def _checked_run(payload: dict, config: dict | None) -> dict:
 
 
 def _run(payload: dict, config: dict | None) -> dict:
-    cfg = effective_hook_config(config, payload.get("cwd") or None)
+    cfg = payload_hook_config(config, payload)
     return run_with_ledger(
         hook="pre_bash",
         payload=payload,
