@@ -106,7 +106,7 @@ Rule module contract for Tasks 7 and 8.
 1. Create one new file in `hooks/lib/test_rules/`. Discovery imports it, so no other file needs an import line.
 2. Export `RULE_SET = RuleSet(rules=(Rule(name, detail, action), ...), check=check)`.
 3. `check(unit, text)` returns `Hit(rule, line, snippet)` rows. The unit is a `test_units.Unit`, and the text is the whole file.
-4. Import only from `hooks/lib/test_rules`. Config imports the registry, so an import of config or scanner creates a cycle.
+4. Import only from `hooks/lib/test_rules`. The `config` module imports the registry, so an import of `config` or `scanner` creates a cycle.
 5. Every registered rule starts at observe through `config.DEFAULTS["rule_gates"]`. Add the wording to `catalog.RULES`, because `test_catalog.py` fails without it.
 
 ### Task 7. The two user rules and the loop rule
@@ -204,7 +204,7 @@ Surviving test functions land in the journal as `pattern` rows. The Stop reviewe
 
 Module `principle-kb`. Size S. Dependencies none.
 
-Status on 2026-09-30. Draft done, 196 entries, not reviewed. Spot checks found errors. `kerckhoffs-principle` lists no ADW rule, but ADW already has a `secrets` family. `murphys-law` as STATIC stretches the source.
+Status on 2026-09-30. Done and reviewed, 196 entries. The review changed 11 rows and left 26 STATIC entries. `murphys-law` moved to NONE. ADW has no secrets rule, so `kerckhoffs-principle` keeps "none" as its ADW rule.
 
 Classify each programming-principles entry and each DevIQ code smell and antipattern as STATIC, SEMANTIC, or CONTEXT, the same way as the Khorikov catalog. Detection work for them gets its own tickets after the user reads this catalog.
 
