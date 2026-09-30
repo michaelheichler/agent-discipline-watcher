@@ -549,6 +549,9 @@ STATIC. A tool can check for these three groups, in order, marked by blank lines
 **Detection signal**.
 A test method mixes arrange, act, and assert code together, with no clear break between the three parts.
 
+**Task 8a note**.
+Dropped. The only concrete example is a C# one-liner joined by semicolons. Python and Rust statements do not carry that marker. The other candidate signal, "code after the last assert," fires on ordinary cleanup and on a second raises check. It also overlaps with rule #29, `multiple_act_sections_in_unit_test`, which already covers a second act-assert pair with acceptable precision.
+
 **Violating example**.
 ```csharp
 var sut = new Calculator(); Assert.Equal(3, sut.Add(1, 2)); var y = sut.Add(1,1);
