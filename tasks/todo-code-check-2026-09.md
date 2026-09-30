@@ -275,5 +275,5 @@ Size M. Dependencies Task 18.
 
 - [ ] Claude Code ships `adw-test-writer` on Opus 5.5 with high effort
 - [ ] Codex ships the same mission on `gpt-6-luna`, and OMP ships it with a model the user picks
-- [ ] The required reading is a short summary of the Khorikov book in our own words. It takes the form of the user's other book skills
-- [ ] The summary holds the four pillars and the rules ADW enforces. Each rule gets one bad and one good example, and no text comes from the book
+- [ ] The required reading covers every essential idea of the Khorikov book in our own words. It keeps the depth of the book, because a thin digest loses the knowledge
+- [ ] Each chapter gets its core argument, its reasoning, and worked bad and good examples. No sentence comes from the book
