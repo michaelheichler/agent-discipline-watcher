@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`./install.sh` puts `~/.adw/bin` on PATH again.** This reverses the August
+  decision in 0.20.2 that only printed the line. The user asked for the reversal on
+  2026-09-30, because `adw`, `adw-config`, `adw-judge`, and `adw-nuke` were not
+  reachable by name after an install. The old objection was that the user could
+  not see the change. The installer now prints the file it edited. The router,
+  not a host installer, writes one fenced `# >>> agent-discipline-watcher >>>`
+  block into `~/.zshrc` for zsh or `~/.bashrc` for bash, chosen from `$SHELL`.
+  Other shells still get the printed line. A second install leaves the file
+  byte-identical, and the installer replaces an older block with other content.
+  The Claude host installer no longer strips the block. `adw-nuke` still removes it.
+
+### Added
+
+- `./install.sh` builds `~/.adw/cache/principles.sqlite` after the host
+  installers, so Code Check findings carry their principle line right after a
+  fresh install. The build is best effort. A failed or offline build prints one
+  line and the install still exits 0.
+- `ADW_OFFLINE=1` skips the network steps of an install, today the principle
+  KB download. The test suite sets it through `hooks/install_sandbox.py`, so no
+  test run downloads the 60 MB DevIQ archive.
+
 ## 0.24.0 (2026-09-30)
 
 ### Added

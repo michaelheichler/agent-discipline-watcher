@@ -71,6 +71,52 @@ adw_strip_rc_block() {
   rm -f "$stripped"
 }
 
+adw_login_rc_file() {
+  case "${SHELL:-}" in
+    */zsh|zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    */bash|bash) printf '%s\n' "$HOME/.bashrc" ;;
+  esac
+}
+
+adw_path_block_current() {
+  local rc_file="$1"
+  local path_line="$2"
+  [ -f "$rc_file" ] || return 1
+  [ "$(grep -cF '# >>> agent-discipline-watcher >>>' "$rc_file")" = "1" ] || return 1
+  [ "$(awk '
+    /# >>> agent-discipline-watcher >>>/ { inside = 1; next }
+    /# <<< agent-discipline-watcher <<</ { inside = 0; next }
+    inside == 1 { print }
+  ' "$rc_file")" = "$path_line" ]
+}
+
+adw_add_path_block() {
+  local path_line='export PATH="$HOME/.adw/bin:$PATH"'
+  local rc_file
+  rc_file="$(adw_login_rc_file)"
+  if [ -z "$rc_file" ]; then
+    case ":$PATH:" in
+      *":$HOME/.adw/bin:"*) ;;
+      *) printf 'Add this to your shell startup file to run adw by name:\n\n  %s\n\n' "$path_line" ;;
+    esac
+    return 0
+  fi
+  local shown="~${rc_file#"$HOME"}"
+  adw_path_block_current "$rc_file" "$path_line" && return 0
+  if [ -f "$rc_file" ] && grep -qF '# >>> agent-discipline-watcher >>>' "$rc_file" \
+    && ! grep -qF '# <<< agent-discipline-watcher <<<' "$rc_file"; then
+    echo "warning: $shown opens an agent-discipline-watcher block it never closes. Add this line by hand: $path_line" >&2
+    return 0
+  fi
+  adw_strip_rc_block "$rc_file"
+  if [ -s "$rc_file" ] && [ -n "$(tail -c 1 "$rc_file")" ]; then
+    printf '\n' >> "$rc_file"
+  fi
+  printf '%s\n%s\n%s\n' '# >>> agent-discipline-watcher >>>' "$path_line" \
+    '# <<< agent-discipline-watcher <<<' >> "$rc_file"
+  echo "Added ~/.adw/bin to PATH in $shown. Open a new terminal to use adw-config."
+}
+
 adw_remove_obsolete_links() {
   local link_path
   for link_path in "$HOME/.local/bin/agent-discipline" "$HOME/.local/bin/adw-cli"; do
