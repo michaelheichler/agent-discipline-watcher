@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.23.1**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.24.0**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -60,7 +60,7 @@ The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. Th
 
 On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
 
-Temp files are not project output. A file under `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, or `/var/folders` gets no prose, comment, or code findings when it sits outside the project root. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A `cp`, `mv`, `install`, `rsync`, or redirect from a temp file into the project gets the full scan of the destination.
+Temp files are not project output. The temp roots are `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, and `/var/folders`. For a file outside the project root, a temp root means no prose, comment, or code findings. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A `cp`, `mv`, `install`, `rsync`, or redirect from a temp file into the project gets the full scan of the destination.
 
 The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
 
