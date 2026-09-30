@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import tempfile
@@ -10,9 +11,11 @@ from pathlib import Path
 from typing import Iterator
 
 try:
-    from .configure_policy import MISSING, ConfigureError
+    from . import config
+    from .configure_policy import MISSING, ConfigureError, known_values, merge_values
 except ImportError:
-    from configure_policy import MISSING, ConfigureError
+    import config
+    from configure_policy import MISSING, ConfigureError, known_values, merge_values
 
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -97,3 +100,37 @@ def expected_digest(request: dict[str, object]) -> str | None:
     if type(expected) is not str or DIGEST_RE.fullmatch(expected) is None:
         raise ConfigureError("invalid_digest", "expected_digest must be a SHA-256 hex digest or null")
     return expected
+
+
+def load(target: Path) -> config.ProjectConfig:
+    """Coded because a caller branches without parsing text."""
+    try:
+        return config.load_project_config(target)
+    except config.ConfigLoadError as exc:
+        raise ConfigureError("invalid_project_config", "project config could not be read safely") from exc
+
+
+def _serialized(merged: dict[str, object]) -> bytes:
+    data = json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    if len(data) > config.MAX_PROJECT_CONFIG_BYTES:
+        raise ConfigureError("size_limit", "project config exceeds the size limit")
+    return data
+
+
+def _reject_unwritable(target: Path, data: bytes) -> None:
+    try:
+        candidate = config._parse_project_config(target, data)
+    except config.ConfigLoadError as exc:
+        raise ConfigureError("invalid_project_config", "project config could not be written safely") from exc
+    known_values(candidate.settings)
+
+
+def write_values(target: Path, values: dict[str, object], expected: str | None) -> None:
+    """Locked because a racing edit would otherwise be lost."""
+    with locked(target):
+        current = load(target)
+        if current.digest != expected:
+            raise ConfigureError("digest_conflict", "project config changed since it was read")
+        data = _serialized(merge_values(current.data, values))
+        _reject_unwritable(target, data)
+        atomic_write(target, data)

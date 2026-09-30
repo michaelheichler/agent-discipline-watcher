@@ -228,6 +228,13 @@ def validate_policy_values(values: object) -> dict[str, object]:
     return fields
 
 
+def validate_tests_policy(value: object) -> dict[str, object]:
+    """Kept off the screen, since only the terminal may set it."""
+    if type(value) is not str or value not in config.TESTS_POLICIES:
+        raise ConfigureError("invalid_value", "tests must be allow or deny")
+    return {"tests": value}
+
+
 def _family_filtered(value: object) -> object:
     if type(value) is not dict:
         return copy.deepcopy(value)

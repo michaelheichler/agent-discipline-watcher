@@ -29,7 +29,7 @@ LEGACY_LINK_TARGETS = {
     ".omp/agent/extensions/agent-discipline-watcher": EXTENSION_PATH,
 }
 MANAGED_LINKS = frozenset({
-    ".adw/bin/adw", ".adw/bin/adw-judge", ".adw/bin/adw-nuke", ".local/bin/agent-discipline",
+    ".adw/bin/adw", ".adw/bin/adw-config", ".adw/bin/adw-judge", ".adw/bin/adw-nuke", ".local/bin/agent-discipline",
     ".local/bin/adw-cli", ".local/bin/adw-judge",
     ".codex/skills/agent-discipline-watcher", ".claude/skills/agent-discipline-watcher",
     ".config/claude-code/skills/agent-discipline-watcher",
@@ -141,7 +141,10 @@ def _claude_root(home: Path) -> Path:
 
 
 def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None = None) -> list[Path]:
-    paths = [INSTALL_PATH, Path(".adw/bin/adw"), Path(".local/bin/agent-discipline"), Path(".local/bin/adw-cli")]
+    paths = [
+        INSTALL_PATH, Path(".adw/bin/adw"), Path(".adw/bin/adw-config"),
+        Path(".local/bin/agent-discipline"), Path(".local/bin/adw-cli"),
+    ]
     if "codex" in hosts:
         paths.extend(map(Path, (".codex/config.toml", ".codex/hooks.json", ".codex/skills/agent-discipline-watcher", ".adw/runtime/codex")))
     if "omp" in hosts:

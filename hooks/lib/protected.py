@@ -50,6 +50,7 @@ WIRING_ACTION = (
     "or reinstall to change how the watcher is wired."
 )
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
+POLICY_ACTION = "The user sets this policy. Ask the human to run adw-config in a terminal."
 STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
 GRANT_ACTION = (
     "The config key no longer grants anything. Ask the human to export "
@@ -194,6 +195,8 @@ def _write_target_findings(write: ResolvedProtectedWrite) -> list[dict]:
     content = write.requested.content
     if _is_gate_config(resolved) and grants_escape(content):
         return [_finding(Finding(family="self_protection", rule="config_seal", line=1, detail="Self-granted gate escape in " + path, force=True, snippet=path.strip()[:180], action=GRANT_ACTION, path=None, severity=None, tool_use_id=None))]
+    if _is_gate_config(resolved) and _changes_tests_policy(resolved, content):
+        return [_finding(Finding(family="self_protection", rule="config_seal", line=1, detail="Tests policy edit in " + path, force=True, snippet=path.strip()[:180], action=POLICY_ACTION, path=None, severity=None, tool_use_id=None))]
     if _is_state_path(resolved, home):
         return [_finding(Finding(family="self_protection", rule="state_mutation", line=1, detail="Watcher state path in " + path, force=True, snippet=path.strip()[:180], action=STATE_ACTION, path=None, severity=None, tool_use_id=None))]
     if _reaches_install_surface(_literal(path, home), resolved, home):
@@ -303,6 +306,26 @@ def _has_watcher_wiring(path: Path) -> bool:
         return False
     except (OSError, UnicodeDecodeError):
         return True
+
+
+def _tests_value(text: str | None) -> object:
+    try:
+        return flatten_settings(json.loads(text or "{}")).get("tests")
+    except (ValueError, TypeError):
+        return None
+
+
+def _changes_tests_policy(path: Path, content: str | None) -> bool:
+    """Compared to disk, because allow and deny are both user calls."""
+    if content is None:
+        return False
+    try:
+        current = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        current = None
+    except (OSError, UnicodeDecodeError):
+        return True
+    return _tests_value(content) != _tests_value(current)
 
 
 def _is_gate_config(path: Path) -> bool:

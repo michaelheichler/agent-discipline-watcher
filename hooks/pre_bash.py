@@ -18,7 +18,8 @@ from lib.opaque_write import (
     MUTATING_VERB_RE, SHELL_C_INTERPRETERS, _bare_interpreter_name, decode_pipe_findings, dynamic_heredoc_findings,
     inline_interpreter_findings, inplace_edit_findings, interpreter_stdin_findings, opaque_source_findings,
 )
-from lib.protected import authorized, is_install_surface_path, path_findings
+from lib.policy_cli_guard import mutates_policy
+from lib.protected import POLICY_ACTION, authorized, is_install_surface_path, path_findings
 from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.shell_parse import (
     _basename, _command_word_index, _is_quoted,
@@ -69,6 +70,10 @@ RULES: dict[str, Rule] = {
     "state_mutation": Rule(
         detail="Watcher state or gate config mutated",
         action="Leave watcher state under host control and repair the reported finding.",
+    ),
+    "config_seal": Rule(
+        detail="Shell command changes the project policy through adw-config",
+        action=POLICY_ACTION,
     ),
     "watcher_install_surface": Rule(
         detail="Shell command mutates the live watcher install",
@@ -209,6 +214,8 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
         hits.append("state_mutation")
     if any(_mutates_install_surface(segment, home) for segment in segments):
         hits.append("watcher_install_surface")
+    if any(mutates_policy(segment, segment_cwd) for segment, segment_cwd in contexts):
+        hits.append("config_seal")
     return [_finding(rule, command) for rule in hits]
 
 
