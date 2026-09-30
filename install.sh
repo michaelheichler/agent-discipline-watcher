@@ -26,9 +26,12 @@ Options:
 
 Environment:
   ADW_INSTALL_DIR       Override the isolated ADW install root
+  ADW_OFFLINE=1         Skip the network steps (principle KB download, Claude plugin refresh)
   PI_CODING_AGENT_DIR   Override the OMP agent config directory
 
 Each host installer writes only under ~/.adw and its own host directory.
+The router adds one fenced PATH block for ~/.adw/bin to ~/.zshrc or
+~/.bashrc, chosen from $SHELL, and prints the file it changed.
 Choosing nothing leaves the disk untouched.
 EOF
 }
@@ -109,5 +112,10 @@ done
 mkdir -p "$HOME/.adw/bin"
 adw_replace_link "$HOME/.adw/bin/adw" "$install_dir/bin/adw"
 adw_replace_link "$HOME/.adw/bin/adw-config" "$install_dir/bin/adw-config"
+adw_add_path_block
+
+# Best effort, because findings work without the KB.
+"$installer_python" "$install_dir/hooks/lib/principle_kb.py" build 2>/dev/null \
+  || echo "principle KB not built. Run adw update to retry."
 
 echo "installed agent-discipline-watcher for: $(echo "$chosen" | tr '\n' ' ')"

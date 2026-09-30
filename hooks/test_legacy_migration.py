@@ -8,7 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from install_sandbox import sandbox_env
+
+ROOT =Path(__file__).resolve().parents[1]
 MERGE = ROOT / "hooks" / "merge-claude-settings.py"
 INSTALL = ROOT / "install.sh"
 CHECKOUT = "/tmp/agent-discipline-watcher"  # noqa: S108 (placeholder path, never created)
@@ -120,7 +122,7 @@ class InstallScriptTests(unittest.TestCase):
             settings.write_text(json.dumps(LEGACY_SETTINGS), encoding="utf-8")
             result = subprocess.run(
                 ["bash", str(INSTALL), "--claude"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertIn("Plugin installation skipped as requested.", result.stdout)
             self.assertNotIn("/plugin marketplace add", result.stdout)
@@ -130,7 +132,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             result = subprocess.run(
                 ["bash", str(INSTALL), "--claude-legacy"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertIn("legacy path-based wiring", result.stdout)
             settings = json.loads((Path(home) / ".claude" / "settings.json").read_text(encoding="utf-8"))
@@ -142,7 +144,7 @@ class InstallScriptTests(unittest.TestCase):
             settings.parent.mkdir(parents=True)
             settings.write_text(json.dumps(LEGACY_SETTINGS), encoding="utf-8")
             args = ["bash", str(INSTALL), "--claude"]
-            env = {"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"}
+            env = sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1")
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             once = settings.read_text(encoding="utf-8")
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
@@ -152,7 +154,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             result = subprocess.run(
                 ["bash", str(INSTALL), "--codex"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertNotIn("/plugin marketplace add", result.stdout)
             self.assertFalse((Path(home) / ".claude" / "settings.json").exists())
@@ -162,7 +164,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             result = subprocess.run(
                 ["bash", str(INSTALL), "--claude"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertIn("Claude preset CLI installed.", result.stdout)
             self.assertFalse((Path(home) / ".codex" / "config.toml").exists())
@@ -171,7 +173,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             subprocess.run(
                 ["bash", str(INSTALL), "--claude"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertFalse((Path(home) / ".omp" / "agent" / "settings.json").exists())
 
@@ -179,7 +181,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             result = subprocess.run(
                 ["bash", str(INSTALL), "--omp"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertNotIn("/plugin marketplace add", result.stdout)
             self.assertFalse((Path(home) / ".claude" / "settings.json").exists())
@@ -189,7 +191,7 @@ class InstallScriptTests(unittest.TestCase):
     def test_omp_flag_registers_the_extension_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as home:
             args = ["bash", str(INSTALL), "--omp"]
-            env = {"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"}
+            env = sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1")
             settings = Path(home) / ".omp" / "agent" / "settings.json"
             subprocess.run(args, capture_output=True, text=True, check=True, env=env)
             once = json.loads(settings.read_text(encoding="utf-8"))
@@ -204,10 +206,7 @@ class InstallScriptTests(unittest.TestCase):
             subprocess.run(
                 ["bash", str(INSTALL), "--omp"],
                 capture_output=True, text=True, check=True,
-                env={
-                    "HOME": home, "PATH": _path(),
-                    "PI_CODING_AGENT_DIR": agent_dir, "ADW_SKIP_PLUGIN": "1",
-                },
+                env=sandbox_env(home, PATH=_path(), PI_CODING_AGENT_DIR=agent_dir, ADW_SKIP_PLUGIN="1"),
             )
             self.assertTrue((Path(agent_dir) / "settings.json").exists())
             self.assertFalse((Path(home) / ".omp").exists())
@@ -216,7 +215,7 @@ class InstallScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             subprocess.run(
                 ["bash", str(INSTALL), "--claude", "--codex", "--omp"],
-                capture_output=True, text=True, check=True, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                capture_output=True, text=True, check=True, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
             )
             self.assertFalse((Path(home) / ".pi").exists())
             self.assertFalse((Path(home) / ".config" / "opencode").exists())
@@ -226,7 +225,7 @@ class InstallScriptTests(unittest.TestCase):
             with self.subTest(flag=flag), tempfile.TemporaryDirectory() as home:
                 result = subprocess.run(
                     ["bash", str(INSTALL), flag],
-                    capture_output=True, text=True, check=False, env={"HOME": home, "PATH": _path(), "ADW_SKIP_PLUGIN": "1"},
+                    capture_output=True, text=True, check=False, env=sandbox_env(home, PATH=_path(), ADW_SKIP_PLUGIN="1"),
                 )
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(f"unknown option: {flag}", result.stderr)

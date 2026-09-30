@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from install_sandbox import sandbox_env
 from lib import host, vendor
 
 
@@ -18,11 +19,7 @@ def _install(checkout: Path, home: Path, flag: str) -> subprocess.CompletedProce
     return subprocess.run(
         [str(checkout / "install.sh"), flag],
         cwd=checkout, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
-        env={
-            "HOME": str(home),
-            "PATH": SANDBOX_PATH,
-            "ADW_INSTALL_DIR": str(home / ".adw" / "install" / "adw"),
-        },
+        env=sandbox_env(home, PATH=SANDBOX_PATH, ADW_INSTALL_DIR=str(home / ".adw" / "install" / "adw")),
     )
 
 

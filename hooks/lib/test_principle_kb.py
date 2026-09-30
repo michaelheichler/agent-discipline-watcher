@@ -187,6 +187,25 @@ def test_build_with_no_network_and_an_existing_db_leaves_it_untouched(tmp_path: 
     assert (root / principle_kb.DB_NAME).read_bytes() == before
 
 
+def test_build_offline_skips_without_calling_the_fetch(tmp_path: Path, monkeypatch):
+    root = tmp_path / "cache"
+    monkeypatch.setenv(principle_kb.OFFLINE_ENV, "1")
+    result = principle_kb.build(root=root, fetch=_failing_fetch)
+    assert result.skipped is True
+    assert result.reason == "ADW_OFFLINE=1"
+    assert not (root / principle_kb.DB_NAME).exists()
+
+
+def test_install_build_entry_writes_the_home_cache_with_an_injected_fetch(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv(principle_kb.OFFLINE_ENV, raising=False)
+    fetch = _fetch_from(_deviq_archive(DEVIQ_FILES), PRINCIPLES_README.encode())
+    code = principle_kb.main(["build"], fetch=fetch)
+    assert code == 0
+    assert (tmp_path / ".adw" / "cache" / principle_kb.DB_NAME).is_file()
+    assert "principle KB built: deviq 1 rows, programming-principles 2 rows" in capsys.readouterr().out
+
+
 def test_lookup_returns_none_when_the_database_file_is_missing(tmp_path: Path):
     assert principle_kb.lookup("code-smells/dead-code", root=tmp_path / "cache") is None
 
@@ -222,7 +241,7 @@ def test_no_tracked_file_is_named_principles_sqlite():
 
 
 def test_main_only_accepts_the_build_argument(tmp_path: Path, monkeypatch, capsys):
-    monkeypatch.setattr(principle_kb, "build", lambda: principle_kb.BuildResult(True, "pinned commits already built", 0, 0))
-    assert principle_kb.main(["build"]) == 0
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert principle_kb.main(["build"], fetch=_failing_fetch) == 0
     assert "principle KB unchanged" in capsys.readouterr().out
     assert principle_kb.main(["scrub"]) == 2

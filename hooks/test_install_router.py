@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from install_sandbox import sandbox_env
 from lib import host, host_manifest, vendor
 
 
@@ -12,15 +13,14 @@ REPO_ROOT = vendor.REPO_ROOT
 INSTALLER = REPO_ROOT / "install.sh"
 
 
-def _run(arguments: list[str], home: Path) -> subprocess.CompletedProcess[str]:
+def _run(arguments: list[str], home: Path, **extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(INSTALLER), *arguments],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
-        env={
-            "HOME": str(home),
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
-            "ADW_INSTALL_DIR": str(home / ".adw" / "install" / "adw"),
-        },
+        env=sandbox_env(
+            home, PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin",
+            ADW_INSTALL_DIR=str(home / ".adw" / "install" / "adw"), **extra,
+        ),
     )
 
 
@@ -141,16 +141,33 @@ def test_the_claude_install_keeps_its_launcher_inside_the_state_directory(tmp_pa
     assert not [path for path in written if path.startswith(".local/bin")]
 
 
-def test_the_claude_install_never_edits_a_shell_startup_file(tmp_path: Path) -> None:
-    """Leave the rc alone because a PATH line the user did not write is a change they cannot see."""
-    for name in (".zshrc", ".bashrc"):
-        (tmp_path / name).write_text("# user content\n", encoding="utf-8")
+def test_the_install_puts_adw_bin_on_path_in_the_login_shell_rc(tmp_path: Path) -> None:
+    """Printed, because the user must see the rc change."""
+    (tmp_path / ".zshrc").write_text("# user content\n", encoding="utf-8")
+    (tmp_path / ".bashrc").write_text("# user content\n", encoding="utf-8")
 
-    finished = _run(["--claude"], tmp_path)
+    first = _run(["--claude"], tmp_path, SHELL="/bin/zsh")
+    after_first = (tmp_path / ".zshrc").read_bytes()
+    second = _run(["--claude"], tmp_path, SHELL="/bin/zsh")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "Added ~/.adw/bin to PATH in ~/.zshrc." in first.stdout
+    assert after_first == (
+        b"# user content\n# >>> agent-discipline-watcher >>>\n"
+        b'export PATH="$HOME/.adw/bin:$PATH"\n# <<< agent-discipline-watcher <<<\n'
+    )
+    assert (tmp_path / ".zshrc").read_bytes() == after_first
+    assert (tmp_path / ".bashrc").read_text(encoding="utf-8") == "# user content\n"
+
+
+def test_an_offline_install_skips_the_principle_build_and_succeeds(tmp_path: Path) -> None:
+    """Offline, because air-gapped machines must still install."""
+    finished = _run(["--claude"], tmp_path, ADW_SKIP_PLUGIN="1")
+
     assert finished.returncode == 0, finished.stderr
-
-    for name in (".zshrc", ".bashrc"):
-        assert (tmp_path / name).read_text(encoding="utf-8") == "# user content\n"
+    assert "principle KB unchanged (ADW_OFFLINE=1)" in finished.stdout
+    assert not (tmp_path / ".adw" / "cache" / "principles.sqlite").exists()
 
 
 def test_foreign_updater_link_is_refused_before_any_host_install(tmp_path: Path) -> None:

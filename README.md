@@ -149,6 +149,18 @@ Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Set
 `ADW_INSTALL_DIR` to choose a different isolated install root. Restart OMP
 after install, or pass `--extension` to load it immediately.
 
+The installer puts `~/.adw/bin` on your PATH. It picks the startup file from
+`$SHELL`: zsh gets `~/.zshrc` and bash gets `~/.bashrc`. The line sits in a
+fenced `# >>> agent-discipline-watcher >>>` block, and the installer prints
+the file it changed. A second install leaves the file as it is. `adw-nuke`
+removes the block. For any other shell, the installer prints the line for you
+to add.
+
+The installer also builds `~/.adw/cache/principles.sqlite`, the principle text
+that Code Check findings quote. It downloads about 60 MB. If the download
+fails, the install still succeeds and `adw update` retries. Set
+`ADW_OFFLINE=1` to skip the download on an air-gapped machine.
+
 OMP JavaScript execution has no ADW syntax allowlist. JavaScript eval and tools
 without a known adapter use workspace observation, so computed calls and `hub`
 operations can run. Native Write, Edit, and Bash calls keep their existing checks.
@@ -346,6 +358,7 @@ keys do not change these thresholds.
 
 | variable | effect |
 | --- | --- |
+| `ADW_OFFLINE` | Set to 1 to skip the network steps of `./install.sh`. Today that is the principle KB download. The install still exits 0, and Code Check findings carry no principle line until an online `adw update`. |
 | `ADW_PYTHON` | Interpreter to run the hooks with, skipping the PATH search. It is still probed against `.python-version`, and a build below the floor fails rather than falling back. If the qualifying Python is not on the PATH your client starts with, set it. |
 | `ADW_ALLOW_PROTECTED_EDIT` | Permits an edit to the watcher's own install. Self protection blocks a Bash write that sets this inline. |
 | `ADW_JUDGE_ACTIVE` | Set by the watcher on the judge subprocess so a nested hook cannot recurse. Not for you to set. |

@@ -16,13 +16,20 @@ def run_merge(*args: str) -> None:
     subprocess.run([sys.executable, str(MERGE), *args], check=True)
 
 
-def load_merger():
-    spec = importlib.util.spec_from_file_location("agent_discipline_omp_merge", MERGE)
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def load_merger():
+    return _load("agent_discipline_omp_merge", MERGE)
+
+
+SANDBOX = _load("adw_install_sandbox", ROOT / "hooks" / "install_sandbox.py")
 
 
 class MergeOmpSettingsTests(unittest.TestCase):
@@ -106,10 +113,7 @@ class InstallOmpScriptTests(unittest.TestCase):
             omp_agent.mkdir(parents=True)
             omp_settings = omp_agent / "settings.json"
             omp_settings.write_text('{"extensions": ["/keep/me.ts"]}\n')
-            env = {
-                **dict(__import__("os").environ),
-                "HOME": str(home),
-            }
+            env = SANDBOX.sandbox_env(home, inherit=True)
             subprocess.run(
                 [str(ROOT / "install.sh"), "--claude", "-y"],
                 cwd=ROOT,
@@ -125,10 +129,7 @@ class InstallOmpScriptTests(unittest.TestCase):
             home = Path(tmp) / "home"
             omp_agent = home / ".omp" / "agent"
             omp_agent.mkdir(parents=True)
-            env = {
-                **dict(__import__("os").environ),
-                "HOME": str(home),
-            }
+            env = SANDBOX.sandbox_env(home, inherit=True)
             subprocess.run(
                 [str(INSTALL), "-y"],
                 cwd=ROOT,
@@ -149,10 +150,7 @@ class InstallOmpScriptTests(unittest.TestCase):
             home = Path(tmp) / "home"
             omp_agent = home / ".omp" / "agent"
             omp_agent.mkdir(parents=True)
-            env = {
-                **dict(__import__("os").environ),
-                "HOME": str(home),
-            }
+            env = SANDBOX.sandbox_env(home, inherit=True)
             subprocess.run([str(INSTALL), "-y"], cwd=ROOT, env=env, check=True)
             subprocess.run([str(INSTALL), "--remove", "-y"], cwd=ROOT, env=env, check=True)
             link = omp_agent / "extensions" / "agent-discipline-watcher"
@@ -170,10 +168,7 @@ class InstallOmpScriptTests(unittest.TestCase):
             extensions.mkdir(parents=True)
             link = extensions / "agent-discipline-watcher"
             link.symlink_to(foreign)
-            env = {
-                **dict(__import__("os").environ),
-                "HOME": str(home),
-            }
+            env = SANDBOX.sandbox_env(home, inherit=True)
             result = subprocess.run(
                 [str(INSTALL), "--remove", "-y"],
                 cwd=ROOT,
@@ -194,10 +189,7 @@ class InstallOmpScriptTests(unittest.TestCase):
             target.mkdir(parents=True)
             marker = target / "keep-me.txt"
             marker.write_text("user data\n", encoding="utf-8")
-            env = {
-                **dict(__import__("os").environ),
-                "HOME": str(home),
-            }
+            env = SANDBOX.sandbox_env(home, inherit=True)
             result = subprocess.run(
                 [str(INSTALL), "--remove", "-y"],
                 cwd=ROOT,

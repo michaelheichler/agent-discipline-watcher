@@ -33,6 +33,7 @@ BUILD_FORMAT = "2"
 CODELOAD_HOST = "codeload.github.com"
 RAW_HOST = "raw.githubusercontent.com"
 DB_NAME = "principles.sqlite"
+OFFLINE_ENV = "ADW_OFFLINE"
 MAX_WORDS = 80
 HTTP_TIMEOUT = 20.0
 MAX_DEVIQ_ARCHIVE_BYTES = 100 << 20
@@ -327,6 +328,8 @@ def _skip_result(db_path: Path, reason: str) -> BuildResult:
 def build(*, root: Path | None = None, fetch: Fetch = _get_bytes) -> BuildResult:
     """Stored shas gate rebuilds, because equal commits match."""
     db_path = _cache_path(root)
+    if os.environ.get(OFFLINE_ENV) == "1":
+        return _skip_result(db_path, f"{OFFLINE_ENV}=1")
     if _stored_meta(db_path) == _pinned_meta():
         return _skip_result(db_path, "pinned commits already built")
     try:
@@ -376,13 +379,13 @@ def entry(entry_id: str, *, root: Path | None = None) -> Row | None:
         return None
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, fetch: Fetch = _get_bytes) -> int:
     """Only the build path, because a hook must not trigger fetch."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments != ["build"]:
         print("usage: principle_kb.py build", file=sys.stderr)
         return 2
-    result = build()
+    result = build(fetch=fetch)
     state = "unchanged" if result.skipped else "built"
     reason = f" ({result.reason})" if result.skipped and result.reason else ""
     print(

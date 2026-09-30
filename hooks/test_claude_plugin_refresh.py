@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from install_sandbox import sandbox_env
 from lib import claude_cache, vendor
 
 
@@ -29,13 +30,10 @@ def _install(home: Path, stub_dir: Path, log: Path, failing: bool = False) -> su
     return subprocess.run(
         [str(REPO_ROOT / "install.sh"), "--claude"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
-        env={
-            "HOME": str(home),
-            "PATH": f"{stub_dir}:{BASE_PATH}",
-            "ADW_INSTALL_DIR": str(home / ".adw" / "install" / "adw"),
-            "CLAUDE_STUB_LOG": str(log),
-            "CLAUDE_STUB_FAIL": "1" if failing else "0",
-        },
+        env=sandbox_env(
+            home, PATH=f"{stub_dir}:{BASE_PATH}", ADW_INSTALL_DIR=str(home / ".adw" / "install" / "adw"),
+            CLAUDE_STUB_LOG=str(log), CLAUDE_STUB_FAIL="1" if failing else "0",
+        ),
     )
 
 
@@ -113,13 +111,10 @@ def test_skipping_the_plugin_step_leaves_the_cache_alone(tmp_path: Path) -> None
     finished = subprocess.run(
         [str(REPO_ROOT / "install.sh"), "--claude"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
-        env={
-            "HOME": str(home),
-            "PATH": f"{stub_dir}:{BASE_PATH}",
-            "ADW_INSTALL_DIR": str(home / ".adw" / "install" / "adw"),
-            "CLAUDE_STUB_LOG": str(log),
-            "ADW_SKIP_PLUGIN": "1",
-        },
+        env=sandbox_env(
+            home, PATH=f"{stub_dir}:{BASE_PATH}", ADW_INSTALL_DIR=str(home / ".adw" / "install" / "adw"),
+            CLAUDE_STUB_LOG=str(log), ADW_SKIP_PLUGIN="1",
+        ),
     )
 
     assert stale.exists()
@@ -138,7 +133,7 @@ def test_selected_claude_profile_receives_legacy_cleanup(tmp_path: Path) -> None
     finished = subprocess.run(
         [str(REPO_ROOT / "install.sh"), "--claude"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False,
-        env={"HOME": str(tmp_path), "PATH": BASE_PATH, "CLAUDE_CONFIG_DIR": str(profile), "ADW_SKIP_PLUGIN": "1"},
+        env=sandbox_env(tmp_path, PATH=BASE_PATH, CLAUDE_CONFIG_DIR=str(profile), ADW_SKIP_PLUGIN="1"),
     )
     assert finished.returncode == 0, finished.stderr
     result = json.loads(settings.read_text(encoding="utf-8"))
