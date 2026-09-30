@@ -3,6 +3,7 @@ set -eu
 
 host_dir="$(cd "$(dirname "$0")" && pwd)"
 . "$host_dir/../common.sh"
+. "$host_dir/deploy-agent.sh"
 adw_host_prelude
 
 codex_home="${CODEX_HOME:-$HOME/.codex}"
@@ -17,6 +18,8 @@ rm -f "$codex_home/skills/agent-discipline-watcher"
 adw_backup_file "$codex_home/config.toml"
 # Kept because hooks.json is user-owned state.
 adw_backup_file "$codex_home/hooks.json"
+
+adw_deploy_codex_test_writer "$codex_home" "$ADW_SKILL_DIR"
 
 mkdir -p "$runtime_dir"
 if [ ! -x "$runtime_python" ]; then

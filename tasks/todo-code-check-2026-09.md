@@ -277,7 +277,9 @@ Status on 2026-09-30. Codex 0.159.2 carries `agent_type` on subagent tool calls,
 
 Size M. Dependencies Task 18. The book summary lives in the skill `unit-testing-principles`, and the agent files load it.
 
-- [ ] Claude Code ships `adw-test-writer` on Opus 5.5 with high effort
-- [ ] Codex ships the same mission on `gpt-6-luna`, and OMP ships it with a model the user picks
+- [x] Claude Code ships `adw-test-writer` on Opus 5.5 with high effort
+- [x] Codex ships the same mission on `gpt-6-luna`, and OMP ships it with a model the user picks
 - [ ] The required reading covers every essential idea of the Khorikov book in our own words. It keeps the depth of the book, because a thin digest loses the knowledge
 - [ ] Each chapter gets its core argument, its reasoning, and worked bad and good examples. No sentence comes from the book
+
+Status on 2026-09-30, branch `worktree-agent-a1478fad54e63f813`. One shared mission in `hooks/lib/adw_test_writer_agent.py` renders three shipped files: `agents/adw-test-writer.md`, `hosts/codex/agents/adw-test-writer.toml`, and `pi/extensions/agent-discipline-watcher/agents/adw-test-writer.md`. Codex install now links the role file through `hosts/codex/deploy-agent.sh`. `hooks/lib/test_adw_test_writer_agent.py` and `hooks/test_codex_test_writer_deploy.py` cover the render parity and the link. The last two checklist items are Task 18's parallel `unit-testing-principles` skill, not this file set.
