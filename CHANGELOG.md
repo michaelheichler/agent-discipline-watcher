@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A third rule family, Code Check, covers test and code quality. `catalog.FAMILIES` names `prose`, `comment`, and `code`. A configuration that names `punctuation` or `english` still selects a `prose` subfamily, and `clean_code` still enables or disables both `comment` and `code` together.
+- Nine Code Check test rules live under `hooks/lib/test_rules/`, each with one violating and one clean fixture from the Khorikov catalog. `assert_in_loop` blocks new loops after Luna and Sonnet called 25 of 26 hits bogus under the user's criterion. The other eight rules stay at observe.
+- A Code Check finding carries one plain-text principle line from DevIQ or programming-principles, at most 80 words and no URL. The text shows once per rule per session. The lookup reads `~/.adw/cache/principles.sqlite`, built by the update path from pinned commits at `NimblePros/deviq-hugo` and `webpro/programming-principles`. No source text enters this repository, and a test scans the tracked files for it.
+- `evals/code_check_precision.json`, `evals/code_check_labels_luna.jsonl`, and `evals/code_check_labels_sonnet_user.jsonl` hold the self-audit measurement on the ADW suite, 131 hand-labeled rows. Luna and Sonnet agree on 120 of 131 hits, Cohen's kappa 0.833.
+- `bin/adw-config` gives a small policy CLI, `status`, `tests allow|deny`, `tests allow --for DURATION`, and `family NAME on|off`. An agent that calls the mutating subcommands through a tool call gets a block, because only the user sets policy from a terminal.
+- With `tests: deny`, only the `adw-test-writer` subagent adds or changes a test function on Claude Code and on Codex 0.159, through its `agent_type` field. OMP names no agent on tool calls, so `adw-config tests allow --for 30m` opens a timed window there instead. A write to any `adw-test-writer` definition file gets a block, in project scope and user scope.
+- The `adw-test-writer` agent ships on three hosts. Claude Code runs it on Opus 5.5 at high effort. Codex runs it on `gpt-6-luna` at high effort. OMP runs it with a model the user picks, through a limited tool set. Each host loads the new `unit-testing-principles` skill. The skill summarizes Khorikov's book in the project's own words, at full depth, one chapter file per book chapter.
+
+### Changed
+
+- Luna resolves to the newest `gpt-N-luna` that the account lists at high effort, instead of the pinned `gpt-5.6-luna` floor. When nothing newer answers, the resolved id becomes the fallback.
+- The Claude judge pins move to current snapshot ids. Sonnet moves to `claude-sonnet-5-5`. The `haiku` preset moves from the dated snapshot to `claude-haiku-4-5`, which the API points at the newest Haiku 4.5 snapshot. A scratch test showed the Claude Code hook `model` field rejects a bare alias such as `sonnet` or `haiku`, with a 404 response. The pins therefore stay on full model ids, not aliases.
+- A file under `/tmp`, `/private/tmp`, `$TMPDIR`, or `/var/folders` gets no content findings once it sits outside the project root. A `cp`, `mv`, `install`, or `rsync` that lands such a file inside the project still gets the full scan of the destination. Self-protection checks run on every path either way.
+- CI runs `bash -n` on every shell script and every `bin/` launcher in a loop. Before, `bash -n $(git ls-files '*.sh')` read only the first file as the script and the rest as its arguments.
+
+### Removed
+
+- The clock rule, `time_as_ambient_context`. Luna and Sonnet called 0 of 17 hits bogus, because a test cannot see whether the production code under test reads the system clock.
+- Five test assertions that pinned a constant, a manifest field, a description word, or CI text, and caught no change in behavior.
+
 ## 0.23.1 (2026-09-28)
 
 ### Fixed

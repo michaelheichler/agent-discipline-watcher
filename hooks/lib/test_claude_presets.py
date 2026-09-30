@@ -34,7 +34,7 @@ def test_mixed_judges_the_turn_with_sonnet() -> None:
 
 def test_haiku_judges_the_turn_with_haiku() -> None:
     """Keep it uniform because this preset exists to hold cost flat."""
-    assert claude_presets.model_for("haiku") == "claude-haiku-4-5-20251001"
+    assert claude_presets.model_for("haiku") == "claude-haiku-4-5"
 
 
 def test_luna_native_names_the_model_the_harness_injects() -> None:

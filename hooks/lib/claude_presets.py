@@ -13,7 +13,7 @@ except ImportError:
     from judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
 
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
-CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_HAIKU_MODEL = "claude-haiku-4-5"
 CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
 LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"

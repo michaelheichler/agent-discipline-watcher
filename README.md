@@ -12,6 +12,8 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Document.** Opt in on Claude Code through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
 
+Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
+
 A rule speaks only where a measurement covers it, and blocks only where that measurement earned the block.
 
 | rule | precision after the judge | gate |
@@ -73,6 +75,16 @@ The Luna comment reviewer covers Python and supported comment-bearing source fil
 The opening clause decides it. When a comment opens on the code and its behaviour, it fails even with a `because` clause after it. This applies to the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
 
 These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent. The 60-character cap and the opening-clause test are therefore a judgement rather than a number.
+
+## Code Check and the test writer
+
+The `code` family also runs one static test-quality scan, taken from Vladimir Khorikov's book on unit testing. The scan reads every Python and Rust test function under `hooks/lib/test_rules/`. `assert_in_loop` blocks a test that asserts inside a loop, because the first failing case then hides the rest. Eight sibling rules, such as `hardcoded_name_presence` and `exposing_private_methods_for_testing`, report and do not yet block. `evals/code_check_precision.json` holds the hand-labeled hit count and precision behind each of these rules.
+
+A Code Check finding carries one plain-text explanation of the principle it breaks, pulled from a local DevIQ or programming-principles knowledge base. The text shows once per rule per session, stays under 80 words, and carries no link. A missing database or a missing entry leaves the finding unchanged.
+
+A project can deny test writes outright. With `tests: deny` set through `adw-config`, only the `adw-test-writer` subagent adds or changes a test function. Claude Code and Codex 0.159 identify that subagent through its `agent_type` field on the tool call. OMP names no agent on tool calls, so `adw-config tests allow --for 30m` opens a timed window there instead. A write to any `adw-test-writer` definition file gets a block, in both project and user scope.
+
+`adw-test-writer` ships on three hosts. Claude Code runs it on Opus 5.5 at high effort. Codex runs it on `gpt-6-luna` at high effort. OMP runs it with a model the user picks, through a limited tool set. Each host loads the `unit-testing-principles` skill first. That skill holds a full-depth summary of the Khorikov book in the project's own words, one chapter file per book chapter.
 
 ## Install
 
@@ -352,7 +364,7 @@ Everything is under `~/.adw`.
 ~/.adw/reports            the full report each block points to
 ~/.adw/embedding-leases   who is holding the model
 ~/.adw/embedding-server   the model, its runtime, and the running record
-~/.adw/cache              exemplar vectors, keyed by exemplar digest
+~/.adw/cache              exemplar vectors, keyed by exemplar digest, and principles.sqlite
 ~/.adw/runtime/codex      pinned openai-codex runtime (retained, not pruned)
 ```
 
@@ -366,6 +378,12 @@ The watcher migrates an existing `~/.agent-discipline` once, on first run.
 ## Configuration
 
 Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
+
+`bin/adw-config` reads and writes that file from a terminal. `adw-config status` prints the effective policy.
+
+`adw-config tests allow` or `adw-config tests deny` sets the test write policy. `adw-config tests allow --for 30m` opens a timed window instead of a permanent change.
+
+`adw-config family NAME on|off` toggles one family. An agent that calls a mutating subcommand through a tool call gets a block. Only the user sets policy from a terminal.
 
 Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge checks them before the watcher reports anything. Today only the OMP review route runs that judge. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
 The same gate covers reviewed pattern rows from the embedding vote on every host. A rule at off gets no pattern rows. A rule at observe never blocks on an upheld row. OMP and Codex report the row. The Claude Stop reviewer can only pass or block, so it never sees the row. The shipped default sets `ai_closer` to observe, so an upheld `ai_closer` row reports unless the project sets that rule to enforce.
@@ -406,7 +424,7 @@ OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls
 ```bash
 cd hooks && uvx --python 3.11 --with pytest pytest . lib -q
 python3 -m pytest pi/test_merge_settings.py -q
-bash -n install.sh hooks/run.sh pi/install.sh
+for script in $(git ls-files '*.sh') bin/adw bin/adw-judge bin/adw-nuke bin/adw-config; do bash -n "$script"; done
 bun test pi/extensions/agent-discipline-watcher/index.test.ts
 claude plugin validate . --strict
 ```
