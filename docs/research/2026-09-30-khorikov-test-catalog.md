@@ -53,7 +53,7 @@ Page numbers below are PDF page numbers from the extracted copy of the book, not
 | 43 | exposing_private_methods_for_testing | STATIC | resistance to refactoring |
 | 44 | exposing_private_state_for_testing | STATIC | resistance to refactoring |
 | 45 | leaking_domain_knowledge_to_tests | SEMANTIC | resistance to refactoring |
-| 46 | code_pollution | STATIC | maintainability |
+| 46 | code_pollution | CONTEXT | maintainability |
 | 47 | mocking_concrete_classes | STATIC | maintainability |
 | 48 | time_as_ambient_context | STATIC | maintainability, fast feedback |
 | 49 | hardcoded_name_presence (user rule) | SEMANTIC | protection against regressions |
@@ -1514,7 +1514,7 @@ Chapter 11, section 11.4, "Code pollution," pages 290 to 292.
 Hurts maintainability, because the shipped code carries a branch with no production purpose, and every future reader must reason around it.
 
 **Detection class**.
-STATIC. A tool can match a conditional in production code that reads an environment variable or a flag named after "test" or "testing."
+CONTEXT. Task 8b tried a test-side signal, a call passing `testing=True` or a name containing `for_testing`. A search of `hooks/` and its tests found zero matches for that signal, so there is nothing to tune against. Catching the rule needs the paired production branch, not the test call alone, so the rule stays CONTEXT and ADW carries no static check for it.
 
 **Detection signal**.
 Production code contains a branch such as `if (isTestMode)`, with logic that exists only to help a test pass.
