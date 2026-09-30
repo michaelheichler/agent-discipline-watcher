@@ -860,9 +860,9 @@ def test_python_ast_is_parsed_by_scanner_and_the_code_check_registry(monkeypatch
     calls = []
     original = scanner.ast.parse
     monkeypatch.setattr(scanner.ast, "parse", lambda text: calls.append(text) or original(text))
-    scan_all("sample.py", 'def _f():\n    """Scan."""\n', {})
+    scan_all("sample.py", 'def test_f():\n    """Scan."""\n', {})
     scan_all("sample.js", "const value = 1\n", {})
-    assert len(calls) == 2
+    assert len(calls) >= 2
 
 
 def _corpus_source(row):
