@@ -55,6 +55,8 @@ Measure what one turn costs the Mac today. Each cycle starts the worker cold and
 
 Module `embedding-cost`. Size M. Dependencies Task 3.
 
+Status on 2026-09-30. On hold. A 30 minute sample from 12:53 to 13:23 found the embedding worker at 0.4 percent CPU on average and 858 MB peak RSS. Four worker pids appeared in that window. Agent test and pylint runs caused the CPU peaks. The window held no normal user session, so the sample proves nothing about the reported load. Release 0.23.1 already stops orphaned workers, and those orphans are the likeliest past cause.
+
 Stop no longer releases the embedding lease. The lease expires after an idle timeout with a default of 600 seconds, set through the ADW configuration.
 
 - [ ] Two turns within the timeout reuse one worker pid
