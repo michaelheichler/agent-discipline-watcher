@@ -45,9 +45,9 @@ Module `embedding-cost`. Size S. Dependencies none.
 
 Status on 2026-09-30. Done on branch `worktree-agent-aa0e656b03c868157`, commit `9d8ca0c`, not merged. One cold load costs 0.8 seconds, 0.85 CPU seconds, and 850 MB RSS on an M5 Pro. The per-turn reload is too cheap to explain the reported load, so Task 4 waits for a session profile.
 
-Measure what one turn costs the Mac today. Start the worker cold, embed 20 sentences, stop it, and repeat three times.
+Measure what one turn costs the Mac today. Each cycle starts the worker cold and embeds 20 sentences before it stops the worker. The script runs three cycles.
 
-- [ ] `evals/embedding_cost.json` records the load seconds, peak RSS, and CPU seconds per cycle, with the machine model
+- [ ] `evals/embedding_cost.json` records time and memory per cycle, with the machine model
 - [ ] The script lives in `evals/` and runs with one command
 - [ ] The numbers go to the user before Task 4 merges
 
@@ -81,10 +81,10 @@ Files are `hooks/lib/catalog.py`, `hooks/lib/config.py`, `hooks/lib/comment_rule
 
 ## Checkpoint A
 
-Status on 2026-09-30. Tasks 1, 2, 3, and 5 pass on their own branches. The merged state has no test run yet.
+Status on 2026-09-30. Main holds Tasks 1, 2, 3, and 5 at merge `791051a`. Task 4 stays on hold, because one cold load costs under one CPU second. A 30 minute process sample under `~/.adw/profile/` looks for the real load.
 
-- [ ] Hook suite, pylint, and `bun test` pass
-- [ ] The user reviews the embedding numbers
+- [x] Hook suite, pylint, and `bun test` pass. The merged state ran 3081 tests, pylint 10.00/10, and 208 bun tests
+- [x] The user reviews the embedding numbers
 
 ## Phase 2. Static test rules and explanations
 
@@ -97,8 +97,10 @@ One extractor yields each test function with its path, name, span, and body for 
 - [ ] Python uses `ast`, and Rust uses `brace_functions.py` with the `#[test]` attribute
 - [ ] The runner on `hooks/` reports the count of test functions, 2012 or the current number
 - [ ] The runner never blocks and never writes outside its report path
+- [ ] With the `code` family on, the scanner calls one entry point for test files. Rule tickets then never touch `scanner.py`
+- [ ] Each rule module registers itself in one registry, and a rule without a measurement starts at observe
 
-Files are `hooks/lib/test_units.py`, `evals/code_check_audit.py`, and one test file.
+Files are `hooks/lib/test_units.py`, `hooks/lib/test_rules/__init__.py`, `hooks/lib/scanner.py`, `evals/code_check_audit.py`, and one test file.
 
 ### Task 7. The two user rules and the loop rule
 
@@ -110,18 +112,25 @@ Add `hardcoded_name_presence`, `hardcoded_literal_in_source`, and `assert_in_loo
 - [ ] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
 - [ ] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
 
-Files are `hooks/lib/test_rules.py`, `hooks/lib/catalog.py`, `hooks/lib/scanner.py`, and one test file.
+Files are `hooks/lib/test_rules/literals.py`, `hooks/lib/catalog.py`, and one test file.
 
 ### Task 8. The remaining static Khorikov rules
 
-Module `test-audit-static`. Size M. Dependencies Task 6.
+Module `test-audit-static`. Dependencies Task 6.
 
-Implement every entry that the Khorikov catalog marks STATIC and that Task 7 does not cover. If the list passes five rules, split this ticket in two before you start.
+The catalog marks 16 entries STATIC. Two of them are definitions and no rule, `four_pillars_and_tradeoff` and `mocks_vs_stubs_definition`. The existing `hollow_test` rule covers `assertion_free_test`. Task 7 covers three more. The remaining entries split into three tickets. Each rule in them has one violating and one clean fixture from the catalog, starts at observe, and has an entry in `catalog.py`.
 
-- [ ] Each rule has one violating and one clean fixture from the catalog
-- [ ] Each rule starts at observe and has a catalog entry in `catalog.py`
+#### Task 8a. Test structure rules
 
-Files are `hooks/lib/test_rules.py`, `hooks/lib/catalog.py`, and one test file.
+Size S. The rules are `if_statements_in_tests`, `multiple_act_sections_in_unit_test`, `aaa_pattern`, and `test_fixture_reuse_via_constructor`. The file is `hooks/lib/test_rules/structure.py`.
+
+#### Task 8b. Private access rules
+
+Size S. The rules are `exposing_private_methods_for_testing`, `exposing_private_state_for_testing`, and `code_pollution`. The file is `hooks/lib/test_rules/private_access.py`.
+
+#### Task 8c. Mock and ambient context rules
+
+Size S. The rules are `mocking_concrete_classes`, `incomplete_mock_call_verification`, `time_as_ambient_context`, and `reusing_database_context_across_sections`. The file is `hooks/lib/test_rules/doubles.py`. If a rule needs other files to decide, record it as CONTEXT in the catalog and skip it.
 
 ### Task 9. Knowledge base build step
 
@@ -133,7 +142,7 @@ Install and update build `~/.adw/cache/principles.sqlite`. The build reads `Nimb
 - [ ] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
 - [ ] With no network, the build reports the skip and the gates still run
 
-Files are `hooks/lib/principle_kb.py`, `hooks/lib/update_runtime.py`, `install.sh`, and one test file.
+Files are `hooks/lib/principle_kb.py`, the update path that already fetches release data, and one test file. The build runs from the update path or its own command, never from a hook.
 
 ### Task 10. Explanation text in findings
 
