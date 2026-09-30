@@ -447,11 +447,15 @@ def _function_length_findings(context: _ScanContext) -> list[dict]:
     ]
 
 
+_LIKELY_TEST_UNIT = re.compile(r"\bdef\s+test_|#\[\s*(?:tokio\s*::\s*)?test\b")
+
+
 def _scan_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
     findings = _function_length_findings(context)
     findings.extend(_scan_hollow_test_blocks(context.path, lines))
-    findings.extend(test_rules.check_file(context.path, context.text))
+    if _LIKELY_TEST_UNIT.search(context.text):
+        findings.extend(test_rules.check_file(context.path, context.text))
     return findings
 
 
