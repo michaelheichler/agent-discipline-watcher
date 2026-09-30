@@ -1,0 +1,14 @@
+{
+  "assert_in_loop": "arrange-act-assert",
+  "commented_code": "code-smells/dead-code",
+  "exposing_private_methods_for_testing": "code-smells/indecent-exposure",
+  "exposing_private_state_for_testing": "code-smells/indecent-exposure",
+  "file_length_critical": "terms/cohesion",
+  "file_length_warning": "terms/cohesion",
+  "file_too_long": "terms/cohesion",
+  "function_too_long": "code-smells/long-method",
+  "hardcoded_literal_in_source": "code-smells/poorly-written-tests",
+  "hardcoded_name_presence": "antipatterns/magic-strings",
+  "hollow_test": "code-smells/poorly-written-tests",
+  "suppression_escape_hatch": "antipatterns/broken-windows"
+}

@@ -16,6 +16,7 @@ LEGACY_DATA_DIRNAME = ".agent-discipline"
 SESSION_LEASE_DIRNAME = "session-leases"
 SESSION_LEASE_SUFFIX = ".lease.json"
 SESSION_LEASE_TTL_SECONDS = 900
+EXPLAINED_KEY = "explained_rules"
 
 
 def plugin_data_home() -> Path:
@@ -168,6 +169,24 @@ def update_state_strict(
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
+
+
+def claim_explained(
+    session_id: str,
+    rules: frozenset[str],
+    root: str | os.PathLike[str] | None = None,
+) -> frozenset[str]:
+    """Claim under the lock, because two hooks may explain at once."""
+    claimed: set[str] = set()
+
+    def mutate(state: dict) -> dict:
+        stored = state.get(EXPLAINED_KEY)
+        known = {rule for rule in stored if isinstance(rule, str)} if isinstance(stored, list) else set()
+        claimed.update(rules - known)
+        return {**state, EXPLAINED_KEY: sorted(known | claimed)}
+
+    update_state(session_id, mutate, root)
+    return frozenset(claimed)
 
 
 def _next_turn(state: dict) -> dict:

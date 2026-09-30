@@ -1,4 +1,5 @@
 from lib import catalog, config, reporting, scanner
+from lib.finding_output import format_row
 
 UTILIZE = "util" + "ize"
 
@@ -14,11 +15,11 @@ def _finding(**extra: object) -> dict:
 def test_row_shows_path_line_title_quoted_match_and_action() -> None:
     title = catalog.rule_entry("business_jargon").title
     expected = f'notes.md:3 {title} "navigate the". Name the action. (business_jargon)'
-    assert reporting.format_row(_finding()) == expected
+    assert format_row(_finding()) == expected
 
 
 def test_row_puts_the_rule_id_last_without_the_family() -> None:
-    row = reporting.format_row(_finding())
+    row = format_row(_finding())
     assert row.endswith("(business_jargon)")
     assert "english/" not in row
 
@@ -27,11 +28,11 @@ def test_row_without_a_match_omits_the_quotes() -> None:
     finding = _finding(rule="file_length_critical")
     del finding["match"]
     title = catalog.rule_entry("file_length_critical").title
-    assert reporting.format_row(finding) == f"notes.md:3 {title}. Name the action. (file_length_critical)"
+    assert format_row(finding) == f"notes.md:3 {title}. Name the action. (file_length_critical)"
 
 
 def test_row_clips_a_long_match() -> None:
-    row = reporting.format_row(_finding(match="x" * 400))
+    row = format_row(_finding(match="x" * 400))
     assert len(row) < 200
 
 
@@ -91,4 +92,4 @@ def test_long_rows_cannot_push_the_report_path_out() -> None:
 
 
 def test_row_keeps_the_status_prefix() -> None:
-    assert reporting.format_row(_finding(status="removed")).startswith("[removed] notes.md:3 ")
+    assert format_row(_finding(status="removed")).startswith("[removed] notes.md:3 ")

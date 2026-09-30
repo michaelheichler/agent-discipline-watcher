@@ -167,10 +167,10 @@ Module `principle-kb`. Size M. Dependencies Task 9.
 
 `principle_map.json` maps each Code Check rule to one entry. The finding output appends that entry's text once per rule per session.
 
-- [ ] The text holds at most 80 words and no URL
-- [ ] The second finding of the same rule in one session shows the rule line only
-- [ ] A missing database or a missing entry leaves the finding unchanged
-- [ ] Claude Code, Codex, and OMP show the same text
+- [x] The text holds at most 80 words and no URL
+- [x] The second finding of the same rule in one session shows the rule line only
+- [x] A missing database or a missing entry leaves the finding unchanged
+- [x] Claude Code, Codex, and OMP show the same text
 
 Files are `hooks/lib/principle_map.json`, `hooks/lib/finding_output.py`, `hooks/lib/session_state.py`, and one test file.
 
