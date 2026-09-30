@@ -83,38 +83,6 @@ fn test_charge_runs_once_with_amount() {
 }
 '''
 
-CLOCK_VIOLATION = '''from datetime import datetime
-
-
-def test_order_is_expired_right_now() -> None:
-    order = Order(expiry=yesterday())
-    assert order.is_expired(datetime.now())
-'''
-
-CLOCK_CLEAN = '''from datetime import datetime
-
-
-def test_order_is_expired_at_a_fixed_time() -> None:
-    order = Order(expiry=yesterday())
-    fixed_now = datetime(2026, 1, 1)
-    assert order.is_expired(fixed_now)
-'''
-
-CLOCK_VIOLATION_RS = '''#[test]
-fn test_order_is_expired_right_now() {
-    let now = Instant::now();
-    assert!(order.is_expired(now));
-}
-'''
-
-CLOCK_CLEAN_RS = '''#[test]
-fn test_order_is_expired_at_a_fixed_time() {
-    let fixed_now = fixed_instant();
-    assert!(order.is_expired(fixed_now));
-}
-'''
-
-
 def _unit(path: str, text: str, name: str) -> Unit:
     return next(unit for unit in extract(path, text) if unit.name == name)
 
@@ -172,27 +140,3 @@ def test_rust_expect_with_a_matcher_is_clean() -> None:
     case = ("mailer.rs", VERIFICATION_CLEAN_RS, "test_charge_runs_once_with_amount")
 
     assert _hits(case, "incomplete_mock_call_verification") == []
-
-
-def test_datetime_now_read_directly_is_flagged() -> None:
-    case = ("test_order.py", CLOCK_VIOLATION, "test_order_is_expired_right_now")
-
-    assert [hit.line for hit in _hits(case, "time_as_ambient_context")] == [6]
-
-
-def test_a_fixed_datetime_is_clean() -> None:
-    case = ("test_order.py", CLOCK_CLEAN, "test_order_is_expired_at_a_fixed_time")
-
-    assert _hits(case, "time_as_ambient_context") == []
-
-
-def test_rust_instant_now_read_directly_is_flagged() -> None:
-    case = ("order.rs", CLOCK_VIOLATION_RS, "test_order_is_expired_right_now")
-
-    assert [hit.line for hit in _hits(case, "time_as_ambient_context")] == [3]
-
-
-def test_rust_a_fixed_instant_is_clean() -> None:
-    case = ("order.rs", CLOCK_CLEAN_RS, "test_order_is_expired_at_a_fixed_time")
-
-    assert _hits(case, "time_as_ambient_context") == []

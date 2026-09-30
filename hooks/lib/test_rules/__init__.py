@@ -26,6 +26,7 @@ class Rule(NamedTuple):
     name: str
     detail: str
     action: str
+    state: str = UNMEASURED_STATE
 
 
 class Hit(NamedTuple):
@@ -77,8 +78,8 @@ RULE_SETS: tuple[RuleSet, ...] = discover(__path__, __name__)
 
 
 def default_gates(rule_sets: Iterable[RuleSet]) -> dict[str, str]:
-    """Start at observe, because no rule blocks before it is measured."""
-    return {rule.name: UNMEASURED_STATE for rule_set in rule_sets for rule in rule_set.rules}
+    """Observe by default, because only a measured rule may block."""
+    return {rule.name: rule.state for rule_set in rule_sets for rule in rule_set.rules}
 
 
 def _finding(unit: Unit, rule: Rule, hit: Hit) -> dict:

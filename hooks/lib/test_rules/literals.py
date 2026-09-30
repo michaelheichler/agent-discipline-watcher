@@ -12,6 +12,7 @@ from ._rust_literals import rust_hits
 LOOP = "assert_in_loop"
 NAME = "hardcoded_name_presence"
 SOURCE = "hardcoded_literal_in_source"
+MEASURED_ENFORCE = "enforce"
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 _LOOPS = (ast.For, ast.AsyncFor, ast.While)
 _SCOPES = (*_FUNCTIONS, ast.Lambda, ast.ClassDef)
@@ -312,7 +313,7 @@ def check(unit: Unit, text: str) -> list[Hit]:
 RULE_SET = RuleSet(
     rules=(
         Rule(LOOP, "Test asserts inside a loop, so the first failing case hides the rest",
-             "Parameterize the cases or wrap each one in subTest."),
+             "Parameterize the cases or wrap each one in subTest.", MEASURED_ENFORCE),
         Rule(NAME, "Test pins a hard-coded name or value in a static table",
              "Assert the behavior the name drives instead of its presence."),
         Rule(SOURCE, "Test asserts a literal in the text of a source or config file",

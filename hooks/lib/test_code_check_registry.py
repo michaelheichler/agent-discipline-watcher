@@ -154,11 +154,14 @@ def test_an_unmeasured_rule_reports_without_blocking() -> None:
     assert config.resolve_outcome(finding, gates) == Outcome.WOULD_BLOCK
 
 
-def test_every_registered_rule_starts_at_observe() -> None:
-    names = [rule.name for rule_set in test_rules.RULE_SETS for rule in rule_set.rules]
-    outcomes = {config.resolve_outcome({"family": "code", "rule": name}, {}) for name in names}
+def test_a_rule_blocks_only_when_it_declares_a_measured_state() -> None:
+    measured = Rule("fake_measured", "Measured fake", "Fix it.", "enforce")
+    unmeasured = Rule("fake_unmeasured", "Unmeasured fake", "Fix it.")
+    gates = {"rule_gates": test_rules.default_gates((RuleSet(rules=(measured, unmeasured), check=lambda *_: ()),))}
 
-    assert outcomes <= {Outcome.WOULD_BLOCK}
+    outcomes = [config.resolve_outcome({"family": "code", "rule": rule.name}, gates) for rule in (measured, unmeasured)]
+
+    assert outcomes == [Outcome.BLOCK, Outcome.WOULD_BLOCK]
 
 
 def test_the_scanner_runs_the_registry_only_with_code_check_on(monkeypatch) -> None:
