@@ -1,0 +1,203 @@
+# Tickets for the Code Check family
+
+The plan lives in [plan-code-check-2026-09.md](plan-code-check-2026-09.md). The spec lives in [spec-code-check-2026-09.md](spec-code-check-2026-09.md). Each ticket names its module id from the capability map in the spec.
+
+Every ticket shares one set of test commands. Run them before you mark a ticket done.
+
+```bash
+cd hooks && uvx --python 3.11 --with pytest pytest . lib -q
+pylint $(git ls-files '*.py')
+```
+
+## Phase 1. Foundations
+
+### Task 1. Luna resolves to the newest model
+
+Module `model-currency`. Size S. Dependencies none.
+
+Status on 2026-09-30. Done on branch `worktree-agent-a90dea7a2ffb69fff`, commits `6937efa` and `e715395`, not merged. The cache remembers the last resolved model, so reads and writes use the same key.
+
+Luna picks the highest `gpt-N-luna` from `session.models()` that is not hidden and supports high effort. The pinned `LUNA_MODEL` constant becomes the fallback floor.
+
+- [ ] The version order is numeric, so `gpt-6-luna` beats `gpt-5.6-luna` and `gpt-10-luna` beats `gpt-6-luna`
+- [ ] `JudgeResult.model` and the judge cache key carry the resolved id
+- [ ] The availability error names the models it saw
+
+Files are `hooks/lib/luna_provider.py` and `hooks/lib/test_luna_provider.py`. If the cache key lives in `hooks/lib/luna_storage.py`, that file changes too.
+
+### Task 2. Claude judge model aliases
+
+Module `model-currency`. Size S. Dependencies none.
+
+Status on 2026-09-30. Done on branch `worktree-agent-a870c789f1d3b7c14`, commits `df942d2` and `738ecbd`, not merged. The hook `model` field rejects aliases with a 404. Sonnet moved to `claude-sonnet-5-5`, and Haiku keeps the dateless pointer `claude-haiku-4-5`.
+
+Find out whether a Claude Code agent hook accepts `haiku` and `sonnet` as the `model` value. Run one managed hook with each alias in a scratch project and read the transcript for the model that answered.
+
+- [ ] The result and the transcript evidence sit in `docs/research/2026-09-30-claude-hook-model-alias.md`
+- [ ] If the alias works, `claude_presets.py` renders the alias and the managed hook digest changes
+- [ ] If the alias fails, the pins move to the newest ids in the Claude Code model list. The ticket records why the alias failed
+
+Files are `hooks/lib/claude_presets.py` and `hooks/lib/test_claude_presets.py`.
+
+### Task 3. Measure one embedding load cycle
+
+Module `embedding-cost`. Size S. Dependencies none.
+
+Status on 2026-09-30. Done on branch `worktree-agent-aa0e656b03c868157`, commit `9d8ca0c`, not merged. One cold load costs 0.8 seconds, 0.85 CPU seconds, and 850 MB RSS on an M5 Pro. The per-turn reload is too cheap to explain the reported load, so Task 4 waits for a session profile.
+
+Measure what one turn costs the Mac today. Start the worker cold, embed 20 sentences, stop it, and repeat three times.
+
+- [ ] `evals/embedding_cost.json` records the load seconds, peak RSS, and CPU seconds per cycle, with the machine model
+- [ ] The script lives in `evals/` and runs with one command
+- [ ] The numbers go to the user before Task 4 merges
+
+### Task 4. Idle timeout for the embedding worker
+
+Module `embedding-cost`. Size M. Dependencies Task 3.
+
+Stop no longer releases the embedding lease. The lease expires after an idle timeout with a default of 600 seconds, set through the ADW configuration.
+
+- [ ] Two turns within the timeout reuse one worker pid
+- [ ] The worker exits within 30 seconds after the timeout runs out with no live session
+- [ ] SessionEnd still releases the lease at once
+- [ ] Task 3 reruns, and `evals/embedding_cost.json` gains the after numbers
+
+Files are `hooks/stop.py`, `hooks/lib/embedding_session.py`, `hooks/lib/embedding_lease.py`, `hooks/lib/config.py`, and their tests.
+
+### Task 5. Split the rule families
+
+Module `rule-families`. Size M. Dependencies none.
+
+Status on 2026-09-30. Done on branch `worktree-agent-a6e6f3ce4516fc8ac`, commits `db8f600` and `432a74a`, not merged. Two gaps remain in the OMP screen. It hides an old `gates.english` override, and the exemption box in `adw-config.ts` rejects the old names.
+
+`catalog.FAMILIES` gains `prose`, `comment`, and `code`. Comment rules emit `comment`. Dead code, hollow tests, function length, and file length emit `code`. `punctuation` and `english` stay as subfamilies of `prose`.
+
+- [ ] A configuration that names `clean_code` enables and disables both `comment` and `code`
+- [ ] A configuration that names `punctuation` or `english` keeps working unchanged
+- [ ] `pi/extensions/agent-discipline-watcher/adw-bridge.ts` and its tests use the new names, and the parity test passes
+- [ ] `configure.py` lists the three families with their descriptions
+
+Files are `hooks/lib/catalog.py`, `hooks/lib/config.py`, `hooks/lib/comment_rules.py`, `hooks/lib/scanner.py`, and `pi/extensions/agent-discipline-watcher/adw-bridge.ts`. The other twelve files from the plan evidence only rename strings.
+
+## Checkpoint A
+
+Status on 2026-09-30. Tasks 1, 2, 3, and 5 pass on their own branches. The merged state has no test run yet.
+
+- [ ] Hook suite, pylint, and `bun test` pass
+- [ ] The user reviews the embedding numbers
+
+## Phase 2. Static test rules and explanations
+
+### Task 6. Test function extraction and the self-audit runner
+
+Module `test-audit-static`. Size S. Dependencies Task 5.
+
+One extractor yields each test function with its path, name, span, and body for Python and Rust. One runner applies every Code Check rule to a directory and writes a JSON report.
+
+- [ ] Python uses `ast`, and Rust uses `brace_functions.py` with the `#[test]` attribute
+- [ ] The runner on `hooks/` reports the count of test functions, 2012 or the current number
+- [ ] The runner never blocks and never writes outside its report path
+
+Files are `hooks/lib/test_units.py`, `evals/code_check_audit.py`, and one test file.
+
+### Task 7. The two user rules and the loop rule
+
+Module `test-audit-static`. Size M. Dependencies Task 6.
+
+Add `hardcoded_name_presence`, `hardcoded_literal_in_source`, and `assert_in_loop`. Each starts at observe. The Khorikov catalog gives the definition and the fixtures.
+
+- [ ] The Rust example from the spec yields `assert_in_loop`
+- [ ] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
+- [ ] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
+
+Files are `hooks/lib/test_rules.py`, `hooks/lib/catalog.py`, `hooks/lib/scanner.py`, and one test file.
+
+### Task 8. The remaining static Khorikov rules
+
+Module `test-audit-static`. Size M. Dependencies Task 6.
+
+Implement every entry that the Khorikov catalog marks STATIC and that Task 7 does not cover. If the list passes five rules, split this ticket in two before you start.
+
+- [ ] Each rule has one violating and one clean fixture from the catalog
+- [ ] Each rule starts at observe and has a catalog entry in `catalog.py`
+
+Files are `hooks/lib/test_rules.py`, `hooks/lib/catalog.py`, and one test file.
+
+### Task 9. Knowledge base build step
+
+Module `principle-kb`. Size M. Dependencies Task 5.
+
+Install and update build `~/.adw/cache/principles.sqlite`. The build reads `NimblePros/deviq-hugo` and `webpro/programming-principles` at pinned commits. Each row holds the source, the entry id, the title, and the first paragraph as plain text, with links and markup removed.
+
+- [ ] A second build with the same commits leaves the file unchanged
+- [ ] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
+- [ ] With no network, the build reports the skip and the gates still run
+
+Files are `hooks/lib/principle_kb.py`, `hooks/lib/update_runtime.py`, `install.sh`, and one test file.
+
+### Task 10. Explanation text in findings
+
+Module `principle-kb`. Size M. Dependencies Task 9.
+
+`principle_map.json` maps each Code Check rule to one entry. The finding output appends that entry's text once per rule per session.
+
+- [ ] The text holds at most 80 words and no URL
+- [ ] The second finding of the same rule in one session shows the rule line only
+- [ ] A missing database or a missing entry leaves the finding unchanged
+- [ ] Claude Code, Codex, and OMP show the same text
+
+Files are `hooks/lib/principle_map.json`, `hooks/lib/finding_output.py`, `hooks/lib/session_state.py`, and one test file.
+
+### Task 11. Self-audit measurement on the ADW suite
+
+Module `test-audit-static`. Size M. Dependencies Tasks 7 and 8.
+
+Run the audit on `hooks/`. Label up to 30 hits per rule as true or false. A Sonnet agent proposes each label with a reason, and the user approves the labels.
+
+- [ ] `evals/code_check_precision.json` holds hits, labeled sample, and precision per rule
+- [ ] Rules at 0.85 or above move to block only after the user agrees
+- [ ] The list of flagged ADW tests goes to the user, and nothing gets deleted without approval
+
+## Checkpoint B
+
+- [ ] The Rust example yields both findings with explanations
+- [ ] The user decides the gate state per rule and the fate of flagged tests
+
+## Phase 3. Semantic rules and clean code
+
+### Task 12. Spike on test embeddings
+
+Module `test-audit-semantic`. Size S. Dependencies Tasks 4 and 11.
+
+Embed the violating and clean fixtures of each SEMANTIC catalog entry. Measure whether the vote separates them.
+
+- [ ] `docs/research/` records the AUC per rule and the decision to go on or stop
+- [ ] Below AUC 0.8, the rule goes to Luna on static candidates only, and Task 13 records that
+
+### Task 13. Semantic test rules through the journal and Luna
+
+Module `test-audit-semantic`. Size M. Dependencies Tasks 1, 10, and 12.
+
+Surviving test functions land in the journal as `pattern` rows. The Stop reviewer judges them with a test rubric and the principle text.
+
+- [ ] Luna judges a test row against four violating and four clean examples of its rule
+- [ ] The rows carry the explanation text from Task 10
+- [ ] Each rule stays at observe until it has a precision measurement
+
+### Task 14. Clean code principle catalog
+
+Module `principle-kb`. Size S. Dependencies none.
+
+Status on 2026-09-30. Draft done, 196 entries, not reviewed. Spot checks found errors. `kerckhoffs-principle` lists no ADW rule, but ADW already has a `secrets` family. `murphys-law` as STATIC stretches the source.
+
+Classify each programming-principles entry and each DevIQ code smell and antipattern as STATIC, SEMANTIC, or CONTEXT, the same way as the Khorikov catalog. Detection work for them gets its own tickets after the user reads this catalog.
+
+- [ ] `docs/research/2026-09-30-clean-code-catalog.md` lists every entry with class and signal
+- [ ] The catalog marks entries that an existing ADW rule already covers
+
+### Task 15. README and CHANGELOG
+
+Size S. Dependencies Tasks 5, 10, and 11.
+
+- [ ] The README describes three families and the explanation text
+- [ ] The CHANGELOG names the family aliases and the new Luna selection
