@@ -94,13 +94,20 @@ Module `test-audit-static`. Size S. Dependencies Task 5.
 
 One extractor yields each test function with its path, name, span, and body for Python and Rust. One runner applies every Code Check rule to a directory and writes a JSON report.
 
-- [ ] Python uses `ast`, and Rust uses `brace_functions.py` with the `#[test]` attribute
-- [ ] The runner on `hooks/` reports the count of test functions, 2012 or the current number
-- [ ] The runner never blocks and never writes outside its report path
-- [ ] With the `code` family on, the scanner calls one entry point for test files. Rule tickets then never touch `scanner.py`
-- [ ] Each rule module registers itself in one registry, and a rule without a measurement starts at observe
+- [x] Python uses `ast`, and Rust uses `brace_functions.py` with the `#[test]` attribute
+- [x] The runner on `hooks/` reports the count of test functions. It found 2043 in 147 files on 2026-09-30
+- [x] The runner never blocks and never writes outside its report path
+- [x] With the `code` family on, the scanner calls one entry point for test files. Rule tickets then never touch `scanner.py`
+- [x] Each rule module registers itself in one registry, and a rule without a measurement starts at observe
 
 Files are `hooks/lib/test_units.py`, `hooks/lib/test_rules/__init__.py`, `hooks/lib/scanner.py`, `evals/code_check_audit.py`, and one test file.
+
+Rule module contract for Tasks 7 and 8.
+1. Create one new file in `hooks/lib/test_rules/`. Discovery imports it, so no other file needs an import line.
+2. Export `RULE_SET = RuleSet(rules=(Rule(name, detail, action), ...), check=check)`.
+3. `check(unit, text)` returns `Hit(rule, line, snippet)` rows. The unit is a `test_units.Unit`, and the text is the whole file.
+4. Import only from `hooks/lib/test_rules`. Config imports the registry, so an import of config or scanner creates a cycle.
+5. Every registered rule starts at observe through `config.DEFAULTS["rule_gates"]`. Add the wording to `catalog.RULES`, because `test_catalog.py` fails without it.
 
 ### Task 7. The two user rules and the loop rule
 

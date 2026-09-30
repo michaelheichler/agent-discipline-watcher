@@ -26,7 +26,7 @@ try:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from . import families
+    from . import families, test_rules
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .markup import (
         MARKDOWN_EXTS,
@@ -66,6 +66,7 @@ except ImportError:
         _what_docstring_findings,
     )
     import families
+    import test_rules
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from markup import (
         MARKDOWN_EXTS,
@@ -450,6 +451,7 @@ def _scan_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
     findings = _function_length_findings(context)
     findings.extend(_scan_hollow_test_blocks(context.path, lines))
+    findings.extend(test_rules.check_file(context.path, context.text))
     return findings
 
 

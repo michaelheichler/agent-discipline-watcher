@@ -84,6 +84,11 @@ def _brace_pairs(code: str) -> list[tuple[int, int]]:
     return pairs
 
 
+def block_ends(text: str) -> dict[int, int]:
+    """Share the masking, because Rust braces hide in strings too."""
+    return dict(_brace_pairs(_masked(text)))
+
+
 def long_brace_functions(text: str, limit: int) -> list[tuple[int, str, int]]:
     """Count from the header line, because Python measures from the def line and both caps must mean the same span."""
     code = _masked(text)
