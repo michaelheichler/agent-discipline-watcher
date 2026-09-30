@@ -241,6 +241,10 @@ RULES: dict[str, Entry] = {
         "Docstring restates the signature",
         "Repeats the parameters rather than naming why the function exists",
     ),
+    "if_statements_in_tests": Entry(
+        "Branching test body",
+        "Reports a test that picks between two different asserts",
+    ),
 }
 
 UNGATED_RULES: dict[str, Entry] = {
