@@ -1,0 +1,119 @@
+{
+  "date": "2026-09-30",
+  "audit_commit": "49f723c",
+  "rules": {
+    "exposing_private_methods_for_testing": {
+      "hits": 176,
+      "sampled": 30,
+      "stride": 6,
+      "true_count": 23,
+      "false_count": 7,
+      "precision": 0.7667,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "assert_in_loop": {
+      "hits": 104,
+      "sampled": 26,
+      "stride": 4,
+      "true_count": 25,
+      "false_count": 1,
+      "precision": 0.9615,
+      "meets_threshold": true,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "time_as_ambient_context": {
+      "hits": 34,
+      "sampled": 17,
+      "stride": 2,
+      "true_count": 0,
+      "false_count": 17,
+      "precision": 0.0,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "hardcoded_literal_in_source": {
+      "hits": 24,
+      "sampled": 24,
+      "stride": 1,
+      "true_count": 8,
+      "false_count": 16,
+      "precision": 0.3333,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "exposing_private_state_for_testing": {
+      "hits": 16,
+      "sampled": 16,
+      "stride": 1,
+      "true_count": 5,
+      "false_count": 11,
+      "precision": 0.3125,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "hardcoded_name_presence": {
+      "hits": 13,
+      "sampled": 13,
+      "stride": 1,
+      "true_count": 5,
+      "false_count": 8,
+      "precision": 0.3846,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation"
+    },
+    "incomplete_mock_call_verification": {
+      "hits": 3,
+      "sampled": 3,
+      "stride": 1,
+      "true_count": 3,
+      "false_count": 0,
+      "precision": 1.0,
+      "meets_threshold": true,
+      "status": "proposed, awaiting user confirmation, sample too small to be conclusive"
+    },
+    "test_fixture_reuse_via_constructor": {
+      "hits": 2,
+      "sampled": 2,
+      "stride": 1,
+      "true_count": 1,
+      "false_count": 1,
+      "precision": 0.5,
+      "meets_threshold": false,
+      "status": "proposed, awaiting user confirmation, sample too small to be conclusive"
+    }
+  },
+  "patterns": {
+    "exposing_private_methods_for_testing": [
+      "A monkeypatch on a private name injects an OS or hardware fault with no public seam to reach it.",
+      "A private helper is called only to seed or arrange fixture state, and is never the target of an assertion.",
+      "A small pure helper is tested directly because a public wrapper would need a full subprocess mock for no extra signal."
+    ],
+    "assert_in_loop": [
+      "A cumulative or stateful sequence loop advances one running state where each row depends on every prior row, not independent cases."
+    ],
+    "time_as_ambient_context": [
+      "The test reads the real clock only to build the explicit now argument that the function under test already accepts by injection.",
+      "The test reads the real clock only for its own polling, timeout, or performance budget, unrelated to the function under test."
+    ],
+    "hardcoded_literal_in_source": [
+      "The absence of the literal is itself a security or portability invariant, not a restatement of behavior.",
+      "The absence of the literal enforces a single-source-of-truth or anti-drift contract against a config or version file.",
+      "The test validates schema or structural shape of a config file and gets mistaken for literal restatement."
+    ],
+    "exposing_private_state_for_testing": [
+      "A private function reference is captured only to wrap it for fault injection, not to read state for an assertion.",
+      "A third-party or stdlib private attribute is read because no public accessor exists, to verify security-relevant wiring."
+    ],
+    "hardcoded_name_presence": [
+      "The pinned name or set drives real control flow elsewhere in the codebase.",
+      "The pinned value is a deliberate version-lock or contract test that forces a conscious bump when the contract changes."
+    ],
+    "incomplete_mock_call_verification": [
+      "Sample of 3 is too small to generalize a pattern; all three hits were true (assert_called_once with no argument check)."
+    ],
+    "test_fixture_reuse_via_constructor": [
+      "Sample of 2 is too small to generalize a pattern; one hit hid the fixture's origin, one was a harmless shared temp directory."
+    ]
+  }
+}

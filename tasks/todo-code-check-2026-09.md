@@ -178,6 +178,8 @@ Files are `hooks/lib/principle_map.json`, `hooks/lib/finding_output.py`, `hooks/
 
 Module `test-audit-static`. Size M. Dependencies Tasks 7 and 8.
 
+Status on 2026-09-30. Sonnet proposed 131 labels in `evals/code_check_labels.jsonl`. Only `assert_in_loop` clears 0.85 on a real sample, at 0.9615 on 26 hits. The two user rules score 0.38 and 0.33, because Sonnet judged absence guards as justified. The user decides whether an absence guard counts as a bogus test.
+
 Run the audit on `hooks/`. Label up to 30 hits per rule as true or false. A Sonnet agent proposes each label with a reason, and the user approves the labels.
 
 - [ ] `evals/code_check_precision.json` holds hits, labeled sample, and precision per rule
