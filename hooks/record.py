@@ -27,6 +27,7 @@ from lib.reporting import (
     verdict_message,
 )
 from lib.scanner import scan_all
+from lib.temp_scope import outside_project_temp
 
 UNDECIDABLE_KEY = blocker_state.RECORD_ERROR_KEY
 
@@ -91,7 +92,7 @@ def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
     template = _edit_row_template(edits, turn_id)
     for path in edits.paths:
         append_row({**template, "path": path}, edits.root)
-        if edits.payload["session_id"]:
+        if edits.payload["session_id"] and not outside_project_temp(path, edits.payload["cwd"] or None):
             _journal_candidate(edits, path, turn_id)
 
 
@@ -179,6 +180,8 @@ def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], lis
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:
+        if outside_project_temp(raw_path, cwd):
+            continue
         approved = _approved_path(raw_path, cwd)
         if approved is None:
             owned_rows.extend(_stamped(scan_input.fallback_findings_from_count(Path(raw_path), 0, capped=False), Path(raw_path)))

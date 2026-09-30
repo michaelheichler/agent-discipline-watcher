@@ -237,7 +237,9 @@ def edited_paths(payload: object) -> tuple[str, ...]:
             from . import pre_bash
         except ImportError:
             import pre_bash
-        found = (*found, *pre_bash.write_paths(text))
+        from lib.temp_scope import temp_copy_destinations
+        copies = temp_copy_destinations(text, _exact_string(fields, "cwd") or None)
+        found = (*found, *pre_bash.write_paths(text), *copies)
     return found
 
 

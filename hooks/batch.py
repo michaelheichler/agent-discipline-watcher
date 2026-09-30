@@ -24,6 +24,7 @@ from lib.hookio import advise, config_failure, read_payload, write_payload
 from lib.reporting import run_with_ledger
 from lib.baseline import strip_committed
 from lib.scanner import read_scannable, scan_all
+from lib.temp_scope import outside_project_temp
 
 BATCH_EVENT = "PostToolBatch"
 UNDECIDABLE_KEY = blocker_state.BATCH_ERROR_KEY
@@ -286,6 +287,10 @@ def _stat_fingerprint(file_stat: os.stat_result) -> StatFingerprint:
     )
 
 
+def _project_entries(entries: list[tuple[str, str, Path]], cwd: Path) -> list[tuple[str, str, Path]]:
+    return [entry for entry in entries if not outside_project_temp(entry[2], cwd)]
+
+
 def _scan_path(path: Path, cfg: dict) -> list[dict]:
     text = _read_path(path, cfg)
     if text is None:
@@ -350,7 +355,7 @@ def findings_for_batch(payload: dict, config: dict | None = None, turn_id: str =
     cfg = effective_config(config, payloads.cwd(payload) or None)
     cwd = Path(payloads.cwd(payload) or ".")
     normalized = _normalized_calls(payload)
-    entries = _entries_from_calls(normalized.calls, cwd)
+    entries = _project_entries(_entries_from_calls(normalized.calls, cwd), cwd)
     turn = _BatchTurnContext(payloads.session_id(payload), turn_id, cfg)
     return _findings_for_calls(normalized, entries, turn)
 
@@ -380,10 +385,10 @@ def findings_for_paths(scan: PathBatchScan | str, *arguments: object) -> list[di
 
 def _findings_for_path_scan(scan: PathBatchScan) -> list[dict]:
     base = Path(scan.cwd or ".")
-    entries = [
+    entries = _project_entries([
         (scan.source, raw_path, payloads.resolved_path(raw_path, base))
         for raw_path in scan.paths
-    ]
+    ], base)
     findings = _duplicate_file_findings(entries, scan.config)
     for call_id, _raw_path, path in entries:
         for finding in _scan_path(path, scan.config):

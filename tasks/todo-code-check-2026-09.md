@@ -240,9 +240,9 @@ Size S. Dependencies none.
 
 A scan of a text dump under `/tmp` produced 2700 findings on 2026-09-30. Files under the system temp roots are no project output.
 
-- [ ] For a file outside the project root, a write under `/tmp`, `/private/tmp`, `$TMPDIR`, or `/var/folders` gets no content findings
-- [ ] A copy or move from a temp root into the project still gets the full scan
-- [ ] Self-protection checks still run on every path
+- [x] For a file outside the project root, a write under `/tmp`, `/private/tmp`, `$TMPDIR`, or `/var/folders` gets no content findings
+- [x] A copy or move from a temp root into the project still gets the full scan
+- [x] Self-protection checks still run on every path
 
 ### Task 17. Small policy CLI
 

@@ -58,7 +58,7 @@ The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. Th
 
 On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
 
-The candidate journal records every prose write, including a file under a `scratchpad` directory in the system temp root. The document reviewers therefore read scratch notes too. The `JudgeReview` route skips them, so a scratch note gets no pattern rows.
+Temp files are not project output. A file under `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, or `/var/folders` gets no prose, comment, or code findings when it sits outside the project root. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A `cp`, `mv`, `install`, `rsync`, or redirect from a temp file into the project gets the full scan of the destination.
 
 The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
 
