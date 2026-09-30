@@ -21,11 +21,12 @@ from typing import NamedTuple
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
-    from . import families
+    from . import families, test_rules
     from .findings import Outcome
     from .payloads import exact_string_dict
 except ImportError:
     import families
+    import test_rules
     from findings import Outcome
     from payloads import exact_string_dict
 
@@ -130,6 +131,7 @@ DEFAULTS = {
         "weak_sentence_starter": "enforce",
         "file_length_warning": "observe",
         "file_length_critical": "observe",
+        **test_rules.default_gates(test_rules.RULE_SETS),
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
