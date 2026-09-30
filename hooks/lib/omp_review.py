@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pre_bash
 from . import embedding_session, payloads, pattern_vote
-from .config import effective_hook_config
+from .config import payload_hook_config
 from .document_review import data_boundary_enabled
 from .journal import _read_regular_content
 from .judge_contracts import content_hash
@@ -151,7 +151,7 @@ def _vote(payload: dict, target: Path, cfg: dict, voter: pattern_vote.Voter) -> 
 
 
 def _review(request: dict, payload: dict, config: dict | None, voter: pattern_vote.Voter, read: Callable[[Path], str]) -> dict:
-    cfg = effective_hook_config(config, payloads.cwd(payload) or None)
+    cfg = payload_hook_config(config, payload)
     if not data_boundary_enabled(cfg):
         return {"enabled": False, "requests": []}
     target = _target(payload)
