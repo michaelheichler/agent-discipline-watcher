@@ -79,11 +79,11 @@ This pattern is typical of projects with brittle tests. Developers first take fa
 
 The fix is not to stop refactoring. The fix is to cut the brittleness of the suite. Chapter 7 shows how.
 
-### What causes false positives
+### Where false positives come from
 
 A false positive comes from coupling between the test and the implementation details of the SUT. The more a test knows about how the SUT works, the more false alarms it raises.
 
-The only defense is to decouple the test from those details. The test verifies the end result the SUT delivers, its observable behavior, not the steps it takes. The test looks at the SUT from the point of view of its end user and checks only outcomes that matter to that user.
+The only defense is to decouple the test from those details. The test checks what the SUT hands back to its caller, which is its observable behavior, and ignores how the SUT got there. The test looks at the SUT from the point of view of its end user and checks only outcomes that matter to that user.
 
 A good test tells a story about the problem domain. When it fails, the story and the behavior disagree. That is the only kind of failure worth having. It points straight at what went wrong. Every other failure is noise.
 
@@ -145,7 +145,7 @@ The author calls this the most egregious brittle test he has seen. Any edit to t
 
 ADW flags a test that reads source text and asserts on a literal inside it as `hardcoded_literal_in_source`. It never protects behavior.
 
-### The fix. Aim at the end result
+### The fix. Test outcomes, not steps
 
 The only outcome of the renderer that matters is the HTML. As long as the HTML stays the same, how the renderer builds it is irrelevant.
 
@@ -223,7 +223,7 @@ All code, test code included, is a liability. Set a high bar for the minimum val
 
 An ideal test scores 1 on all four. The first three attributes exclude each other. Maximizing two sacrifices the third. The multiplication rule makes it worse. Dropping one to zero kills the test. The goal is to trade in a way that none of the three falls too low.
 
-### Extreme case 1. End-to-end tests
+### End-to-end tests at one end
 
 End-to-end tests run through the UI, the database, and external systems. They execute the most code, both the team's own and third party. They give the best protection.
 
@@ -231,7 +231,7 @@ They also resist refactoring well. A correct refactoring does not change observa
 
 They run slow. A system that relies only on end-to-end tests gets slow feedback. For most teams that rules out an all end-to-end suite.
 
-### Extreme case 2. Trivial tests
+### Trivial tests at the other end
 
 Trivial tests run fast and rarely raise false alarms. They catch almost no regressions, because the code under them leaves little room for a mistake. The `Account.owner` example above is one.
 
@@ -246,7 +246,7 @@ def test_discount_rate():
 
 ADW treats a tautology as a `hollow_test`.
 
-### Extreme case 3. Brittle tests
+### Brittle tests as a third corner
 
 Brittle tests run fast and catch regressions. They fail on refactoring, whether or not the behavior broke.
 
@@ -296,7 +296,7 @@ No layer gives up resistance to refactoring. Higher layers score higher on it on
 
 End-to-end tests stay few because of the multiplication rule. They score low on speed and maintainability. Keep them for the most critical features, where no bug is acceptable, and only when unit and integration tests cannot give the same protection.
 
-### Exceptions to the pyramid
+### When the pyramid does not fit
 
 1. A plain CRUD application with few business rules. Unit tests turn trivial. Integration tests keep their value, because even simple code has to work with the database. The pyramid becomes a rectangle, or has more integration tests than unit tests.
 2. An API with one out of process dependency, such as a database, and no UI. End-to-end tests run fast and cost little, since only one dependency needs care. They differ from integration tests only in the entry point. An end-to-end test hosts the application like a real user reaches it. An integration test hosts it in the same process.

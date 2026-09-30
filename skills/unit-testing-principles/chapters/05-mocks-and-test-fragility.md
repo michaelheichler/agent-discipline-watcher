@@ -65,7 +65,7 @@ def test_building_a_usage_report():
 
 Here the same tool creates a stub. It feeds input to the SUT.
 
-### Never assert interactions with stubs
+### Tests never check calls to stubs
 
 A call to a stub is not part of the end result. It is a means to produce the result. The stub supplies input, and the SUT turns input into output.
 
@@ -135,8 +135,8 @@ Each axis has two values with no overlap. Access modifiers decide the first axis
 
 The second axis needs more care. Code is observable behavior if it does one of two things.
 
-1. It exposes an operation that helps a client reach one of its goals. An operation calculates something, causes a side effect, or both.
-2. It exposes state that helps a client reach one of its goals. State is the current condition of the system.
+1. It offers an operation that a client uses to get its job done. An operation computes a result, changes something outside itself, or does both.
+2. It offers state that a client uses to get its job done. State here means the data the system holds right now.
 
 Code that does neither is an implementation detail.
 
@@ -148,7 +148,7 @@ In a well-designed API, the public API matches the observable behavior exactly. 
 
 When the public API extends past the observable behavior, the code leaks implementation details.
 
-### Leak example with an operation
+### A leaking operation
 
 A customer record has a rule. A display name has no surrounding spaces and at most 40 characters.
 
@@ -206,7 +206,7 @@ The rule holds for most business logic. Exceptions exist. Check each violation f
 
 A test that calls `normalize_name` directly pins the leak. ADW flags making a helper public for tests as `exposing_private_methods_for_testing`. Chapter 11 covers it.
 
-### Well-designed API and encapsulation
+### How a tight API protects invariants
 
 Encapsulation protects code against inconsistencies, also called invariant violations. An invariant is a condition that holds at all times. The 40-character name rule is one.
 
@@ -219,7 +219,7 @@ Martin Fowler's tell-don't-ask principle is close to this. It bundles data with 
 1. Hiding implementation details keeps internals out of reach, so clients cannot corrupt them.
 2. Bundling data with operations keeps those operations consistent with the invariants.
 
-### Leak example with state
+### A leaking field
 
 The report renderer from chapter 4 exposed its list of part renderers as public state. The client wants rendered HTML. It needs only `render`. The list is an implementation detail that leaks.
 
@@ -275,7 +275,7 @@ In the renaming example, the controller is an application service. The external 
 
 This tracing rule fits most domain classes and application services. It fits utility and infrastructure code less well. Their problems are low-level and rarely trace to one use case.
 
-### Intra-system and inter-system communication
+### Calls inside the app versus calls to other systems
 
 1. Intra-system communication runs between classes inside the application.
 2. Inter-system communication runs between the application and other applications.
@@ -344,13 +344,13 @@ def test_purchase_succeeds_when_stock_covers_quantity():
 
 The call to `remove_stock` does not cross the application boundary. Both caller and callee live inside. It is neither an operation nor state that helps the client. The client of these two domain classes is the controller, and its goal is a purchase. Only `customer.purchase` and `warehouse.stock_of` link to that goal. The first starts the purchase. The second shows the state after it. `remove_stock` is an intermediate step, an implementation detail.
 
-## The schools revisited
+## Back to the two schools
 
 The London school uses mocks for every dependency except immutable ones. It does not tell intra-system from inter-system calls. Its tests check calls between classes as often as calls to external systems. That habit couples tests to implementation details and removes resistance to refactoring. Resistance to refactoring is binary, so losing it makes the test nearly worthless.
 
 The classical school does better. It replaces only dependencies that tests share, which almost always means out of process dependencies such as an SMTP service or a message bus. It still overuses mocks, less than the London school, because it replaces every shared dependency.
 
-### Not every out of process dependency deserves a mock
+### Which outside dependencies get a mock
 
 Recap of the terms.
 
@@ -376,7 +376,7 @@ Mock advocates often claim that mocks verify behavior. In most cases they do not
 
 The author compares it to judging a person's behavior by measuring the signals between neurons. That level of detail is too fine. A client asking for help cares about the help, not about which neurons fire.
 
-Mocks relate to behavior only when they verify calls that cross the application boundary, and only when the side effects of those calls are visible outside.
+A mock checks behavior in one case alone. The call leaves the application, and someone outside can see what the call changed.
 
 ## Trade-offs the author names
 

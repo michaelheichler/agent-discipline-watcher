@@ -133,10 +133,10 @@ Atomic updates run all-or-nothing. Every update in the set completes, or none ha
 
 Two kinds of decisions need to part ways.
 
-1. Which data to update.
-2. Whether to keep the updates or roll them back.
+1. What data changes.
+2. Whether those changes get committed or discarded.
 
-The controller cannot make both at once. It knows whether to keep the updates only after every step succeeded. It takes those steps only by reaching the database and trying the updates. Split `Database` into repositories and a transaction.
+The controller cannot make both at once. It can decide to commit only after every step succeeded. It takes those steps only by reaching the database and trying the updates. Split `Database` into repositories and a transaction.
 
 1. Repositories give access to the data and change it. The sample gets two, one for members and one for companies.
 2. A transaction commits or rolls back all updates as one. A small custom class on top of the database's own transactions does the job.
@@ -250,13 +250,13 @@ This test uses one session in arrange, act, and assert. That setup does not matc
 
 To avoid behavior that differs from production, the act section gets its own session. Arrange and assert also need their own. Chapter 8 said to check the database state independently of the input data. The assert section queries member and company separately, yet a shared session still caches data, and many ORMs do exactly that for performance.
 
-The author's tip. Use at least three transactions or units of work in an integration test, one each for arrange, act, and assert.
+The author's tip. Give arrange, act, and assert a separate transaction or unit of work each, so a single integration test opens three or more.
 
 The catalog lists the violation as `reusing_database_context_across_sections`.
 
 ## Test data life cycle
 
-A shared database raises the problem of isolating integration tests from each other. Two steps solve it.
+When all integration tests use one database, one test can see or break the data of another. Two steps keep them apart.
 
 1. Run integration tests in sequence.
 2. Remove leftover data between runs.
@@ -462,11 +462,11 @@ Reads carry less risk. A bug in a read rarely does lasting damage. Set a higher 
 
 Reads also need no domain model. A main goal of a domain model is encapsulation, which chapters 5 and 6 tied to keeping data consistent through changes. Without changes, encapsulation has nothing to protect. Reads need no full ORM either. Plain SQL beats an ORM on performance there, because it skips needless layers.
 
-With almost no abstraction layers in reads, and the domain model being one such layer, unit tests do not help there. If reads get tests, use integration tests on a real database.
+With almost no abstraction layers in reads, and the domain model being one such layer, unit tests do not help there. If reads get tests, cover them with integration tests that hit the real database.
 
-### Should you test repositories
+### Repositories and their tests
 
-Repositories provide a useful abstraction over the database.
+A repository hides the database behind a small, convenient interface.
 
 ```python
 member = members.get(member_id)

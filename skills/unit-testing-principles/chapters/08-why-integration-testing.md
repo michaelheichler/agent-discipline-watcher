@@ -230,7 +230,7 @@ The second reason breaks a more basic principle, YAGNI, short for "you aren't go
 1. Opportunity cost. Time spent on a feature the business does not need now is time taken from features it needs now. When the business finally asks for the feature, its view has usually changed, and the early code needs rework anyway. Building from scratch when the need appears works better.
 2. Less code is better. Code written for a future nobody asked for raises the cost of ownership. Postpone new functionality as late as possible.
 
-The author's tip. Writing code is an expensive way to solve problems. The less code a solution needs, and the simpler it is, the better.
+The author's tip. Every line of code costs money to write and to keep alive. Prefer the solution with the fewest and simplest lines.
 
 Rare cases exist where YAGNI does not apply. The author covers them in a separate article on open-closed versus YAGNI.
 
@@ -238,7 +238,7 @@ Rare cases exist where YAGNI does not apply. The author covers them in a separat
 
 Interfaces enable mocking. That is the practical reason for them. Without one, a test cannot create a double and cannot check calls to the dependency.
 
-Do not add an interface for an out of process dependency unless tests mock it. Tests only mock unmanaged dependencies. The rule shrinks to this. Use interfaces for unmanaged dependencies only. Still inject managed dependencies explicitly, as concrete classes.
+Do not add an interface for an out of process dependency unless tests mock it. Tests only mock unmanaged dependencies. The rule shrinks to this. Give an interface to an unmanaged dependency and to nothing else. Pass a managed dependency in as a concrete class, and keep passing it in explicitly.
 
 A real abstraction, with two or more implementations, gets an interface whether or not tests mock it. A single-implementation interface for any other reason than mocking breaks YAGNI.
 
@@ -404,7 +404,7 @@ def change_billing_country(self, new_country, company):
 
 Logging records useful information. It also appears so often that testing it all costs a lot. The deciding question is whether logging is part of observable behavior or an implementation detail.
 
-Logging is no different from other functionality. It causes side effects in an out of process dependency, such as a text file or a database. If customers, clients, or anyone besides the developers read those side effects, logging is observable behavior and needs tests. If only developers read it, logging is an implementation detail. It changes freely, and it needs no tests.
+Logging is no different from other functionality. It writes to something outside the process, for example a log file or a table. If customers, clients, or anyone besides the developers read those side effects, logging is observable behavior and needs tests. If only developers read it, logging is an implementation detail. It changes freely, and it needs no tests.
 
 A logging library is one case where logs are the only observable behavior. Business people who require logs of key workflows are another. Those logs become a business requirement and need tests. The same application often also keeps separate logs only for developers.
 

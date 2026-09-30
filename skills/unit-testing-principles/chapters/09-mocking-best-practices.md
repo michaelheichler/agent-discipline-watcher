@@ -289,7 +289,7 @@ ADW flags a mock check that confirms a call happened but not how often, or not t
 
 ### Mock only types you own
 
-Steve Freeman and Nat Pryce introduced this rule. Write your own adapters on top of third-party libraries and mock those adapters, not the library types. Their arguments include these.
+Steve Freeman and Nat Pryce introduced this rule. Wrap each third-party library in a thin adapter that you own, and point your mocks at the adapter instead of the library. Their arguments include these.
 
 1. Developers often lack deep knowledge of how third-party code works.
 2. Even when the library ships interfaces, mocking them is risky. The mock has to match what the library does, and nobody can be sure it does.
