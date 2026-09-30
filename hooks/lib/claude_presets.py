@@ -14,7 +14,7 @@ except ImportError:
 
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
 CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"
-CLAUDE_SONNET_MODEL = "claude-sonnet-4-6"
+CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
 LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"

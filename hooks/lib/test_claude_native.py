@@ -19,7 +19,7 @@ def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> No
     assert set(generated) == {"Stop"}
     stop = generated["Stop"][0]
     assert stop["hooks"][0]["type"] == "agent"
-    assert stop["hooks"][0]["model"] == "claude-sonnet-4-6"
+    assert stop["hooks"][0]["model"] == "claude-sonnet-5-5"
     assert "batch" in stop["hooks"][0]["prompt"].lower()
     for preset in claude_native.PRESETS:
         assert "PreToolUse" not in claude_native.generated_hooks(preset)
@@ -182,7 +182,7 @@ def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkey
     assert journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
-MIXED_MODELS = {"Stop": "claude-sonnet-4-6"}
+MIXED_MODELS = {"Stop": "claude-sonnet-5-5"}
 
 
 def _agent_models(configured: dict) -> dict[str, str]:
