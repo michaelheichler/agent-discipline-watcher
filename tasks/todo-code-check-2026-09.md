@@ -117,9 +117,11 @@ Module `test-audit-static`. Size M. Dependencies Task 6.
 
 Add `hardcoded_name_presence`, `hardcoded_literal_in_source`, and `assert_in_loop`. Each starts at observe. The Khorikov catalog gives the definition and the fixtures.
 
-- [ ] The Rust example from the spec yields `assert_in_loop`
-- [ ] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
-- [ ] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
+Status on 2026-09-30. Done on branch `worktree-agent-ae229f525a232abc5`, not merged. The audit on `hooks/` read 2048 tests. The loop rule hit 104 of them. The two literal rules hit 24 for source text and 13 for names. Rust parsing lives in `test_rules/_rust_literals.py`. Python test files without `def test_` now skip the extractor parse, so the scanner still parses a plain file once.
+
+- [x] The Rust example from the spec yields `assert_in_loop`
+- [x] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
+- [x] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
 
 Files are `hooks/lib/test_rules/literals.py`, `hooks/lib/catalog.py`, and one test file.
 
