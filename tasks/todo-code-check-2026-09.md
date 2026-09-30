@@ -266,12 +266,16 @@ Size S. Dependencies none.
 Size M. Dependencies Tasks 17 and 18.
 
 - [ ] With `tests: deny`, a write that adds or changes a test function gets a block that names the test writer agent
-- [ ] The test writer agent passes the gate on every host that can identify it
+- [ ] The test writer agent passes the gate on Claude Code and Codex through `agent_type`
 - [ ] The default stays `allow` until the user changes it
+- [ ] `adw-config tests allow --for 30m` opens a timed window that only the user can set. OMP needs it, because its tool events name no agent
+- [ ] An agent write to any `adw-test-writer` definition file gets a block, in project scope and user scope
+
+Status on 2026-09-30. Codex 0.159.2 carries `agent_type` on subagent tool calls, and an unregistered name aborts the spawn. OMP carries no agent field, so OMP relies on the timed window.
 
 ### Task 20. Test writer agent
 
-Size M. Dependencies Task 18.
+Size M. Dependencies Task 18. The book summary lives in the skill `unit-testing-principles`, and the agent files load it.
 
 - [ ] Claude Code ships `adw-test-writer` on Opus 5.5 with high effort
 - [ ] Codex ships the same mission on `gpt-6-luna`, and OMP ships it with a model the user picks
