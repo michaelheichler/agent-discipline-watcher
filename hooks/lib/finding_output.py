@@ -1,17 +1,27 @@
 import hashlib
 import json
 import re
+from collections.abc import Callable, Iterable
+from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
 try:
-    from . import catalog
+    from . import catalog, principle_kb, session_state
     from .findings import Finding
 except ImportError:
     import catalog
+    import principle_kb
+    import session_state
     from findings import Finding
 
 MAX_MATCH_BYTES = 80
+MAX_EXPLANATION_WORDS = 80
+PRINCIPLE_MAP = Path(__file__).with_name("principle_map.json")
+SOURCE_LABELS = {"deviq": "DevIQ", "programming-principles": "Programming Principles"}
+FRONT_MATTER_RE = re.compile(r"^---\s.*?\s---\s+", re.DOTALL)
+URL_RE = re.compile(r"https?://\S+")
+SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 
 
 def safe_component(value: object, fallback: str) -> str:
@@ -111,3 +121,89 @@ def format_row(item: dict) -> str:
     line = _one_line(item.get("line"))
     action = _one_line(item.get("action"))
     return f"{prefix}{path}:{line} {title}{quoted}. {action} ({rule})"
+
+
+PrincipleLookup = Callable[[str], "principle_kb.Row | None"]
+ExplainedClaim = Callable[[frozenset[str]], frozenset[str]]
+
+
+class Explainer(NamedTuple):
+    lookup: PrincipleLookup
+    claim: ExplainedClaim
+    mapping: dict[str, str]
+
+
+def principle_map(path: Path = PRINCIPLE_MAP) -> dict[str, str]:
+    """Read rows as data, because later rules add keys only."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {rule: entry for rule, entry in data.items() if isinstance(rule, str) and isinstance(entry, str)}
+
+
+def session_explainer(config: dict | None) -> Explainer | None:
+    """Skip without a session, because once needs a memory."""
+    fields = config or {}
+    session_id = fields.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    claim = partial(session_state.claim_explained, session_id, root=fields.get("state_root"))
+    return Explainer(principle_kb.entry, claim, principle_map())
+
+
+def _trimmed(text: str) -> str:
+    """Cut at a sentence end, because half a thought misleads."""
+    body = URL_RE.sub("", FRONT_MATTER_RE.sub("", text, count=1))
+    kept = " ".join(body.split()[:MAX_EXPLANATION_WORDS])
+    ends = [match.end() for match in SENTENCE_END_RE.finditer(kept)]
+    return kept[:ends[-1]] if ends else ""
+
+
+def _label(row: "principle_kb.Row") -> str:
+    source = SOURCE_LABELS.get(row.source, row.source)
+    title = row.title.split(":")[0].strip()
+    if title == title.lower():
+        title = title.replace("-", " ").title()
+    return f"Principle ({_one_line(source)}, {_one_line(title)}):"
+
+
+def explanation(rule: str, explainer: Explainer) -> str:
+    """Fail to empty, because the finding must still render."""
+    entry_id = explainer.mapping.get(rule)
+    if not entry_id:
+        return ""
+    try:
+        row = explainer.lookup(entry_id)
+    except Exception:
+        return ""
+    text = _trimmed(row.text) if row is not None else ""
+    return f"{_label(row)} {_one_line(text)}" if text else ""
+
+
+def explanations(rules: Iterable[str], explainer: Explainer | None) -> dict[str, str]:
+    """Claim after lookup, because a failed lookup showed nothing."""
+    if explainer is None:
+        return {}
+    found = {rule: text for rule in dict.fromkeys(rules) if (text := explanation(rule, explainer))}
+    if not found:
+        return {}
+    try:
+        claimed = explainer.claim(frozenset(found))
+    except Exception:
+        return {}
+    return {rule: text for rule, text in found.items() if rule in claimed}
+
+
+def listed_lines(listed: list[dict], explainer: Explainer | None, limit: int) -> list[str]:
+    """Explain a rule once per block, because repeats cost tokens."""
+    texts = explanations((str(item.get("rule") or "") for item in listed), explainer)
+    lines: list[str] = []
+    for number, item in enumerate(listed, 1):
+        lines.append(clip(f"{number}. {format_row(item)}", limit))
+        text = texts.pop(str(item.get("rule") or ""), "")
+        if text:
+            lines.append(clip(f"   {text}", limit))
+    return lines

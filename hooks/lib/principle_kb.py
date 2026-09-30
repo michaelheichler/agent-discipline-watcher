@@ -353,6 +353,25 @@ def lookup(entry_id: str, *, root: Path | None = None) -> str | None:
         return None
 
 
+def entry(entry_id: str, *, root: Path | None = None) -> Row | None:
+    """Return source and title too, because a label names them."""
+    try:
+        db_path = _cache_path(root)
+        if not db_path.is_file():
+            return None
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1.0)
+        try:
+            found = connection.execute(
+                "SELECT source, entry_id, title, text FROM principle WHERE entry_id = ?",
+                (entry_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        return Row(*found) if found else None
+    except Exception:
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     """Only the build path, because a hook must not trigger fetch."""
     arguments = list(sys.argv[1:] if argv is None else argv)

@@ -17,7 +17,8 @@ try:
     from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
-        clip as _clip, deduplicated as _deduplicated, format_row,
+        Explainer, clip as _clip, deduplicated as _deduplicated, format_row,
+        listed_lines, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )
 except ImportError:
@@ -26,7 +27,8 @@ except ImportError:
     from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
     from finding_output import (
-        clip as _clip, deduplicated as _deduplicated, format_row,
+        Explainer, clip as _clip, deduplicated as _deduplicated, format_row,
+        listed_lines, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )
 
@@ -122,6 +124,7 @@ def compact_block(
     findings: list[dict],
     config: dict | None = None,
     lead: str = BLOCK_LEAD,
+    explainer: Explainer | None = None,
 ) -> tuple[str, str]:
     """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
     max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
@@ -132,10 +135,8 @@ def compact_block(
     report_text = _clip(report, MAX_COMPACT_FIELD_BYTES)
     tail = f"{extra} more findings: {report_text}" if extra > 0 else f"Full report: {report_text}"
     lines = [_clip(lead, MAX_COMPACT_FIELD_BYTES)]
-    lines.extend(
-        _clip(f"{number}. {format_row(item)}", MAX_COMPACT_FIELD_BYTES)
-        for number, item in enumerate(listed, 1)
-    )
+    chosen = explainer or session_explainer(config)
+    lines.extend(listed_lines(listed, chosen, MAX_COMPACT_FIELD_BYTES))
     body_budget = MAX_COMPACT_BYTES - len(tail.encode("utf-8")) - 1
     return _clip("\n".join(lines), body_budget) + "\n" + tail, report
 
