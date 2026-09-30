@@ -127,6 +127,8 @@ def test_standard_order_pays_the_standard_fee():
 
 The good version also avoids a pinned price. The rule under test is that express orders pay the express fee. The amount of the fee is a business setting. Asserting `Money(15)` would pin a tuned number and break on a price change. See `hardcoded_literal_in_source` in chapter 11.
 
+This form works only because the test checks a selection between two distinct values. Chapter 9 adds a limit. An assertion that compares a production value with itself is a tautology. If the price itself is a contract, for example a price printed on an invoice that a customer sees, pin it as a literal instead.
+
 ## Section size
 
 ### Arrange is usually the largest
