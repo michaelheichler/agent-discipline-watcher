@@ -237,6 +237,14 @@ RULES: dict[str, Entry] = {
         "Suppression marker added",
         "Silences a finding through an ignore marker rather than fixing the cause",
     ),
+    "test_write_gate": Entry(
+        "Test write outside the test writer",
+        "Changes a test while the project policy reserves tests for the test writer agent",
+    ),
+    "test_writer_definition": Entry(
+        "Test writer definition edited",
+        "Rewrites the adw-test-writer agent file that the test gate trusts",
+    ),
     "unscannable_file": Entry(
         "File cannot be scanned",
         "Writes content in a form the scanner cannot read and therefore cannot gate",

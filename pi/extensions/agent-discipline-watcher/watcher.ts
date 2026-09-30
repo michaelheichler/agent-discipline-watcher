@@ -378,6 +378,11 @@ function validatedWatcherResult(value: unknown): WatcherResult | undefined {
   return result;
 }
 
+/** Because OMP exports the host marker only to its shells. */
+function ompEnvironment(): NodeJS.ProcessEnv {
+  return { ...process.env, OMPCODE: "1" };
+}
+
 export function runWatcher(
   event: WatcherEvent,
   payload: Record<string, unknown>,
@@ -392,7 +397,7 @@ export function runWatcher(
       };
     }
     const output = execFileSync(runner, [event], {
-      encoding: "utf-8",
+      encoding: "utf-8", env: ompEnvironment(),
       input: serialized,
       maxBuffer: MAX_RUNNER_OUTPUT_BYTES,
       timeout: RUNNER_TIMEOUT_MS,

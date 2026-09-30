@@ -20,6 +20,9 @@ except ImportError:
     from payloads import exact_string_dict
 
 CONFIG_SEAL_BASENAME = ".agent-discipline.json"
+TESTS_POLICY_KEYS = ("tests", "tests_allow_until")
+TEST_WRITER_STEM = "adw-test-writer"
+AGENT_FILE_SUFFIXES = frozenset({".md", ".toml"})
 AUTH_ENV = "ADW_ALLOW_PROTECTED_EDIT"
 AUTH_KEY = "protected_paths_authorized"
 TRUTHY = frozenset({"1", "true", "yes", "on"})
@@ -52,6 +55,9 @@ WIRING_ACTION = (
 SEAL_ACTION = "Fix the reported finding instead of changing the gate config."
 POLICY_ACTION = "The user sets this policy. Ask the human to run adw-config in a terminal."
 STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
+DEFINITION_ACTION = (
+    "The test gate trusts this agent file, so the user owns it. Ask the human to edit it in a terminal."
+)
 GRANT_ACTION = (
     "The config key no longer grants anything. Ask the human to export "
     + AUTH_ENV
@@ -185,7 +191,14 @@ def path_findings(write: ProtectedWrite | str, *values: object, **fields: object
         return [_finding(Finding(family="self_protection", rule="watcher_install_surface", line=1, detail="Unresolvable ~user path in " + write.path, force=True, snippet=write.path.strip()[:180], action=INSTALL_ACTION, path=None, severity=None, tool_use_id=None))]
     if resolved is None or _env_authorized():
         return []
-    return _write_target_findings(ResolvedProtectedWrite(resolved, write))
+    return _definition_findings(write, resolved) or _write_target_findings(ResolvedProtectedWrite(resolved, write))
+
+
+def _definition_findings(write: ProtectedWrite, resolved: Path) -> list[dict]:
+    """Both routes, because a symlink can hide the agent file."""
+    if not (_is_test_writer_definition(_literal(write.path, write.home)) or _is_test_writer_definition(resolved)):
+        return []
+    return [_finding(Finding(family="self_protection", rule="test_writer_definition", line=1, detail="Test writer definition in " + write.path, force=True, snippet=write.path.strip()[:180], action=DEFINITION_ACTION, path=None, severity=None, tool_use_id=None))]
 
 
 def _write_target_findings(write: ResolvedProtectedWrite) -> list[dict]:
@@ -310,9 +323,10 @@ def _has_watcher_wiring(path: Path) -> bool:
 
 def _tests_value(text: str | None) -> object:
     try:
-        return flatten_settings(json.loads(text or "{}")).get("tests")
+        settings = flatten_settings(json.loads(text or "{}"))
     except (ValueError, TypeError):
         return None
+    return tuple(settings.get(key) for key in TESTS_POLICY_KEYS)
 
 
 def _changes_tests_policy(path: Path, content: str | None) -> bool:
@@ -326,6 +340,17 @@ def _changes_tests_policy(path: Path, content: str | None) -> bool:
     except (OSError, UnicodeDecodeError):
         return True
     return _tests_value(content) != _tests_value(current)
+
+
+def _is_test_writer_definition(path: Path | None) -> bool:
+    """Any agents dir, because every host and scope names it so."""
+    if path is None:
+        return False
+    return (
+        path.stem.lower() == TEST_WRITER_STEM
+        and path.suffix.lower() in AGENT_FILE_SUFFIXES
+        and path.parent.name.lower() == "agents"
+    )
 
 
 def _is_gate_config(path: Path) -> bool:

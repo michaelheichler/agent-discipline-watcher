@@ -151,6 +151,11 @@ def agent_id(payload: object) -> str:
     return _exact_string(exact_string_dict(payload), "agent_id")
 
 
+def agent_type(payload: object) -> str:
+    """Trusted, because the host rejects unregistered names."""
+    return _exact_string(exact_string_dict(payload), "agent_type")
+
+
 def agent_transcript_path(payload: object) -> str:
     fields = exact_string_dict(payload)
     value = _exact_string(fields, "agent_transcript_path")

@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
+from lib import tests_policy
 from lib.baseline import changed_lines, partition, split_committed
 from lib.config import payload_hook_config
 from lib.hookio import (
@@ -139,7 +140,8 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     decoded = _decode(_tool_input(payload))
     cwd = Path(payload.get("cwd") or ".")
     findings, inherited = _pending_findings(decoded, cwd, cfg)
-    findings = _unique_findings(findings)
+    gate = tests_policy.Gate(payload, cfg, time.time())
+    findings = _unique_findings(findings + tests_policy.findings(gate, _test_changes(decoded, cwd)))
     decisions = _record(payload, cfg, turn_id, findings, started) if findings else []
     kind, message = verdict_message(decisions, cfg)
     if kind == "block":
@@ -277,6 +279,23 @@ def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[
         owned_rows.extend(owned)
         inherited_rows.extend(inherited)
     return owned_rows, inherited_rows
+
+
+def _test_changes(decoded: PendingWrite, cwd: Path) -> list[tests_policy.PendingChange]:
+    """Whole files where known, because a test may sit off-hunk."""
+    if decoded.is_edit:
+        resolved_path = _resolved_path(decoded.path, cwd)
+        after = _protected_edit_text(decoded, resolved_path)
+        return [tests_policy.PendingChange(decoded.path, tests_policy.read_before(resolved_path), after)]
+    rows: dict[str, str | None] = dict(pending_writes(decoded))
+    patch = _patch_text(decoded.tool_input)
+    if "content" not in decoded.tool_input and isinstance(patch, str):
+        for path, content in projected_content(patch, cwd).items():
+            rows[path] = content if content is not None else rows.get(path)
+    return [
+        tests_policy.PendingChange(path, tests_policy.read_before(_resolved_path(path, cwd)), after)
+        for path, after in rows.items()
+    ]
 
 
 def _pending_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
