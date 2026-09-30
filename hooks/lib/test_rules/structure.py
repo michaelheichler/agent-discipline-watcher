@@ -8,8 +8,24 @@ import re
 from . import Hit, Rule, RuleSet, Unit
 
 IF_NAME = "if_statements_in_tests"
+ACT_NAME = "multiple_act_sections_in_unit_test"
+_SUT = "sut"
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 _MATCH_TYPES = getattr(ast, "Match", None)
+
+
+def _second_act_index(acts: list[int], asserts: list[int]) -> int | None:
+    """Need act, assert, act, assert in order, because one act is normal."""
+    if len(acts) < 2:
+        return None
+    first_assert = next((index for index in asserts if index > acts[0]), None)
+    if first_assert is None:
+        return None
+    second_act = next((index for index in acts if index > first_assert), None)
+    if second_act is None:
+        return None
+    second_assert = next((index for index in asserts if index > second_act), None)
+    return second_act if second_assert is not None else None
 
 
 @functools.lru_cache(maxsize=8)
@@ -49,6 +65,25 @@ def _if_hits(test: ast.AST) -> list[int]:
         matches = (node for node in nodes if isinstance(node, _MATCH_TYPES))
         hits += [node for node in matches if _match_branches_on_assert(node)]
     return [node.lineno for node in hits]
+
+
+def _dotted_root(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _is_sut_call(stmt: ast.stmt) -> bool:
+    value = stmt.value if isinstance(stmt, (ast.Expr, ast.Assign)) else None
+    return isinstance(value, ast.Call) and _dotted_root(value.func) == _SUT
+
+
+def _second_act_line(test: ast.FunctionDef | ast.AsyncFunctionDef) -> int | None:
+    """Read top-level statements only, because a with-block runs one act."""
+    acts = [index for index, stmt in enumerate(test.body) if _is_sut_call(stmt)]
+    asserts = [index for index, stmt in enumerate(test.body) if isinstance(stmt, ast.Assert)]
+    second_act = _second_act_index(acts, asserts)
+    return test.body[second_act].lineno if second_act is not None else None
 
 
 _RUST_MASK_RE = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*[\s\S]*?\*/')
@@ -103,21 +138,41 @@ def _rust_if_hits(unit: Unit) -> list[Hit]:
     return [Hit(IF_NAME, unit.start + offset, lines[offset]) for offset in found_offsets]
 
 
+_RUST_SUT_CALL_RE = re.compile(r"\bsut\s*\.\s*\w+\s*\(")
+
+
+def _rust_act_hits(unit: Unit) -> list[Hit]:
+    code = _rust_mask(unit.body)
+    lines = code.splitlines()
+    acts = [index for index, line in enumerate(lines) if _RUST_SUT_CALL_RE.search(line)]
+    asserts = [index for index, line in enumerate(lines) if _RUST_ASSERT_RE.search(line)]
+    second_act = _second_act_index(acts, asserts)
+    if second_act is None:
+        return []
+    return [Hit(ACT_NAME, unit.start + second_act, unit.body.splitlines()[second_act])]
+
+
 def check(unit: Unit, text: str) -> list[Hit]:
     """Share one entry, because the registry calls check per test."""
     if unit.language == "rust":
-        return _rust_if_hits(unit)
+        return _rust_if_hits(unit) + _rust_act_hits(unit)
     test = _test_node(unit, text)
     if test is None:
         return []
     lines = text.splitlines()
-    return [Hit(IF_NAME, line, lines[line - 1]) for line in sorted(set(_if_hits(test)))]
+    hits = [Hit(IF_NAME, line, lines[line - 1]) for line in sorted(set(_if_hits(test)))]
+    act_line = _second_act_line(test)
+    if act_line is not None:
+        hits.append(Hit(ACT_NAME, act_line, lines[act_line - 1]))
+    return hits
 
 
 RULE_SET = RuleSet(
     rules=(
         Rule(IF_NAME, "Test branches between two different asserts",
              "Split the branches into their own test methods."),
+        Rule(ACT_NAME, "Test calls the unit under test, asserts, then calls it and asserts again",
+             "Split the second act and assert into their own test method."),
     ),
     check=check,
 )

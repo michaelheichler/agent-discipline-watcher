@@ -109,6 +109,10 @@ RULES: dict[str, Entry] = {
         "Asides about the writing",
         "Cuts hint, plot twist, spoiler, and is a feature not a bug",
     ),
+    "multiple_act_sections_in_unit_test": Entry(
+        "Second act inside one test",
+        "Flags a test that calls the unit under test, asserts, then calls it and asserts again",
+    ),
     "narrator_distance": Entry(
         "Narrator steps back",
         "Cuts the move that comments on the subject instead of stating it",

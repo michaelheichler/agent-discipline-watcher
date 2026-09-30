@@ -47,6 +47,40 @@ fn uses_the_real_binary() {
 '''
 
 
+VIOLATING_ACT_PYTHON = '''def test_add_item_then_remove_item() -> None:
+    sut.add_item(item)
+    assert sut.item_count == 1
+    sut.remove_item(item)
+    assert sut.item_count == 0
+'''
+
+CLEAN_ACT_PYTHON = '''def test_add_item_raises_a_price_check() -> None:
+    with pytest.raises(ValueError):
+        sut.add_item(item)
+
+
+def test_add_item_counts_one() -> None:
+    sut.add_item(item)
+    assert sut.item_count == 1
+'''
+
+VIOLATING_ACT_RUST = '''#[test]
+fn add_item_then_remove_item() {
+    sut.add_item(item);
+    assert_eq!(sut.item_count(), 1);
+    sut.remove_item(item);
+    assert_eq!(sut.item_count(), 0);
+}
+'''
+
+CLEAN_ACT_RUST = '''#[test]
+fn add_item_counts_one() {
+    sut.add_item(item);
+    assert_eq!(sut.item_count(), 1);
+}
+'''
+
+
 def _hits(path: str, source: str) -> list[tuple[str, int]]:
     rows = test_rules.check_file(path, source, (structure.RULE_SET,))
     return [(row["rule"], row["line"]) for row in rows]
@@ -70,3 +104,19 @@ def test_a_rust_if_else_that_asserts_on_each_side_is_flagged() -> None:
 
 def test_a_rust_return_guard_with_no_else_is_spared() -> None:
     assert _hits("src/check.rs", CLEAN_RUST) == []
+
+
+def test_a_python_test_that_acts_and_asserts_twice_is_flagged() -> None:
+    assert _hits("tests/test_cart.py", VIOLATING_ACT_PYTHON) == [("multiple_act_sections_in_unit_test", 4)]
+
+
+def test_one_act_or_a_nested_raises_act_is_spared() -> None:
+    assert _hits("tests/test_cart.py", CLEAN_ACT_PYTHON) == []
+
+
+def test_a_rust_test_that_acts_and_asserts_twice_is_flagged() -> None:
+    assert _hits("src/cart.rs", VIOLATING_ACT_RUST) == [("multiple_act_sections_in_unit_test", 5)]
+
+
+def test_one_rust_act_is_spared() -> None:
+    assert _hits("src/cart.rs", CLEAN_ACT_RUST) == []
