@@ -1,6 +1,8 @@
 """Discover rules here, because tickets must not edit scanner."""
 from __future__ import annotations
 
+import ast
+import functools
 import importlib
 import pkgutil
 from collections.abc import Callable, Iterable
@@ -39,6 +41,15 @@ class RuleSet(NamedTuple):
 
     rules: tuple[Rule, ...]
     check: Callable[[Unit, str], Iterable[Hit]]
+
+
+@functools.lru_cache(maxsize=32)
+def module_tree(text: str) -> ast.Module | None:
+    """Parse once per file, because every rule module reads the same source."""
+    try:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
 
 
 def _exported(package: str, name: str) -> RuleSet:

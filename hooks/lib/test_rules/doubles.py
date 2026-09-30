@@ -5,10 +5,10 @@ import ast
 import re
 
 try:
-    from . import Hit, Rule, RuleSet
+    from . import Hit, Rule, RuleSet, module_tree
     from ..test_units import PYTHON, RUST, Unit
 except ImportError:
-    from test_rules import Hit, Rule, RuleSet
+    from test_rules import Hit, Rule, RuleSet, module_tree
     from test_units import PYTHON, RUST, Unit
 
 _INTERFACE_BASES = frozenset({"Protocol", "ABC"})
@@ -49,9 +49,8 @@ def _line_at(unit: Unit, index: int) -> int:
 
 def _python_class_defs(text: str) -> dict[str, ast.ClassDef]:
     """Read the whole file, because a spec target may sit outside the unit."""
-    try:
-        tree = ast.parse(text)
-    except (SyntaxError, ValueError):
+    tree = module_tree(text)
+    if tree is None:
         return {}
     return {node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
