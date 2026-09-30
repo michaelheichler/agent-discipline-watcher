@@ -263,7 +263,7 @@ def _stable_read(path: Path, cfg: dict) -> tuple[tuple[int, int], str] | None:
 def _duplicate_row(paths: list[str]) -> dict:
     joined = ", ".join(paths)
     return Finding(
-        family="clean_code",
+        family="code",
         rule="duplicate_file_content",
         line=1,
         detail="Exact substantive content is duplicated across batch files.",

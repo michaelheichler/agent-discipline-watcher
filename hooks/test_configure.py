@@ -153,6 +153,24 @@ def test_describe_exposes_metadata_and_redacts_runtime(monkeypatch) -> None:
     assert "ADW_ALLOW_PROTECTED_EDIT" not in json.dumps(result)
 
 
+def test_describe_lists_the_three_families_with_wording() -> None:
+    """Show three rows because old names ride along as aliases."""
+    rows = configure.run({"operation": "describe"})["families"]
+
+    assert [row["name"] for row in rows] == ["prose", "comment", "code"]
+    assert all(row["title"] and row["description"] for row in rows)
+
+
+def test_read_resolves_clean_code_to_both_new_families(tmp_path: Path) -> None:
+    """Keep the alias because users wrote clean_code before the split."""
+    (tmp_path / config.CONFIG_NAME).write_text(json.dumps({"clean_code": False}), encoding="utf-8")
+
+    result = configure.run({"operation": "read", "cwd": str(tmp_path)})
+
+    assert result["values"] == {"clean_code": False}
+    assert result["family_states"] == {"prose": "enforce", "comment": "off", "code": "off"}
+
+
 def _write_opaque_project(root: Path) -> Path:
     target = root / config.CONFIG_NAME
     target.write_text(
@@ -184,7 +202,7 @@ def test_read_resolves_upward_and_excludes_unknown_keys(tmp_path: Path) -> None:
     assert "unknown_runtime_policy" not in json.dumps(result)
     assert "vendor_only" not in json.dumps(result)
     assert result["effective"]["english"] is False
-    assert result["family_states"]["punctuation"] == "observe"
+    assert config.gate_state("punctuation", result["effective"]) == "observe"
 
 
 def test_malformed_legacy_family_values_fail_closed(tmp_path: Path) -> None:

@@ -21,9 +21,11 @@ from typing import NamedTuple
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
+    from . import families
     from .findings import Outcome
     from .payloads import exact_string_dict
 except ImportError:
+    import families
     from findings import Outcome
     from payloads import exact_string_dict
 
@@ -63,12 +65,15 @@ SURFACE_ALL = "all"
 # WHY: A family carries no exemplars, so only a single rule can be sent to a reader instead of blocking on its own.
 RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
 
-# Scoped to families a live hook already emits, because defining a gate state before the family exists is speculative schema creep.
-GATE_FAMILIES = ("punctuation", "english", "clean_code")
+# Old names stay valid so that old configs keep working.
+GATE_FAMILIES = families.NAMES
 
 MAX_LISTED_ROWS = 5
 
 DEFAULTS = {
+    "prose": True,
+    "comment": True,
+    "code": True,
     "punctuation": True,
     "english": True,
     "clean_code": True,
@@ -387,13 +392,21 @@ def gate_map(cfg: dict, key: str) -> dict:
     return exact_string_dict(cfg.get(key))
 
 
+def family_enabled(cfg: dict, family: str) -> bool:
+    """Let any false name win so that prose switches off both."""
+    return all(cfg.get(name, True) for name in families.scope(family))
+
+
 def _gate_state_from(cfg: dict, family: str) -> str:
-    if gate_map(cfg, "kill_switches").get(family):
+    names = families.scope(family)
+    switches = gate_map(cfg, "kill_switches")
+    if any(switches.get(name) for name in names):
         return "off"
-    state = gate_map(cfg, "gates").get(family)
-    if state in GATE_STATES:
-        return state
-    return "enforce" if cfg.get(family, True) else "off"
+    gates = gate_map(cfg, "gates")
+    for name in names:
+        if gates.get(name) in GATE_STATES:
+            return gates[name]
+    return "enforce" if family_enabled(cfg, family) else "off"
 
 
 def gate_state(family: str, config: dict | None = None) -> str:
@@ -521,7 +534,7 @@ def _record_transitions(
 ) -> list[dict]:
     reporting, session_state = _ledger_modules()
     cfg = effective_config(config)
-    current = {family: gate_state(family, cfg) for family in GATE_FAMILIES}
+    current = {family: gate_state(family, cfg) for family in families.LEAVES}
     captured: list[dict] = []
 
     def diff_and_snapshot(state: dict) -> dict:
@@ -540,7 +553,7 @@ def _transition_rows(session_id: str, previous: dict, current: dict) -> list[dic
     reporting, _ = _ledger_modules()
     rows: list[dict] = []
     # Only a previously recorded state counts as a change, because the first resolution seeds the baseline silently.
-    for family in GATE_FAMILIES:
+    for family in current:
         old = previous.get(family)
         if old is None or old == current[family]:
             continue

@@ -38,7 +38,7 @@ def test_scan_all_normalizes_enabled_families():
     assert ("punctuation", "banned_dash", 3) in keys
     code_findings = scan_all("sample.py", "# " + ("TO" + "DO") + " later\n", {})
     code_keys = {(item["family"], item["rule"], item["line"]) for item in code_findings}
-    assert ("clean_code", "deferred_work_comment", 1) in code_keys
+    assert ("comment", "deferred_work_comment", 1) in code_keys
     for item in findings:
         assert {"family", "rule", "line", "detail", "force", "snippet", "action"} <= item.keys()
         assert item["force"] is True
@@ -136,7 +136,7 @@ def test_readability_regex_rules_spare_plain_prose_and_single_hedges():
     assert not rules & {"ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom"}
 
 
-def test_readability_regex_rules_scan_code_comments_under_clean_code():
+def test_readability_regex_rules_scan_code_comments_under_comment_check():
     text = "\n".join([
         "x = 1",
         "# Hope this helps.",
@@ -154,7 +154,7 @@ def test_readability_regex_rules_scan_code_comments_under_clean_code():
     assert {row["rule"] for row in readability} == {
         "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom",
     }
-    assert {row["family"] for row in readability} == {"clean_code"}
+    assert {row["family"] for row in readability} == {"comment"}
 
 
 def test_readability_rules_default_to_observe():
@@ -400,7 +400,7 @@ def test_clean_code_blocks_prose_comment_blocks_in_code_files():
     )
     blocks = [item for item in findings if item["rule"] == "prose_comment_block"]
     assert len(blocks) == 1
-    assert blocks[0]["family"] == "clean_code"
+    assert blocks[0]["family"] == "comment"
     assert blocks[0]["force"] is True
     assert "wiki page" in blocks[0]["action"]
     assert "Create one or update" in blocks[0]["action"]
@@ -423,7 +423,7 @@ def test_clean_code_comment_block_rule_spares_single_comment_docs_and_config():
     assert "prose_comment_block" not in {item["rule"] for item in scan_all("tool.py", "#!/usr/bin/env python3\n# coding: utf-8\nprint(1)\n", cfg)}
     text = "# first line\n# second line\n# " + ("TO" + "DO") + " later\n"
     for path in ("README.md", "notes.txt", "settings.toml", "config.yaml", "data.json"):
-        assert not [item for item in scan_all(path, text, cfg) if item["family"] == "clean_code"]
+        assert not [item for item in scan_all(path, text, cfg) if item["family"] in {"comment", "code"}]
 
 
 def test_default_config_scans_tweakcc_prompt_snapshots():
@@ -735,19 +735,20 @@ def test_prose_semicolon_spares_css_private_fields_and_config_values():
         assert "prose_semicolon" not in _rules(path, text, {}), (path, text)
 
 
-def test_prose_semicolon_spares_markdown_code_tables_and_urls():
+def test_prose_semicolon_spares_markdown_code_and_urls():
     mark = chr(59)
     fenced = "```js\nconst value = 1" + mark + "\n```\n"
     url = "https://example.com/a" + mark + "b\n"
     for text in (fenced, url):
         assert "prose_semicolon" not in _rules("README.md", text, {}), text
-
-    table = "| Name | Code |\n| --- | --- |\n| value | x = 1" + mark + " |\n"
-    assert "prose_semicolon" in _rules("README.md", table, {})
-
     inline_code = "| code | `left" + mark + "right` |\n"
     assert "prose_semicolon" not in _rules("README.md", inline_code, {})
 
+
+def test_prose_semicolon_still_flags_table_cells_and_prose():
+    mark = chr(59)
+    table = "| Name | Code |\n| --- | --- |\n| value | x = 1" + mark + " |\n"
+    assert "prose_semicolon" in _rules("README.md", table, {})
     findings_table = (
         "| Metric | Notes |\n"
         "| --- | --- |\n"

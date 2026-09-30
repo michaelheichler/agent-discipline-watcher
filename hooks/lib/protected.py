@@ -9,11 +9,13 @@ from pathlib import Path
 
 try:
     # Relative first because every hook entry script imports this module as lib.protected, where a bare name cannot resolve.
-    from .config import ALWAYS_BLOCKING_RULES, GATE_FAMILIES, flatten_settings
+    from . import families
+    from .config import ALWAYS_BLOCKING_RULES, flatten_settings
     from .findings import Finding
     from .payloads import exact_string_dict
 except ImportError:
-    from config import ALWAYS_BLOCKING_RULES, GATE_FAMILIES, flatten_settings
+    import families
+    from config import ALWAYS_BLOCKING_RULES, flatten_settings
     from findings import Finding
     from payloads import exact_string_dict
 
@@ -112,17 +114,24 @@ def _silences_every_family(settings: dict) -> bool:
     )
 
 
+def _gated_off(settings: dict, family_gates: dict, leaf: str) -> bool:
+    names = families.scope(leaf)
+    for name in names:
+        if name in family_gates:
+            return family_gates[name] == "off"
+    return any(settings.get(name) is False for name in names)
+
+
 def _gated_off_everywhere(settings: dict) -> bool:
     family_gates = exact_string_dict(settings.get("gates"))
-    return all(
-        family_gates.get(family) == "off" if family in family_gates else settings.get(family) is False
-        for family in GATE_FAMILIES
-    )
+    return all(_gated_off(settings, family_gates, leaf) for leaf in families.LEAVES)
 
 
 def _killed_everywhere(settings: dict) -> bool:
     switches = exact_string_dict(settings.get("kill_switches"))
-    return all(bool(switches.get(family)) for family in GATE_FAMILIES)
+    return all(
+        any(bool(switches.get(name)) for name in families.scope(leaf)) for leaf in families.LEAVES
+    )
 
 
 def _exempted_everywhere(settings: dict) -> bool:
@@ -131,11 +140,12 @@ def _exempted_everywhere(settings: dict) -> bool:
         isinstance(entry, str) and entry.strip() in UNIVERSAL_GLOBS for entry in paths
     ):
         return True
-    families = exact_string_dict(settings.get("exempt_families"))
-    for glob, listed in families.items():
+    exemptions = exact_string_dict(settings.get("exempt_families"))
+    for glob, listed in exemptions.items():
         if glob.strip() not in UNIVERSAL_GLOBS or not isinstance(listed, list):
             continue
-        if all(family in listed for family in GATE_FAMILIES):
+        named = (entry for entry in listed if isinstance(entry, str))
+        if families.leaves_of(named) == frozenset(families.LEAVES):
             return True
     return False
 

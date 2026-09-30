@@ -14,19 +14,20 @@ try:
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
-        _clean_code_comment_findings,
         _comment_body_lines,
+        _comment_line_findings,
         _finding,
         _lexical_docstring_findings,
         _multiline_comment_findings,
         _normalize_block_comments,
-        _scan_clean_code_blocks,
+        _scan_comment_blocks,
         _scan_docstrings,
         _weak_why_findings,
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from .config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
+    from . import families
+    from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
@@ -52,19 +53,20 @@ except ImportError:
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
-        _clean_code_comment_findings,
         _comment_body_lines,
+        _comment_line_findings,
         _finding,
         _lexical_docstring_findings,
         _multiline_comment_findings,
         _normalize_block_comments,
-        _scan_clean_code_blocks,
+        _scan_comment_blocks,
         _scan_docstrings,
         _weak_why_findings,
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from config import GATE_FAMILIES, calibrated_findings, effective_config, slop_phrase_candidate
+    import families
+    from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
@@ -161,13 +163,13 @@ def _exempt_families(path: str, cfg: dict) -> frozenset[str]:
         if _path_matches(path, pattern) and isinstance(families, (list, tuple, set, frozenset))
         for name in families
     }
-    return frozenset(dropped & set(GATE_FAMILIES))
+    return families.leaves_of(dropped)
 
 
 def _active_families(path: str, cfg: dict) -> frozenset[str]:
     dropped = _exempt_families(path, cfg)
     return frozenset(
-        name for name in GATE_FAMILIES if cfg.get(name, True) and name not in dropped
+        name for name in families.LEAVES if family_enabled(cfg, name) and name not in dropped
     )
 
 
@@ -181,7 +183,7 @@ def _python_tree(path: str, text: str) -> ast.Module | None:
 
 def _unconditional_findings(context: _ScanContext, comment_text: str) -> list[dict]:
     findings = [
-        _finding("clean_code", "suppression_escape_hatch", number,
+        _finding("code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + context.path, line,
                  "Remove the marker and fix the reported issue.")
         for number, line in enumerate(context.lines, 1) if SUPPRESSION_MARKER_RE.search(line)
@@ -194,7 +196,7 @@ def _unconditional_findings(context: _ScanContext, comment_text: str) -> list[di
     comment_rows = _comment_body_lines(comment_source)
     findings.extend(_what_comment_findings(context.path, comment_rows))
     findings.extend(_what_docstring_findings(context.path, context.tree))
-    findings.extend(_scan_clean_code_blocks(context.path, comment_source))
+    findings.extend(_scan_comment_blocks(context.path, comment_source))
     findings.extend(_scan_docstrings(context.path, context.tree))
     if context.tree is None and context.path.lower().endswith(".py"):
         findings.extend(_lexical_docstring_findings(context.path, context.text))
@@ -264,9 +266,15 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
     if "english" in context.active_families and context.prose:
         scan_line = _line_or_blank(sources.english, source_line.number)
         findings.extend(_scan_english(source_line, scan_line))
-    if "clean_code" in context.active_families and context.code_file:
-        scan_line = _line_or_blank(sources.comment, source_line.number)
-        findings.extend(_clean_code_comment_findings(source_line.path, source_line.number, scan_line))
+    if context.code_file:
+        findings.extend(_scan_code_line(source_line, sources.comment, context.active_families))
+    return findings
+
+
+def _scan_code_line(source_line: _SourceLine, comment_lines: list[str], active: frozenset[str]) -> list[dict]:
+    scan_line = _line_or_blank(comment_lines, source_line.number)
+    findings = _comment_line_findings(source_line.path, source_line.number, scan_line, active)
+    if "code" in active:
         findings.extend(_hollow_test_line_findings(source_line.path, source_line.number, scan_line))
     return findings
 
@@ -300,8 +308,8 @@ def scan_all(
     masked = render_regions(text, regions, {RegionKind.VISIBLE_PROSE}) if mixed else _mask_markup(path, text)
     masked = _mask_hidden_ranges(masked, hidden_ranges)
     sources = _line_sources(context, masked, comment_source)
-    if "clean_code" in context.active_families and context.code_file:
-        findings.extend(_scan_clean_code_file(context, comment_source))
+    if "code" in context.active_families and context.code_file:
+        findings.extend(_scan_code_file(context, comment_source))
     for number, line in enumerate(context.lines, 1):
         source_line = _SourceLine(path=path, number=number, text=line)
         findings.extend(_scan_line_families(source_line, sources, context))
@@ -404,7 +412,7 @@ def _file_length_findings(path: str, count: int) -> list[dict]:
     if policy is None:
         return []
     rule, action = policy
-    return [_finding("clean_code", rule, 1, f"File has {count} lines in {path}", path, action)]
+    return [_finding("code", rule, 1, f"File has {count} lines in {path}", path, action)]
 
 
 def file_length_findings(path: str, text: str) -> list[dict]:
@@ -430,7 +438,7 @@ def _long_function_rows(context: _ScanContext) -> list[tuple[int, str]]:
 def _function_length_findings(context: _ScanContext) -> list[dict]:
     return [
         _finding(
-            "clean_code", "function_too_long", line,
+            "code", "function_too_long", line,
             "Function is over the length cap in " + context.path,
             name, "Extract helpers until each function does one thing.",
         )
@@ -438,7 +446,7 @@ def _function_length_findings(context: _ScanContext) -> list[dict]:
     ]
 
 
-def _scan_clean_code_file(context: _ScanContext, text: str) -> list[dict]:
+def _scan_code_file(context: _ScanContext, text: str) -> list[dict]:
     lines = text.splitlines()
     findings = _function_length_findings(context)
     findings.extend(_scan_hollow_test_blocks(context.path, lines))
@@ -449,7 +457,7 @@ def _hollow_test_line_findings(path: str, line_number: int, line: str) -> list[d
     if not _looks_like_empty_test(line):
         return []
     return [_finding(
-        "clean_code",
+        "code",
         "hollow_test",
         line_number,
         "Test body has no assertion in " + path,
@@ -474,7 +482,7 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
         block, next_index = _test_block(lines, index)
         if block and not any(ASSERT_RE.search(part) for part in block):
             findings.append(_finding(
-                "clean_code",
+                "code",
                 "hollow_test",
                 index + 1,
                 "Test body has no assertion in " + path,

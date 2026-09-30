@@ -304,13 +304,24 @@ def test_unreadable_config_text_grants_nothing(text):
     {"punctuation": False, "english": False, "clean_code": False},
     {"gates": {"punctuation": "off", "english": "off", "clean_code": "off"}},
     {"punctuation": False, "gates": {"english": "off", "clean_code": "off"}},
+    {"prose": False, "comment": False, "code": False},
+    {"prose": False, "clean_code": False},
+    {"gates": {"prose": "off", "comment": "off", "code": "off"}},
+    {"kill_switches": {"prose": True, "clean_code": True}},
+    {"exempt_families": {"**": ["prose", "comment", "code"]}},
 ])
 def test_all_family_disables_and_root_redirection_grant_an_escape(payload):
     assert protected.grants_escape(json.dumps(payload)) is True
 
 
-def test_one_family_disable_does_not_grant_an_escape():
-    assert protected.grants_escape(json.dumps({"clean_code": False})) is False
+@pytest.mark.parametrize("payload", [
+    {"clean_code": False},
+    {"prose": False, "comment": False},
+    {"prose": False, "clean_code": False, "gates": {"code": "observe"}},
+    {"exempt_families": {"**": ["prose", "comment"]}},
+])
+def test_one_family_disable_does_not_grant_an_escape(payload: dict) -> None:
+    assert protected.grants_escape(json.dumps(payload)) is False
 
 
 def test_payload_without_roots_or_family_kill_does_not_grant_an_escape():

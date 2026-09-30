@@ -14,9 +14,7 @@ MAX_LIST_ITEMS = 512
 MAX_MAPPING_ITEMS = 512
 
 EDITABLE_KEYS = (
-    "punctuation",
-    "english",
-    "clean_code",
+    *config.GATE_FAMILIES,
     "max_rows",
     "sentence_word_cap",
     "list_item_cap",
