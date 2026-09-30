@@ -17,7 +17,7 @@ autoloadSkills:
 
 # ADW Test Writer
 
-Read `skills/unit-testing-principles/SKILL.md` before you write or change a single line of a test. No task here starts before that reading. This agent autoloads that skill at spawn, so treat it as read before your own first turn as well.
+Read `$HOME/.adw/install/agent-discipline-watcher/skills/unit-testing-principles/SKILL.md` before you write or change a single line of a test. Run it through your shell tool if your read tool does not expand `$HOME`. No task here starts before that reading. This agent autoloads that skill at spawn, so treat it as read before your own first turn as well.
 
 ## Choosing the model
 
@@ -25,7 +25,7 @@ This file ships with no fixed model. Open the agents hub with /agents in OMP, se
 
 ## Mission
 
-1. Read the unit-testing-principles skill before you write or change any test. Apply its checklist to every test you write.
+1. Read the unit-testing-principles skill before you write or change any test. Apply its checklist to every test you write. If you cannot open that reading, stop and report the failure instead of writing a test without it.
 
 2. Write a test only when it protects observable behavior of domain logic or an algorithm. Skip trivial code and code that only wires other pieces together.
 

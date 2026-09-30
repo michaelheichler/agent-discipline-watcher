@@ -4,8 +4,12 @@ from __future__ import annotations
 import textwrap
 
 AGENT_NAME = "adw-test-writer"
+PLUGIN_NAME = "agent-discipline-watcher"
 SKILL_PATH = "skills/unit-testing-principles/SKILL.md"
 SKILL_NAME = "unit-testing-principles"
+CLAUDE_SKILL_ID = f"{PLUGIN_NAME}:{SKILL_NAME}"
+INSTALL_ROOT = "$HOME/.adw/install/agent-discipline-watcher"
+INSTALLED_SKILL_PATH = f"{INSTALL_ROOT}/{SKILL_PATH}"
 
 CLAUDE_MODEL = "claude-opus-5-5"
 CLAUDE_EFFORT = "high"
@@ -20,14 +24,24 @@ DESCRIPTION = (
     "behavior each test protects."
 )
 
-READ_FIRST_LINE = (
-    f"Read `{SKILL_PATH}` before you write or change a single line of "
-    "a test. No task here starts before that reading."
+CLAUDE_READ_FIRST_LINE = (
+    f"This agent preloads the `{CLAUDE_SKILL_ID}` skill at spawn through "
+    "the skills field, so treat it as read before your first turn. Run "
+    f"the Skill tool on `{CLAUDE_SKILL_ID}` yourself if you need the full "
+    "text again."
+)
+
+INSTALLED_READ_FIRST_LINE = (
+    f"Read `{INSTALLED_SKILL_PATH}` before you write or change a single "
+    "line of a test. Run it through your shell tool if your read tool "
+    "does not expand `$HOME`. No task here starts before that reading."
 )
 
 MISSION_STEPS = (
     "Read the unit-testing-principles skill before you write or change "
-    "any test. Apply its checklist to every test you write.",
+    "any test. Apply its checklist to every test you write. If you "
+    "cannot open that reading, stop and report the failure instead of "
+    "writing a test without it.",
     "Write a test only when it protects observable behavior of domain "
     "logic or an algorithm. Skip trivial code and code that only wires "
     "other pieces together.",
@@ -87,8 +101,9 @@ def _yaml_header(extra_lines: tuple[str, ...]) -> str:
 
 def render_claude_agent() -> str:
     """Fill this frontmatter because Claude reads model here only."""
-    header = _yaml_header((f"model: {CLAUDE_MODEL}", f"effort: {CLAUDE_EFFORT}"))
-    body = "\n".join(("# ADW Test Writer", "", READ_FIRST_LINE, "", mission_section()))
+    extra = (f"model: {CLAUDE_MODEL}", f"effort: {CLAUDE_EFFORT}", "skills:", f"  - {CLAUDE_SKILL_ID}")
+    header = _yaml_header(extra)
+    body = "\n".join(("# ADW Test Writer", "", CLAUDE_READ_FIRST_LINE, "", mission_section()))
     return f"{header}\n\n{body}"
 
 
@@ -98,7 +113,7 @@ def render_codex_role() -> str:
         f'name = "{AGENT_NAME}"',
         f'description = "{DESCRIPTION}"',
         'developer_instructions = """',
-        READ_FIRST_LINE.replace("`", ""),
+        INSTALLED_READ_FIRST_LINE.replace("`", ""),
         "",
         mission_text(),
         '"""',
@@ -129,7 +144,7 @@ def render_omp_agent() -> str:
         "before your own first turn as well."
     )
     body = "\n".join((
-        "# ADW Test Writer", "", f"{READ_FIRST_LINE} {autoload_line}", "",
+        "# ADW Test Writer", "", f"{INSTALLED_READ_FIRST_LINE} {autoload_line}", "",
         _omp_model_section(), mission_section(),
     ))
     return f"{header}\n\n{body}"

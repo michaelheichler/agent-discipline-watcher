@@ -4,6 +4,9 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import pytest
+
+from install_runtime import install
 from lib import adw_test_writer_agent as writer
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -85,3 +88,35 @@ def test_mission_steps_stay_numbered_from_one_in_order() -> None:
     """Check the prefixes because a reordered step misleads the reader."""
     prefixes = [line.split(".", 1)[0] for line in writer.mission_lines()]
     assert prefixes == [str(number) for number in range(1, len(prefixes) + 1)]
+
+
+def _stub_skill_source(root: Path) -> Path:
+    """Build a stub tree because the real skill file may not exist yet."""
+    source = root / "source"
+    stub_skill = source / writer.SKILL_PATH
+    stub_skill.parent.mkdir(parents=True)
+    stub_skill.write_text("stub skill for the fake install\n", encoding="utf-8")
+    return source
+
+
+def test_claude_names_a_skill_id_that_resolves_in_the_plugin_checkout(tmp_path: Path) -> None:
+    """Check the plugin root because Claude reads the skill there, with no install step."""
+    source = _stub_skill_source(tmp_path)
+    assert (source / writer.SKILL_PATH).is_file()
+    assert writer.CLAUDE_SKILL_ID == f"{writer.PLUGIN_NAME}:{writer.SKILL_NAME}"
+    assert writer.CLAUDE_SKILL_ID in writer.render_claude_agent()
+
+
+def test_codex_and_omp_name_a_path_that_exists_after_a_fake_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake-install a stub skill because a mission must name a real reading, not a guess."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    source = _stub_skill_source(tmp_path)
+    install_dir = fake_home / ".adw" / "install" / writer.PLUGIN_NAME
+    install(source, install_dir)
+
+    installed_reading = Path(writer.INSTALLED_SKILL_PATH.replace("$HOME", str(fake_home)))
+    assert installed_reading.is_file()
+    assert writer.INSTALLED_SKILL_PATH in writer.render_codex_role()
+    assert writer.INSTALLED_READ_FIRST_LINE in writer.render_omp_agent()
