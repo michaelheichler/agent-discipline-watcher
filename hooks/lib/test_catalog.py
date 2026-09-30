@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from lib import catalog, config
+from lib import catalog, config, families
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -36,7 +36,7 @@ def test_the_catalog_names_no_rule_the_config_dropped() -> None:
 
 def test_every_family_and_threshold_carries_an_entry() -> None:
     """Cover the other two screens because they render raw keys today."""
-    assert sorted(catalog.FAMILIES) == sorted(config.GATE_FAMILIES)
+    assert sorted(catalog.FAMILIES) == sorted(families.FAMILIES)
     assert sorted(catalog.THRESHOLDS) == ["list_item_cap", "max_rows", "sentence_word_cap"]
 
 
@@ -83,7 +83,7 @@ def test_an_unknown_name_falls_back_instead_of_raising() -> None:
 def test_a_known_name_returns_its_written_entry() -> None:
     """Prefer the written text because the fallback carries no description."""
     assert catalog.rule_entry("banned_adverb") is catalog.RULES["banned_adverb"]
-    assert catalog.family_entry("punctuation") is catalog.FAMILIES["punctuation"]
+    assert catalog.family_entry("prose") is catalog.FAMILIES["prose"]
     assert catalog.state_entry("judged", locked=False) is catalog.RULE_STATES["judged"]
 
 

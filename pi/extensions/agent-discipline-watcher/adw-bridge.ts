@@ -16,6 +16,9 @@ const BRIDGE_MAX_OUTPUT_BYTES = 256 * 1024;
 const BRIDGE_TIMEOUT_MS = 30_000;
 const CAPABILITY_MAX_BYTES = 4096;
 const CONFIG_VALUE_KEYS = [
+  "prose",
+  "comment",
+  "code",
   "punctuation",
   "english",
   "clean_code",
@@ -31,7 +34,7 @@ const CONFIG_VALUE_KEYS = [
   "kill_switches",
   "data_boundary",
 ] as const;
-const LEGACY_FAMILY_KEYS = ["punctuation", "english", "clean_code"] as const;
+const FAMILY_SWITCH_KEYS = ["prose", "comment", "code", "punctuation", "english", "clean_code"] as const;
 export const FAMILY_STATES = ["off", "observe", "enforce"] as const;
 export const RULE_STATES = ["off", "observe", "enforce", "judged"] as const;
 export const BASELINE_MODES = ["git", "report", "none"] as const;
@@ -215,7 +218,7 @@ function copyKnownValues(
   for (const key of CONFIG_VALUE_KEYS) {
     if (!(key in input)) continue;
     const value = input[key];
-    if ((LEGACY_FAMILY_KEYS as readonly string[]).includes(key)) {
+    if ((FAMILY_SWITCH_KEYS as readonly string[]).includes(key)) {
       if (typeof value === "boolean") output[key] = value;
       continue;
     }
@@ -309,6 +312,7 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     throw new AdwBridgeError(code, message);
   }
   const familyNames = readFamilyNames(response);
+  const valueFamilies = uniqueNames([...familyNames, ...FAMILY_SWITCH_KEYS]);
   const ruleNames = readRuleNames(response);
   const digest = response.digest === null ? null : adwConfig.safePolicyString(response.digest, 64);
   if (digest !== null && (!digest || !/^[0-9a-f]{64}$/.test(digest))) {
@@ -322,8 +326,8 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     configPath: adwConfig.sanitizeDisplay(response.config_path, 1024),
     digest,
     exists: response.exists === true,
-    values: copyKnownValues(response.values, familyNames, ruleNames),
-    effective: copyKnownValues(response.effective, familyNames, ruleNames),
+    values: copyKnownValues(response.values, valueFamilies, ruleNames),
+    effective: copyKnownValues(response.effective, valueFamilies, ruleNames),
     familyStates: readStateMap(response.family_states, familyNames, allowedFamilyState) as Record<string, GateState>,
     ruleStates,
     runtime: readRuntime(response),

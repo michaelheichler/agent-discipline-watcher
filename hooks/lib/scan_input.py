@@ -113,7 +113,7 @@ def fallback_findings_from_count(path: Path, count: int, capped: bool = True) ->
         action = "Make the file readable UTF-8 text within the scan byte limit."
         detail = f"File could not be fully scanned: {path}"
     return [Finding(
-        family="clean_code",
+        family="code",
         rule=rule,
         line=1,
         detail=detail,

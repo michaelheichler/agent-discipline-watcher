@@ -1,0 +1,39 @@
+{
+  "cold_cycles": [
+    {
+      "cpu_s": 0.82,
+      "cycle": 1,
+      "embed_s": 0.035,
+      "load_s": 0.756,
+      "peak_rss_mb": 850.5
+    },
+    {
+      "cpu_s": 0.85,
+      "cycle": 2,
+      "embed_s": 0.034,
+      "load_s": 0.846,
+      "peak_rss_mb": 845.2
+    },
+    {
+      "cpu_s": 0.86,
+      "cycle": 3,
+      "embed_s": 0.037,
+      "load_s": 0.843,
+      "peak_rss_mb": 850.0
+    }
+  ],
+  "machine": {
+    "chip": "Apple M5 Pro",
+    "date": "2026-09-30",
+    "model": "Mac17,9",
+    "ram_gb": 48.0
+  },
+  "platform": "darwin-arm64",
+  "preexisting_worker": true,
+  "sentence_count": 20,
+  "warm_run": {
+    "cpu_s": 0.02,
+    "embed_s": 0.022,
+    "peak_rss_mb": 845.5
+  }
+}

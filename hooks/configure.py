@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 try:
-    from .lib import catalog, config, configure_capability, configure_policy, configure_store
+    from .lib import catalog, config, configure_capability, configure_policy, configure_store, families
 except ImportError:
-    from lib import catalog, config, configure_capability, configure_policy, configure_store
+    from lib import catalog, config, configure_capability, configure_policy, configure_store, families
 
 CONFIGURE_EVENT = "Configure"
 MAX_REQUEST_BYTES = 128 * 1024
@@ -101,7 +101,7 @@ def _family_rows() -> list[dict[str, object]]:
             "locked": False,
             **_worded(catalog.family_entry(family)),
         }
-        for family in config.GATE_FAMILIES
+        for family in families.FAMILIES
     ]
 
 
@@ -129,18 +129,18 @@ def _metadata() -> dict[str, object]:
     }
 
 
-def _rule_state_value(rule: str, effective_cfg: object, family_states: dict[str, object]) -> object:
+def _rule_state_value(rule: str, effective_cfg: object) -> object:
     """Kept whole, because collapsing a surface map to one state loses it on the next write."""
     if rule in config.ALWAYS_BLOCKING_RULES:
         return "enforce"
     configured = config.gate_map(config.effective_config(effective_cfg), "rule_gates").get(rule)
     if isinstance(configured, dict):
         return configured
-    return config.rule_state(rule, effective_cfg) or family_states.get("clean_code", "enforce")
+    return config.rule_state(rule, effective_cfg) or "enforce"
 
 
-def _rule_states(effective_cfg: object, family_states: dict[str, object]) -> dict[str, object]:
-    return {rule: _rule_state_value(rule, effective_cfg, family_states) for rule in sorted(KNOWN_RULES)}
+def _rule_states(effective_cfg: object) -> dict[str, object]:
+    return {rule: _rule_state_value(rule, effective_cfg) for rule in sorted(KNOWN_RULES)}
 
 
 def _load(target: Path):
@@ -157,7 +157,7 @@ def _read_state(cwd: Path) -> dict[str, object]:
     values = configure_policy.known_values(loaded.settings)
     effective_cfg = config.effective_config(values)
     family_states = {
-        family: config.gate_state(family, effective_cfg) for family in config.GATE_FAMILIES
+        family: config.gate_state(family, effective_cfg) for family in families.FAMILIES
     }
     return {
         "project_path": str(target.parent),
@@ -167,7 +167,7 @@ def _read_state(cwd: Path) -> dict[str, object]:
         "values": values,
         "effective": configure_policy.known_values(effective_cfg),
         "family_states": family_states,
-        "rule_states": _rule_states(effective_cfg, family_states),
+        "rule_states": _rule_states(effective_cfg),
         "runtime": _runtime_status(),
         **_metadata(),
     }

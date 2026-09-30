@@ -91,7 +91,7 @@ class FakeSdk:
         self.cwd_was_empty.append(launch.cwd.is_dir() and not tuple(launch.cwd.iterdir()))
         return self.session
 
-    def retry_on_overload(self, operation, *, max_attempts: int):
+    def retry_on_overload(self, operation, *, max_attempts: int) -> SdkRunResult:
         for attempt in range(max_attempts):
             self.attempts += 1
             try:
@@ -103,6 +103,11 @@ class FakeSdk:
 
 def _model(*, hidden: bool = False, efforts: tuple[str, ...] = ("low", "high")) -> SdkModel:
     return SdkModel(id="gpt-5.6-luna", model="gpt-5.6-luna", hidden=hidden, supported_reasoning_efforts=efforts)
+
+
+def _model_with(identifier: str, *, hidden: bool = False, efforts: tuple[str, ...] = ("low", "high")) -> SdkModel:
+    """A distinct id, since a fixed id could not exercise ordering."""
+    return SdkModel(id=identifier, model=identifier, hidden=hidden, supported_reasoning_efforts=efforts)
 
 
 def _result(
@@ -250,7 +255,7 @@ def test_invalid_cache_payload_is_not_returned_as_a_judgment(tmp_path: Path) -> 
     judge, sdk = _judge(tmp_path, (_result(), _result()))
     request = _request()
     judge.judge(request)
-    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
     cache_path.write_text(
         '{"payload":{"items":[{"index":"wrong"}]},"provider":"openai-codex","model":"gpt-5.6-luna","effort":"high","rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
         encoding="utf-8",
@@ -266,7 +271,7 @@ def test_truthy_non_boolean_cached_cache_entry_is_a_miss(tmp_path: Path) -> None
     judge, sdk = _judge(tmp_path, (_result(), _result()))
     request = _request()
     judge.judge(request)
-    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
     row = json.loads(cache_path.read_text(encoding="utf-8"))
     row["cached"] = "false"
     cache_path.write_text(json.dumps(row), encoding="utf-8")
@@ -403,6 +408,21 @@ def test_each_call_uses_a_fresh_runtime_and_cleans_it_afterward(tmp_path: Path) 
     assert all(not path.exists() for path in homes + cwds)
 
 
+def _swapping_link(auth: Path, replacement: Path) -> object:
+    """Extracted, since inlining kept the test over the line budget."""
+    real_link = luna_storage.os.link
+
+    def swap_then_link(source, destination, *, src_dir_fd, dst_dir_fd, follow_symlinks) -> None:
+        auth.unlink()
+        replacement.rename(auth)
+        return real_link(
+            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    return swap_then_link
+
+
 def test_auth_source_leaf_swap_fails_closed_and_cleans_runtime(tmp_path: Path, monkeypatch) -> None:
     auth = tmp_path / "source-auth.json"
     replacement = tmp_path / "replacement-auth.json"
@@ -412,17 +432,7 @@ def test_auth_source_leaf_swap_fails_closed_and_cleans_runtime(tmp_path: Path, m
     judge = LunaJudge(
         sdk=sdk, runtime_root=tmp_path / "runtime", cache_root=tmp_path / "cache", auth_source=auth,
     )
-    real_link = luna_storage.os.link
-
-    def swap_then_link(source, destination, *, src_dir_fd, dst_dir_fd, follow_symlinks):
-        auth.unlink()
-        replacement.rename(auth)
-        return real_link(
-            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
-        )
-
-    monkeypatch.setattr(luna_storage.os, "link", swap_then_link)
+    monkeypatch.setattr(luna_storage.os, "link", _swapping_link(auth, replacement))
 
     with pytest.raises(LunaProviderFailure, match="changed while linking"):
         judge.judge(_request())
@@ -431,24 +441,29 @@ def test_auth_source_leaf_swap_fails_closed_and_cleans_runtime(tmp_path: Path, m
     assert not tuple((tmp_path / "runtime").iterdir())
 
 
+def _swapping_mkdir(runtime: Path, outside: Path) -> object:
+    """Extracted, since inlining kept the test over the line budget."""
+    real_mkdir = luna_storage.os.mkdir
+    swapped = False
+
+    def mkdir_then_swap(path, mode=0o777, *, dir_fd=None) -> None:
+        nonlocal swapped
+        result = real_mkdir(path, mode, dir_fd=dir_fd)
+        if path == "runtime" and not swapped:
+            swapped = True
+            runtime.rename(runtime.parent / "displaced-runtime")
+            runtime.symlink_to(outside, target_is_directory=True)
+        return result
+
+    return mkdir_then_swap
+
+
 def test_runtime_directory_swap_fails_closed_without_touching_target(tmp_path: Path, monkeypatch) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
     runtime = tmp_path / "runtime"
     cache = tmp_path / "cache"
-    real_mkdir = luna_storage.os.mkdir
-    swapped = False
-
-    def mkdir_then_swap(path, mode=0o777, *, dir_fd=None):
-        nonlocal swapped
-        result = real_mkdir(path, mode, dir_fd=dir_fd)
-        if path == "runtime" and not swapped:
-            swapped = True
-            runtime.rename(tmp_path / "displaced-runtime")
-            runtime.symlink_to(outside, target_is_directory=True)
-        return result
-
-    monkeypatch.setattr(luna_storage.os, "mkdir", mkdir_then_swap)
+    monkeypatch.setattr(luna_storage.os, "mkdir", _swapping_mkdir(runtime, outside))
     judge = LunaJudge(
         sdk=_judge(tmp_path)[1], runtime_root=runtime, cache_root=cache,
         auth_source=tmp_path / "missing-auth.json",
@@ -463,7 +478,7 @@ def test_runtime_directory_swap_fails_closed_without_touching_target(tmp_path: P
 def test_cache_fifo_is_rejected_before_provider_execution(tmp_path: Path) -> None:
     judge, sdk = _judge(tmp_path)
     request = _request()
-    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
     cache_path.parent.mkdir()
     os.mkfifo(cache_path)
 
@@ -532,9 +547,7 @@ def test_worker_result_rejects_wrong_scalar_types(tmp_path: Path, field: str, va
         ("usage", "tokens"),
     ),
 )
-def test_worker_result_rejects_malformed_payload_and_usage(
-    tmp_path: Path, field: str, value: object,
-) -> None:
+def test_worker_result_rejects_malformed_payload_and_usage(tmp_path: Path, field: str, value: object) -> None:
     judge, _sdk = _judge(tmp_path)
     request = _request()
     result = {
@@ -592,7 +605,7 @@ def test_auth_device_is_rejected_before_provider_execution(tmp_path: Path) -> No
 def test_cache_metadata_mismatch_unlinks_leaf_before_provider_execution(tmp_path: Path) -> None:
     judge, sdk = _judge(tmp_path)
     request = _request()
-    cache_path = judge._cache_path(judge._cache_key(request))
+    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
     cache_path.parent.mkdir()
     cache_path.write_text(
         '{"payload":{"items":[{"index":0,"verdict":"violating","reason":"stale"}]},'
@@ -602,7 +615,7 @@ def test_cache_metadata_mismatch_unlinks_leaf_before_provider_execution(tmp_path
     )
     real_open = sdk.open
 
-    def assert_cache_removed(launch):
+    def assert_cache_removed(launch) -> FakeSession:
         assert not cache_path.exists()
         return real_open(launch)
 
@@ -611,3 +624,85 @@ def test_cache_metadata_mismatch_unlinks_leaf_before_provider_execution(tmp_path
     result = judge.judge(request)
 
     assert result.cached is False
+
+
+def test_resolve_luna_model_picks_the_highest_numeric_version() -> None:
+    models = (
+        _model_with("gpt-5.6-luna"),
+        _model_with("gpt-6-luna"),
+        _model_with("gpt-10-luna"),
+        _model_with("gpt-9-luna", hidden=True),
+        _model_with("gpt-99-luna", efforts=("low",)),
+    )
+
+    assert luna_provider._resolve_luna_model(models) == "gpt-10-luna"
+
+
+def test_resolve_luna_model_falls_back_to_the_floor_when_none_qualify() -> None:
+    models = (
+        _model_with("gpt-9-luna", hidden=True),
+        _model_with("gpt-12-luna", efforts=("low",)),
+    )
+
+    assert luna_provider._resolve_luna_model(models) == luna_provider.LUNA_MODEL
+
+
+def test_judge_caches_under_the_resolved_model_not_the_floor(tmp_path: Path) -> None:
+    models = (_model_with("gpt-5.6-luna"), _model_with("gpt-9-luna"))
+    judge, _sdk = _judge(tmp_path, models=models)
+    request = _request()
+
+    result = judge.judge(request)
+
+    assert result.model == "gpt-9-luna"
+    assert judge._cache_path(judge._cache_key(request, "gpt-9-luna")).exists()
+    assert not judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL)).exists()
+
+
+def test_availability_error_names_the_models_it_saw(tmp_path: Path) -> None:
+    models = (_model_with("gpt-9-luna", hidden=True), _model_with("gpt-4-luna", efforts=("low",)))
+    judge, sdk = _judge(tmp_path, models=models)
+
+    with pytest.raises(LunaProviderFailure) as error:
+        judge.judge(_request())
+
+    assert "gpt-4-luna" in str(error.value)
+    assert "gpt-9-luna" in str(error.value)
+    assert sdk.session.starts == []
+
+
+def test_second_call_hits_cache_under_the_remembered_resolved_model(tmp_path: Path) -> None:
+    models = (_model_with("gpt-5.6-luna"), _model_with("gpt-6-luna"))
+    judge, sdk = _judge(tmp_path, models=models)
+    request = _request()
+
+    first = judge.judge(request)
+    hit = judge.judge(request)
+
+    assert first.model == "gpt-6-luna"
+    assert hit.cached is True
+    assert hit.model == "gpt-6-luna"
+    assert len(sdk.session.starts) == 1
+
+
+def test_stale_verdict_under_the_floor_id_does_not_serve_once_a_newer_model_is_remembered(tmp_path: Path) -> None:
+    models = (_model_with("gpt-6-luna"),)
+    judge, sdk = _judge(tmp_path, models=models)
+    request = _request()
+    judge.judge(request)
+
+    floor_key = judge._cache_key(request, luna_provider.LUNA_MODEL)
+    judge._cache_path(floor_key).write_text(
+        json.dumps({
+            "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "stale five point six verdict"}]},
+            "provider": "openai-codex", "model": luna_provider.LUNA_MODEL, "effort": "high",
+            "rubric_version": request.rubric_version, "usage": {}, "cached": False,
+        }),
+        encoding="utf-8",
+    )
+
+    result = judge.judge(request)
+
+    assert result.model == "gpt-6-luna"
+    assert result.payload["items"][0]["reason"] != "stale five point six verdict"
+    assert len(sdk.session.starts) == 1

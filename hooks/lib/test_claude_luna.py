@@ -12,7 +12,7 @@ import pytest
 
 from lib import journal, claude_luna, claude_native
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
-from lib.luna_provider import LunaJudge
+from lib.luna_provider import LUNA_MODEL, LunaJudge
 from lib.luna_storage import LunaProviderFailure
 
 COMMENT = "# Counts the retries because the report header needs a total.\nvalue = 1\n"
@@ -476,7 +476,7 @@ def _cache_hit(home: Path, request: JudgeRequest) -> None:
         runtime_root=home / ".adw" / "runtime", cache_root=home / ".adw" / "cache" / "judges",
         auth_source=home / ".codex" / "auth.json",
     )
-    cache_file = judge._cache_path(judge._cache_key(request))
+    cache_file = judge._cache_path(judge._cache_key(request, LUNA_MODEL))
     cache_file.parent.mkdir(parents=True)
     cache_file.write_text(json.dumps({**result.__dict__, "cached": False}), encoding="utf-8")
 
@@ -528,7 +528,7 @@ def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path
     assert claude_native.read_preset(preset) == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert "PostToolUse" not in configured["hooks"]
-    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-4-6"
+    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-5-5"
 
 
 def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_path: Path) -> None:
@@ -616,7 +616,7 @@ def test_luna_success_has_no_native_double_spend_and_failure_switches_the_matchi
     assert "login required" in response["hookSpecificOutput"]["additionalContext"]
     assert claude_native.read_preset(preset) == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-4-6"
+    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-5-5"
 
 
 def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:

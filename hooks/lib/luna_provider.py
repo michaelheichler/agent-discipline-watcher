@@ -20,12 +20,13 @@ from .luna_process import terminate_process_group as _terminate_process_group
 from .luna_sdk import enum_value as _enum_value
 from .luna_sdk import item_type as _item_type
 from .luna_sdk import usage_dict as _usage_dict
-from .luna_storage import LunaProviderFailure, SecureJudgeStorage
-from .luna_validation import validate_candidate_indexes, validate_worker_result
+from .luna_storage import LunaProviderFailure, RuntimePaths, SecureJudgeStorage
+from .luna_validation import parse_luna_version, validate_candidate_indexes, validate_worker_result
 from .luna_worker_protocol import request_payload, response_result
 
 
 LUNA_MODEL = "gpt-5.6-luna"
+LUNA_MODEL_MEMO_NAME = "luna-model"
 LUNA_EFFORT = "high"
 PROVIDER_NAME = "openai-codex"
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -235,6 +236,19 @@ def _normalized_timeout(timeout_seconds: object) -> float | None:
     return normalized
 
 
+def _runtime_launch(runtime: RuntimePaths) -> SdkLaunch:
+    """Extracted, since judge() had drifted past the length gate."""
+    return SdkLaunch(
+        codex_home=runtime.codex_home, cwd=runtime.cwd,
+        config_overrides=CONFIG_OVERRIDES,
+        call_fd=runtime.call_fd,
+        codex_home_fd=runtime.codex_home_fd, cwd_fd=runtime.cwd_fd,
+        call_identity=runtime.call_identity,
+        codex_home_identity=runtime.codex_home_identity,
+        cwd_identity=runtime.cwd_identity,
+    )
+
+
 def _spawn_worker(worker_python: Path, launch: SdkLaunch) -> subprocess.Popen[str]:
     return subprocess.Popen(
         [str(worker_python), "-m", "lib.luna_worker"],
@@ -272,31 +286,33 @@ class LunaJudge:
         return self._timeout_seconds
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
-        key = self._cache_key(request)
         storage_factory = SecureJudgeStorage if self._default_storage else lambda: SecureJudgeStorage(
             runtime_root=self._runtime_root, cache_root=self._cache_root,
         )
         with storage_factory() as storage:
-            cached = self._read_cache(storage, key, request)
+            remembered_key = self._cache_key(request, self._remembered_model(storage))
+            cached = self._read_cache(storage, remembered_key, request)
             if cached is not None:
                 return replace(cached, cached=True)
             with storage.runtime(config_text=MINIMAL_CONFIG, auth_source=self._auth_source) as runtime:
-                launch = SdkLaunch(
-                    codex_home=runtime.codex_home, cwd=runtime.cwd,
-                    config_overrides=CONFIG_OVERRIDES,
-                    call_fd=runtime.call_fd,
-                    codex_home_fd=runtime.codex_home_fd, cwd_fd=runtime.cwd_fd,
-                    call_identity=runtime.call_identity,
-                    codex_home_identity=runtime.codex_home_identity,
-                    cwd_identity=runtime.cwd_identity,
-                )
+                launch = _runtime_launch(runtime)
                 if not isinstance(self._sdk, OpenAICodexSdk):
                     result = run_sdk_request(request, launch, self._sdk)
                 else:
                     result = self._run_worker(request, launch)
             result = self._validate_worker_result(request, result)
-            self._write_cache(storage, key, result)
+            storage.write_cache(LUNA_MODEL_MEMO_NAME, result.model)
+            self._write_cache(storage, self._cache_key(request, result.model), result)
             return result
+
+    @staticmethod
+    def _remembered_model(storage: SecureJudgeStorage) -> str:
+        """Remembered id, since a stale floor read would miss a moved model."""
+        cached = storage.read_cache(LUNA_MODEL_MEMO_NAME)
+        if cached is None:
+            return LUNA_MODEL
+        model = cached[0].strip()
+        return model if parse_luna_version(model) is not None else LUNA_MODEL
 
     def _worker_python(self) -> Path:
         try:
@@ -337,10 +353,10 @@ class LunaJudge:
 
     @staticmethod
     def _validate_worker_result(request: JudgeRequest, result: object) -> JudgeResult:
-        return validate_worker_result(request, result, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT)
+        return validate_worker_result(request, result, PROVIDER_NAME, LUNA_EFFORT)
 
-    def _cache_key(self, request: JudgeRequest) -> str:
-        identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, LUNA_MODEL, LUNA_EFFORT, request.rubric_version))
+    def _cache_key(self, request: JudgeRequest, model: str) -> str:
+        identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, model, LUNA_EFFORT, request.rubric_version))
         return sha256(identity.encode("utf-8")).hexdigest()
 
     def _cache_path(self, key: str) -> Path:
@@ -382,24 +398,27 @@ def run_sdk_request(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> 
     )
 
 
-def _run_turn(session: SdkSession, request: JudgeRequest, launch: SdkLaunch) -> SdkRunResult:
+def _run_turn(session: SdkSession, request: JudgeRequest, launch: SdkLaunch) -> tuple[SdkRunResult, str]:
     account = session.account()
     if account is None or account.root_type != "chatgpt":
         raise LunaProviderFailure(
             "Luna judging requires a ChatGPT subscription session. Complete Codex ChatGPT browser login or device-code login, then retry.",
             category="authentication",
         )
-    _validate_luna(session.models(include_hidden=True))
+    models = session.models(include_hidden=True)
+    model_id = _resolve_luna_model(models)
+    _validate_luna(models, model_id)
     thread = session.thread_start(SdkThreadStart(
-        model=LUNA_MODEL, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
+        model=model_id, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
         approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
         developer_instructions=DEVELOPER_INSTRUCTIONS,
     ))
-    return thread.run(SdkTurn(
-        prompt=build_prompt(request), model=LUNA_MODEL, effort=LUNA_EFFORT,
+    result = thread.run(SdkTurn(
+        prompt=build_prompt(request), model=model_id, effort=LUNA_EFFORT,
         sandbox=Sandbox.READ_ONLY, approval_mode=ApprovalMode.DENY_ALL,
         output_schema=output_schema(request),
     ))
+    return result, model_id
 
 
 def _parsed_payload(request: JudgeRequest, raw: SdkRunResult) -> dict[str, Any]:
@@ -418,27 +437,49 @@ def _parsed_payload(request: JudgeRequest, raw: SdkRunResult) -> dict[str, Any]:
 def _run_sdk_once(request: JudgeRequest, launch: SdkLaunch, sdk: CodexSdk) -> JudgeResult:
     session = sdk.open(launch)
     try:
-        raw = _run_turn(session, request, launch)
+        raw, model_id = _run_turn(session, request, launch)
     finally:
         close = getattr(session, "close", None)
         if callable(close):
             close()
     _reject_tool_items(raw.items)
     return JudgeResult(
-        payload=_parsed_payload(request, raw), provider=PROVIDER_NAME, model=LUNA_MODEL, effort=LUNA_EFFORT,
+        payload=_parsed_payload(request, raw), provider=PROVIDER_NAME, model=model_id, effort=LUNA_EFFORT,
         rubric_version=request.rubric_version, usage=raw.usage,
     )
 
 
-def _validate_luna(models: tuple[SdkModel, ...]) -> None:
-    luna = next((model for model in models if LUNA_MODEL in (model.id, model.model)), None)
+def _resolve_luna_model(models: tuple[SdkModel, ...]) -> str:
+    """Highest wins, since a stale floor would hide a newer model."""
+    best_id: str | None = None
+    best_version: tuple[int, ...] | None = None
+    for model in models:
+        identifier = model.id or model.model
+        if identifier is None or model.hidden or LUNA_EFFORT not in model.supported_reasoning_efforts:
+            continue
+        version = parse_luna_version(identifier)
+        if version is None or best_version is not None and version <= best_version:
+            continue
+        best_id, best_version = identifier, version
+    return best_id or LUNA_MODEL
+
+
+def _seen_model_ids(models: tuple[SdkModel, ...]) -> str:
+    ids = sorted({identifier for model in models for identifier in (model.id, model.model) if identifier})
+    return ", ".join(ids) if ids else "none"
+
+
+def _validate_luna(models: tuple[SdkModel, ...], resolved_id: str) -> None:
+    luna = next((model for model in models if resolved_id in (model.id, model.model)), None)
     if luna is None or luna.hidden:
         raise LunaProviderFailure(
-            "gpt-5.6-luna is unavailable to this Codex account", category="availability",
+            f"{resolved_id} is unavailable to this Codex account; saw {_seen_model_ids(models)}",
+            category="availability",
         )
     if LUNA_EFFORT not in luna.supported_reasoning_efforts:
         raise LunaProviderFailure(
-            "gpt-5.6-luna does not advertise high reasoning effort", category="availability",
+            f"{resolved_id} does not advertise high reasoning effort; saw {_seen_model_ids(models)}",
+            category="availability",
         )
 
 

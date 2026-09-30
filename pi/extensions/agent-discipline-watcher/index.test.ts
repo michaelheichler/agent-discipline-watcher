@@ -72,10 +72,10 @@ function bridgeState(values: Record<string, unknown>, operation: string): Record
     exists: operation === "write",
     values,
     effective: { adw_model: "" },
-    families: [{ name: "punctuation", states: ["off", "observe", "enforce"], locked: false }],
+    families: [{ name: "prose", states: ["off", "observe", "enforce"], locked: false }],
     rules: [],
     always_blocking_rules: [],
-    family_states: { punctuation: "enforce" },
+    family_states: { prose: "enforce" },
     rule_states: {},
     runtime: { python: {}, embedding: {}, embedding_model: {} },
   };
@@ -120,6 +120,27 @@ test("OMP model selection reaches the guarded Save request", async () => {
   await command.handler("configure", commandContext);
 
   expect(saved?.adw_model).toBe("anthropic/claude-haiku-4-5");
+});
+
+test("keeps old family names that the screen no longer lists", () => {
+  const families = ["prose", "comment", "code"].map(name => ({ name, states: ["off", "observe", "enforce"], locked: false }));
+  const state = decodeAdwPolicy({
+    ...bridgeState({
+      clean_code: false,
+      gates: { english: "observe", prose: "enforce", unknown: "off" },
+      kill_switches: { punctuation: true },
+      exempt_families: { "docs/*": ["english", "comment", "typo"] },
+    }, "read"),
+    families,
+    family_states: { prose: "enforce", comment: "off", code: "off" },
+  });
+  expect(state.families.map(family => family.name)).toEqual(["prose", "comment", "code"]);
+  expect(state.values).toEqual({
+    clean_code: false,
+    gates: { prose: "enforce", english: "observe" },
+    kill_switches: { punctuation: true },
+    exempt_families: { "docs/*": ["english", "comment"] },
+  });
 });
 
 describe("judge availability warning", () => {
