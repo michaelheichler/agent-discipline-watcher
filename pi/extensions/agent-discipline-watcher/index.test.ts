@@ -362,6 +362,11 @@ describe("watcher helpers", () => {
     });
   });
 
+  test("marks the runner as the OMP host so the gate picks the OMP advice", () => {
+    const result = runScript(`printf '{"systemMessage":"%s"}' "$OMPCODE"`);
+    expect(result.systemMessage).toBe("1");
+  });
+
   test("keeps the principle text the Python finding output wrote", () => {
     const reason = "1. a.py:3 Assertion inside a loop. (assert_in_loop)\\n   Principle (DevIQ, Unit Tests): Test one case.";
     const result = runScript(`printf '%s' '{"decision":"block","reason":"${reason}"}'`);

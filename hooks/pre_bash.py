@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from lib import reporting
+from lib import payloads, reporting, tests_policy
 from lib.config import effective_hook_config
 from lib.findings import Finding, Rule
 from lib.hookio import (
@@ -139,6 +139,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         return allow()
     cwd = payload.get("cwd") or "."
     findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
+    findings += _test_findings(payload, cfg)
     if findings:
         reason, _ = compact_block(findings, cfg)
         _record(payload, cfg, turn_id, findings, started)
@@ -152,6 +153,17 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         return allow()
     decisions = _record(payload, cfg, turn_id, owned, started) if owned else []
     return _verdict(decisions, cfg, inherited)
+
+
+def _test_findings(payload: dict, cfg: dict) -> list[dict]:
+    """Every scan target, because sh -c can wrap the write."""
+    cwd = Path(payload.get("cwd") or ".")
+    changes = [
+        tests_policy.PendingChange(path, tests_policy.read_before(payloads.resolved_path(path, cwd)), text)
+        for target in _scan_targets(_command(payload))
+        for path, text in _shell_targets(target).items()
+    ]
+    return tests_policy.findings(tests_policy.Gate(payload, cfg, time.time()), changes)
 
 
 def _scan_targets(command: str) -> list[str]:
