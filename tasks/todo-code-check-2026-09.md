@@ -229,3 +229,51 @@ Size S. Dependencies Tasks 5, 10, and 11.
 
 - [ ] The README describes three families and the explanation text
 - [ ] The CHANGELOG names the family aliases and the new Luna selection
+
+## Phase 2b. Test write policy
+
+The user approved these tickets on 2026-09-30. A project denies test writes, and only a dedicated test writer agent can write tests. That agent reads the Khorikov catalog before it writes.
+
+### Task 16. Skip files in temp directories
+
+Size S. Dependencies none.
+
+A scan of a text dump under `/tmp` produced 2700 findings on 2026-09-30. Files under the system temp roots are no project output.
+
+- [ ] For a file outside the project root, a write under `/tmp`, `/private/tmp`, `$TMPDIR`, or `/var/folders` gets no content findings
+- [ ] A copy or move from a temp root into the project still gets the full scan
+- [ ] Self-protection checks still run on every path
+
+### Task 17. Small policy CLI
+
+Size M. Dependencies none.
+
+The old `adw-cli` repository shipped `bin/agent-discipline` with `configure`, `status`, and `exempt-family`. A new `bin/adw-config` brings back the small subset the user needs now.
+
+- [ ] `adw-config status` prints the effective policy for the current project
+- [ ] `adw-config tests allow|deny` and `adw-config family NAME on|off` write the project policy file
+- [ ] An agent that runs `adw-config` through a tool call gets a block, because the agent must not widen its own gate
+
+### Task 18. Research on test writer identity per host
+
+Size S. Dependencies none.
+
+- [ ] `docs/research/` records which hook payload field names the calling subagent on Claude Code, Codex, and OMP, with evidence
+- [ ] The note records how each host sets model and effort for a named agent, and which Luna ids Codex lists
+
+### Task 19. Test write gate
+
+Size M. Dependencies Tasks 17 and 18.
+
+- [ ] With `tests: deny`, a write that adds or changes a test function gets a block that names the test writer agent
+- [ ] The test writer agent passes the gate on every host that can identify it
+- [ ] The default stays `allow` until the user changes it
+
+### Task 20. Test writer agent
+
+Size M. Dependencies Task 18.
+
+- [ ] Claude Code ships `adw-test-writer` on Opus 5.5 with high effort
+- [ ] Codex and OMP ship the same mission with a model the user picks
+- [ ] The mission makes the Khorikov catalog required reading
+- [ ] If the user configures a local book path, the mission adds the book to the required reading
