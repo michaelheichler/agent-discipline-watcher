@@ -147,9 +147,9 @@ Module `principle-kb`. Size M. Dependencies Task 5.
 
 Install and update build `~/.adw/cache/principles.sqlite`. The build reads `NimblePros/deviq-hugo` and `webpro/programming-principles` at pinned commits. Each row holds the source, the entry id, the title, and the first paragraph as plain text, with links and markup removed.
 
-- [ ] A second build with the same commits leaves the file unchanged
-- [ ] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
-- [ ] With no network, the build reports the skip and the gates still run
+- [x] A second build with the same commits leaves the file unchanged
+- [x] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
+- [x] With no network, the build reports the skip and the gates still run
 
 Files are `hooks/lib/principle_kb.py`, the update path that already fetches release data, and one test file. The build runs from the update path or its own command, never from a hook.
 
