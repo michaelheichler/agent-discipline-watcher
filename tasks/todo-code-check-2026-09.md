@@ -55,6 +55,8 @@ Measure what one turn costs the Mac today. Each cycle starts the worker cold and
 
 Module `embedding-cost`. Size M. Dependencies Task 3.
 
+Status on 2026-09-30. On hold. A 30 minute sample from 12:53 to 13:23 found the embedding worker at 0.4 percent CPU on average and 858 MB peak RSS. Four worker pids appeared in that window. Agent test and pylint runs caused the CPU peaks. The window held no normal user session, so the sample proves nothing about the reported load. Release 0.23.1 already stops orphaned workers, and those orphans are the likeliest past cause.
+
 Stop no longer releases the embedding lease. The lease expires after an idle timeout with a default of 600 seconds, set through the ADW configuration.
 
 - [ ] Two turns within the timeout reuse one worker pid
@@ -115,9 +117,11 @@ Module `test-audit-static`. Size M. Dependencies Task 6.
 
 Add `hardcoded_name_presence`, `hardcoded_literal_in_source`, and `assert_in_loop`. Each starts at observe. The Khorikov catalog gives the definition and the fixtures.
 
-- [ ] The Rust example from the spec yields `assert_in_loop`
-- [ ] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
-- [ ] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
+Status on 2026-09-30. Done on branch `worktree-agent-ae229f525a232abc5`, not merged. The audit on `hooks/` read 2048 tests. The loop rule hit 104 of them. The two literal rules hit 24 for source text and 13 for names. Rust parsing lives in `test_rules/_rust_literals.py`. Python test files without `def test_` now skip the extractor parse, so the scanner still parses a plain file once.
+
+- [x] The Rust example from the spec yields `assert_in_loop`
+- [x] `assert "ai_closer" in RULES` yields `hardcoded_name_presence`, and a test that asserts a computed value against a literal does not
+- [x] A test that reads a source file and asserts a literal in its text yields `hardcoded_literal_in_source`
 
 Files are `hooks/lib/test_rules/literals.py`, `hooks/lib/catalog.py`, and one test file.
 
@@ -145,9 +149,9 @@ Module `principle-kb`. Size M. Dependencies Task 5.
 
 Install and update build `~/.adw/cache/principles.sqlite`. The build reads `NimblePros/deviq-hugo` and `webpro/programming-principles` at pinned commits. Each row holds the source, the entry id, the title, and the first paragraph as plain text, with links and markup removed.
 
-- [ ] A second build with the same commits leaves the file unchanged
-- [ ] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
-- [ ] With no network, the build reports the skip and the gates still run
+- [x] A second build with the same commits leaves the file unchanged
+- [x] No DevIQ or programming-principles text enters git, and a test scans the tracked files for it
+- [x] With no network, the build reports the skip and the gates still run
 
 Files are `hooks/lib/principle_kb.py`, the update path that already fetches release data, and one test file. The build runs from the update path or its own command, never from a hook.
 

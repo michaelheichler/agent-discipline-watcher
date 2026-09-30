@@ -18,7 +18,7 @@ from pathlib import Path
 
 from install_runtime import EXCLUDED_NAMES, INSTALL_MARKER, INSTALL_MARKER_CONTENT
 
-from . import update_release
+from . import principle_kb, update_release
 
 INSTALL_PATH = Path(".adw/install/agent-discipline-watcher")
 HOSTS = ("claude", "codex", "omp")
@@ -278,7 +278,7 @@ def _backup_paths(paths: list[Path], destination: Path) -> dict[Path, Path | Non
 
 
 def _unlock_and_retry(action: Callable, path: str, _exc_info: object) -> None:
-    """Luna sandboxes are read-only dirs, so open the parent and retry once."""
+    """Retried once, because Luna sandboxes ship read-only parents."""
     parent = os.path.dirname(path)
     os.chmod(parent, os.stat(parent).st_mode | stat.S_IRWXU)
     if os.path.isdir(path) and not os.path.islink(path):
@@ -321,6 +321,22 @@ def _install_claude(home: Path, source: Path, commit: str, environment: dict[str
     install_pinned_plugin(home, source, commit, environment)
 
 
+def _build_principles() -> str:
+    """Run here, not in a hook, because a fetch must stay off the write path."""
+    result = principle_kb.build()
+    if result.skipped:
+        return f"principle KB unchanged ({result.reason})" if result.reason else ""
+    return f"principle KB built: deviq {result.deviq_count}, programming-principles {result.principles_count}"
+
+
+def _run_build_principles(steps: "UpdateSteps") -> str:
+    """Swallowed here, because a KB failure must not fail the update exit code."""
+    try:
+        return steps.build_principles()
+    except Exception:
+        return ""
+
+
 @dataclass(frozen=True, slots=True)
 class UpdateSteps:
     account_home: Callable[[], Path] = _account_home
@@ -328,6 +344,7 @@ class UpdateSteps:
     stage_release: Callable[[update_release.Release, Path], None] = update_release.stage_release
     install_claude: Callable[[Path, Path, str, dict[str, str]], None] = _install_claude
     run_installer: Callable[[Path, tuple[str, ...], dict[str, str]], None] = _run_installer
+    build_principles: Callable[[], str] = _build_principles
 
 
 def _inventory(root: Path) -> dict[str, tuple[str, int]]:
@@ -494,6 +511,9 @@ def main(argv: list[str] | None = None, *, steps: UpdateSteps = UpdateSteps()) -
         with _update_lock(home) as updates:
             _perform_update(home, updates, args.hosts, release, steps)
         print(f"Installed {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
+        note = _run_build_principles(steps)
+        if note:
+            print(note)
         return 0
     except Exception as error:
         print(f"adw update failed: {error}", file=sys.stderr)
