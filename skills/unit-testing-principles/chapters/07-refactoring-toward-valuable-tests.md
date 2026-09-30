@@ -525,7 +525,7 @@ Some business logic fragmentation is unavoidable. Checking that a billing email 
 
 Domain classes rarely lose all collaborators either. One, two, or three collaborators do not make a domain class overcomplicated, as long as none of them touches an out of process dependency.
 
-Do not mock those in-domain collaborators. No client of the domain model sees the calls between them. Only the first call, from the controller to a domain class, links directly to the controller's goal. Later calls between domain classes in the same operation are implementation details.
+Do not mock those in-domain collaborators. Their interactions have nothing to do with the domain model's observable behavior. Only the first call, from the controller to a domain class, links directly to the controller's goal. Later calls between domain classes in the same operation are implementation details.
 
 Code is observable behavior if it meets one of two criteria.
 

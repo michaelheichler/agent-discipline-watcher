@@ -222,7 +222,7 @@ def add_review(self, text):
 
 The signature says text in, review out. The append to `self._reviews` is a hidden second output.
 
-### Core and shell
+### What functional architecture is
 
 An application with no side effects at all is useless. Updating user data or adding an item to a cart are side effects. They are the reason the application exists.
 
@@ -263,7 +263,7 @@ They differ in how they treat side effects. Functional architecture pushes all s
 
 Functional architecture is hexagonal architecture taken to the extreme.
 
-## Refactoring a sample toward a functional core
+## Moving toward functional architecture
 
 ### The starting point
 
@@ -471,13 +471,13 @@ def record(self, files, sensor_id, taken_at) -> tuple[FileUpdate | None, str | N
     ...
 ```
 
-## Costs of a functional core
+## Drawbacks of functional architecture
 
 Functional architecture is not always possible. Even when it is, its maintainability gains often come with a performance cost and a larger code base.
 
-### Where it fits
+### Applicability
 
-The sample worked because the system gathered every input before deciding. Real flows tend to compute a partial answer first and then fetch more data from outside the process because of that answer.
+The sample worked because the system gathered every input before deciding. Often the flow needs more data from an out of process dependency, based on an intermediate result.
 
 Say the log also checks a sensor's calibration status when it reports more than a threshold of readings in the last hour. The calibration status lives in a database. Passing a database object into `ReadingLog.record` adds a hidden input. The method stops being a pure function, and output-based tests no longer apply.
 
@@ -502,7 +502,7 @@ Critics of functional architecture point to performance. The tests do not get sl
 
 Choosing functional architecture trades performance for maintainability of both production and test code. Where the performance impact is small, functional architecture wins. Elsewhere the opposite choice wins. No choice fits every system.
 
-### More code
+### Code base size
 
 Functional architecture needs a clear split between core and shell. That means more code up front. In return it lowers complexity and raises maintainability over time.
 

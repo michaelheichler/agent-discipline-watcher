@@ -170,7 +170,7 @@ Low coverage is a real warning. A number such as 60 percent means large parts of
 
 ADW does not treat coverage as a goal. A test added only to cover lines, with no behavior check, is a `hollow_test`.
 
-## Traits of a suite that pays off
+## What a successful suite looks like
 
 The only reliable way to judge a suite is to judge each test on its own. No tool does this for you.
 
@@ -180,11 +180,11 @@ A successful suite has three properties.
 2. It targets the most important parts of the code base.
 3. It gives the most value for the least upkeep.
 
-### Runs on every change
+### Integrated into the cycle
 
 Tests that nobody runs have no value. The suite runs on every change, even small ones.
 
-### Aims at the code that matters
+### Focused on the important code
 
 The domain model holds the business logic. Tests of the domain model give the best return.
 
@@ -200,7 +200,7 @@ Integration tests cover the system as a whole, including the less critical parts
 
 To test the domain model on its own, the code has to keep it separate from other concerns. Chapter 7 shows how.
 
-### Worth more than it costs
+### Maximum value, minimum upkeep
 
 This property is the hardest one and the main subject of the book.
 

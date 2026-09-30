@@ -37,7 +37,7 @@ A zero on any pillar makes the whole test worthless. Resistance to refactoring i
 
 ### Observable behavior versus implementation detail
 
-A test must verify what the code does for its client, never how it does it. Observable behavior means the operations and the state that a client uses to get its job done. Everything else counts as an implementation detail. A test that pins an implementation detail breaks on refactors and produces false alarms. Chapter 5 explains the distinction and its link to mocks.
+A test must verify what the code does for its client, never how it does it. Observable behavior is an operation or a state that helps a client reach one of its goals. Everything else counts as an implementation detail. A test that pins an implementation detail breaks on refactors and produces false alarms. Chapter 5 explains the distinction and its link to mocks.
 
 ### The style ranking
 

@@ -39,7 +39,7 @@ In TDD, starting with the assert section is also an option. The developer does n
 
 When production code comes first, the developer already knows the expected behavior. Starting with arrange works better in that case.
 
-## One act per test
+## Avoid several act sections
 
 A test with arrange, act, assert, act, assert verifies more than one unit of behavior. By chapter 2 it is an integration test, not a unit test.
 
@@ -88,7 +88,7 @@ Integration tests sometimes group several acts and asserts on purpose. Developer
 
 The author limits this exception to integration tests that already run slow. Unit tests and fast integration tests get split.
 
-## No branches inside a test
+## Avoid if statements in tests
 
 A test is a flat sequence of steps. It has no branches.
 
@@ -163,7 +163,7 @@ The fix goes in production code. `purchase` removes the stock itself. Remove any
 
 The one-line rule holds for business logic. Utility and infrastructure code breaks it more often. The author does not forbid it there. He asks for a check for a leak of encapsulation each time.
 
-### Assertion count
+### How many assertions
 
 One assertion per test comes from the idea that a unit is the smallest piece of code. Chapter 2 rejected that idea. A unit is a unit of behavior. One behavior has several outcomes. Checking all of them in one test is fine.
 
@@ -205,7 +205,7 @@ The author works with xUnit in C#. Every object oriented language has similar fr
 
 He likes that xUnit calls a test a Fact. A test is an atomic fact about the domain. A passing test proves the fact holds. A failing test means either the fact changed and the test needs a rewrite, or the system broke. A test describes behavior at a high level. It does not list what the code does line by line.
 
-## Shared setup between tests
+## Reusing test fixtures
 
 A test fixture is an object the test runs against. It is a dependency passed to the SUT, a row in a database, or a file on disk. It sits in a known, fixed state before each run, so the test gives the same result each time.
 
@@ -238,7 +238,7 @@ class BuyerTests(unittest.TestCase):
 
 ADW flags this shape as `test_fixture_reuse_via_constructor`. It has two drawbacks.
 
-#### Drawback 1. Tests that depend on each other
+#### Drawback 1. High coupling between tests
 
 Change the stock in `setUp` from 8 to 20. The first test still passes. The second test now fails, because 12 fits in 20. One edit to shared setup broke a test that the developer did not touch.
 

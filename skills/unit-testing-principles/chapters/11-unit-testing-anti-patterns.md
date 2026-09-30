@@ -431,7 +431,7 @@ class LoanController:
 
 Prefer the value over the service. Plain values are easier to work with in production code and easier to supply in tests.
 
-Injecting time as a value everywhere is rarely possible, because dependency injection frameworks handle value objects poorly. The compromise hands the clock service to the entry point of each operation, reads the current time once there, and passes that value down. The controller above takes the clock service and hands a `datetime` value to `LoanApplication.approve`.
+Injecting time as a value everywhere is rarely possible, because dependency injection frameworks handle value objects poorly. The compromise injects time as a service at the start of a business operation and passes it as a value from there. The controller above takes the clock service and hands a `datetime` value to `LoanApplication.approve`.
 
 ```python
 def test_approving_a_pending_application_records_the_time():
