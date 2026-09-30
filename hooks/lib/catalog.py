@@ -241,6 +241,18 @@ RULES: dict[str, Entry] = {
         "Docstring restates the signature",
         "Repeats the parameters rather than naming why the function exists",
     ),
+    "mocking_concrete_classes": Entry(
+        "Mock built from a concrete class",
+        "Flags a mock or patch built straight from a class the file defines, not an interface",
+    ),
+    "incomplete_mock_call_verification": Entry(
+        "Mock call check skips the arguments",
+        "Flags a bare assert_called or assert_called_once with no argument check",
+    ),
+    "time_as_ambient_context": Entry(
+        "Test reads the real clock",
+        "Flags a direct call to the system clock instead of an injected time",
+    ),
 }
 
 UNGATED_RULES: dict[str, Entry] = {

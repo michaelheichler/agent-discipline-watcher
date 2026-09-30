@@ -855,13 +855,14 @@ def test_identifier_split_keeps_acronym_before_digits():
     assert comment_rules._identifier_tokens("SHA256_digest") == {"sha", "256", "digest"}
 
 
-def test_python_ast_is_parsed_once_and_non_python_is_not_parsed(monkeypatch):
+def test_python_ast_is_parsed_by_scanner_and_the_code_check_registry(monkeypatch):
+    """Two parsers read Python, because the registry owns its own AST."""
     calls = []
     original = scanner.ast.parse
     monkeypatch.setattr(scanner.ast, "parse", lambda text: calls.append(text) or original(text))
     scan_all("sample.py", 'def _f():\n    """Scan."""\n', {})
     scan_all("sample.js", "const value = 1\n", {})
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 def _corpus_source(row):
