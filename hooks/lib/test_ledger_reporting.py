@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from lib import reporting, session_state
+from lib.finding_output import format_row
 
 
 class LedgerRootTests(unittest.TestCase):
@@ -570,8 +571,8 @@ def test_format_row_status_prefix_is_optional() -> None:
         "line": 4, "action": "fix",
     }
 
-    tagged = reporting.format_row({**finding, "status": "removed"})
-    untagged = reporting.format_row(finding)
+    tagged = format_row({**finding, "status": "removed"})
+    untagged = format_row(finding)
 
     assert tagged.startswith("[removed] ")
     assert "a.py:4 Comment restates the code. fix" in tagged
@@ -587,7 +588,7 @@ def test_format_row_sanitizes_hostile_fields() -> None:
         "action": "`click` <here>",
     }
 
-    rendered = reporting.format_row(finding)
+    rendered = format_row(finding)
 
     assert "\n" not in rendered
     assert "\u001b" not in rendered

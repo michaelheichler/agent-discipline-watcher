@@ -1,6 +1,8 @@
 {
   "assert_in_loop": "arrange-act-assert",
   "commented_code": "code-smells/dead-code",
+  "exposing_private_methods_for_testing": "code-smells/indecent-exposure",
+  "exposing_private_state_for_testing": "code-smells/indecent-exposure",
   "file_length_critical": "terms/cohesion",
   "file_length_warning": "terms/cohesion",
   "file_too_long": "terms/cohesion",

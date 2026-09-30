@@ -17,7 +17,7 @@ try:
     from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
-        Explainer, clip as _clip, deduplicated as _deduplicated, format_row,
+        Explainer, clip as _clip, deduplicated as _deduplicated,
         listed_lines, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )
@@ -27,7 +27,7 @@ except ImportError:
     from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
     from finding_output import (
-        Explainer, clip as _clip, deduplicated as _deduplicated, format_row,
+        Explainer, clip as _clip, deduplicated as _deduplicated,
         listed_lines, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )

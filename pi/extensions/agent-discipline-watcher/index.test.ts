@@ -362,6 +362,12 @@ describe("watcher helpers", () => {
     });
   });
 
+  test("keeps the principle text the Python finding output wrote", () => {
+    const reason = "1. a.py:3 Assertion inside a loop. (assert_in_loop)\\n   Principle (DevIQ, Unit Tests): Test one case.";
+    const result = runScript(`printf '%s' '{"decision":"block","reason":"${reason}"}'`);
+    expect(result.reason).toContain("Principle (DevIQ, Unit Tests): Test one case.");
+  });
+
   test("bounds runner input before invoking the runner", () => {
     const result = runWatcher("SessionStart", { content: "x".repeat(1_000_001) }, "/missing/runner");
     expect(result).toEqual({
