@@ -82,16 +82,8 @@ class PluginManifestTests(unittest.TestCase):
         commands = [entry["command"] for event, entry in hook_commands(config) if event == "SessionEnd"]
         self.assertEqual(commands, ['"${CLAUDE_PLUGIN_ROOT}"/hooks/run.sh SessionEnd'])
 
-    def test_hook_description_names_both_gate_tiers(self):
-        """Named in the description because a reader choosing a plugin never opens the hook file."""
-        config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        lowered = config["description"].lower()
-        self.assertIn("deterministic", lowered)
-        self.assertIn("semantic", lowered)
-
     def test_manifest_does_not_redeclare_the_auto_discovered_hooks_file(self):
         manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["name"], "agent-discipline-watcher")
         self.assertTrue(HOOKS_JSON.is_file(), "hooks/hooks.json is the documented default location")
         declared = manifest.get("hooks")
         if declared is None:

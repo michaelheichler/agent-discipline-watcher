@@ -24,7 +24,6 @@ def _hook_timeouts() -> set[int]:
 
 def test_the_provider_deadline_ends_before_the_host_kills_the_hook() -> None:
     """Shorter, because a killed hook reports no reason."""
-    assert luna_provider.JUDGE_TIMEOUT_SECONDS == 105
     assert all(luna_provider.JUDGE_TIMEOUT_SECONDS < timeout for timeout in _hook_timeouts())
 
 

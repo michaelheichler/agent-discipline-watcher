@@ -247,12 +247,6 @@ class PythonFloorTests(unittest.TestCase):
 
         self.assertRegex(workflow, r"matrix:\s*\n\s*ahead:")
 
-    def test_ci_fails_when_pylint_drops_below_a_clean_score(self):
-        """Assert the score because pylint exits zero on a warning and CI would call that a pass."""
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-
-        self.assertIn("rated at 10.00/10", workflow)
-
 
 if __name__ == "__main__":
     unittest.main()

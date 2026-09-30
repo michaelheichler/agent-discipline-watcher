@@ -355,8 +355,8 @@ def test_runtime_symlink_fails_closed_without_touching_its_target(tmp_path: Path
     outside.mkdir()
     runtime = tmp_path / "runtime"
     runtime.symlink_to(outside, target_is_directory=True)
-    judge, _sdk = _judge(tmp_path)
-    judge = LunaJudge(sdk=judge._sdk, runtime_root=runtime, cache_root=tmp_path / "cache", auth_source=tmp_path / "missing")
+    _unused, sdk = _judge(tmp_path)
+    judge = LunaJudge(sdk=sdk, runtime_root=runtime, cache_root=tmp_path / "cache", auth_source=tmp_path / "missing")
 
     with pytest.raises(LunaProviderFailure, match="symlink"):
         judge.judge(_request())
