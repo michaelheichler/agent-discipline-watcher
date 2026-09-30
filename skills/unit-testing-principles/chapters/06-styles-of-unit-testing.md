@@ -180,7 +180,7 @@ Functional programming is programming with mathematical functions, also called p
 
 `shipping_discount` above is pure. It takes a list of parcels and returns a decimal. Nothing else goes in or out.
 
-A mathematical function links two sets. Each element of the first set maps to one element of the second. `f(x) = x + 1` maps 1 to 2 and 2 to 3. `shipping_discount` maps each list of parcels to one discount.
+A mathematical function links two sets. Each element of the first set maps to one element of the second. The function `f(x) = x + 1` maps 1 to 2 and 2 to 3. The function `shipping_discount` maps each list of parcels to one discount.
 
 Explicit inputs and outputs make pure functions highly testable. Their tests are short and easy to maintain. Output-based testing applies only to pure functions, and it has the best maintainability and the lowest false-positive rate.
 
