@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.24.1 (2026-09-30)
 
 ### Changed
+
+- **`/agent-discipline-watcher:adw-nuke --yes` removes ADW and installs it again.** The skill finds a checkout before the removal. It reinstalls the hosts the dry run named, checks the result, and reports. Before, the agent stopped after the removal and told the user to run `./install.sh`. `--uninstall` keeps the removal-only path.
 
 - **`./install.sh` puts `~/.adw/bin` on PATH again.** This reverses the August
   decision in 0.20.2 that only printed the line. The user asked for the reversal on
   2026-09-30, because `adw`, `adw-config`, `adw-judge`, and `adw-nuke` were not
-  reachable by name after an install. The old objection was that the user could
+  reachable by name after an install. The old objection was that the user did
   not see the change. The installer now prints the file it edited. The router,
   not a host installer, writes one fenced `# >>> agent-discipline-watcher >>>`
   block into `~/.zshrc` for zsh or `~/.bashrc` for bash, chosen from `$SHELL`.

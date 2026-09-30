@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.24.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.24.1**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -209,8 +209,9 @@ hosts after updating so they load the new hooks and extension.
 ### Full removal
 
 The Claude installer also links `~/.adw/bin/adw-nuke`. It removes every ADW
-trace so a fresh `./install.sh` starts clean. From a Claude session, run
-`/agent-discipline-watcher:adw-nuke --dry-run` instead.
+trace so a fresh `./install.sh` starts clean. In a Claude session,
+`/agent-discipline-watcher:adw-nuke --yes` removes ADW and installs it again from a
+checkout. `--uninstall` removes it only, and `--dry-run` lists the paths.
 
 ```bash
 ~/.adw/bin/adw-nuke --dry-run
