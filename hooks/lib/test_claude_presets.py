@@ -29,7 +29,7 @@ def test_a_stored_sonnet_preset_reads_as_the_preset_that_replaced_it(tmp_path) -
 
 def test_mixed_judges_the_turn_with_sonnet() -> None:
     """Sonnet, because mixed also reads whole documents."""
-    assert claude_presets.model_for("mixed") == "claude-sonnet-4-6"
+    assert claude_presets.model_for("mixed") == "claude-sonnet-5-5"
 
 
 def test_haiku_judges_the_turn_with_haiku() -> None:

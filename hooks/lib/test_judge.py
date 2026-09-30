@@ -91,7 +91,7 @@ def test_the_selection_reaches_the_judge_without_a_silent_downgrade() -> None:
         "claude-sonnet-5",
         judge.JUDGE_MODEL,
     ]
-    assert judge.JUDGE_MODEL == "claude-haiku-4-5"
+    assert judge.JUDGE_MODEL == "claude-haiku-4-5-20251001"
 
 
 def test_an_errored_run_raises_rather_than_reporting_a_clean_file() -> None:
