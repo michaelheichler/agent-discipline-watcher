@@ -139,6 +139,8 @@ Size S. The rules are `if_statements_in_tests`, `multiple_act_sections_in_unit_t
 
 Size S. The rules are `exposing_private_methods_for_testing`, `exposing_private_state_for_testing`, and `code_pollution`. The file is `hooks/lib/test_rules/private_access.py`.
 
+Status on 2026-09-30. Done on branch `worktree-agent-afc4bee7b19625656`, commit `6e470d4`, not merged. `code_pollution` stays CONTEXT, no test-side signal found in hooks/. On hooks/, 176 method hits and 16 state hits, sampled true except one accepted stdlib false positive.
+
 #### Task 8c. Mock and ambient context rules
 
 Size S. The rules are `mocking_concrete_classes`, `incomplete_mock_call_verification`, `time_as_ambient_context`, and `reusing_database_context_across_sections`. The file is `hooks/lib/test_rules/doubles.py`. If a rule needs other files to decide, record it as CONTEXT in the catalog and skip it.
