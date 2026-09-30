@@ -20,7 +20,7 @@ jobs:
         pip install pylint pytest
     - name: Checking shell syntax
       run: |
-        bash -n $(git ls-files '*.sh')
+        for script in $(git ls-files '*.sh') bin/adw bin/adw-judge bin/adw-nuke bin/adw-config; do bash -n "$script"; done
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py') | tee pylint.log
