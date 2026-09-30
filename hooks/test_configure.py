@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -169,6 +170,21 @@ def test_read_resolves_clean_code_to_both_new_families(tmp_path: Path) -> None:
 
     assert result["values"] == {"clean_code": False}
     assert result["family_states"] == {"prose": "enforce", "comment": "off", "code": "off"}
+
+
+BRIDGE_TS = Path(__file__).resolve().parents[1] / "pi/extensions/agent-discipline-watcher/adw-bridge.ts"
+
+
+def _ts_names(constant: str) -> list[str]:
+    source = BRIDGE_TS.read_text(encoding="utf-8")
+    body = re.search(rf"const {constant} = \[(.*?)\] as const;", source, re.DOTALL)
+    return re.findall(r'"(\w+)"', body.group(1)) if body else []
+
+
+def test_the_omp_bridge_keeps_every_key_python_accepts() -> None:
+    """Match both lists because OMP drops a key it does not know."""
+    assert _ts_names("CONFIG_VALUE_KEYS") == list(configure.EDITABLE_KEYS)
+    assert _ts_names("FAMILY_SWITCH_KEYS") == list(config.GATE_FAMILIES)
 
 
 def _write_opaque_project(root: Path) -> Path:
