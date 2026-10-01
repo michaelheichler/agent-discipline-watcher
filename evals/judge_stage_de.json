@@ -1,0 +1,585 @@
+{
+  "de_comparative_framing": {
+    "after_judge": {
+      "candidates": 41,
+      "confirmed": 18,
+      "precision": 0.3889,
+      "precision_lower_bound": 0.203,
+      "recall": 1.0,
+      "true_positive": 7,
+      "violating": 7
+    },
+    "all_candidates": {
+      "candidates": 47,
+      "confirmed": 22,
+      "precision": 0.5,
+      "precision_lower_bound": 0.3072,
+      "recall": 1.0,
+      "true_positive": 11,
+      "violating": 11
+    },
+    "confirmed_lines": [
+      1364,
+      20187,
+      10257,
+      15794,
+      10821,
+      16809,
+      13057,
+      20346,
+      17842,
+      10811,
+      14587,
+      1291,
+      18246,
+      6581,
+      19136,
+      20115,
+      9211,
+      2416,
+      19808,
+      18243,
+      2315,
+      14107
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_dichotomy_template": {
+    "after_judge": {
+      "candidates": 10,
+      "confirmed": 0,
+      "precision": null,
+      "precision_lower_bound": 0.0,
+      "recall": 0.0,
+      "true_positive": 0,
+      "violating": 4
+    },
+    "all_candidates": {
+      "candidates": 16,
+      "confirmed": 4,
+      "precision": 1.0,
+      "precision_lower_bound": 0.5101,
+      "recall": 0.5,
+      "true_positive": 4,
+      "violating": 8
+    },
+    "confirmed_lines": [
+      413,
+      13895,
+      19261,
+      3877
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_empty_standard_section": {
+    "after_judge": {
+      "candidates": 10,
+      "confirmed": 4,
+      "precision": 0.75,
+      "precision_lower_bound": 0.3006,
+      "recall": 0.6,
+      "true_positive": 3,
+      "violating": 5
+    },
+    "all_candidates": {
+      "candidates": 16,
+      "confirmed": 8,
+      "precision": 0.875,
+      "precision_lower_bound": 0.5291,
+      "recall": 0.7778,
+      "true_positive": 7,
+      "violating": 9
+    },
+    "confirmed_lines": [
+      755,
+      1237,
+      2585,
+      3087,
+      10942,
+      4577,
+      3856,
+      891
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_epistemic_miscalibration": {
+    "after_judge": {
+      "candidates": 34,
+      "confirmed": 9,
+      "precision": 0.1111,
+      "precision_lower_bound": 0.0199,
+      "recall": 1.0,
+      "true_positive": 1,
+      "violating": 1
+    },
+    "all_candidates": {
+      "candidates": 40,
+      "confirmed": 13,
+      "precision": 0.3846,
+      "precision_lower_bound": 0.1771,
+      "recall": 1.0,
+      "true_positive": 5,
+      "violating": 5
+    },
+    "confirmed_lines": [
+      17411,
+      18570,
+      118,
+      1587,
+      18203,
+      7814,
+      884,
+      7914,
+      12022,
+      17085,
+      16938,
+      1398,
+      13764
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_fake_analysis_tail": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 8,
+      "precision": 0.75,
+      "precision_lower_bound": 0.4093,
+      "recall": 1.0,
+      "true_positive": 6,
+      "violating": 6
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 12,
+      "precision": 0.8333,
+      "precision_lower_bound": 0.552,
+      "recall": 1.0,
+      "true_positive": 10,
+      "violating": 10
+    },
+    "confirmed_lines": [
+      18342,
+      687,
+      3716,
+      3694,
+      2925,
+      2895,
+      16939,
+      4876,
+      20847,
+      20445,
+      4880,
+      7281
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_false_range": {
+    "after_judge": {
+      "candidates": 34,
+      "confirmed": 4,
+      "precision": 0.75,
+      "precision_lower_bound": 0.3006,
+      "recall": 1.0,
+      "true_positive": 3,
+      "violating": 3
+    },
+    "all_candidates": {
+      "candidates": 40,
+      "confirmed": 8,
+      "precision": 0.875,
+      "precision_lower_bound": 0.5291,
+      "recall": 1.0,
+      "true_positive": 7,
+      "violating": 7
+    },
+    "confirmed_lines": [
+      18610,
+      8143,
+      19850,
+      4233,
+      5404,
+      17058,
+      20856,
+      3032
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_gap_filling_speculation": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 20,
+      "precision": 0.7,
+      "precision_lower_bound": 0.481,
+      "recall": 1.0,
+      "true_positive": 14,
+      "violating": 14
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 24,
+      "precision": 0.75,
+      "precision_lower_bound": 0.551,
+      "recall": 1.0,
+      "true_positive": 18,
+      "violating": 18
+    },
+    "confirmed_lines": [
+      20568,
+      20126,
+      18239,
+      3935,
+      7592,
+      15477,
+      18467,
+      11148,
+      7835,
+      19605,
+      461,
+      17589,
+      15042,
+      13241,
+      18486,
+      20202,
+      20612,
+      9704,
+      19991,
+      7735,
+      10546,
+      20731,
+      15557,
+      14615
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_markerless_closer": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 14,
+      "precision": 0.5,
+      "precision_lower_bound": 0.268,
+      "recall": 1.0,
+      "true_positive": 7,
+      "violating": 7
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 18,
+      "precision": 0.6111,
+      "precision_lower_bound": 0.3862,
+      "recall": 1.0,
+      "true_positive": 11,
+      "violating": 11
+    },
+    "confirmed_lines": [
+      5452,
+      18250,
+      9686,
+      7853,
+      4598,
+      15380,
+      15459,
+      4333,
+      734,
+      4530,
+      14002,
+      16771,
+      6535,
+      1402,
+      15695,
+      7876,
+      6285,
+      10955
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_passive_voice": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 18,
+      "precision": 0.3889,
+      "precision_lower_bound": 0.203,
+      "recall": 1.0,
+      "true_positive": 7,
+      "violating": 7
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 22,
+      "precision": 0.5,
+      "precision_lower_bound": 0.3072,
+      "recall": 1.0,
+      "true_positive": 11,
+      "violating": 11
+    },
+    "confirmed_lines": [
+      3340,
+      7903,
+      7300,
+      18885,
+      6649,
+      7368,
+      15794,
+      19901,
+      11617,
+      17223,
+      540,
+      11886,
+      8797,
+      16850,
+      18960,
+      7373,
+      17447,
+      18546,
+      13671,
+      18098,
+      19513,
+      18958
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_register_collapse": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 9,
+      "precision": 0.1111,
+      "precision_lower_bound": 0.0199,
+      "recall": 1.0,
+      "true_positive": 1,
+      "violating": 1
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 13,
+      "precision": 0.3846,
+      "precision_lower_bound": 0.1771,
+      "recall": 1.0,
+      "true_positive": 5,
+      "violating": 5
+    },
+    "confirmed_lines": [
+      11348,
+      15131,
+      20052,
+      17965,
+      18132,
+      17222,
+      11507,
+      12521,
+      17095,
+      13167,
+      17029,
+      5988,
+      10177
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_rhetorical_question": {
+    "after_judge": {
+      "candidates": 10,
+      "confirmed": 5,
+      "precision": 0.6,
+      "precision_lower_bound": 0.2307,
+      "recall": 0.6,
+      "true_positive": 3,
+      "violating": 5
+    },
+    "all_candidates": {
+      "candidates": 16,
+      "confirmed": 9,
+      "precision": 0.7778,
+      "precision_lower_bound": 0.4526,
+      "recall": 0.7778,
+      "true_positive": 7,
+      "violating": 9
+    },
+    "confirmed_lines": [
+      13772,
+      5978,
+      20491,
+      5984,
+      17050,
+      18806,
+      2955,
+      8977,
+      49
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_stock_phrase": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 15,
+      "precision": 0.8,
+      "precision_lower_bound": 0.5481,
+      "recall": 1.0,
+      "true_positive": 12,
+      "violating": 12
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 19,
+      "precision": 0.8421,
+      "precision_lower_bound": 0.6243,
+      "recall": 1.0,
+      "true_positive": 16,
+      "violating": 16
+    },
+    "confirmed_lines": [
+      15721,
+      18404,
+      20136,
+      16933,
+      8763,
+      12946,
+      15778,
+      10256,
+      20878,
+      20262,
+      7118,
+      13096,
+      9129,
+      16562,
+      15948,
+      1784,
+      18901,
+      9986,
+      10825
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_unbacked_superlative": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 12,
+      "precision": 0.5,
+      "precision_lower_bound": 0.2538,
+      "recall": 1.0,
+      "true_positive": 6,
+      "violating": 6
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 16,
+      "precision": 0.625,
+      "precision_lower_bound": 0.3864,
+      "recall": 1.0,
+      "true_positive": 10,
+      "violating": 10
+    },
+    "confirmed_lines": [
+      3006,
+      9905,
+      8751,
+      541,
+      35,
+      13801,
+      2883,
+      13422,
+      19064,
+      2970,
+      15254,
+      12989,
+      3280,
+      9548,
+      12924,
+      7791
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  },
+  "de_vague_authority": {
+    "after_judge": {
+      "candidates": 26,
+      "confirmed": 13,
+      "precision": 0.7692,
+      "precision_lower_bound": 0.4974,
+      "recall": 0.7692,
+      "true_positive": 10,
+      "violating": 13
+    },
+    "all_candidates": {
+      "candidates": 32,
+      "confirmed": 17,
+      "precision": 0.8235,
+      "precision_lower_bound": 0.5897,
+      "recall": 0.8235,
+      "true_positive": 14,
+      "violating": 17
+    },
+    "confirmed_lines": [
+      14124,
+      18332,
+      9144,
+      17998,
+      14461,
+      6590,
+      7620,
+      15498,
+      15098,
+      11479,
+      9403,
+      18501,
+      87,
+      6530,
+      14455,
+      7908,
+      20033
+    ],
+    "judge": "luna",
+    "models": [
+      "gpt-5.6-luna"
+    ],
+    "recommendation": "observe"
+  }
+}

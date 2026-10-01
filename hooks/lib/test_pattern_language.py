@@ -1,6 +1,9 @@
 """Protect the German semantic path, because a German row judged against English exemplars or an English rubric measures nothing."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from lib import embedding_session, german_rules, pattern_semantic
@@ -171,6 +174,18 @@ def test_every_german_semantic_rule_ships_a_clean_side_and_its_german_fix(rule: 
     assert len(prompt.clean_examples) == pattern_semantic.JUDGE_EXAMPLES
 
 
+def _judged_precisions() -> dict[str, float]:
+    measured = json.loads((Path(__file__).resolve().parents[2] / "evals" / "judge_stage_de.json").read_text(encoding="utf-8"))
+    return {rule: row["after_judge"]["precision"] for rule, row in measured.items() if row["after_judge"]["precision"] is not None}
+
+
 @pytest.mark.parametrize("rule", german_rules.voted(), ids=lambda rule: rule.name)
-def test_no_german_semantic_rule_speaks_before_it_is_measured(rule: german_rules.Rule) -> None:
-    assert rule.name not in pattern_semantic.measured_rules(pattern_semantic.load_manifest())
+def test_a_german_semantic_rule_speaks_only_with_a_judged_precision(rule: german_rules.Rule) -> None:
+    speaks = rule.name in pattern_semantic.measured_rules(pattern_semantic.load_manifest())
+
+    assert speaks == (rule.name in _judged_precisions())
+
+
+@pytest.mark.parametrize("rule", german_rules.voted(), ids=lambda rule: rule.name)
+def test_no_german_semantic_rule_blocks_at_its_shipped_state(rule: german_rules.Rule) -> None:
+    assert not pattern_semantic.rule_blocks(pattern_semantic.load_manifest(), rule.name, None)

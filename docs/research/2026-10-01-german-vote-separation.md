@@ -240,3 +240,75 @@ A silent rule never votes, since `pattern_semantic.candidates_for` skips a rule 
 3. The vote with either clean side sends about half of all human sentences to the judge.
 4. The trigger filter sends under 1 percent of human sentences for 12 of 15 rules, at an unknown recall.
 5. Rater agreement on stock phrase, foreign word, false agency and retroactive nuance is too low to measure precision before the user settles those definitions.
+
+## T-010 part C, trigger plus Luna judge
+
+**No German rule reaches the 0.85 lower bound. All 14 measured rules stay at observe.**
+
+The best lower bound is 0.55, for stock phrase. Every recommendation below reads observe.
+
+### Sharper definitions
+
+The four low-agreement rules now carry a German boundary in their rule module. It names what violates and what passes.
+
+1. Stock phrase. Listed phrases and dead images violate, such as `ins Leben rufen` and `den Weg ebnen`. Fixed phrases without an image pass, such as `nach wie vor`. Funktionsverbgefüge pass, since another rule checks them.
+2. Foreign word. Decision Q21 applies, as in humanizer-de. Technical terms, titles, names and established loanwords pass. In doubt, a single loanword counts as established.
+3. False agency. humanizer-de pattern 70 applies. Only an abstract noun as decider violates. Governments, parties, companies and other groups of people pass.
+4. Retroactive nuance. humanizer-de pattern 71 applies. Only a marker that repeats a claim without new content violates. `eigentlich` as a particle and `genauer` as a comparative pass.
+
+Both raters relabeled only these four rules, 123 rows, blind and with the new wording. Rater 1 was Claude Opus 5.5 with the neighbouring sentences. Rater 2 was Claude Sonnet 5 with the sentence alone.
+
+| rule | kappa before | kappa after | agree / pairs after |
+|------|----|----|----|
+| de_stock_phrase | 0.03 | 0.875 | 30/32 |
+| de_unexplained_foreign_word | 0.26 | 1.0 | 32/32 |
+| de_retroactive_nuance | -0.03 | none, both all clean | 41/41 |
+| de_false_agency | -0.11 | 1.0 | 18/18 |
+
+Overall kappa moves from 0.5236 to 0.6655, over 553 decided pairs.
+
+Under Q21 only one foreign word sentence stays violating, `Anchor-Woman`. The rule loses its violating side and goes silent. False agency and retroactive nuance stay silent with 1 and 0 violating rows.
+
+### Adjudication
+
+A blind GPT-6 Luna subagent decided the 92 rows where the raters still disagreed. It saw the rule wording, the boundary, the German rubric and the neighbouring sentences. Two of three decided votes set the label, anything else stays undecided.
+
+1. 25 rows became violating, 55 clean and 12 undecided.
+2. The majority overturned rater 1 on 37 rows.
+3. `evals/pattern_labels_de_adjudicated.jsonl` holds all 570 rows. The exemplar builder now draws from it.
+
+### Runtime
+
+A German SEMANTIC rule takes every German sentence its trigger matches. It no longer votes. The rows reach the Luna judge with the German rubric on the same journal route. The judge prompt now carries the rule definition and the boundary.
+
+The trigger patterns moved from `evals/pattern_candidates_de.py` into the rule modules. The evals import them, so the draw and the hook read one source.
+
+### Judged stage
+
+`evals/measure_judge_stage_de.py` sends each rule's adjudicated candidates through `rule_prompt`, `request_for` and `LunaJudge.judge`, the request the Stop hook builds. It ran on 2026-10-01 against `gpt-5.6-luna`, in batches of 20. It writes `evals/judge_stage_de.json`.
+
+The measurement leaves out the shipped exemplars, since the judge reads them as examples. n counts the remaining decided candidates. Recall counts only violating rows that passed the trigger. The trigger recall stays unknown.
+
+| # | rule | n | violating | confirmed | precision | lower bound | recall | recommendation |
+|---|------|----|----|----|----|----|----|----|
+| 6 | de_passive_voice | 26 | 7 | 18 | 0.39 | 0.20 | 1.00 | observe |
+| 8 | de_stock_phrase | 26 | 12 | 15 | 0.80 | 0.55 | 1.00 | observe |
+| 15 | de_unbacked_superlative | 26 | 6 | 12 | 0.50 | 0.25 | 1.00 | observe |
+| 25 | de_dichotomy_template | 10 | 4 | 0 | none | 0.00 | 0.00 | observe |
+| 28 | de_vague_authority | 26 | 13 | 13 | 0.77 | 0.50 | 0.77 | observe |
+| 29 | de_false_range | 34 | 3 | 4 | 0.75 | 0.30 | 1.00 | observe |
+| 33 | de_fake_analysis_tail | 26 | 6 | 8 | 0.75 | 0.41 | 1.00 | observe |
+| 34 | de_comparative_framing | 41 | 7 | 18 | 0.39 | 0.20 | 1.00 | observe |
+| 38 | de_register_collapse | 26 | 1 | 9 | 0.11 | 0.02 | 1.00 | observe |
+| 57 | de_rhetorical_question | 10 | 5 | 5 | 0.60 | 0.23 | 0.60 | observe |
+| 62 | de_markerless_closer | 26 | 7 | 14 | 0.50 | 0.27 | 1.00 | observe |
+| 66 | de_epistemic_miscalibration | 34 | 1 | 9 | 0.11 | 0.02 | 1.00 | observe |
+| 67 | de_gap_filling_speculation | 26 | 14 | 20 | 0.70 | 0.48 | 1.00 | observe |
+| 73 | de_empty_standard_section | 10 | 5 | 4 | 0.75 | 0.30 | 0.60 | observe |
+
+Reading.
+
+1. The judge over-calls. It confirms more rows than are violating for 10 of 14 rules.
+2. Dichotomy confirms nothing, so it records no precision and stays silent.
+3. A perfect run needs 22 confirmed rows to reach a lower bound of 0.85. Most rules hold fewer violating rows than that.
+4. The rebuilt `hooks/lib/pattern_exemplars_de.json` records the point precision for 13 rules. Those rules now report at observe. No gate changed.
