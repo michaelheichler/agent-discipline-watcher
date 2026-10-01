@@ -59,6 +59,12 @@ def test_queries_skip_shipped_and_undecided_rows() -> None:
     assert queries == [spike.Query(spike.HELD_OUT, "zwei"), spike.Query(spike.NEAR_MISS, "drei")]
 
 
+def test_the_trigger_stage_flags_only_sentences_the_candidate_filter_admits() -> None:
+    texts = ["Experten warnen seit Wochen vor einer neuen Welle.", "Die Brücke wurde 1912 eröffnet und ist 300 Meter lang."]
+
+    assert spike.trigger_flags("de_vague_authority", texts) == [True, False]
+
+
 def test_the_labeled_pool_adds_held_out_rows_as_neighbours_and_leaves_humans_out() -> None:
     queries = [
         (spike.Query(spike.HELD_OUT, "a"), EAST), (spike.Query(spike.NEAR_MISS, "b"), NORTH),

@@ -6,6 +6,7 @@ import json
 import random
 import re
 import sys
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
@@ -19,7 +20,9 @@ JUDGE_STAGE_PATH = REPOSITORY_ROOT / "evals" / "judge_stage_de.json"
 OUTPUT_PATH = REPOSITORY_ROOT / "hooks" / "lib" / "pattern_exemplars_de.jsonl"
 MANIFEST_PATH = REPOSITORY_ROOT / "hooks" / "lib" / "pattern_exemplars_de.json"
 SEED = 20261001
-CLEAN_PER_GENRE = 2
+CLEAN_PER_GENRE = 1
+CLEAN_PER_RULE = 4
+ASSISTANT_CLEAN_PER_RULE = 2
 GENRES = ("encyclopedia", "literature")
 MAX_CHARS = 220
 CLEAN = "clean"
@@ -135,15 +138,17 @@ class Pool(NamedTuple):
     used: set[int]
 
 
-def _draw(pool: Pool, rule: str, genre: str) -> list[CorpusRow]:
+def _draw(pool: Pool, rule: str, genre: str, count: int = CLEAN_PER_GENRE) -> list[CorpusRow]:
     found: list[CorpusRow] = []
     for row in pool.order:
+        if len(found) == count:
+            return found
         if row.genre == genre and row.row not in pool.used and _usable(rule, row):
             found.append(row)
             pool.used.add(row.row)
-        if len(found) == CLEAN_PER_GENRE:
-            return found
-    raise ValueError(f"{rule}: the corpus holds fewer than {CLEAN_PER_GENRE} usable {genre} sentences")
+    if len(found) == count:
+        return found
+    raise ValueError(f"{rule}: the corpus holds fewer than {count} usable {genre} sentences")
 
 
 def _exemplar(rule: str, row: CorpusRow) -> dict:
@@ -153,19 +158,41 @@ def _exemplar(rule: str, row: CorpusRow) -> dict:
     }
 
 
-def build(corpus: list[CorpusRow], rules: Iterable[str], seed: int = SEED) -> list[dict]:
+def build(corpus: list[CorpusRow], per_genre: Mapping[str, int], seed: int = SEED) -> list[dict]:
     """Half from each genre, because a side drawn from one genre would let the genre stand in for the pattern."""
     order = list(corpus)
     random.Random(seed).shuffle(order)
     pool = Pool(order, set())
-    return [_exemplar(rule, row) for rule in rules for genre in GENRES for row in _draw(pool, rule, genre)]
+    return [
+        _exemplar(rule, row)
+        for rule, count in per_genre.items() for genre in GENRES for row in _draw(pool, rule, genre, count)
+    ]
 
 
-def _violating_exemplar(rule: str, row: AiRow) -> dict:
+def _assistant_exemplar(rule: str, row: AiRow, label: str) -> dict:
     return {
-        "rule": rule, "label": VIOLATING, "origin": f"assistant/{row.source}", "source": row.source,
+        "rule": rule, "label": label, "origin": f"assistant/{row.source}", "source": row.source,
         "model": row.model, "document": row.document, "row": row.line, "text": row.text,
     }
+
+
+def assistant_clean_side(labels: list[dict], corpus: list[AiRow], rules: Iterable[str], seed: int = SEED) -> list[dict]:
+    """Labeled near misses from the violating side's own models, because a human-only clean side let source stand in for the pattern."""
+    by_line = {row.line: row for row in corpus}
+    chosen: list[dict] = []
+    for rule in rules:
+        lines = [label["line"] for label in labels if label["rule"] == rule and label["label"] == CLEAN]
+        if len(lines) < ASSISTANT_CLEAN_PER_RULE:
+            continue
+        random.Random(f"{seed}:{rule}:clean").shuffle(lines)
+        chosen.extend(_assistant_exemplar(rule, by_line[line], CLEAN) for line in lines[:ASSISTANT_CLEAN_PER_RULE])
+    return chosen
+
+
+def human_per_genre(assistant_clean: list[dict], rules: Iterable[str]) -> dict[str, int]:
+    """Human rows fill the gap, because a rule with no labeled near miss still needs four clean neighbours."""
+    have = Counter(row["rule"] for row in assistant_clean)
+    return {rule: (CLEAN_PER_RULE - have[rule]) // len(GENRES) for rule in rules}
 
 
 def violating_side(labels: list[dict], corpus: list[AiRow], rules: Iterable[str]) -> tuple[list[dict], dict[str, int]]:
@@ -178,7 +205,7 @@ def violating_side(labels: list[dict], corpus: list[AiRow], rules: Iterable[str]
         if len(lines) < VIOLATING_PER_RULE:
             short[rule] = len(lines)
             continue
-        chosen.extend(_violating_exemplar(rule, by_line[line]) for line in lines[:VIOLATING_PER_RULE])
+        chosen.extend(_assistant_exemplar(rule, by_line[line], VIOLATING) for line in lines[:VIOLATING_PER_RULE])
     return chosen, short
 
 
@@ -207,8 +234,12 @@ class Digests(NamedTuple):
 
 
 def _rule_entry(rule: str, exemplars: list[dict], precisions: dict[str, float]) -> dict[str, object]:
-    violating = sum(1 for row in exemplars if row["rule"] == rule and row["label"] == VIOLATING)
-    return {"catalog_row": CATALOG_ROWS[rule], "judge_precision": precisions.get(rule), "violating": violating}
+    mine = [row for row in exemplars if row["rule"] == rule]
+    clean_origins = Counter(row["origin"].split("/")[0] for row in mine if row["label"] == CLEAN)
+    return {
+        "catalog_row": CATALOG_ROWS[rule], "judge_precision": precisions.get(rule),
+        "violating": sum(1 for row in mine if row["label"] == VIOLATING), "clean_origins": dict(sorted(clean_origins.items())),
+    }
 
 
 def build_manifest(exemplars: list[dict], digests: Digests, short: dict[str, int]) -> dict[str, object]:
@@ -225,7 +256,8 @@ def build_manifest(exemplars: list[dict], digests: Digests, short: dict[str, int
         "labels_sha256": digests.labels,
         "labeler": LABELER,
         "seed": SEED,
-        "clean_per_rule": CLEAN_PER_GENRE * len(GENRES),
+        "clean_per_rule": CLEAN_PER_RULE,
+        "assistant_clean_per_rule": ASSISTANT_CLEAN_PER_RULE,
         "violating_per_rule": VIOLATING_PER_RULE,
         "rules": {rule: _rule_entry(rule, exemplars, precisions) for rule in rules},
         "silent_rules": {rule: f"{count} violating sentences labeled" for rule, count in short.items()},
@@ -245,8 +277,11 @@ def main() -> None:
     corpus_sha = corpus_digest()
     ai_sha = ai_corpus_digest()
     rules = registered_rules()
-    violating, short = violating_side(load_labels(), load_ai_corpus(), rules)
-    exemplars = merged(violating, build(load_corpus(), rules), rules)
+    labels, ai_rows = load_labels(), load_ai_corpus()
+    violating, short = violating_side(labels, ai_rows, rules)
+    assistant_clean = assistant_clean_side(labels, ai_rows, rules)
+    clean = assistant_clean + build(load_corpus(), human_per_genre(assistant_clean, rules))
+    exemplars = merged(violating, clean, rules)
     serialized = serialize(exemplars)
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     OUTPUT_PATH.write_text(serialized, encoding="utf-8", newline="\n")

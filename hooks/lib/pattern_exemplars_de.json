@@ -1,6 +1,6 @@
 {
   "exemplars": "pattern_exemplars_de.jsonl",
-  "sha256": "b0a4b1ded71ffac12d8843093c00f6113993d612b0a077e9b287bc65c8109ed5",
+  "sha256": "6b320cf55817cc489e21d708601b775e97fa8e53c98551f69a49db48c55d6ab0",
   "corpus": "corpus_human_sentences_de.jsonl",
   "corpus_sha256": "7f3ec0228d39c462eba7a575d0dfe22bc9e6b999563347ccf680e2143b218b3d",
   "ai_corpus": "corpus_ai_sentences_de.jsonl",
@@ -10,132 +10,230 @@
   "labeler": "claude-opus-5-5, by hand against the catalog definitions, 2026-10-01",
   "seed": 20261001,
   "clean_per_rule": 4,
+  "assistant_clean_per_rule": 2,
   "violating_per_rule": 4,
   "rules": {
     "de_passive_voice": {
       "catalog_row": 6,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_stock_phrase": {
       "catalog_row": 8,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_unexplained_foreign_word": {
       "catalog_row": 12,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_unbacked_superlative": {
       "catalog_row": 15,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_dichotomy_template": {
       "catalog_row": 25,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_shallow_participle": {
       "catalog_row": 27,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_vague_authority": {
       "catalog_row": 28,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_false_range": {
       "catalog_row": 29,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_synonym_rotation": {
       "catalog_row": 31,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_fake_analysis_tail": {
       "catalog_row": 33,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_comparative_framing": {
       "catalog_row": 34,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_register_collapse": {
       "catalog_row": 38,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_broken_link": {
       "catalog_row": 47,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_fabricated_citation": {
       "catalog_row": 48,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_style_shift": {
       "catalog_row": 52,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "human": 4
+      }
     },
     "de_fragment_heading": {
       "catalog_row": 56,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "human": 4
+      }
     },
     "de_rhetorical_question": {
       "catalog_row": 57,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_markerless_closer": {
       "catalog_row": 62,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_retroactive_nuance": {
       "catalog_row": 64,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_epistemic_miscalibration": {
       "catalog_row": 66,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_gap_filling_speculation": {
       "catalog_row": 67,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_invented_anecdote": {
       "catalog_row": 68,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_false_agency": {
       "catalog_row": 69,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     },
     "de_citation_mismatch": {
       "catalog_row": 71,
       "judge_precision": null,
-      "violating": 0
+      "violating": 0,
+      "clean_origins": {
+        "human": 4
+      }
     },
     "de_empty_standard_section": {
       "catalog_row": 73,
       "judge_precision": null,
-      "violating": 4
+      "violating": 4,
+      "clean_origins": {
+        "assistant": 2,
+        "human": 2
+      }
     }
   },
   "silent_rules": {

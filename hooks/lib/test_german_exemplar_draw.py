@@ -55,6 +55,32 @@ def test_a_rule_with_three_violating_labels_stays_silent() -> None:
     assert short == {RULE: 3, "de_false_agency": 0}
 
 
+def test_the_clean_side_takes_two_labeled_near_misses_and_two_human_rows() -> None:
+    labels = [_label(line, "clean") for line in (2, 4, 6)] + [_label(1, "violating")]
+
+    assistant = builder.assistant_clean_side(labels, CORPUS, (RULE,))
+
+    assert len(assistant) == 2
+    assert {row["row"] for row in assistant} <= {2, 4, 6}
+    assert {row["label"] for row in assistant} == {"clean"}
+    assert builder.human_per_genre(assistant, (RULE,)) == {RULE: 1}
+
+
+def test_a_rule_without_two_near_misses_takes_four_human_rows() -> None:
+    assistant = builder.assistant_clean_side([_label(2, "clean")], CORPUS, (RULE,))
+
+    assert not assistant
+    assert builder.human_per_genre(assistant, (RULE,)) == {RULE: 2}
+
+
+def test_the_near_miss_draw_repeats_under_the_same_seed() -> None:
+    labels = [_label(line, "clean") for line in range(1, 9)]
+
+    first = builder.assistant_clean_side(labels, CORPUS, (RULE,), seed=11)
+
+    assert first == builder.assistant_clean_side(labels, CORPUS, (RULE,), seed=11)
+
+
 def test_labels_that_follow_the_seeded_order_pass_the_prefix_check() -> None:
     order = [row.line for row in drawing.candidates(RULE, CORPUS)]
     labels = [_label(line, "clean") for line in order[:3]]

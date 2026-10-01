@@ -10,6 +10,7 @@ from typing import NamedTuple
 
 from ai_corpus_de import ai_corpus_digest, load_ai_corpus, load_labels
 from build_pattern_exemplars_de import MANIFEST_PATH, OUTPUT_PATH, REPOSITORY_ROOT, SEED, corpus_digest, load_corpus, usable_text
+from pattern_candidates_de import CANDIDATE_PATTERNS, MIN_WORDS
 
 RECORD_PATH = REPOSITORY_ROOT / "evals" / "qualification_de.json"
 NEIGHBOUR_COUNTS = (1, 3, 5, 7)
@@ -114,8 +115,8 @@ def measured_queries(exemplars: list[dict]) -> dict[str, list[Query]]:
     """Only rules with a violating side, because a silent rule never votes and has nothing to measure."""
     labels = load_labels()
     texts = {row.line: row.text for row in load_ai_corpus()}
-    shipped = {row["row"] for row in exemplars if row["label"] == VIOLATING}
-    human = human_queries(load_corpus(), {row["row"] for row in exemplars if row["label"] == CLEAN})
+    shipped = {row["row"] for row in exemplars if row["origin"].startswith("assistant/")}
+    human = human_queries(load_corpus(), {row["row"] for row in exemplars if row["origin"].startswith("human/")})
     voted = sorted({row["rule"] for row in exemplars if row["label"] == VIOLATING})
     return {rule: rule_queries([row for row in labels if row["rule"] == rule], texts, shipped) + human for rule in voted}
 
@@ -126,6 +127,23 @@ def measured_rules(exemplars: list[dict], queries: dict[str, list[Query]], vecto
             [(row["label"], vectors[row["text"]]) for row in exemplars if row["rule"] == rule],
             [(query, vectors[query.text]) for query in rule_rows],
         )
+        for rule, rule_rows in queries.items()
+    }
+
+
+def trigger_flags(rule: str, texts: Iterable[str]) -> list[bool]:
+    pattern = CANDIDATE_PATTERNS[rule]
+    return [len(text.split()) >= MIN_WORDS and usable_text(text) and bool(pattern.search(text)) for text in texts]
+
+
+def trigger_stage(queries: dict[str, list[Query]], labels: list[dict], human_corpus: list[str]) -> dict[str, object]:
+    return {
+        rule: {
+            "labeled_violating": _rate([True for row in labels if row["rule"] == rule and row["label"] == VIOLATING]),
+            "labeled_clean": _rate([True for row in labels if row["rule"] == rule and row["label"] == CLEAN]),
+            "human_queries": _rate(trigger_flags(rule, [query.text for query in rule_rows if query.kind == HUMAN])),
+            "human_corpus": _rate(trigger_flags(rule, human_corpus)),
+        }
         for rule, rule_rows in queries.items()
     }
 
@@ -148,6 +166,7 @@ def main() -> None:
         "exemplars_sha256": json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["sha256"],
         "endpoint": (urls() or [""])[0], "neighbour_counts": list(NEIGHBOUR_COUNTS), "human_queries": HUMAN_QUERIES,
         "rules": measured_rules(exemplars, queries, vectors),
+        "trigger_stage": trigger_stage(queries, load_labels(), [row.text for row in load_corpus()]),
     }
     RECORD_PATH.write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(f"{len(queries)} rules measured, record at {RECORD_PATH.name}")
