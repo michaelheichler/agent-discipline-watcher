@@ -28,6 +28,22 @@ An earlier gate read the candidate stage alone against a 0.90 precision floor, w
 
 Read that record before trusting the rule. At the shipped cut it fires on 3.15 percent of human documents and 0.56 percent of assistant replies, and pre-1930 literature is the noisiest genre at 4.92 percent. The pattern runs commoner in human prose than in model prose, so `uniform_paragraph_endings` ships at observe and says nothing about who wrote a document.
 
+## German corpora
+
+`build_german_corpora.py` rebuilds every German corpus in one run, calling `build_human_corpus_de.py`, `build_ai_corpus_de.py`, and `build_paragraph_corpus_de.py` in turn. Each row carries `"lang": "de"` and a `source` field, alongside the shapes used by the English corpora above.
+
+`build_human_corpus_de.py` draws German encyclopedia sentences from a 2018 `dewiki` dump and German literature sentences from the German rows of `sedthh/gutenberg_multilang`, into `corpus_human_sentences_de.jsonl`. The literature pool is 1735 books, far smaller than the English Gutenberg pool, so the literature target is lower than the encyclopedia target.
+
+`build_ai_corpus_de.py` draws German assistant replies from the German rows of `allenai/WildChat-4.8M`, and German machine-written news and encyclopedia text from the German rows of `Jinyan1/COLING_2025_MGT_multingual`, into `corpus_ai_sentences_de.jsonl`. Both builders reach their source through the HuggingFace datasets-server `filter` endpoint rather than a full sweep, since both datasets support a server-side `where` clause on `language` or `lang`.
+
+`build_paragraph_corpus_de.py` draws German documents that still carry their paragraph breaks into `corpus_paragraphs_de.jsonl`. The human side comes from the same `dewiki` and `gutenberg_multilang` sources above. The assistant side comes from WildChat German only. COLING German rows read as one flat line with no paragraph breaks, the same gap the English paragraph corpus already documents for news genres, so COLING plays no part on the paragraph side and the manifest records the gap.
+
+Git ignores all three German corpora, which rebuild byte for byte, the same as their English counterparts. Rebuild every German corpus with:
+
+```bash
+python3 evals/build_german_corpora.py
+```
+
 ## Judged gate
 
 `measure_regex_judge.py` scores a regex candidate stage and its reader as one stage, since a rule at the judged gate reports nothing until the reader confirms it. It writes `regex_judge.json`.

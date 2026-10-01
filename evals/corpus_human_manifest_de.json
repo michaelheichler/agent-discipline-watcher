@@ -1,0 +1,22 @@
+{
+  "corpus": "corpus_human_sentences_de.jsonl",
+  "coverage_gap": "No news or technical prose in either genre, which is most of what the watcher actually scans.",
+  "dewiki_skip_articles": 20000,
+  "genres": {
+    "encyclopedia": {
+      "documents": 1904,
+      "note": "German Wikipedia articles from a 2018 dump, present-day expository prose with markup residue.",
+      "sentences": 20000,
+      "target": 20000
+    },
+    "literature": {
+      "documents": 679,
+      "note": "German books in the public domain, drawn from a multilingual Gutenberg mirror.",
+      "sentences": 8000,
+      "target": 8000
+    }
+  },
+  "lang": "de",
+  "sentences_per_document": 12,
+  "sha256": "7f3ec0228d39c462eba7a575d0dfe22bc9e6b999563347ccf680e2143b218b3d"
+}

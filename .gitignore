@@ -27,6 +27,12 @@ evals/corpus_ai_sentences.jsonl
 # Rebuild with: python3 evals/build_paragraph_corpus.py
 evals/corpus_paragraphs.jsonl
 
+# German sentence and paragraph corpora, third-party rows, rebuildable byte for byte.
+# Rebuild with: python3 evals/build_german_corpora.py
+evals/corpus_human_sentences_de.jsonl
+evals/corpus_ai_sentences_de.jsonl
+evals/corpus_paragraphs_de.jsonl
+
 # Third-party sentences again, rebuilt byte for byte from the corpus above.
 # Rebuild with: python3 evals/build_pattern_benchmark.py
 evals/benchmark_patterns.jsonl
