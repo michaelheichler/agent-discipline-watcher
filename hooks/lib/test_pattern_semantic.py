@@ -35,21 +35,30 @@ def _opted_in(monkeypatch) -> None:
     monkeypatch.setenv(embedding_session.ENABLE_ENV, "1")
 
 
-def test_the_shipped_exemplars_carry_both_sides_for_every_rule() -> None:
+def test_every_shipped_rule_carries_a_clean_side() -> None:
     exemplars = pattern_semantic.load_exemplars()
     rules = {row.rule for row in exemplars}
 
     assert rules
-    for rule in rules:
-        sides = {row.label for row in exemplars if row.rule == rule}
-        assert sides == {"violating", "clean"}, rule
+    assert rules == {row.rule for row in exemplars if row.label == "clean"}
+
+
+def test_every_shipped_english_rule_also_carries_a_violating_side() -> None:
+    exemplars = pattern_semantic.load_exemplars()
+    manifest = pattern_semantic.load_manifest()
+    english = {row.rule for row in exemplars if "language" not in manifest["rules"][row.rule]}
+
+    assert english
+    assert english <= {row.rule for row in exemplars if row.label == "violating"}
 
 
 def test_every_shipped_rule_carries_an_action_for_the_judge() -> None:
     manifest = pattern_semantic.load_manifest()
 
-    for rule, row in manifest["rules"].items():
-        assert row["action"].strip(), rule
+    silent = [rule for rule, row in manifest["rules"].items() if not row["action"].strip()]
+
+    assert manifest["rules"]
+    assert silent == []
 
 
 def test_an_unmeasured_rule_never_speaks() -> None:

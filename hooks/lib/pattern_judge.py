@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 try:
-    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from .judge_contracts import PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
 except ImportError:
-    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from judge_contracts import PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
 
 try:
     from . import judge_provider
@@ -48,6 +48,7 @@ class PatternRule(NamedTuple):
     action: str
     violating_examples: tuple[str, ...]
     clean_examples: tuple[str, ...]
+    language: str = "en"
 
 
 class JudgedOutcome(NamedTuple):
@@ -66,6 +67,7 @@ def request_for(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> 
         rule_action=rule.action,
         violating_examples=rule.violating_examples,
         clean_examples=rule.clean_examples,
+        rubric_version=PATTERN_RUBRIC_VERSIONS[rule.language],
     )
 
 

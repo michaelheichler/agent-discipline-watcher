@@ -44,11 +44,17 @@ class Hit(NamedTuple):
     match: str
 
 
+def no_hits(_path: str, _paragraphs: list[ParagraphLanguage]) -> Iterable[Hit]:
+    """Find nothing, because the embedding vote and the judge find a SEMANTIC rule, not a pattern."""
+    return ()
+
+
 class RuleSet(NamedTuple):
     """Pair rules with check, because a hit must name a declared rule."""
 
     rules: tuple[Rule, ...]
-    check: Callable[[str, list[ParagraphLanguage]], Iterable[Hit]]
+    check: Callable[[str, list[ParagraphLanguage]], Iterable[Hit]] = no_hits
+    voted: bool = False
 
 
 def _exported(package: str, name: str) -> RuleSet:
@@ -78,6 +84,12 @@ def declared(rule_sets: Iterable[RuleSet] | None = None) -> tuple[Rule, ...]:
     """List every rule, because the two catalogs read their wording from here."""
     chosen = RULE_SETS if rule_sets is None else rule_sets
     return tuple(rule for rule_set in chosen for rule in rule_set.rules)
+
+
+def voted(rule_sets: Iterable[RuleSet] | None = None) -> tuple[Rule, ...]:
+    """List the SEMANTIC rules, because only these take German exemplars and the German rubric."""
+    chosen = RULE_SETS if rule_sets is None else rule_sets
+    return tuple(rule for rule_set in chosen if rule_set.voted for rule in rule_set.rules)
 
 
 def default_gates(rule_sets: Iterable[RuleSet] | None = None) -> dict[str, str]:

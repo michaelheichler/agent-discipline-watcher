@@ -1,0 +1,110 @@
+{
+  "exemplars": "pattern_exemplars_de.jsonl",
+  "sha256": "aff5dd692e1566b872a922f389cfab356bf70d1db98a3e93e6d4fad4b5b4b02d",
+  "corpus": "corpus_human_sentences_de.jsonl",
+  "corpus_sha256": "7f3ec0228d39c462eba7a575d0dfe22bc9e6b999563347ccf680e2143b218b3d",
+  "seed": 20261001,
+  "clean_per_rule": 4,
+  "rules": {
+    "de_passive_voice": {
+      "catalog_row": 6,
+      "judge_precision": null
+    },
+    "de_stock_phrase": {
+      "catalog_row": 8,
+      "judge_precision": null
+    },
+    "de_unexplained_foreign_word": {
+      "catalog_row": 12,
+      "judge_precision": null
+    },
+    "de_unbacked_superlative": {
+      "catalog_row": 15,
+      "judge_precision": null
+    },
+    "de_dichotomy_template": {
+      "catalog_row": 25,
+      "judge_precision": null
+    },
+    "de_shallow_participle": {
+      "catalog_row": 27,
+      "judge_precision": null
+    },
+    "de_vague_authority": {
+      "catalog_row": 28,
+      "judge_precision": null
+    },
+    "de_false_range": {
+      "catalog_row": 29,
+      "judge_precision": null
+    },
+    "de_synonym_rotation": {
+      "catalog_row": 31,
+      "judge_precision": null
+    },
+    "de_fake_analysis_tail": {
+      "catalog_row": 33,
+      "judge_precision": null
+    },
+    "de_comparative_framing": {
+      "catalog_row": 34,
+      "judge_precision": null
+    },
+    "de_register_collapse": {
+      "catalog_row": 38,
+      "judge_precision": null
+    },
+    "de_broken_link": {
+      "catalog_row": 47,
+      "judge_precision": null
+    },
+    "de_fabricated_citation": {
+      "catalog_row": 48,
+      "judge_precision": null
+    },
+    "de_style_shift": {
+      "catalog_row": 52,
+      "judge_precision": null
+    },
+    "de_fragment_heading": {
+      "catalog_row": 56,
+      "judge_precision": null
+    },
+    "de_rhetorical_question": {
+      "catalog_row": 57,
+      "judge_precision": null
+    },
+    "de_markerless_closer": {
+      "catalog_row": 62,
+      "judge_precision": null
+    },
+    "de_retroactive_nuance": {
+      "catalog_row": 64,
+      "judge_precision": null
+    },
+    "de_epistemic_miscalibration": {
+      "catalog_row": 66,
+      "judge_precision": null
+    },
+    "de_gap_filling_speculation": {
+      "catalog_row": 67,
+      "judge_precision": null
+    },
+    "de_invented_anecdote": {
+      "catalog_row": 68,
+      "judge_precision": null
+    },
+    "de_false_agency": {
+      "catalog_row": 69,
+      "judge_precision": null
+    },
+    "de_citation_mismatch": {
+      "catalog_row": 71,
+      "judge_precision": null
+    },
+    "de_empty_standard_section": {
+      "catalog_row": 73,
+      "judge_precision": null
+    }
+  }
+}

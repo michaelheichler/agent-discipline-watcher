@@ -44,6 +44,8 @@ Git ignores all three German corpora, which rebuild byte for byte, the same as t
 python3 evals/build_german_corpora.py
 ```
 
+`build_pattern_exemplars_de.py` draws the clean side for the 25 German SEMANTIC rules from `corpus_human_sentences_de.jsonl` into `hooks/lib/pattern_exemplars_de.jsonl`. It takes two encyclopedia and two literature sentences per rule under a fixed seed, never reuses a sentence, and skips markup residue, split fragments, and sentences that carry the rule's own trigger words. Each row records its source, document, and corpus row number. The builder refuses a corpus whose hash differs from `corpus_human_manifest_de.json`, so the same seed always yields the same file. The violating side waits for the German AI corpus.
+
 ## Judged gate
 
 `measure_regex_judge.py` scores a regex candidate stage and its reader as one stage, since a rule at the judged gate reports nothing until the reader confirms it. It writes `regex_judge.json`.

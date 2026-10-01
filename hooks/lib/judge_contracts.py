@@ -18,6 +18,15 @@ PATTERN_RUBRIC = (
     "Judge only the named pattern. A sentence may be poor for another reason and still be clean for this pattern. "
     "Use the rule, requested fix, and both example sides to decide each candidate."
 )
+GERMAN_RUBRIC_VERSION = "adw-rubric-de-v1"
+GERMAN_PATTERN_RUBRIC = (
+    "Beurteile nur das genannte Muster. Ein Satz kann aus einem anderen Grund schwach sein "
+    "und für dieses Muster trotzdem sauber sein. "
+    "Entscheide jeden Kandidaten anhand der Regel, der verlangten Korrektur und der Beispiele beider Seiten. "
+    "Die Sätze sind deutsch. Miss sie an deutscher Stilnorm, nicht an englischer. "
+    "Antworte je Kandidat mit „violating“, wenn er das Muster zeigt, sonst mit „clean“."
+)
+PATTERN_RUBRIC_VERSIONS = {"en": RUBRIC_VERSION, "de": GERMAN_RUBRIC_VERSION}
 DOCUMENT_RUBRIC = (
     "Coherence: hidden argument order, missing paragraph bridges, unintroduced referents, and contradictions. "
     "Style: repeated paragraph shapes, register shifts, buried subjects, and stock openers or closers. "
@@ -167,16 +176,33 @@ def build_prompt(request: JudgeRequest) -> str:
     if request.review_kind is ReviewKind.COMMENT:
         items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
         return f"{COMMENT_RUBRIC}\nReturn one item per candidate.\n\nJudge each line.\n{items}"
+    if request.review_kind is ReviewKind.PATTERN and request.rubric_version == GERMAN_RUBRIC_VERSION:
+        return _german_pattern_prompt(request)
     if request.review_kind is ReviewKind.PATTERN:
-        violating = "\n".join(f"violating: {text}" for text in request.violating_examples)
-        clean = "\n".join(f"clean: {text}" for text in request.clean_examples)
-        items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
-        return (
-            f"{PATTERN_RUBRIC}\nPattern: {request.rule_name}\nFix it asks for: {request.rule_action}\n"
-            f"Real examples:\n  {violating.replace(chr(10), chr(10) + '  ')}\n"
-            f"  {clean.replace(chr(10), chr(10) + '  ')}\n\nJudge each sentence.\n{items}"
-        )
+        return _pattern_prompt(request)
     return f"{DOCUMENT_RUBRIC}\n\nDocument:\n{request.source_context}"
+
+
+def _pattern_prompt(request: JudgeRequest) -> str:
+    violating = "\n".join(f"violating: {text}" for text in request.violating_examples)
+    clean = "\n".join(f"clean: {text}" for text in request.clean_examples)
+    items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
+    return (
+        f"{PATTERN_RUBRIC}\nPattern: {request.rule_name}\nFix it asks for: {request.rule_action}\n"
+        f"Real examples:\n  {violating.replace(chr(10), chr(10) + '  ')}\n"
+        f"  {clean.replace(chr(10), chr(10) + '  ')}\n\nJudge each sentence.\n{items}"
+    )
+
+
+def _german_pattern_prompt(request: JudgeRequest) -> str:
+    """Skip an empty side, because a German rule may ship clean examples before its violating ones."""
+    examples = [f"  violating: {text}" for text in request.violating_examples]
+    examples += [f"  clean: {text}" for text in request.clean_examples]
+    items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
+    return (
+        f"{GERMAN_PATTERN_RUBRIC}\nMuster: {request.rule_name}\nVerlangte Korrektur: {request.rule_action}\n"
+        "Echte Beispiele:\n" + "\n".join(examples) + f"\n\nBeurteile jeden Satz.\n{items}"
+    )
 
 
 def content_hash(request: JudgeRequest) -> str:

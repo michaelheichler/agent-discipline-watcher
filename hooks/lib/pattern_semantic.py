@@ -16,6 +16,7 @@ try:
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
+    from .pattern_language import GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
@@ -24,6 +25,7 @@ except ImportError:
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
+    from pattern_language import GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
 
@@ -61,14 +63,21 @@ class Finding(NamedTuple):
     blocking: bool
 
 
-def load_exemplars() -> tuple[Exemplar, ...]:
-    with EXEMPLAR_PATH.open(encoding="utf-8") as stream:
+def _read_exemplars(path: Path) -> tuple[Exemplar, ...]:
+    with path.open(encoding="utf-8") as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
     return tuple(Exemplar(row["rule"], row["label"], row["text"]) for row in rows)
 
 
+def load_exemplars() -> tuple[Exemplar, ...]:
+    """One pool, because every judge path looks a rule up by name and each name belongs to one language."""
+    return _read_exemplars(EXEMPLAR_PATH) + _read_exemplars(GERMAN_EXEMPLAR_PATH)
+
+
 def load_manifest() -> dict:
-    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    german = german_manifest_rules(json.loads(GERMAN_MANIFEST_PATH.read_text(encoding="utf-8")))
+    return {**manifest, "rules": {**manifest["rules"], **german}}
 
 
 def measured_rules(manifest: dict) -> tuple[str, ...]:
@@ -127,10 +136,15 @@ def rule_prompt(rule: str, exemplars: tuple[Exemplar, ...], manifest: dict) -> P
         label: tuple(row.text for row in exemplars if row.rule == rule and row.label == label)[:JUDGE_EXAMPLES]
         for label in (VIOLATING, CLEAN)
     }
-    return PatternRule(rule, manifest["rules"][rule]["action"], sides[VIOLATING], sides[CLEAN])
+    return PatternRule(
+        rule, manifest["rules"][rule]["action"], sides[VIOLATING], sides[CLEAN], rule_language(manifest, rule),
+    )
 
 
 def candidates_for(rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str) -> tuple[PatternCandidate, ...]:
+    """Silent without a violating side, because a German rule ships its clean side before its violating one."""
+    if not any(row.rule == rule and row.label == VIOLATING for row in exemplars):
+        return ()
     neighbours = [(row.label, vectors[row.text]) for row in exemplars if row.rule == rule and row.text in vectors]
     if not neighbours:
         sys.stderr.write(f"agent-discipline-watcher: skipped {rule}, no exemplar vectors\n")
@@ -157,6 +171,7 @@ def _cache_path(config: dict | None) -> Path:
 def _cache_digest(config: dict | None) -> str:
     """Keyed on model and endpoint, because each yields other vectors."""
     digest = hashlib.sha256(EXEMPLAR_PATH.read_bytes())
+    digest.update(GERMAN_EXEMPLAR_PATH.read_bytes())
     digest.update(json.dumps([model_name(), embeddings_urls(config)]).encode("utf-8"))
     return digest.hexdigest()[:16]
 
@@ -208,7 +223,8 @@ def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer
     sentences = prose_sentences(path, text)
     if not sentences or not enabled():
         return {}
-    rules = tuple(rule for rule in measured_rules(layer.manifest()) if rule_state(rule, config) != "off")
+    manifest = layer.manifest()
+    rules = tuple(rule for rule in measured_rules(manifest) if rule_state(rule, config) != "off")
     exemplars = tuple(row for row in layer.exemplars() if row.rule in rules)
     cached = layer.exemplar_vectors(exemplars) if config is None else layer.exemplar_vectors(exemplars, config)
     current = layer.vectors(tuple({item.text for item in sentences})) if config is None else layer.vectors(
@@ -217,8 +233,21 @@ def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer
     vectors = {**cached, **current}
     if not vectors:
         return {}
-    voted = {rule: candidates_for(rule, sentences, vectors, exemplars, path) for rule in rules}
+    by_language = sentences_by_language(prose_source(path, text), sentences, config)
+    voted = {
+        rule: candidates_for(rule, by_language.get(rule_language(manifest, rule), ()), vectors, exemplars, path)
+        for rule in rules
+    }
     return {rule: found for rule, found in voted.items() if found}
+
+
+def sentences_by_language(source: str, sentences: tuple[Sentence, ...], config: dict | None) -> dict[str, tuple[Sentence, ...]]:
+    """Split before the vote, because a German pattern row may meet only German exemplars and the German rubric."""
+    language_at = line_languages(source, config)
+    grouped: dict[str, list[Sentence]] = {}
+    for sentence in sentences:
+        grouped.setdefault(language_at(sentence.line), []).append(sentence)
+    return {language: tuple(found) for language, found in grouped.items()}
 
 
 def scan(path: str, text: str, config: dict | None = None, *, layer: Layer = Layer()) -> tuple[Finding, ...]:
