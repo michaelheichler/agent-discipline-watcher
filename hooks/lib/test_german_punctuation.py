@@ -50,6 +50,11 @@ def test_the_english_rules_leave_german_paragraphs_alone() -> None:
     assert "long_sentence" in _rules(" ".join([ENGLISH_TAIL.rstrip(".")] * 3) + ".", {"sentence_word_cap": 20})
 
 
+@pytest.mark.parametrize("route", ["Puttgarden–Rødbyhavn", "63 v.–23 n. Chr."])
+def test_a_streckenstrich_passes_in_german(route: str) -> None:
+    assert _rules(f"Die Fähre fährt die Linie {route} seit Jahren, {GERMAN_TAIL}") == []
+
+
 def test_a_bis_strich_between_numbers_passes_in_german() -> None:
     assert _rules(f"Das Haus stand von 1990–2000 leer, {GERMAN_TAIL}") == []
 
