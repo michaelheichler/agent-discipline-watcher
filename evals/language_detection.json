@@ -1,0 +1,76 @@
+{
+  "bucket_starts": [
+    1,
+    4,
+    8,
+    16,
+    32
+  ],
+  "by_language": {
+    "de": {
+      "16-31": {
+        "accuracy": 0.9948,
+        "correct": 6446,
+        "decided": 6477,
+        "decided_accuracy": 0.9952,
+        "paragraphs": 6480
+      },
+      "32+": {
+        "accuracy": 0.9984,
+        "correct": 34174,
+        "decided": 34227,
+        "decided_accuracy": 0.9985,
+        "paragraphs": 34229
+      },
+      "4-7": {
+        "accuracy": 1.0,
+        "correct": 1,
+        "decided": 1,
+        "decided_accuracy": 1.0,
+        "paragraphs": 1
+      },
+      "8-15": {
+        "accuracy": 1.0,
+        "correct": 15,
+        "decided": 15,
+        "decided_accuracy": 1.0,
+        "paragraphs": 15
+      }
+    },
+    "en": {
+      "16-31": {
+        "accuracy": 0.995,
+        "correct": 10411,
+        "decided": 10425,
+        "decided_accuracy": 0.9987,
+        "paragraphs": 10463
+      },
+      "32+": {
+        "accuracy": 0.9974,
+        "correct": 53375,
+        "decided": 53416,
+        "decided_accuracy": 0.9992,
+        "paragraphs": 53514
+      },
+      "4-7": {
+        "accuracy": 1.0,
+        "correct": 3,
+        "decided": 3,
+        "decided_accuracy": 1.0,
+        "paragraphs": 3
+      },
+      "8-15": {
+        "accuracy": 1.0,
+        "correct": 48,
+        "decided": 48,
+        "decided_accuracy": 1.0,
+        "paragraphs": 48
+      }
+    }
+  },
+  "corpora": {
+    "evals/corpus_paragraphs.jsonl": "en",
+    "evals/corpus_paragraphs_de.jsonl": "de"
+  },
+  "min_strong_words": 8
+}
