@@ -1,0 +1,173 @@
+{
+  "by_language": {
+    "de": {
+      "10": {
+        "accuracy": 0.9864,
+        "correct": 4932,
+        "decided": 4946,
+        "decided_accuracy": 0.9972,
+        "paragraphs": 5000,
+        "undecided_share": 0.0108
+      },
+      "12": {
+        "accuracy": 0.9914,
+        "correct": 4957,
+        "decided": 4967,
+        "decided_accuracy": 0.998,
+        "paragraphs": 5000,
+        "undecided_share": 0.0066
+      },
+      "16": {
+        "accuracy": 0.9944,
+        "correct": 4972,
+        "decided": 4983,
+        "decided_accuracy": 0.9978,
+        "paragraphs": 5000,
+        "undecided_share": 0.0034
+      },
+      "2": {
+        "accuracy": 0.6468,
+        "correct": 3234,
+        "decided": 3251,
+        "decided_accuracy": 0.9948,
+        "paragraphs": 5000,
+        "undecided_share": 0.3498
+      },
+      "3": {
+        "accuracy": 0.8064,
+        "correct": 4032,
+        "decided": 4055,
+        "decided_accuracy": 0.9943,
+        "paragraphs": 5000,
+        "undecided_share": 0.189
+      },
+      "4": {
+        "accuracy": 0.8796,
+        "correct": 4398,
+        "decided": 4426,
+        "decided_accuracy": 0.9937,
+        "paragraphs": 5000,
+        "undecided_share": 0.1148
+      },
+      "5": {
+        "accuracy": 0.9244,
+        "correct": 4622,
+        "decided": 4645,
+        "decided_accuracy": 0.995,
+        "paragraphs": 5000,
+        "undecided_share": 0.071
+      },
+      "6": {
+        "accuracy": 0.9554,
+        "correct": 4777,
+        "decided": 4799,
+        "decided_accuracy": 0.9954,
+        "paragraphs": 5000,
+        "undecided_share": 0.0402
+      },
+      "8": {
+        "accuracy": 0.9774,
+        "correct": 4887,
+        "decided": 4905,
+        "decided_accuracy": 0.9963,
+        "paragraphs": 5000,
+        "undecided_share": 0.019
+      }
+    },
+    "en": {
+      "10": {
+        "accuracy": 0.982,
+        "correct": 4910,
+        "decided": 4912,
+        "decided_accuracy": 0.9996,
+        "paragraphs": 5000,
+        "undecided_share": 0.0176
+      },
+      "12": {
+        "accuracy": 0.9892,
+        "correct": 4946,
+        "decided": 4948,
+        "decided_accuracy": 0.9996,
+        "paragraphs": 5000,
+        "undecided_share": 0.0104
+      },
+      "16": {
+        "accuracy": 0.9924,
+        "correct": 4962,
+        "decided": 4964,
+        "decided_accuracy": 0.9996,
+        "paragraphs": 5000,
+        "undecided_share": 0.0072
+      },
+      "2": {
+        "accuracy": 0.636,
+        "correct": 3180,
+        "decided": 3187,
+        "decided_accuracy": 0.9978,
+        "paragraphs": 5000,
+        "undecided_share": 0.3626
+      },
+      "3": {
+        "accuracy": 0.776,
+        "correct": 3880,
+        "decided": 3887,
+        "decided_accuracy": 0.9982,
+        "paragraphs": 5000,
+        "undecided_share": 0.2226
+      },
+      "4": {
+        "accuracy": 0.856,
+        "correct": 4280,
+        "decided": 4283,
+        "decided_accuracy": 0.9993,
+        "paragraphs": 5000,
+        "undecided_share": 0.1434
+      },
+      "5": {
+        "accuracy": 0.9064,
+        "correct": 4532,
+        "decided": 4535,
+        "decided_accuracy": 0.9993,
+        "paragraphs": 5000,
+        "undecided_share": 0.093
+      },
+      "6": {
+        "accuracy": 0.9368,
+        "correct": 4684,
+        "decided": 4686,
+        "decided_accuracy": 0.9996,
+        "paragraphs": 5000,
+        "undecided_share": 0.0628
+      },
+      "8": {
+        "accuracy": 0.9684,
+        "correct": 4842,
+        "decided": 4844,
+        "decided_accuracy": 0.9996,
+        "paragraphs": 5000,
+        "undecided_share": 0.0312
+      }
+    }
+  },
+  "corpora": {
+    "/Users/nootnoot/Development/projects/agent-discipline-watcher/.claude/worktrees/agent-a8c7470494c4b63b6/evals/corpus_paragraphs.jsonl": "en",
+    "/Users/nootnoot/Development/projects/agent-discipline-watcher/.claude/worktrees/agent-a8c7470494c4b63b6/evals/corpus_paragraphs_de.jsonl": "de"
+  },
+  "drawn_sizes": {
+    "de": 5000,
+    "en": 5000
+  },
+  "sample_size": 5000,
+  "seed": 20261001,
+  "word_counts": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    12,
+    16
+  ]
+}

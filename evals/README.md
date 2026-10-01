@@ -54,6 +54,22 @@ The clean side mixes sources the way the English benchmark does. Each rule takes
 
 `second_rater_de.py` exports the labeled candidates without their labels for a blind second rater, merges that rater's answers into `pattern_labels_de_sonnet.jsonl`, and compares the two label sets with Cohen's kappa.
 
+`measure_language_detection_short.py` tests the `MIN_STRONG_WORDS = 8` stop-word threshold (T-010, Q18) that `hooks/lib/prose_language.py` carries untested. It flattens `corpus_paragraphs.jsonl` and `corpus_paragraphs_de.jsonl` into individual paragraphs, keeps the ones with at least 16 words, draws 5000 per language under seed 20261001, and truncates that fixed sample to its first N words for N in 2 through 16. It writes `language_detection_short.json`.
+
+| N | en undecided | en decided accuracy | de undecided | de decided accuracy |
+| - | - | - | - | - |
+| 2 | 0.3626 | 0.9978 | 0.3498 | 0.9948 |
+| 3 | 0.2226 | 0.9982 | 0.1890 | 0.9943 |
+| 4 | 0.1434 | 0.9993 | 0.1148 | 0.9937 |
+| 5 | 0.0930 | 0.9993 | 0.0710 | 0.9950 |
+| 6 | 0.0628 | 0.9996 | 0.0402 | 0.9954 |
+| 8 | 0.0312 | 0.9996 | 0.0190 | 0.9963 |
+| 10 | 0.0176 | 0.9996 | 0.0108 | 0.9972 |
+| 12 | 0.0104 | 0.9996 | 0.0066 | 0.9980 |
+| 16 | 0.0072 | 0.9996 | 0.0034 | 0.9978 |
+
+Decided accuracy clears 0.98 for both languages at every tested N, down to N = 2, so that criterion alone does not pin a value above the shipped 8. The share of paragraphs with no decision is the binding constraint instead. At N = 2 roughly a third of paragraphs get no vote and fall back to the document language, and that share does not drop under 0.03 until N = 8. The recommended `MIN_STRONG_WORDS` under the stated criterion is 2, read together with the undecided share above before lowering the shipped 8.
+
 ## Judged gate
 
 `measure_regex_judge.py` scores a regex candidate stage and its reader as one stage, since a rule at the judged gate reports nothing until the reader confirms it. It writes `regex_judge.json`.
