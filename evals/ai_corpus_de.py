@@ -9,6 +9,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 AI_CORPUS_PATH = REPOSITORY_ROOT / "evals" / "corpus_ai_sentences_de.jsonl"
 AI_MANIFEST_PATH = REPOSITORY_ROOT / "evals" / "corpus_ai_manifest_de.json"
 LABELS_PATH = REPOSITORY_ROOT / "evals" / "pattern_labels_de.jsonl"
+ADJUDICATED_PATH = REPOSITORY_ROOT / "evals" / "pattern_labels_de_adjudicated.jsonl"
 
 
 class AiRow(NamedTuple):

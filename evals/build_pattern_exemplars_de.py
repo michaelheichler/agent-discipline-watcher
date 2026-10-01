@@ -11,7 +11,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
-from ai_corpus_de import AI_CORPUS_PATH, LABELS_PATH, AiRow, ai_corpus_digest, load_ai_corpus, load_labels
+from ai_corpus_de import ADJUDICATED_PATH as LABELS_PATH, AI_CORPUS_PATH, AiRow, ai_corpus_digest, load_ai_corpus, load_labels
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_PATH = REPOSITORY_ROOT / "evals" / "corpus_human_sentences_de.jsonl"
@@ -28,7 +28,7 @@ MAX_CHARS = 220
 CLEAN = "clean"
 VIOLATING = "violating"
 VIOLATING_PER_RULE = 4
-LABELER = "claude-opus-5-5, by hand against the catalog definitions, 2026-10-01"
+LABELER = "claude-opus-5-5 and claude-sonnet-5 blind by hand, a Luna majority vote on each disagreement, 2026-10-01"
 MARKUP_RESIDUE_RE = re.compile(r"[|{}\[\]=<>*#_\r\n]|\s{2,}|https?://")
 SPLIT_FRAGMENT_RE = re.compile(
     r"(?:\b[A-ZÄÖÜ]|\b[IVXLC]+|\b(?:sel|bzw|usw|vgl|ca|St|Dr|Nr|z|Amtl|Hrsg))\.$"
@@ -277,7 +277,7 @@ def main() -> None:
     corpus_sha = corpus_digest()
     ai_sha = ai_corpus_digest()
     rules = registered_rules()
-    labels, ai_rows = load_labels(), load_ai_corpus()
+    labels, ai_rows = load_labels(LABELS_PATH), load_ai_corpus()
     violating, short = violating_side(labels, ai_rows, rules)
     assistant_clean = assistant_clean_side(labels, ai_rows, rules)
     clean = assistant_clean + build(load_corpus(), human_per_genre(assistant_clean, rules))
