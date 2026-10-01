@@ -13,22 +13,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from . import families, session_state
+    from . import catalog_de, families, session_state
     from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
-        Explainer, clip as _clip, deduplicated as _deduplicated,
-        listed_lines, session_explainer,
+        Explainer, Lead, clip as _clip, deduplicated as _deduplicated, lead_text,
+        all_german, block_tail, listed_lines, localized, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )
 except ImportError:
+    import catalog_de
     import families
     import session_state
     from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
     from finding_output import (
-        Explainer, clip as _clip, deduplicated as _deduplicated,
-        listed_lines, session_explainer,
+        Explainer, Lead, clip as _clip, deduplicated as _deduplicated, lead_text,
+        all_german, block_tail, listed_lines, localized, session_explainer,
         safe_component as _safe_component, safe_text as _safe_text,
     )
 
@@ -120,21 +121,23 @@ OBSERVE_LEAD = (
 )
 
 
+BLOCK_LEADS = Lead(BLOCK_LEAD, catalog_de.BLOCK_LEAD)
+
+
 def compact_block(
     findings: list[dict],
     config: dict | None = None,
-    lead: str = BLOCK_LEAD,
+    lead: str | Lead = BLOCK_LEADS,
     explainer: Explainer | None = None,
 ) -> tuple[str, str]:
     """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
     max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
-    unique = _deduplicated(findings, config)
+    unique = [localized(finding) for finding in _deduplicated(findings, config)]
     report = write_full_report(unique, config)
     listed = unique[:max(max_rows, 1)]
-    extra = len(unique) - len(listed)
-    report_text = _clip(report, MAX_COMPACT_FIELD_BYTES)
-    tail = f"{extra} more findings: {report_text}" if extra > 0 else f"Full report: {report_text}"
-    lines = [_clip(lead, MAX_COMPACT_FIELD_BYTES)]
+    german = all_german(unique)
+    tail = block_tail(len(unique) - len(listed), _clip(report, MAX_COMPACT_FIELD_BYTES), german)
+    lines = [_clip(lead_text(lead, german), MAX_COMPACT_FIELD_BYTES)]
     chosen = explainer or session_explainer(config)
     lines.extend(listed_lines(listed, chosen, MAX_COMPACT_FIELD_BYTES))
     body_budget = MAX_COMPACT_BYTES - len(tail.encode("utf-8")) - 1
@@ -150,7 +153,7 @@ def verdict_message(
     observed = [finding for finding, outcome in decisions if outcome == Outcome.WOULD_BLOCK]
     if not observed:
         return "release", ""
-    return "observe", compact_block(observed, config, lead=OBSERVE_LEAD)[0]
+    return "observe", compact_block(observed, config, lead=Lead(OBSERVE_LEAD, catalog_de.OBSERVE_LEAD))[0]
 
 
 def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
@@ -160,7 +163,8 @@ def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
         f"agent-discipline-watcher: this file already carried {len(findings)} findings "
         "you did not write. Fix them while you are in here."
     )
-    return compact_block(findings, config, lead=lead)[0]
+    german = catalog_de.INHERITED_LEAD.format(count=len(findings))
+    return compact_block(findings, config, lead=Lead(lead, german))[0]
 
 
 def _default_ledger_root() -> Path:

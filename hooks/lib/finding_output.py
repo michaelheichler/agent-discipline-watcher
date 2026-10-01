@@ -7,16 +7,20 @@ from pathlib import Path
 from typing import NamedTuple
 
 try:
-    from . import catalog, principle_kb, session_state
+    from . import catalog, catalog_de, principle_kb, session_state
     from .findings import Finding
+    from .prose_language import GERMAN
 except ImportError:
     import catalog
+    import catalog_de
     import principle_kb
     import session_state
     from findings import Finding
+    from prose_language import GERMAN
 
 MAX_MATCH_BYTES = 80
 MAX_EXPLANATION_WORDS = 80
+PRINCIPLE_LABEL = "Principle"
 PRINCIPLE_MAP = Path(__file__).with_name("principle_map.json")
 SOURCE_LABELS = {"deviq": "DevIQ", "programming-principles": "Programming Principles"}
 URL_RE = re.compile(r"https?://\S+")
@@ -108,13 +112,58 @@ def review_row(note: ReviewNote) -> str:
     return f'{_one_line(note.location)} Found "{_one_line(note.found)}". Problem: {problem} Action: {action}'
 
 
+def _german_entry(item: dict) -> "catalog_de.GermanEntry | None":
+    if item.get("language") != GERMAN:
+        return None
+    return catalog_de.RULES.get(str(item.get("rule") or ""))
+
+
+def localized(item: dict) -> dict:
+    """Swap the wording at render time, because dedup and the ledger key on the scanner's English text."""
+    entry = _german_entry(item)
+    if entry is None:
+        return item
+    path = item.get("path") or item.get("file")
+    detail = f"{entry.title} in {path}" if path else entry.title
+    return {**item, "detail": detail, "action": entry.action}
+
+
+def all_german(items: list[dict]) -> bool:
+    """Require every row, because a block-level line in German would mislabel an English row beside it."""
+    return bool(items) and all(_german_entry(item) is not None for item in items)
+
+
+class Lead(NamedTuple):
+    """Pair both languages, because the block picks one only after it sees every row."""
+
+    english: str
+    german: str
+
+
+def lead_text(lead: "str | Lead", german: bool) -> str:
+    if isinstance(lead, Lead):
+        return lead.german if german else lead.english
+    return lead
+
+
+def block_tail(extra: int, report: str, german: bool) -> str:
+    if german:
+        return f"{extra} {catalog_de.MORE_FINDINGS}: {report}" if extra > 0 else f"{catalog_de.FULL_REPORT}: {report}"
+    return f"{extra} more findings: {report}" if extra > 0 else f"Full report: {report}"
+
+
+def _title(item: dict, rule: str) -> str:
+    entry = _german_entry(item)
+    return entry.title if entry is not None else catalog.rule_entry(rule).title
+
+
 def format_row(item: dict) -> str:
     """Lead with the catalog title and matched words, because a raw rule id tells the reader nothing to act on."""
     path = _one_line(item.get("path") or item.get("file") or "<pending>")
     status = _one_line(item.get("status")) if item.get("status") else ""
     prefix = f"[{status}] " if status else ""
     rule = _one_line(item.get("rule") or "")
-    title = _one_line(catalog.rule_entry(rule).title)
+    title = _one_line(_title(item, rule))
     match = item.get("match")
     quoted = f' "{clip(_one_line(match), MAX_MATCH_BYTES)}"' if isinstance(match, str) and match.strip() else ""
     line = _one_line(item.get("line"))
@@ -167,7 +216,7 @@ def _label(row: "principle_kb.Row") -> str:
     title = row.title.split(":")[0].strip()
     if title == title.lower():
         title = title.replace("-", " ").title()
-    return f"Principle ({_one_line(source)}, {_one_line(title)}):"
+    return f"{PRINCIPLE_LABEL} ({_one_line(source)}, {_one_line(title)}):"
 
 
 def explanation(rule: str, explainer: Explainer) -> str:
@@ -205,5 +254,12 @@ def listed_lines(listed: list[dict], explainer: Explainer | None, limit: int) ->
         lines.append(clip(f"{number}. {format_row(item)}", limit))
         text = texts.pop(str(item.get("rule") or ""), "")
         if text:
-            lines.append(clip(f"   {text}", limit))
+            lines.append(clip(f"   {_principle_line(text, item)}", limit))
     return lines
+
+
+def _principle_line(text: str, item: dict) -> str:
+    """Translate only the label, because the principle body comes from an English knowledge base."""
+    if _german_entry(item) is None:
+        return text
+    return catalog_de.PRINCIPLE_LABEL + text.removeprefix(PRINCIPLE_LABEL)

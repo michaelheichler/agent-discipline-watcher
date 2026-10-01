@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from lib import host, parity_fixture, vendor
+from lib import catalog_de, host, parity_fixture, vendor
 from lib.scanner import scan_all
 
 
@@ -20,6 +21,17 @@ SCAN_SCRIPT = (
     "print(json.dumps("
     "scan_all(parity_fixture.FIXTURE_NAME, parity_fixture.FIXTURE_TEXT),"
     " sort_keys=True))"
+)
+GERMAN_TEXT = (
+    "Wir haben gestern das neue Haus von Peter" + chr(39) + "s Familie besucht, "
+    "und es war wirklich schön, weil der Garten so groß ist.\n"
+)
+RENDER_SCRIPT = (
+    "import sys;"
+    "from lib import reporting;"
+    "from lib.scanner import scan_all;"
+    "reason = reporting.compact_block(scan_all('notiz.md', sys.argv[1]), {})[0];"
+    "print(reason.rsplit(chr(10), 1)[0])"
 )
 
 
@@ -71,3 +83,22 @@ def test_all_four_runtimes_agree_with_each_other(tmp_path: Path) -> None:
     scans = {target: _vendored_scan(target, tmp_path) for target in host.SUPPORTED}
 
     assert len(set(scans.values())) == 1, f"runtimes disagree: {sorted(scans)}"
+
+
+def _render_in(tree: Path, home: Path) -> str:
+    finished = subprocess.run(
+        [sys.executable, "-c", RENDER_SCRIPT, GERMAN_TEXT],
+        cwd=tree / HOOKS_LEAF, capture_output=True, text=True, check=False, env={**os.environ, "HOME": str(home)},
+    )
+    assert finished.returncode == 0, finished.stderr[-3000:]
+    return finished.stdout
+
+
+def test_every_runtime_renders_the_same_german_block(tmp_path: Path) -> None:
+    """Render in each vendored tree because Claude Code, Codex, and OMP all show the block their own copy builds."""
+    blocks = set()
+    for target in host.SUPPORTED:
+        vendor.vendor(target, REPO_ROOT, tmp_path / target)
+        blocks.add(_render_in(tmp_path / target, tmp_path / "home"))
+
+    assert [block.split("\n")[0] for block in blocks] == [catalog_de.BLOCK_LEAD]
