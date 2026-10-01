@@ -74,6 +74,14 @@ The clean side mixes sources the way the English benchmark does. Each rule takes
 
 Decided accuracy clears 0.98 for both languages at every tested N, down to N = 2, so that criterion alone does not pin a value above the shipped 8. The share of paragraphs with no decision is the binding constraint instead. At N = 2 roughly a third of paragraphs get no vote and fall back to the document language, and that share does not drop under 0.03 until N = 8. The recommended `MIN_STRONG_WORDS` under the stated criterion is 2, read together with the undecided share above before lowering the shipped 8.
 
+## German static rules
+
+`measure_german_hit_rate.py` runs the 43 static registry rules, the German punctuation rules, and the German document rules through `scan_all` on all three German corpora, so routing counts. A sentence under 8 words falls back to English and never reaches a German rule. It writes `german_hit_rate.json` with hits per 1000 units on human and AI text, per genre.
+
+`german_static_sample.py` draws up to 20 hits per rule under a fixed seed. Document rules draw from the paragraph corpus, and a rule with fewer than 20 sentence hits draws from whichever corpus fired it more. Sonnet and GPT-6 Luna label each hit blind, seeing only the rule wording and the text, with hashed ids that hide the source. The question is whether a careful German editor would change it. Opus decides the 160 rows where they split. The labels sit in `german_static_labels_sonnet.jsonl`, `german_static_labels_luna.jsonl`, and `german_static_labels_adjudicated.jsonl`.
+
+`german_static_precision.py` writes `german_static_precision.json`. Kappa between Sonnet and Luna is 0.5677 over 739 labels, with 579 agreeing. No rule clears the 0.85 bar on the lower bound, and at n of 20 none can, since 20 of 20 gives a lower bound of 0.8389. Four rules sit there, `de_meta_commentary`, `de_prompt_refusal`, `de_stretched_verb`, and `spaced_hyphen`. 15 rules hold a precision under 0.5 while firing at least 5 times per 1000 human units, which the record marks off. `banned_dash` is one of them at 0.15. It blocks on German lines through the punctuation family today, mostly on correct dashes in literature, route names, and date ranges. Seven rules never fired on any corpus. No rule state changed.
+
 ## Judged gate
 
 `measure_regex_judge.py` scores a regex candidate stage and its reader as one stage, since a rule at the judged gate reports nothing until the reader confirms it. It writes `regex_judge.json`.

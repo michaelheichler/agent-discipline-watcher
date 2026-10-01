@@ -1,0 +1,968 @@
+{
+  "bar": 0.85,
+  "gate_reads": "wilson_95 lower bound",
+  "kappa": 0.5677,
+  "labels": 739,
+  "off_when": {
+    "human_per_1000_at_least": 5.0,
+    "precision_below": 0.5
+  },
+  "rater_agreement": 579,
+  "raters": {
+    "luna": "gpt-6-luna",
+    "opus": "opus",
+    "sonnet": "sonnet"
+  },
+  "rules": {
+    "banned_dash": {
+      "gate": "family_default",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.476,
+        "human": 10.857
+      },
+      "precision": 0.15,
+      "rater_agreement": 17,
+      "reason": "precision 0.15 at 10.857 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 20,
+      "violating": 3,
+      "wilson_95": [
+        0.0524,
+        0.3604
+      ]
+    },
+    "dash_cluster": {
+      "gate": "observe",
+      "kappa": 0.8276,
+      "n": 20,
+      "per_1000": {
+        "ai": 1.6,
+        "human": 7.893
+      },
+      "precision": 0.15,
+      "rater_agreement": 19,
+      "reason": "precision 0.15 at 7.893 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 16,
+      "violating": 3,
+      "wilson_95": [
+        0.0524,
+        0.3604
+      ]
+    },
+    "de_abrupt_ending": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 9,
+      "per_1000": {
+        "ai": 3.6,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 9,
+      "reason": "lower bound 0.70 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 9,
+      "wilson_95": [
+        0.7008,
+        1.0
+      ]
+    },
+    "de_abstract_nouns": {
+      "gate": "observe",
+      "kappa": 0.5833,
+      "n": 20,
+      "per_1000": {
+        "ai": 139.6,
+        "human": 12.354
+      },
+      "precision": 0.2,
+      "rater_agreement": 17,
+      "reason": "precision 0.20 at 12.354 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 2,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "de_ai_marker_vocabulary": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 34.4,
+        "human": 1.716
+      },
+      "precision": 0.35,
+      "rater_agreement": 11,
+      "reason": "lower bound 0.18 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 2,
+      "violating": 7,
+      "wilson_95": [
+        0.1812,
+        0.5671
+      ]
+    },
+    "de_ai_tool_artifact": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 1,
+      "per_1000": {
+        "ai": 0.4,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 1,
+      "reason": "lower bound 0.21 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 1,
+      "wilson_95": [
+        0.2065,
+        1.0
+      ]
+    },
+    "de_anglicism": {
+      "gate": "observe",
+      "kappa": 0.2857,
+      "n": 5,
+      "per_1000": {
+        "ai": 1.6,
+        "human": 0.343
+      },
+      "precision": 0.4,
+      "rater_agreement": 3,
+      "reason": "lower bound 0.12 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 1,
+      "violating": 2,
+      "wilson_95": [
+        0.1176,
+        0.7693
+      ]
+    },
+    "de_announcing_cleft": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 2,
+      "per_1000": {
+        "ai": 0.8,
+        "human": 0.0
+      },
+      "precision": 0.0,
+      "rater_agreement": 2,
+      "reason": "lower bound 0.00 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.6576
+      ]
+    },
+    "de_aphorism_formula": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 2,
+      "per_1000": {
+        "ai": 0.8,
+        "human": 0.0
+      },
+      "precision": 0.5,
+      "rater_agreement": 1,
+      "reason": "lower bound 0.09 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 1,
+      "wilson_95": [
+        0.0945,
+        0.9055
+      ]
+    },
+    "de_authority_phrase": {
+      "gate": "observe",
+      "kappa": 1.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 6.0,
+        "human": 6.177
+      },
+      "precision": 0.3,
+      "rater_agreement": 20,
+      "reason": "precision 0.30 at 6.177 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 13,
+      "violating": 6,
+      "wilson_95": [
+        0.1455,
+        0.519
+      ]
+    },
+    "de_chatbot_talk": {
+      "gate": "observe",
+      "kappa": 1.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 29.6,
+        "human": 0.0
+      },
+      "precision": 0.9,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.70 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 18,
+      "wilson_95": [
+        0.699,
+        0.9721
+      ]
+    },
+    "de_corporate_closing": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 1,
+      "per_1000": {
+        "ai": 0.4,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 1,
+      "reason": "lower bound 0.21 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 1,
+      "wilson_95": [
+        0.2065,
+        1.0
+      ]
+    },
+    "de_diff_anchored": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 1,
+      "per_1000": {
+        "ai": 0.048,
+        "human": 0.0
+      },
+      "precision": 0.0,
+      "rater_agreement": 0,
+      "reason": "lower bound 0.00 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 0,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.7935
+      ]
+    },
+    "de_double_negation": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 15.905,
+        "human": 12.393
+      },
+      "precision": 0.0,
+      "rater_agreement": 17,
+      "reason": "precision 0.00 at 12.393 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 11,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_empty_intensifier": {
+      "gate": "observe",
+      "kappa": 0.3846,
+      "n": 20,
+      "per_1000": {
+        "ai": 20.667,
+        "human": 26.857
+      },
+      "precision": 0.2,
+      "rater_agreement": 16,
+      "reason": "precision 0.20 at 26.857 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 12,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "de_english_number_format": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 1,
+      "per_1000": {
+        "ai": 0.048,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 0,
+      "reason": "lower bound 0.21 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 0,
+      "violating": 1,
+      "wilson_95": [
+        0.2065,
+        1.0
+      ]
+    },
+    "de_exclamation_staccato": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.4,
+        "human": 7.55
+      },
+      "precision": 0.0,
+      "rater_agreement": 20,
+      "reason": "precision 0.00 at 7.55 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 19,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_fake_bullet": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 1,
+      "per_1000": {
+        "ai": 0.4,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 1,
+      "reason": "lower bound 0.21 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 1,
+      "wilson_95": [
+        0.2065,
+        1.0
+      ]
+    },
+    "de_filler_word": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 31.952,
+        "human": 25.214
+      },
+      "precision": 0.0,
+      "rater_agreement": 20,
+      "reason": "precision 0.00 at 25.214 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 9,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_hidden_unicode": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.048,
+        "human": 0.821
+      },
+      "precision": 0.2,
+      "rater_agreement": 4,
+      "reason": "lower bound 0.08 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 19,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "de_information_cluster": {
+      "gate": "observe",
+      "kappa": 0.6341,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.333,
+        "human": 1.607
+      },
+      "precision": 0.65,
+      "rater_agreement": 17,
+      "reason": "lower bound 0.43 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 16,
+      "violating": 13,
+      "wilson_95": [
+        0.4329,
+        0.8188
+      ]
+    },
+    "de_knowledge_cutoff": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 8,
+      "per_1000": {
+        "ai": 3.2,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 8,
+      "reason": "lower bound 0.68 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 8,
+      "wilson_95": [
+        0.6756,
+        1.0
+      ]
+    },
+    "de_letter_frame": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 1.095,
+        "human": 0.0
+      },
+      "precision": 0.25,
+      "rater_agreement": 4,
+      "reason": "lower bound 0.11 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 0,
+      "violating": 5,
+      "wilson_95": [
+        0.1119,
+        0.4687
+      ]
+    },
+    "de_long_compound": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 924.8,
+        "human": 879.547
+      },
+      "precision": 0.0,
+      "rater_agreement": 11,
+      "reason": "precision 0.00 at 879.547 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 11,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_meta_commentary": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 54.8,
+        "human": 1.373
+      },
+      "precision": 1.0,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 3,
+      "violating": 20,
+      "wilson_95": [
+        0.8389,
+        1.0
+      ]
+    },
+    "de_modal_verb": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 172.143,
+        "human": 70.679
+      },
+      "precision": 0.0,
+      "rater_agreement": 20,
+      "reason": "precision 0.00 at 70.679 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 7,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_nested_clauses": {
+      "gate": "observe",
+      "kappa": 0.1,
+      "n": 20,
+      "per_1000": {
+        "ai": 12.857,
+        "human": 6.643
+      },
+      "precision": 0.3,
+      "rater_agreement": 11,
+      "reason": "precision 0.30 at 6.643 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 2,
+      "violating": 6,
+      "wilson_95": [
+        0.1455,
+        0.519
+      ]
+    },
+    "de_noun_style": {
+      "gate": "observe",
+      "kappa": 0.375,
+      "n": 20,
+      "per_1000": {
+        "ai": 5.524,
+        "human": 6.357
+      },
+      "precision": 0.2,
+      "rater_agreement": 15,
+      "reason": "precision 0.20 at 6.357 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 13,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "de_placeholder_text": {
+      "gate": "observe",
+      "kappa": 1.0,
+      "n": 10,
+      "per_1000": {
+        "ai": 3.6,
+        "human": 0.343
+      },
+      "precision": 0.9,
+      "rater_agreement": 10,
+      "reason": "lower bound 0.60 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 1,
+      "violating": 9,
+      "wilson_95": [
+        0.5958,
+        0.9821
+      ]
+    },
+    "de_prompt_refusal": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 18.8,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 20,
+      "wilson_95": [
+        0.8389,
+        1.0
+      ]
+    },
+    "de_redundant_pair": {
+      "gate": "observe",
+      "kappa": 0.7692,
+      "n": 18,
+      "per_1000": {
+        "ai": 6.8,
+        "human": 0.343
+      },
+      "precision": 0.8333,
+      "rater_agreement": 17,
+      "reason": "lower bound 0.61 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 1,
+      "violating": 15,
+      "wilson_95": [
+        0.6078,
+        0.9416
+      ]
+    },
+    "de_repeated_connector": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 17,
+      "per_1000": {
+        "ai": 1.2,
+        "human": 4.804
+      },
+      "precision": 1.0,
+      "rater_agreement": 17,
+      "reason": "lower bound 0.82 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 14,
+      "violating": 17,
+      "wilson_95": [
+        0.8157,
+        1.0
+      ]
+    },
+    "de_section_summary": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 3.381,
+        "human": 0.357
+      },
+      "precision": 0.5,
+      "rater_agreement": 9,
+      "reason": "lower bound 0.30 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 2,
+      "violating": 10,
+      "wilson_95": [
+        0.2993,
+        0.7007
+      ]
+    },
+    "de_sentence_length": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 975.6,
+        "human": 981.469
+      },
+      "precision": 0.95,
+      "rater_agreement": 19,
+      "reason": "lower bound 0.76 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 12,
+      "violating": 19,
+      "wilson_95": [
+        0.7639,
+        0.9911
+      ]
+    },
+    "de_signposting": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 3,
+      "per_1000": {
+        "ai": 1.2,
+        "human": 0.0
+      },
+      "precision": 1.0,
+      "rater_agreement": 3,
+      "reason": "lower bound 0.44 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 0,
+      "violating": 3,
+      "wilson_95": [
+        0.4385,
+        1.0
+      ]
+    },
+    "de_stacked_conditions": {
+      "gate": "observe",
+      "kappa": 0.375,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.476,
+        "human": 0.393
+      },
+      "precision": 0.15,
+      "rater_agreement": 15,
+      "reason": "lower bound 0.05 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 11,
+      "violating": 3,
+      "wilson_95": [
+        0.0524,
+        0.3604
+      ]
+    },
+    "de_stretched_verb": {
+      "gate": "observe",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 1.667,
+        "human": 0.643
+      },
+      "precision": 1.0,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 8,
+      "violating": 20,
+      "wilson_95": [
+        0.8389,
+        1.0
+      ]
+    },
+    "de_symbolism_inflation": {
+      "gate": "observe",
+      "kappa": 0.8864,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.381,
+        "human": 0.464
+      },
+      "precision": 0.35,
+      "rater_agreement": 19,
+      "reason": "lower bound 0.18 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 13,
+      "violating": 7,
+      "wilson_95": [
+        0.1812,
+        0.5671
+      ]
+    },
+    "de_triad": {
+      "gate": "observe",
+      "kappa": 0.7368,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.905,
+        "human": 0.786
+      },
+      "precision": 0.2,
+      "rater_agreement": 18,
+      "reason": "lower bound 0.08 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 13,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "de_unexplained_abbreviation": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 1.333,
+        "human": 9.571
+      },
+      "precision": 0.0,
+      "rater_agreement": 3,
+      "reason": "precision 0.00 at 9.571 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 17,
+      "violating": 0,
+      "wilson_95": [
+        0.0,
+        0.1611
+      ]
+    },
+    "de_uniform_paragraphs": {
+      "gate": "observe",
+      "kappa": 0.4059,
+      "n": 20,
+      "per_1000": {
+        "ai": 702.0,
+        "human": 133.15
+      },
+      "precision": 0.45,
+      "rater_agreement": 14,
+      "reason": "precision 0.45 at 133.15 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "paragraphs",
+      "sampled_human": 5,
+      "violating": 9,
+      "wilson_95": [
+        0.2582,
+        0.6579
+      ]
+    },
+    "de_uniform_rhythm": {
+      "gate": "observe",
+      "kappa": 0.1346,
+      "n": 20,
+      "per_1000": {
+        "ai": 686.0,
+        "human": 92.313
+      },
+      "precision": 0.6,
+      "rater_agreement": 11,
+      "reason": "lower bound 0.39 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "paragraphs",
+      "sampled_human": 2,
+      "violating": 12,
+      "wilson_95": [
+        0.3866,
+        0.7812
+      ]
+    },
+    "de_verb_bracket": {
+      "gate": "observe",
+      "kappa": 0.4681,
+      "n": 20,
+      "per_1000": {
+        "ai": 78.429,
+        "human": 24.0
+      },
+      "precision": 0.2,
+      "rater_agreement": 15,
+      "reason": "precision 0.20 at 24.0 human hits per 1000",
+      "recommendation": "off",
+      "sampled_from": "sentences",
+      "sampled_human": 3,
+      "violating": 4,
+      "wilson_95": [
+        0.0807,
+        0.416
+      ]
+    },
+    "genitive_apostrophe": {
+      "gate": "observe",
+      "kappa": 1.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.714,
+        "human": 1.75
+      },
+      "precision": 0.05,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.01 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 14,
+      "violating": 1,
+      "wilson_95": [
+        0.0089,
+        0.2361
+      ]
+    },
+    "quote_marks": {
+      "gate": "observe",
+      "kappa": 0.875,
+      "n": 20,
+      "per_1000": {
+        "ai": 38.0,
+        "human": 10.643
+      },
+      "precision": 0.7,
+      "rater_agreement": 19,
+      "reason": "lower bound 0.48 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 8,
+      "violating": 14,
+      "wilson_95": [
+        0.481,
+        0.8545
+      ]
+    },
+    "spaced_hyphen": {
+      "gate": "family_default",
+      "kappa": null,
+      "n": 20,
+      "per_1000": {
+        "ai": 6.476,
+        "human": 0.786
+      },
+      "precision": 1.0,
+      "rater_agreement": 20,
+      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 4,
+      "violating": 20,
+      "wilson_95": [
+        0.8389,
+        1.0
+      ]
+    },
+    "typed_ellipsis": {
+      "gate": "observe",
+      "kappa": 0.0,
+      "n": 20,
+      "per_1000": {
+        "ai": 0.19,
+        "human": 1.643
+      },
+      "precision": 0.35,
+      "rater_agreement": 5,
+      "reason": "lower bound 0.18 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "sampled_from": "sentences",
+      "sampled_human": 19,
+      "violating": 7,
+      "wilson_95": [
+        0.1812,
+        0.5671
+      ]
+    }
+  },
+  "silent_rules": [
+    "de_bullet_punctuation",
+    "de_casual_greeting",
+    "de_emoji_heading",
+    "de_english_title_case",
+    "de_markdown_artifact",
+    "de_search_link_citation",
+    "de_therapeutic_validation"
+  ],
+  "third_rater_rows": 160
+}
