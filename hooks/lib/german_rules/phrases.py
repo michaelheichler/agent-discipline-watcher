@@ -37,6 +37,7 @@ META_COMMENTARY = Rule(
         "Meldet Wendungen wie „es ist wichtig zu bemerken“, die über den Text reden statt die Sache zu sagen",
         "Streich die Wendung und sag die Sache.",
     ),
+    state="enforce",
 )
 SECTION_SUMMARY = Rule(
     "de_section_summary",

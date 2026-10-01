@@ -67,8 +67,10 @@ def test_no_german_paragraph_runs_no_check() -> None:
 
 
 @pytest.mark.parametrize("rule", german_rules.declared(), ids=lambda rule: rule.name)
-def test_every_registered_rule_reports_without_blocking_by_default(rule: Rule) -> None:
-    assert config.resolve_outcome({"family": "english", "rule": rule.name}, {}) == Outcome.WOULD_BLOCK
+def test_every_registered_rule_blocks_only_when_its_measured_state_says_so(rule: Rule) -> None:
+    expected = Outcome.BLOCK if rule.state == "enforce" else Outcome.WOULD_BLOCK
+
+    assert config.resolve_outcome({"family": "english", "rule": rule.name}, {}) == expected
 
 
 @pytest.mark.parametrize("rule", german_rules.declared(), ids=lambda rule: rule.name)

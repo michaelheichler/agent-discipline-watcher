@@ -15,7 +15,7 @@
   "order": 100,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "inprogress",
   "title": "Measure German precision and set the gates",
   "type": "task"
 }
