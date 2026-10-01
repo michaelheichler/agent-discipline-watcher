@@ -1,0 +1,15 @@
+{
+  "blockedBy": [
+    "T-002"
+  ],
+  "completedDate": null,
+  "createdDate": "2026-10-01",
+  "description": "A finding on a German paragraph renders its title, detail, and action in German (decision Q14). Rule ids stay English. The catalog gains a German wording per rule, and a German rule without wording fails a catalog test, the same as an English one today. The block lead line and the principle line stay in the language of the finding.\n\nAcceptance.\n1. A German finding renders fully in German and an English one fully in English, in one report.\n2. Claude Code, Codex, and OMP show the same text.",
+  "id": "T-005",
+  "order": 50,
+  "parentTicket": "T-001",
+  "phase": "multilingual",
+  "status": "open",
+  "title": "German finding messages and rule catalog wording",
+  "type": "task"
+}

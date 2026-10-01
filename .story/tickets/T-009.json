@@ -1,0 +1,17 @@
+{
+  "blockedBy": [
+    "T-002",
+    "T-003"
+  ],
+  "completedDate": null,
+  "createdDate": "2026-10-01",
+  "description": "Implement the SEMANTIC rules from the catalog through the embedding vote and the Luna judge, the same way the English pattern rows work. Each rule needs four violating and four clean German exemplars, drawn from the T-003 corpora where possible. The Luna rubric judges German rows in German. The LFM2.5 embedding model lists German on its model card, and the spike measures whether the vote separates German exemplars before the rule ships.\n\nAcceptance.\n1. Each rule has 4 plus 4 exemplars with source.\n2. docs/research records the vote separation per rule.\n3. Every rule starts at observe until T-010 measures it.",
+  "displayId": "T-009",
+  "id": "T-009",
+  "order": 90,
+  "parentTicket": "T-001",
+  "phase": "multilingual",
+  "status": "open",
+  "title": "German SEMANTIC rules with exemplars and a German rubric",
+  "type": "task"
+}

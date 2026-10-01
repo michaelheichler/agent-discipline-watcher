@@ -1,0 +1,13 @@
+{
+  "content": "Decisions from the user on 2026-10-01.\n\n19. The German AI side uses COLING 2025 GenAI Detection Task 1 plus the German conversations in WildChat. Fresh generation waits until a measurement shows a gap.\n20. Gender forms stay out of scope. de_binnen_i drops, and no test covers gender forms.\n21. Anglicisms follow humanizer-de. Technical terms, titles, and established loanwords pass.\n22. German text allows the Ergänzungsstrich, a word ending in a hyphen before und, oder, or bis.\n23. Every German rule passes the same 0.85 precision bar on the German corpus. A rule at or above the bar blocks hard. A rule below it observes.\n24. All 80 rules from the catalog land in this work, not in stages. Each one still blocks only after its measurement clears 0.85.",
+  "createdDate": "2026-10-01",
+  "id": "N-006",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling round 5 decisions",
+  "updatedDate": "2026-10-01"
+}

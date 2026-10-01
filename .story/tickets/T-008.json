@@ -1,0 +1,15 @@
+{
+  "blockedBy": [
+    "T-002"
+  ],
+  "completedDate": null,
+  "createdDate": "2026-10-01",
+  "description": "Implement the DOCUMENT rules from the catalog, among them sentence length (15 to 20 words, three sources), sentence length variance, uniform paragraphs, and connector density. Add LIX and the first Wiener Sachtextformel (note N-003) with a dependency-free German syllable counter. Measure the syllable counter against a hyphenated sample before any rule relies on WSTF.\n\nAcceptance.\n1. LIX and WSTF1 match hand-computed values on fixed texts.\n2. evals/ records the syllable counter error on the hyphenated sample.",
+  "id": "T-008",
+  "order": 80,
+  "parentTicket": "T-001",
+  "phase": "multilingual",
+  "status": "open",
+  "title": "German DOCUMENT rules and readability",
+  "type": "task"
+}

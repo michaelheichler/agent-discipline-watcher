@@ -1,0 +1,13 @@
+{
+  "content": "On 2026-10-01 the user confirmed Q25 and the shared picture. German stays on by default, and `adw-config prose-languages en` turns it off per project. The design tree has no open branch left. Q18, the stop-word length threshold, waits for the corpus measurement by decision.",
+  "createdDate": "2026-10-01",
+  "id": "N-007",
+  "status": "active",
+  "tags": [
+    "grilling",
+    "t-001",
+    "decision"
+  ],
+  "title": "T-001 grilling closed",
+  "updatedDate": "2026-10-01"
+}

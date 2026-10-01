@@ -1,0 +1,17 @@
+{
+  "blockedBy": [
+    "T-002",
+    "T-005"
+  ],
+  "completedDate": null,
+  "createdDate": "2026-10-01",
+  "description": "Implement every STATIC rule from docs/research/2026-09-30-german-style-catalog.md except de_binnen_i, which drops (decision Q20). That covers Floskeln, Füllwörter, Streckverben, Modalverb overuse, negation count, Schachtelsatz commas, long compounds, inflated diction, and the humanizer-de word patterns. Keep humanizer-de patterns and trigger words close to the original and credit them (decision Q13). Anglicisms follow humanizer-de (decision Q21). Each rule starts at observe and gets a German example pair as fixtures. Split into sub-tickets by rule group if one module passes five rules.\n\nAcceptance.\n1. Each rule has one violating and one clean German fixture.\n2. Every rule starts at observe until T-010 measures it.",
+  "displayId": "T-007",
+  "id": "T-007",
+  "order": 70,
+  "parentTicket": "T-001",
+  "phase": "multilingual",
+  "status": "open",
+  "title": "German STATIC rules, words and patterns",
+  "type": "task"
+}

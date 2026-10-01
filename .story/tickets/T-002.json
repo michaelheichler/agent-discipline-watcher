@@ -1,0 +1,14 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-01",
+  "description": "Classify each prose paragraph and each commit message paragraph as German or English with stop words, plus umlauts and ß as a second signal. Code, paths, and inline code do not count. A paragraph with a weak signal takes the document language and gets marked as weak for T-006. Add the `prose_languages` policy key, default `[\"en\", \"de\"]`, and `adw-config prose-languages en,de`. Code comments stay English. The length threshold stays open until T-010 measures it on the T-003 corpora (decision Q18). Notes N-001 to N-007 hold every decision.\n\nAcceptance.\n1. A German paragraph and an English paragraph in one file get their own language.\n2. `prose-languages en` sends every paragraph through the English rules.\n3. A measurement script reports detection accuracy per paragraph length on the T-003 corpora.",
+  "displayId": "T-002",
+  "id": "T-002",
+  "order": 20,
+  "parentTicket": "T-001",
+  "phase": "multilingual",
+  "status": "open",
+  "title": "Detect paragraph language with stop words",
+  "type": "task"
+}
