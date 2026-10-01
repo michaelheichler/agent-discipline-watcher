@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+try:
+    from . import german_rules
+except ImportError:
+    import german_rules
+
 
 class GermanEntry(NamedTuple):
     """Carry the action as well, because the English action text would leave half of a German row untranslated."""
@@ -306,4 +311,5 @@ RULES: dict[str, GermanEntry] = {
         "Meldet Text, in dem sich gewichtete Marker für generierten Text über der Schwelle häufen",
         "Ersetz die markierten Wörter durch schlichte.",
     ),
+    **{rule.name: GermanEntry(*rule.german) for rule in german_rules.declared()},
 }

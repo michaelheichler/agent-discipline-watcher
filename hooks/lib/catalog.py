@@ -4,9 +4,10 @@ from __future__ import annotations
 from typing import NamedTuple
 
 try:
-    from . import config
+    from . import config, german_rules
 except ImportError:
     import config
+    import german_rules
 
 
 class Entry(NamedTuple):
@@ -325,6 +326,7 @@ RULES: dict[str, Entry] = {
         "Mock call check skips the arguments",
         "Flags a bare assert_called or assert_called_once with no argument check",
     ),
+    **{rule.name: Entry(rule.english.title, rule.english.description) for rule in german_rules.declared()},
 }
 
 UNGATED_RULES: dict[str, Entry] = {

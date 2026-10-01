@@ -26,7 +26,7 @@ try:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from . import families, german_punctuation, language_verdict, test_rules
+    from . import families, german_punctuation, german_rules, language_verdict, test_rules
     from .german_document_rules import scan_german_document
     from .prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
@@ -69,6 +69,7 @@ except ImportError:
     )
     import families
     import german_punctuation
+    import german_rules
     import language_verdict
     import test_rules
     from german_document_rules import scan_german_document
@@ -349,6 +350,7 @@ def _scan_document_families(context: _ScanContext, masked: str, sources: _LineSo
     german = [paragraph for paragraph in sources.paragraphs if paragraph.language == GERMAN]
     if "english" in context.active_families and german:
         findings.extend(scan_german_document(context.path, german, context.config))
+        findings.extend(german_rules.check_paragraphs(context.path, german))
     if "punctuation" in context.active_families:
         findings.extend(german_punctuation.dash_cluster_findings(context.path, sources.punctuation, sources.languages))
     return findings

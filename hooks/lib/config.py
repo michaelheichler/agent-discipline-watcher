@@ -21,11 +21,12 @@ from typing import NamedTuple
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
-    from . import families, prose_language, test_rules
+    from . import families, german_rules, prose_language, test_rules
     from .findings import Outcome
     from .payloads import cwd as payload_cwd, exact_string_dict, session_id as payload_session_id
 except ImportError:
     import families
+    import german_rules
     import prose_language
     import test_rules
     from findings import Outcome
@@ -150,6 +151,7 @@ DEFAULTS = {
         "genitive_apostrophe": "observe",
         "typed_ellipsis": "observe",
         **test_rules.default_gates(test_rules.RULE_SETS),
+        **german_rules.default_gates(german_rules.RULE_SETS),
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.
     "kill_switches": {},
