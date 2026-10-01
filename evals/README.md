@@ -48,7 +48,11 @@ uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora
 
 The violating side comes from `corpus_ai_sentences_de.jsonl`. `pattern_candidates_de.py` orders each rule's candidate sentences under the same seed and prints the next unlabeled ones. `pattern_labels_de.jsonl` labels a prefix of that order by corpus line, and the script refuses labels that skip a candidate. Git tracks the labels and ignores the corpus. The builder takes the first four violating labels per rule. A rule with fewer than four keeps no violating side and never votes. 15 rules carry one and 10 stay silent, with the reasons in `docs/research/2026-10-01-german-vote-separation.md`.
 
-`qualify_embeddings_de.py` votes with the shipped German exemplars as the only neighbours, sweeping 1, 3, 5 and 7 of them, and writes `qualification_de.json`. At 5 neighbours the vote flags 0.80 of held-out violating sentences, 0.70 of same-source clean near misses, and 0.45 of human sentences. It sorts by source rather than by pattern, so every German SEMANTIC rule stays at observe.
+The clean side mixes sources the way the English benchmark does. Each rule takes two labeled clean near misses from the AI corpus, drawn under the same seed, and one encyclopedia and one literature sentence. A rule with fewer than two labeled near misses takes four human sentences.
+
+`qualify_embeddings_de.py` votes with the shipped German exemplars as the only neighbours, sweeping 1, 3, 5 and 7 of them, and writes `qualification_de.json`. With the mixed clean side and 5 neighbours the vote flags 0.79 of held-out violating sentences, 0.63 of same-source clean near misses, and 0.51 of human sentences. The record also counts what the trigger filter alone admits. Every German SEMANTIC rule stays at observe.
+
+`second_rater_de.py` exports the labeled candidates without their labels for a blind second rater, merges that rater's answers into `pattern_labels_de_sonnet.jsonl`, and compares the two label sets with Cohen's kappa.
 
 ## Judged gate
 
