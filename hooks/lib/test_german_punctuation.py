@@ -35,6 +35,10 @@ def test_the_same_dash_still_reports_in_english() -> None:
     assert _rules(f"We build the house – and it takes time, {ENGLISH_TAIL}") == ["banned_dash"]
 
 
+def test_a_bis_strich_between_numbers_passes_in_german() -> None:
+    assert _rules(f"Das Haus stand von 1990–2000 leer, {GERMAN_TAIL}") == []
+
+
 def test_the_em_dash_stays_banned_in_german() -> None:
     assert _rules(f"Wir bauen das Haus — und es dauert, {GERMAN_TAIL}") == ["banned_dash"]
 
