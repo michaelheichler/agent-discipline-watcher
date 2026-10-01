@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+    from .judge_contracts import DOCUMENT_RUBRIC, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC
 except ImportError:
-    from judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+    from judge_contracts import DOCUMENT_RUBRIC, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC
 
 PRESETS = ("haiku", "mixed", "luna", "luna-native")
 CLAUDE_HAIKU_MODEL = "claude-haiku-4-5"
@@ -103,6 +103,7 @@ def stop_prompt(preset: str) -> str:
         "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
         "asks for and four violating and four clean examples. Decide whether the row text is violating or "
         f"clean for that rule alone. {PATTERN_RUBRIC}",
+        f"A row whose rule name starts with de_ is German. Judge it by this rubric instead. {GERMAN_PATTERN_RUBRIC}",
         "Batch all rows the helper returns into one judgement rather than one call each.",
         "When any row fails, name its path, line, and rule in the reason.",
         "Choose one output shape below.",
