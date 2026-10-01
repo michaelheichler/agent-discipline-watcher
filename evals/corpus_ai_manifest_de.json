@@ -1,0 +1,28 @@
+{
+  "corpus": "corpus_ai_sentences_de.jsonl",
+  "coverage_note": "COLING rows are all News/Wikipedia GPT-3.5 output, so no chat genre overlaps WildChat here.",
+  "lang": "de",
+  "sentences_per_document": 12,
+  "sha256": "2b29806cab456af703f542467a6a7242c67c1a0ac920afe8cdcaf151e6fc83f3",
+  "sources": {
+    "coling": {
+      "dataset": "Jinyan1/COLING_2025_MGT_multingual",
+      "distinct_models": 1,
+      "models": {
+        "gpt-3.5-turbo": 15000
+      },
+      "revision": "da603651a8929a3790937c2c2b01bde23662111f",
+      "sentences": 15000
+    },
+    "wildchat": {
+      "dataset": "allenai/WildChat-4.8M",
+      "distinct_models": 2,
+      "models": {
+        "gpt-3.5-turbo-0301": 2447,
+        "gpt-4-0314": 3553
+      },
+      "revision": "c827c6df8fcf008219ffaffa4d1dd77491099367",
+      "sentences": 6000
+    }
+  }
+}

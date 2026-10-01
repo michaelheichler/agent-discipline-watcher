@@ -1,0 +1,51 @@
+{
+  "corpus": "corpus_paragraphs_de.jsonl",
+  "coverage_gap": "No news genre, since the only German machine-written news set reads as one flat line.",
+  "genres": {
+    "encyclopedia": {
+      "documents": 2500,
+      "paragraphs": 19401,
+      "paragraphs_per_document": {
+        "4": 323,
+        "5": 304,
+        "6": 248,
+        "7": 212,
+        "8": 194,
+        "9": 125,
+        "10": 1094
+      }
+    },
+    "literature": {
+      "documents": 414,
+      "paragraphs": 3372,
+      "paragraphs_per_document": {
+        "4": 51,
+        "5": 44,
+        "6": 27,
+        "7": 24,
+        "8": 22,
+        "9": 18,
+        "10": 228
+      }
+    },
+    "wildchat": {
+      "documents": 2500,
+      "paragraphs": 17952,
+      "paragraphs_per_document": {
+        "4": 467,
+        "5": 367,
+        "6": 277,
+        "7": 248,
+        "8": 203,
+        "9": 153,
+        "10": 785
+      }
+    }
+  },
+  "lang": "de",
+  "min_paragraph_words": 25,
+  "min_paragraphs_per_document": 4,
+  "paragraphs_per_document": 10,
+  "sha256": "45ae195ca79ce3c3a160279080979373aa61e702bc976568c4fa210906c476b7",
+  "wildchat_revision": "c827c6df8fcf008219ffaffa4d1dd77491099367"
+}

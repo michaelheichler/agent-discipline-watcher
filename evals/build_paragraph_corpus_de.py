@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 import dewiki_source
-from build_ai_corpus_de import ASSISTANT, CODE_FENCE_RE, WILDCHAT_DATASET, WILDCHAT_WHERE, _filtered_rows
+import parquet_source
+from build_ai_corpus_de import ASSISTANT, CODE_FENCE_RE, WILDCHAT_DATASET
 from build_human_corpus_de import (
     GUTENBERG_DATASET,
     MAX_FOREIGN_RATIO,
@@ -103,7 +104,7 @@ def _wildchat_text(row: dict) -> str:
 
 def build_wildchat() -> list[DocumentRow]:
     rows: list[DocumentRow] = []
-    for number, row in _filtered_rows(WILDCHAT_DATASET, "train", WILDCHAT_WHERE):
+    for number, row in parquet_source.wildchat_rows():
         chosen = paragraphs_of(_wildchat_text(row))[:PARAGRAPHS_PER_DOCUMENT]
         if len(chosen) >= MIN_PARAGRAPHS_PER_DOCUMENT:
             rows.append(DocumentRow("de", ASSISTANT_ORIGIN, "wildchat", WILDCHAT_DATASET, number, chosen))
@@ -139,6 +140,7 @@ def build_manifest(rows: list[DocumentRow], digest: str) -> dict[str, object]:
         "paragraphs_per_document": PARAGRAPHS_PER_DOCUMENT,
         "min_paragraph_words": MIN_PARAGRAPH_WORDS,
         "coverage_gap": COVERAGE_GAP,
+        "wildchat_revision": parquet_source.WILDCHAT_REVISION,
         "genres": {genre: _genre_manifest(genre, rows) for genre in GENRE_BUILDERS},
     }
 
