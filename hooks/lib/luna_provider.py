@@ -25,7 +25,7 @@ from .luna_validation import parse_luna_version, validate_candidate_indexes, val
 from .luna_worker_protocol import request_payload, response_result
 
 
-LUNA_MODEL = "gpt-5.6-luna"
+LUNA_MODEL = "gpt-6-luna"
 LUNA_MODEL_MEMO_NAME = "luna-model"
 LUNA_EFFORT = "high"
 PROVIDER_NAME = "openai-codex"

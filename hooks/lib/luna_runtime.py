@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-OPENAI_CODEX_VERSION = "0.147.0"
+OPENAI_CODEX_VERSION = "0.160.0"
 OPENAI_CODEX_REQUIREMENT = f"openai-codex=={OPENAI_CODEX_VERSION}"
 RUNTIME_DIRNAME = "codex"
 VENV_DIRNAME = "venv"

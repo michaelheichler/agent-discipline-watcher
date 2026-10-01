@@ -254,8 +254,8 @@ def test_document_review_uses_the_same_cache_contract(tmp_path: Path) -> None:
 def test_invalid_cache_payload_is_not_returned_as_a_judgment(tmp_path: Path) -> None:
     judge, sdk = _judge(tmp_path, (_result(), _result()))
     request = _request()
-    judge.judge(request)
-    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
+    first = judge.judge(request)
+    cache_path = judge._cache_path(judge._cache_key(request, first.model))
     cache_path.write_text(
         '{"payload":{"items":[{"index":"wrong"}]},"provider":"openai-codex","model":"gpt-5.6-luna","effort":"high","rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
         encoding="utf-8",
@@ -270,8 +270,8 @@ def test_invalid_cache_payload_is_not_returned_as_a_judgment(tmp_path: Path) -> 
 def test_truthy_non_boolean_cached_cache_entry_is_a_miss(tmp_path: Path) -> None:
     judge, sdk = _judge(tmp_path, (_result(), _result()))
     request = _request()
-    judge.judge(request)
-    cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
+    first = judge.judge(request)
+    cache_path = judge._cache_path(judge._cache_key(request, first.model))
     row = json.loads(cache_path.read_text(encoding="utf-8"))
     row["cached"] = "false"
     cache_path.write_text(json.dumps(row), encoding="utf-8")
@@ -686,7 +686,7 @@ def test_second_call_hits_cache_under_the_remembered_resolved_model(tmp_path: Pa
 
 
 def test_stale_verdict_under_the_floor_id_does_not_serve_once_a_newer_model_is_remembered(tmp_path: Path) -> None:
-    models = (_model_with("gpt-6-luna"),)
+    models = (_model_with("gpt-7-luna"),)
     judge, sdk = _judge(tmp_path, models=models)
     request = _request()
     judge.judge(request)
@@ -703,6 +703,20 @@ def test_stale_verdict_under_the_floor_id_does_not_serve_once_a_newer_model_is_r
 
     result = judge.judge(request)
 
-    assert result.model == "gpt-6-luna"
+    assert result.model == "gpt-7-luna"
     assert result.payload["items"][0]["reason"] != "stale five point six verdict"
     assert len(sdk.session.starts) == 1
+
+
+def test_sdk_upgrade_moves_judging_off_a_remembered_older_luna(tmp_path: Path) -> None:
+    judge, sdk = _judge(tmp_path, (_result(), _result(), _result()), models=(_model_with("gpt-5.6-luna"),))
+    request = _request()
+    assert judge.judge(request).model == "gpt-5.6-luna"
+
+    sdk.session.models_state = (_model_with("gpt-5.6-luna"), _model_with("gpt-6-luna"))
+    judge.judge(_request(rubric_version="adw-rubric-v2"))
+    upgraded = judge.judge(request)
+
+    assert upgraded.model == "gpt-6-luna"
+    assert upgraded.cached is False
+    assert len(sdk.session.starts) == 3

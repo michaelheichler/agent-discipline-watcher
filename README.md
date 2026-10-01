@@ -100,7 +100,7 @@ A project can deny test writes outright. With `tests: deny` set through `adw-con
 
 `install.sh` wires Codex from this checkout, copies the watcher into
 `~/.adw/install/agent-discipline-watcher`, and provisions an ADW-owned virtual
-environment with the pinned `openai-codex==0.147.0` runtime. Client hooks point
+environment with the pinned `openai-codex==0.160.0` runtime. Client hooks point
 to the installed copy, not the development checkout. Luna reviews use the
 Codex ChatGPT subscription only. Log in through Codex's browser or device-code
 flow before using model review. There is no API-key fallback.

@@ -8,6 +8,10 @@
 - **German SEMANTIC rules enter the embedding vote (T-009, part A).** `hooks/lib/german_rules/semantic_style.py` and `semantic_claims.py` declare the 25 SEMANTIC rows of the German catalog at observe. The vote now sorts sentences by paragraph language, so a German rule meets only German sentences and German exemplars, and an English rule no longer votes on German sentences. A German pattern row reaches Luna with a German rubric under rubric version `adw-rubric-de-v1`. `evals/build_pattern_exemplars_de.py` draws 4 clean exemplars per rule from the German human corpus by fixed seed into `hooks/lib/pattern_exemplars_de.jsonl`. No violating exemplars ship yet, so no German rule votes, and none speaks before T-010 records its judge precision.
 - **German SEMANTIC rules take their candidates from a trigger, then the Luna judge (T-010, part C).** The German vote admitted about half of all human sentences, so a German rule now sends every German sentence its trigger matches. The trigger patterns live in the rule modules. The German judge prompt carries the rule definition and a new boundary for stock phrase, foreign word, false agency and retroactive nuance. Rater agreement rose from kappa 0.52 to 0.67, and a Luna majority settled the rest. `evals/measure_judge_stage_de.py` measured 14 rules through the real Luna path. The best lower bound is 0.55, so every German rule stays at observe.
 
+### Changed
+
+- **Luna judges run on `gpt-6-luna`.** The Codex runtime pin moves from `openai-codex==0.147.0` to `0.160.0`. The 0.147.0 model list stopped at `gpt-5.6-luna`, so every judge resolved that model. The 0.160.0 list offers `gpt-6-luna` at high effort. The fallback `LUNA_MODEL` moves to `gpt-6-luna` as well. Run `./install.sh --codex` to upgrade the runtime, because the installer reinstalls when the pinned requirements file changes. The first judge call that misses the cache replaces the remembered `gpt-5.6-luna`.
+
 ## 0.24.1 (2026-09-30)
 
 ### Changed
