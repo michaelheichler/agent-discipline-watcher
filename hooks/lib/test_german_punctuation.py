@@ -35,6 +35,14 @@ def test_the_same_dash_still_reports_in_english() -> None:
     assert _rules(f"We build the house – and it takes time, {ENGLISH_TAIL}") == ["banned_dash"]
 
 
+def test_a_long_german_sentence_reaches_the_document_rules_through_the_scanner() -> None:
+    german = " ".join([GERMAN_FILLER.rstrip(".")] * 3) + "."
+    english = " ".join([ENGLISH_TAIL.rstrip(".")] * 3) + "."
+
+    assert "de_sentence_length" in _rules(german)
+    assert "de_sentence_length" not in _rules(english)
+
+
 def test_a_bis_strich_between_numbers_passes_in_german() -> None:
     assert _rules(f"Das Haus stand von 1990–2000 leer, {GERMAN_TAIL}") == []
 

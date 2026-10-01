@@ -36,7 +36,7 @@ def _satzlaenge_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
         count = len(words(sentence))
         if count > SENTENCE_LENGTH_CAP:
             rows.append(_finding(
-                FAMILY, "de_satzlaenge", paragraph.line,
+                FAMILY, "de_sentence_length", paragraph.line,
                 "Sentence runs past " + str(SENTENCE_LENGTH_CAP) + " words in " + path,
                 sentence, "Split the sentence at one clause boundary.",
             ))
@@ -52,7 +52,7 @@ def _gleichfoermiger_rhythmus_rows(path: str, paragraphs: list[ParagraphLanguage
     if variation >= RHYTHM_VARIATION_LIMIT:
         return []
     return [_finding(
-        FAMILY, "de_gleichfoermiger_rhythmus", paragraphs[0].line,
+        FAMILY, "de_uniform_rhythm", paragraphs[0].line,
         "Sentence lengths stay uniform across the German text in " + path,
         paragraphs[0].text, "Vary the sentence lengths across the document.",
     )]
@@ -66,7 +66,7 @@ def _isometrisches_dokument_rows(path: str, paragraphs: list[ParagraphLanguage])
     if max(sentence_counts) - min(sentence_counts) > UNIFORM_PARAGRAPH_SPREAD:
         return []
     return [_finding(
-        FAMILY, "de_isometrisches_dokument", paragraphs[0].line,
+        FAMILY, "de_uniform_paragraphs", paragraphs[0].line,
         "Every German paragraph holds close to the same length in " + path,
         paragraphs[0].text, "Let some paragraphs run shorter or longer than the rest.",
     )]
@@ -83,7 +83,7 @@ def _mechanische_konjunktionen_rows(path: str, paragraph: ParagraphLanguage) -> 
     if opener_count <= CONNECTOR_DENSITY_CAP:
         return []
     return [_finding(
-        FAMILY, "de_mechanische_konjunktionen", paragraph.line,
+        FAMILY, "de_repeated_connector", paragraph.line,
         "Paragraph opens more than one sentence on a stock connector in " + path,
         paragraph.text, "Open at most one sentence in the paragraph with a connector like außerdem.",
     )]
@@ -93,11 +93,9 @@ def _long_compound_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
     """Gottschling ties six syllables to one eye fixation, because past that point a compound stops reading as one word."""
     rows = []
     for word in words(paragraph.text):
-        if "-" in word:
-            continue
         if count_syllables(word) >= LONG_COMPOUND_SYLLABLES:
             rows.append(_finding(
-                FAMILY, "de_komposita_lang", paragraph.line,
+                FAMILY, "de_long_compound", paragraph.line,
                 "Compound runs past " + str(LONG_COMPOUND_SYLLABLES) + " syllables with no hyphen in " + path,
                 word, "Add a hyphen split or rewrite the compound as a genitive phrase.",
             ))

@@ -27,7 +27,8 @@ try:
         _what_docstring_findings,
     )
     from . import families, german_punctuation, language_verdict, test_rules
-    from .prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
+    from .german_document_rules import scan_german_document
+    from .prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .markup import (
         MARKDOWN_EXTS,
@@ -70,7 +71,8 @@ except ImportError:
     import german_punctuation
     import language_verdict
     import test_rules
-    from prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
+    from german_document_rules import scan_german_document
+    from prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from markup import (
         MARKDOWN_EXTS,
@@ -238,6 +240,7 @@ class _LineSources(NamedTuple):
     english: list[str]
     comment: list[str]
     languages: list[str]
+    paragraphs: list[ParagraphLanguage]
 
 
 class _SourceLine(NamedTuple):
@@ -247,22 +250,29 @@ class _SourceLine(NamedTuple):
 
 
 def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _LineSources:
+    paragraphs = _prose_paragraphs(context, masked)
     return _LineSources(
         _strip_punctuation_blocks(context.path, masked, context.prose).splitlines() or [""],
         _strip_english_hidden(masked).splitlines() or [""],
         comment_source.splitlines() or [""],
-        _line_languages(context, masked),
+        _line_languages(context, paragraphs),
+        paragraphs,
     )
 
 
-def _line_languages(context: _ScanContext, masked: str) -> list[str]:
-    """Map prose lines only, because code comments keep the English rules."""
+def _prose_paragraphs(context: _ScanContext, masked: str) -> list[ParagraphLanguage]:
+    """Prose only, because code comments keep the English rules."""
     if not context.prose:
         return []
-    blocks = language_verdict.apply_cached(
+    return language_verdict.apply_cached(
         paragraph_languages(masked, allowed_languages(context.config)), context.config.get("state_root"),
     )
-    starts = {block.line: block.language for block in blocks}
+
+
+def _line_languages(context: _ScanContext, paragraphs: list[ParagraphLanguage]) -> list[str]:
+    if not paragraphs:
+        return []
+    starts = {block.line: block.language for block in paragraphs}
     languages, current = [], ENGLISH
     for number in range(1, len(context.lines) + 1):
         current = starts.get(number, current)
@@ -325,6 +335,9 @@ def _scan_english_families(path: str, masked: str, context: _ScanContext) -> lis
 
 def _scan_document_families(context: _ScanContext, masked: str, sources: _LineSources) -> list[dict]:
     findings = _scan_english_families(context.path, masked, context)
+    german = [paragraph for paragraph in sources.paragraphs if paragraph.language == GERMAN]
+    if "english" in context.active_families and german:
+        findings.extend(scan_german_document(context.path, german, context.config))
     if "punctuation" in context.active_families:
         findings.extend(german_punctuation.dash_cluster_findings(context.path, sources.punctuation, sources.languages))
     return findings

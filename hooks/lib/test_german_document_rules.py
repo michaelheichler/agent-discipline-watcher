@@ -35,11 +35,11 @@ def _rule_ids(paragraphs: list[ParagraphLanguage]) -> list[str]:
 def test_an_over_long_sentence_is_reported_with_its_line_and_text() -> None:
     rows = _scan([_paragraph(3, 21)])
 
-    assert [(row["rule"], row["line"], row["snippet"]) for row in rows] == [("de_satzlaenge", 3, _sentence(21))]
+    assert [(row["rule"], row["line"], row["snippet"]) for row in rows] == [("de_sentence_length", 3, _sentence(21))]
 
 
 def test_each_over_long_sentence_gets_its_own_row() -> None:
-    assert _rule_ids([_paragraph(1, 21, 4, 25)]) == ["de_satzlaenge", "de_satzlaenge"]
+    assert _rule_ids([_paragraph(1, 21, 4, 25)]) == ["de_sentence_length", "de_sentence_length"]
 
 
 def test_short_sentences_raise_nothing() -> None:
@@ -47,7 +47,7 @@ def test_short_sentences_raise_nothing() -> None:
 
 
 def test_ten_sentences_of_equal_length_read_as_uniform_rhythm() -> None:
-    assert _rule_ids([_paragraph(1, 8, 8, 8, 8, 8), _paragraph(2, 8, 8, 8, 8, 8)]) == ["de_gleichfoermiger_rhythmus"]
+    assert _rule_ids([_paragraph(1, 8, 8, 8, 8, 8), _paragraph(2, 8, 8, 8, 8, 8)]) == ["de_uniform_rhythm"]
 
 
 @pytest.mark.parametrize("paragraphs", (
@@ -61,7 +61,7 @@ def test_rhythm_stays_quiet_without_enough_uniform_sentences(paragraphs: list[Pa
 def test_four_paragraphs_of_equal_sentence_count_read_as_isometric() -> None:
     paragraphs = [_paragraph(line, 2, 12) for line in (1, 3, 5, 7)]
 
-    assert _rule_ids(paragraphs) == ["de_isometrisches_dokument"]
+    assert _rule_ids(paragraphs) == ["de_uniform_paragraphs"]
 
 
 @pytest.mark.parametrize("paragraphs", (
@@ -80,7 +80,7 @@ def test_isometric_document_stays_quiet_for_few_or_varied_paragraphs(paragraphs:
     "Darüber hinaus regnete es. Ferner fiel Schnee.",
 ))
 def test_two_sentences_opening_on_a_stock_connector_are_flagged(text: str) -> None:
-    assert _rule_ids([_text_paragraph(1, text)]) == ["de_mechanische_konjunktionen"]
+    assert _rule_ids([_text_paragraph(1, text)]) == ["de_repeated_connector"]
 
 
 @pytest.mark.parametrize("text", (
@@ -94,7 +94,7 @@ def test_a_single_connector_opener_is_allowed(text: str) -> None:
 def test_a_compound_of_six_or_more_syllables_is_reported_by_the_word() -> None:
     rows = _scan([_text_paragraph(1, "Die Tapeziertischoberfläche glänzt.")])
 
-    assert [(row["rule"], row["snippet"]) for row in rows] == [("de_komposita_lang", "Tapeziertischoberfläche")]
+    assert [(row["rule"], row["snippet"]) for row in rows] == [("de_long_compound", "Tapeziertischoberfläche")]
 
 
 def test_a_hyphenated_compound_is_not_reported() -> None:
@@ -107,4 +107,4 @@ def test_one_document_can_raise_several_german_rules_at_once() -> None:
         _text_paragraph(3, LONG_REAL_SENTENCE),
     ]
 
-    assert sorted(_rule_ids(paragraphs)) == ["de_komposita_lang", "de_mechanische_konjunktionen", "de_satzlaenge"]
+    assert sorted(_rule_ids(paragraphs)) == ["de_long_compound", "de_repeated_connector", "de_sentence_length"]
