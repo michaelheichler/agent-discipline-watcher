@@ -44,7 +44,11 @@ Git ignores all three German corpora, which rebuild byte for byte, the same as t
 uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora.py
 ```
 
-`build_pattern_exemplars_de.py` draws the clean side for the 25 German SEMANTIC rules from `corpus_human_sentences_de.jsonl` into `hooks/lib/pattern_exemplars_de.jsonl`. It takes two encyclopedia and two literature sentences per rule under a fixed seed, never reuses a sentence, and skips markup residue, split fragments, and sentences that carry the rule's own trigger words. Each row records its source, document, and corpus row number. The builder refuses a corpus whose hash differs from `corpus_human_manifest_de.json`, so the same seed always yields the same file. The violating side waits for the German AI corpus.
+`build_pattern_exemplars_de.py` draws the clean side for the 25 German SEMANTIC rules from `corpus_human_sentences_de.jsonl` into `hooks/lib/pattern_exemplars_de.jsonl`. It takes two encyclopedia and two literature sentences per rule under a fixed seed, never reuses a sentence, and skips markup residue, split fragments, and sentences that carry the rule's own trigger words. Each row records its source, document, and corpus row number. The builder refuses a corpus whose hash differs from `corpus_human_manifest_de.json`, so the same seed always yields the same file.
+
+The violating side comes from `corpus_ai_sentences_de.jsonl`. `pattern_candidates_de.py` orders each rule's candidate sentences under the same seed and prints the next unlabeled ones. `pattern_labels_de.jsonl` labels a prefix of that order by corpus line, and the script refuses labels that skip a candidate. Git tracks the labels and ignores the corpus. The builder takes the first four violating labels per rule. A rule with fewer than four keeps no violating side and never votes. 15 rules carry one and 10 stay silent, with the reasons in `docs/research/2026-10-01-german-vote-separation.md`.
+
+`qualify_embeddings_de.py` votes with the shipped German exemplars as the only neighbours, sweeping 1, 3, 5 and 7 of them, and writes `qualification_de.json`. At 5 neighbours the vote flags 0.80 of held-out violating sentences, 0.70 of same-source clean near misses, and 0.45 of human sentences. It sorts by source rather than by pattern, so every German SEMANTIC rule stays at observe.
 
 ## Judged gate
 
