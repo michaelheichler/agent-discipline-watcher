@@ -72,6 +72,20 @@ def test_draw_caps_each_rule_and_repeats_under_the_seed() -> None:
     assert first == second
 
 
+def test_extension_keeps_labeled_rows_and_adds_only_unseen_ones_of_the_same_corpus_kind() -> None:
+    rule = "de_stretched_verb"
+    hits = [_hit(rule, "human_sentences", line) for line in range(1, 31)]
+    hits += [_hit(rule, "ai_sentences", line) for line in range(1, 31)] + [_hit(rule, "paragraphs", 1)]
+    kept = sample.draw(hits)
+
+    added = sample.extend(kept, hits)
+
+    assert len(kept) + len(added) == sample.EXTENDED_PER_RULE
+    assert not {ref["id"] for ref in added} & {ref["id"] for ref in kept}
+    assert all(ref["corpus"] != "paragraphs" for ref in added)
+    assert added == sample.extend(kept, hits)
+
+
 def test_a_rater_sees_no_corpus_name_in_the_item_id() -> None:
     assert "human" not in sample.opaque("de_filler_word:human_sentences:7")
 

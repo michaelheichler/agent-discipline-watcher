@@ -15,6 +15,11 @@ SAMPLE_PATH = EVALS / "german_static_sample.jsonl"
 ITEMS_DIR = EVALS / "german_static_items"
 SEED = 20261001
 PER_RULE = 20
+EXTENDED_PER_RULE = 40
+EXTENDED_RULES = (
+    "de_meta_commentary", "de_prompt_refusal", "de_stretched_verb", "spaced_hyphen",
+    "de_repeated_connector", "de_abrupt_ending", "de_knowledge_cutoff", "de_sentence_length",
+)
 BATCH_SIZE = 140
 WHOLE_DOCUMENT_RULES = frozenset({"de_uniform_rhythm", "de_uniform_paragraphs", "dash_cluster"})
 SENTENCE_NAMES = frozenset(corpus.name for corpus in SENTENCE_CORPORA)
@@ -47,8 +52,42 @@ def draw(hits: list[dict]) -> list[dict]:
         pool = designated(rule, by_rule[rule])
         chosen = random.Random(f"{SEED}:{rule}").sample(range(len(pool)), min(PER_RULE, len(pool)))
         sample.extend(pool[index] for index in sorted(chosen))
-    return [{"id": f"{row['rule']}:{row['corpus']}:{row['line']}", **{key: row.get(key) for key in REF_FIELDS[1:]}}
-            for row in sample]
+    return [_ref(row) for row in sample]
+
+
+def _ref(row: dict) -> dict:
+    return {"id": f"{row['rule']}:{row['corpus']}:{row['line']}", **{key: row.get(key) for key in REF_FIELDS[1:]}}
+
+
+def extend(sample: list[dict], hits: list[dict]) -> list[dict]:
+    """Keep the labeled rows and draw only new ones from the same corpus, because 20 of 20 bounds at 0.8389, under the bar."""
+    added = []
+    for rule in EXTENDED_RULES:
+        kept = [ref for ref in sample if ref["rule"] == rule]
+        if not kept:
+            continue
+        taken = {ref["id"] for ref in kept}
+        paragraphs = kept[0]["corpus"] == PARAGRAPH_CORPUS.name
+        pool = [_ref(hit) for hit in hits
+                if hit["rule"] == rule and (hit["corpus"] == PARAGRAPH_CORPUS.name) == paragraphs]
+        pool = [ref for ref in pool if ref["id"] not in taken]
+        wanted = min(EXTENDED_PER_RULE - len(kept), len(pool))
+        chosen = random.Random(f"{SEED}:{rule}:extend").sample(range(len(pool)), max(0, wanted))
+        added.extend(pool[index] for index in sorted(chosen))
+    return added
+
+
+def _extend_step() -> None:
+    sample = read_jsonl(SAMPLE_PATH)
+    added = extend(sample, read_jsonl(HITS_PATH))
+    write_jsonl(SAMPLE_PATH, sample + added)
+    print("\n".join(map(str, export(added, "extend"))))
+
+
+def pending_disputes(sample: list[dict], answer_paths: list[Path]) -> list[dict]:
+    """Skip rows a third rater already decided, because an extension must not send old splits out again."""
+    answered = {row["id"] for path in answer_paths for row in read_jsonl(path)}
+    return [ref for ref in disputed(sample) if opaque(ref["id"]) not in answered]
 
 
 def paragraph_at(paragraphs: list[str], finding_line: int) -> str:
@@ -164,16 +203,19 @@ def adjudicate(sample: list[dict], answer_paths: list[Path]) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("step", choices=("draw", "export", "merge", "disputes", "adjudicate"))
+    parser.add_argument("step", choices=("draw", "export", "extend", "merge", "disputes", "adjudicate"))
     parser.add_argument("--labeler", choices=(FIRST, SECOND))
+    parser.add_argument("--prefix", default="disputes")
     parser.add_argument("answers", nargs="*", type=Path)
     arguments = parser.parse_args()
     steps = {
         "draw": lambda: write_jsonl(SAMPLE_PATH, draw(read_jsonl(HITS_PATH))),
         "export": lambda: print("\n".join(map(str, export(read_jsonl(SAMPLE_PATH), "batch")))),
+        "extend": _extend_step,
         "merge": lambda: write_jsonl(labels_path(arguments.labeler),
                                      merge(read_jsonl(SAMPLE_PATH), arguments.labeler, arguments.answers)),
-        "disputes": lambda: print("\n".join(map(str, export(disputed(read_jsonl(SAMPLE_PATH)), "disputes")))),
+        "disputes": lambda: print("\n".join(map(str, export(
+            pending_disputes(read_jsonl(SAMPLE_PATH), arguments.answers), arguments.prefix)))),
         "adjudicate": lambda: write_jsonl(labels_path(ADJUDICATED), adjudicate(read_jsonl(SAMPLE_PATH), arguments.answers)),
     }
     steps[arguments.step]()

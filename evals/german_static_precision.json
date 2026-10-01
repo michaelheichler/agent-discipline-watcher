@@ -1,13 +1,13 @@
 {
   "bar": 0.85,
   "gate_reads": "wilson_95 lower bound",
-  "kappa": 0.5677,
-  "labels": 739,
+  "kappa": 0.5963,
+  "labels": 839,
   "off_when": {
     "human_per_1000_at_least": 5.0,
     "precision_below": 0.5
   },
-  "rater_agreement": 579,
+  "rater_agreement": 670,
   "raters": {
     "luna": "gpt-6-luna",
     "opus": "opus",
@@ -19,12 +19,12 @@
       "kappa": 0.0,
       "n": 20,
       "per_1000": {
-        "ai": 0.476,
-        "human": 10.857
+        "ai": 0.524,
+        "human": 12.179
       },
       "precision": 0.15,
       "rater_agreement": 17,
-      "reason": "precision 0.15 at 10.857 human hits per 1000",
+      "reason": "precision 0.15 at 12.179 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 20,
@@ -280,11 +280,11 @@
       "n": 20,
       "per_1000": {
         "ai": 15.905,
-        "human": 12.393
+        "human": 12.714
       },
       "precision": 0.0,
       "rater_agreement": 17,
-      "reason": "precision 0.00 at 12.393 human hits per 1000",
+      "reason": "precision 0.00 at 12.714 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 11,
@@ -299,12 +299,12 @@
       "kappa": 0.3846,
       "n": 20,
       "per_1000": {
-        "ai": 20.667,
-        "human": 26.857
+        "ai": 20.714,
+        "human": 28.75
       },
       "precision": 0.2,
       "rater_agreement": 16,
-      "reason": "precision 0.20 at 26.857 human hits per 1000",
+      "reason": "precision 0.20 at 28.75 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 12,
@@ -380,11 +380,11 @@
       "n": 20,
       "per_1000": {
         "ai": 31.952,
-        "human": 25.214
+        "human": 26.321
       },
       "precision": 0.0,
       "rater_agreement": 20,
-      "reason": "precision 0.00 at 25.214 human hits per 1000",
+      "reason": "precision 0.00 at 26.321 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 9,
@@ -419,7 +419,7 @@
       "kappa": 0.6341,
       "n": 20,
       "per_1000": {
-        "ai": 0.333,
+        "ai": 0.429,
         "human": 1.607
       },
       "precision": 0.65,
@@ -459,8 +459,8 @@
       "kappa": 0.0,
       "n": 20,
       "per_1000": {
-        "ai": 1.095,
-        "human": 0.0
+        "ai": 1.238,
+        "human": 0.036
       },
       "precision": 0.25,
       "rater_agreement": 4,
@@ -497,20 +497,20 @@
     "de_meta_commentary": {
       "gate": "observe",
       "kappa": null,
-      "n": 20,
+      "n": 40,
       "per_1000": {
         "ai": 54.8,
         "human": 1.373
       },
       "precision": 1.0,
-      "rater_agreement": 20,
-      "reason": "lower bound 0.84 sits under the 0.85 bar",
-      "recommendation": "observe",
+      "rater_agreement": 40,
+      "reason": "lower bound 0.91 clears the 0.85 bar",
+      "recommendation": "enforce",
       "sampled_from": "paragraphs",
       "sampled_human": 3,
-      "violating": 20,
+      "violating": 40,
       "wilson_95": [
-        0.8389,
+        0.9124,
         1.0
       ]
     },
@@ -519,12 +519,12 @@
       "kappa": null,
       "n": 20,
       "per_1000": {
-        "ai": 172.143,
-        "human": 70.679
+        "ai": 172.333,
+        "human": 72.893
       },
       "precision": 0.0,
       "rater_agreement": 20,
-      "reason": "precision 0.00 at 70.679 human hits per 1000",
+      "reason": "precision 0.00 at 72.893 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 7,
@@ -560,11 +560,11 @@
       "n": 20,
       "per_1000": {
         "ai": 5.524,
-        "human": 6.357
+        "human": 6.464
       },
       "precision": 0.2,
       "rater_agreement": 15,
-      "reason": "precision 0.20 at 6.357 human hits per 1000",
+      "reason": "precision 0.20 at 6.464 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 13,
@@ -596,22 +596,22 @@
     },
     "de_prompt_refusal": {
       "gate": "observe",
-      "kappa": null,
-      "n": 20,
+      "kappa": 0.3478,
+      "n": 40,
       "per_1000": {
         "ai": 18.8,
         "human": 0.0
       },
-      "precision": 1.0,
-      "rater_agreement": 20,
-      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "precision": 0.95,
+      "rater_agreement": 34,
+      "reason": "lower bound 0.83 sits under the 0.85 bar",
       "recommendation": "observe",
       "sampled_from": "paragraphs",
       "sampled_human": 0,
-      "violating": 20,
+      "violating": 38,
       "wilson_95": [
-        0.8389,
-        1.0
+        0.835,
+        0.9862
       ]
     },
     "de_redundant_pair": {
@@ -676,22 +676,22 @@
     },
     "de_sentence_length": {
       "gate": "observe",
-      "kappa": 0.0,
-      "n": 20,
+      "kappa": 0.4737,
+      "n": 40,
       "per_1000": {
         "ai": 975.6,
         "human": 981.469
       },
       "precision": 0.95,
-      "rater_agreement": 19,
-      "reason": "lower bound 0.76 sits under the 0.85 bar",
+      "rater_agreement": 38,
+      "reason": "lower bound 0.83 sits under the 0.85 bar",
       "recommendation": "observe",
       "sampled_from": "paragraphs",
-      "sampled_human": 12,
-      "violating": 19,
+      "sampled_human": 24,
+      "violating": 38,
       "wilson_95": [
-        0.7639,
-        0.9911
+        0.835,
+        0.9862
       ]
     },
     "de_signposting": {
@@ -736,22 +736,22 @@
     },
     "de_stretched_verb": {
       "gate": "observe",
-      "kappa": null,
-      "n": 20,
+      "kappa": 0.4805,
+      "n": 40,
       "per_1000": {
         "ai": 1.667,
         "human": 0.643
       },
-      "precision": 1.0,
-      "rater_agreement": 20,
-      "reason": "lower bound 0.84 sits under the 0.85 bar",
+      "precision": 0.925,
+      "rater_agreement": 38,
+      "reason": "lower bound 0.80 sits under the 0.85 bar",
       "recommendation": "observe",
       "sampled_from": "sentences",
-      "sampled_human": 8,
-      "violating": 20,
+      "sampled_human": 14,
+      "violating": 37,
       "wilson_95": [
-        0.8389,
-        1.0
+        0.8014,
+        0.9742
       ]
     },
     "de_symbolism_inflation": {
@@ -760,7 +760,7 @@
       "n": 20,
       "per_1000": {
         "ai": 0.381,
-        "human": 0.464
+        "human": 0.5
       },
       "precision": 0.35,
       "rater_agreement": 19,
@@ -780,7 +780,7 @@
       "n": 20,
       "per_1000": {
         "ai": 0.905,
-        "human": 0.786
+        "human": 0.893
       },
       "precision": 0.2,
       "rater_agreement": 18,
@@ -800,11 +800,11 @@
       "n": 20,
       "per_1000": {
         "ai": 1.333,
-        "human": 9.571
+        "human": 9.857
       },
       "precision": 0.0,
       "rater_agreement": 3,
-      "reason": "precision 0.00 at 9.571 human hits per 1000",
+      "reason": "precision 0.00 at 9.857 human hits per 1000",
       "recommendation": "off",
       "sampled_from": "sentences",
       "sampled_human": 17,
@@ -880,7 +880,7 @@
       "n": 20,
       "per_1000": {
         "ai": 0.714,
-        "human": 1.75
+        "human": 1.821
       },
       "precision": 0.05,
       "rater_agreement": 20,
@@ -899,8 +899,8 @@
       "kappa": 0.875,
       "n": 20,
       "per_1000": {
-        "ai": 38.0,
-        "human": 10.643
+        "ai": 38.333,
+        "human": 11.929
       },
       "precision": 0.7,
       "rater_agreement": 19,
@@ -916,22 +916,22 @@
     },
     "spaced_hyphen": {
       "gate": "family_default",
-      "kappa": null,
-      "n": 20,
+      "kappa": 1.0,
+      "n": 40,
       "per_1000": {
         "ai": 6.476,
-        "human": 0.786
+        "human": 0.821
       },
-      "precision": 1.0,
-      "rater_agreement": 20,
-      "reason": "lower bound 0.84 sits under the 0.85 bar",
-      "recommendation": "observe",
+      "precision": 0.975,
+      "rater_agreement": 40,
+      "reason": "lower bound 0.87 clears the 0.85 bar",
+      "recommendation": "enforce",
       "sampled_from": "sentences",
-      "sampled_human": 4,
-      "violating": 20,
+      "sampled_human": 5,
+      "violating": 39,
       "wilson_95": [
-        0.8389,
-        1.0
+        0.8712,
+        0.9956
       ]
     },
     "typed_ellipsis": {
@@ -939,8 +939,8 @@
       "kappa": 0.0,
       "n": 20,
       "per_1000": {
-        "ai": 0.19,
-        "human": 1.643
+        "ai": 0.286,
+        "human": 1.929
       },
       "precision": 0.35,
       "rater_agreement": 5,
@@ -964,5 +964,5 @@
     "de_search_link_citation",
     "de_therapeutic_validation"
   ],
-  "third_rater_rows": 160
+  "third_rater_rows": 169
 }
