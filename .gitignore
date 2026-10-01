@@ -33,6 +33,11 @@ evals/corpus_human_sentences_de.jsonl
 evals/corpus_ai_sentences_de.jsonl
 evals/corpus_paragraphs_de.jsonl
 
+# German rule hits quote those corpora.
+# Rebuild with: python3 evals/measure_german_hit_rate.py
+evals/german_static_hits.jsonl
+evals/german_static_items/
+
 # Third-party sentences again, rebuilt byte for byte from the corpus above.
 # Rebuild with: python3 evals/build_pattern_benchmark.py
 evals/benchmark_patterns.jsonl

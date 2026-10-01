@@ -1,0 +1,3276 @@
+{
+  "corpora": {
+    "corpus_ai_sentences_de.jsonl": "2b29806cab456af703f542467a6a7242c67c1a0ac920afe8cdcaf151e6fc83f3",
+    "corpus_human_sentences_de.jsonl": "7f3ec0228d39c462eba7a575d0dfe22bc9e6b999563347ccf680e2143b218b3d",
+    "corpus_paragraphs_de.jsonl": "45ae195ca79ce3c3a160279080979373aa61e702bc976568c4fa210906c476b7"
+  },
+  "path": "sample.md",
+  "routed_german": {
+    "paragraphs": {
+      "ai/wildchat": 2497,
+      "human/encyclopedia": 2500,
+      "human/literature": 414
+    },
+    "sentences": {
+      "ai/coling": 14891,
+      "ai/wildchat": 5828,
+      "human/encyclopedia": 19597,
+      "human/literature": 6414
+    }
+  },
+  "rules": {
+    "banned_dash": {
+      "gate": "family_default",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 13,
+              "per_1000": 5.2
+            }
+          },
+          "hits": 13,
+          "per_1000": 5.2
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 197,
+              "per_1000": 78.8
+            },
+            "literature": {
+              "hits": 186,
+              "per_1000": 449.275
+            }
+          },
+          "hits": 383,
+          "per_1000": 131.434
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 8,
+              "per_1000": 0.533
+            },
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.333
+            }
+          },
+          "hits": 10,
+          "per_1000": 0.476
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 99,
+              "per_1000": 4.95
+            },
+            "literature": {
+              "hits": 205,
+              "per_1000": 25.625
+            }
+          },
+          "hits": 304,
+          "per_1000": 10.857
+        }
+      }
+    },
+    "dash_cluster": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 4,
+              "per_1000": 1.6
+            }
+          },
+          "hits": 4,
+          "per_1000": 1.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 10,
+              "per_1000": 4.0
+            },
+            "literature": {
+              "hits": 13,
+              "per_1000": 31.401
+            }
+          },
+          "hits": 23,
+          "per_1000": 7.893
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_abrupt_ending": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 9,
+              "per_1000": 3.6
+            }
+          },
+          "hits": 9,
+          "per_1000": 3.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_abstract_nouns": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 349,
+              "per_1000": 139.6
+            }
+          },
+          "hits": 349,
+          "per_1000": 139.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 36,
+              "per_1000": 14.4
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 36,
+          "per_1000": 12.354
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 0.5
+            }
+          },
+          "hits": 3,
+          "per_1000": 0.143
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 2,
+              "per_1000": 0.1
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.071
+        }
+      }
+    },
+    "de_ai_marker_vocabulary": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 86,
+              "per_1000": 34.4
+            }
+          },
+          "hits": 86,
+          "per_1000": 34.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 5,
+              "per_1000": 2.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 5,
+          "per_1000": 1.716
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_ai_tool_artifact": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_anglicism": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 4,
+              "per_1000": 1.6
+            }
+          },
+          "hits": 4,
+          "per_1000": 1.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1,
+              "per_1000": 0.4
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.343
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.167
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.048
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_announcing_cleft": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.8
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_aphorism_formula": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.8
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1,
+              "per_1000": 0.05
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.036
+        }
+      }
+    },
+    "de_authority_phrase": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 15,
+              "per_1000": 6.0
+            }
+          },
+          "hits": 15,
+          "per_1000": 6.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 18,
+              "per_1000": 7.2
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 18,
+          "per_1000": 6.177
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 3,
+              "per_1000": 0.2
+            },
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 0.5
+            }
+          },
+          "hits": 6,
+          "per_1000": 0.286
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 2,
+              "per_1000": 0.1
+            },
+            "literature": {
+              "hits": 3,
+              "per_1000": 0.375
+            }
+          },
+          "hits": 5,
+          "per_1000": 0.179
+        }
+      }
+    },
+    "de_bullet_punctuation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_casual_greeting": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_chatbot_talk": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 74,
+              "per_1000": 29.6
+            }
+          },
+          "hits": 74,
+          "per_1000": 29.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.333
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.095
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_corporate_closing": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_diff_anchored": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.167
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.048
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_double_negation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 595,
+              "per_1000": 238.0
+            }
+          },
+          "hits": 595,
+          "per_1000": 238.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 546,
+              "per_1000": 218.4
+            },
+            "literature": {
+              "hits": 180,
+              "per_1000": 434.783
+            }
+          },
+          "hits": 726,
+          "per_1000": 249.142
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 258,
+              "per_1000": 17.2
+            },
+            "wildchat": {
+              "hits": 76,
+              "per_1000": 12.667
+            }
+          },
+          "hits": 334,
+          "per_1000": 15.905
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 205,
+              "per_1000": 10.25
+            },
+            "literature": {
+              "hits": 142,
+              "per_1000": 17.75
+            }
+          },
+          "hits": 347,
+          "per_1000": 12.393
+        }
+      }
+    },
+    "de_emoji_heading": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_empty_intensifier": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 634,
+              "per_1000": 253.6
+            }
+          },
+          "hits": 634,
+          "per_1000": 253.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 903,
+              "per_1000": 361.2
+            },
+            "literature": {
+              "hits": 124,
+              "per_1000": 299.517
+            }
+          },
+          "hits": 1027,
+          "per_1000": 352.437
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 344,
+              "per_1000": 22.933
+            },
+            "wildchat": {
+              "hits": 90,
+              "per_1000": 15.0
+            }
+          },
+          "hits": 434,
+          "per_1000": 20.667
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 385,
+              "per_1000": 19.25
+            },
+            "literature": {
+              "hits": 367,
+              "per_1000": 45.875
+            }
+          },
+          "hits": 752,
+          "per_1000": 26.857
+        }
+      }
+    },
+    "de_english_number_format": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 1,
+              "per_1000": 0.067
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.048
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_english_title_case": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_exclamation_staccato": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 22,
+              "per_1000": 53.14
+            }
+          },
+          "hits": 22,
+          "per_1000": 7.55
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_fake_bullet": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_filler_word": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 941,
+              "per_1000": 376.4
+            }
+          },
+          "hits": 941,
+          "per_1000": 376.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1165,
+              "per_1000": 466.0
+            },
+            "literature": {
+              "hits": 84,
+              "per_1000": 202.899
+            }
+          },
+          "hits": 1249,
+          "per_1000": 428.62
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 537,
+              "per_1000": 35.8
+            },
+            "wildchat": {
+              "hits": 134,
+              "per_1000": 22.333
+            }
+          },
+          "hits": 671,
+          "per_1000": 31.952
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 506,
+              "per_1000": 25.3
+            },
+            "literature": {
+              "hits": 200,
+              "per_1000": 25.0
+            }
+          },
+          "hits": 706,
+          "per_1000": 25.214
+        }
+      }
+    },
+    "de_hidden_unicode": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.8
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 27,
+              "per_1000": 10.8
+            },
+            "literature": {
+              "hits": 2,
+              "per_1000": 4.831
+            }
+          },
+          "hits": 29,
+          "per_1000": 9.952
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.167
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.048
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 15,
+              "per_1000": 0.75
+            },
+            "literature": {
+              "hits": 8,
+              "per_1000": 1.0
+            }
+          },
+          "hits": 23,
+          "per_1000": 0.821
+        }
+      }
+    },
+    "de_information_cluster": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 47,
+              "per_1000": 18.8
+            }
+          },
+          "hits": 47,
+          "per_1000": 18.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 305,
+              "per_1000": 122.0
+            },
+            "literature": {
+              "hits": 98,
+              "per_1000": 236.715
+            }
+          },
+          "hits": 403,
+          "per_1000": 138.298
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 4,
+              "per_1000": 0.267
+            },
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 0.5
+            }
+          },
+          "hits": 7,
+          "per_1000": 0.333
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 44,
+              "per_1000": 2.2
+            },
+            "literature": {
+              "hits": 1,
+              "per_1000": 0.125
+            }
+          },
+          "hits": 45,
+          "per_1000": 1.607
+        }
+      }
+    },
+    "de_knowledge_cutoff": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 8,
+              "per_1000": 3.2
+            }
+          },
+          "hits": 8,
+          "per_1000": 3.2
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_letter_frame": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.4
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 23,
+              "per_1000": 3.833
+            }
+          },
+          "hits": 23,
+          "per_1000": 1.095
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_long_compound": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2312,
+              "per_1000": 924.8
+            }
+          },
+          "hits": 2312,
+          "per_1000": 924.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 2430,
+              "per_1000": 972.0
+            },
+            "literature": {
+              "hits": 133,
+              "per_1000": 321.256
+            }
+          },
+          "hits": 2563,
+          "per_1000": 879.547
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 3968,
+              "per_1000": 264.533
+            },
+            "wildchat": {
+              "hits": 1457,
+              "per_1000": 242.833
+            }
+          },
+          "hits": 5425,
+          "per_1000": 258.333
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 5696,
+              "per_1000": 284.8
+            },
+            "literature": {
+              "hits": 481,
+              "per_1000": 60.125
+            }
+          },
+          "hits": 6177,
+          "per_1000": 220.607
+        }
+      }
+    },
+    "de_markdown_artifact": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_meta_commentary": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 137,
+              "per_1000": 54.8
+            }
+          },
+          "hits": 137,
+          "per_1000": 54.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 4,
+              "per_1000": 1.6
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 4,
+          "per_1000": 1.373
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 1,
+              "per_1000": 0.067
+            },
+            "wildchat": {
+              "hits": 8,
+              "per_1000": 1.333
+            }
+          },
+          "hits": 9,
+          "per_1000": 0.429
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1,
+              "per_1000": 0.05
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.036
+        }
+      }
+    },
+    "de_modal_verb": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2295,
+              "per_1000": 918.0
+            }
+          },
+          "hits": 2295,
+          "per_1000": 918.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1819,
+              "per_1000": 727.6
+            },
+            "literature": {
+              "hits": 215,
+              "per_1000": 519.324
+            }
+          },
+          "hits": 2034,
+          "per_1000": 698.01
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 2362,
+              "per_1000": 157.467
+            },
+            "wildchat": {
+              "hits": 1253,
+              "per_1000": 208.833
+            }
+          },
+          "hits": 3615,
+          "per_1000": 172.143
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1400,
+              "per_1000": 70.0
+            },
+            "literature": {
+              "hits": 579,
+              "per_1000": 72.375
+            }
+          },
+          "hits": 1979,
+          "per_1000": 70.679
+        }
+      }
+    },
+    "de_nested_clauses": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 822,
+              "per_1000": 328.8
+            }
+          },
+          "hits": 822,
+          "per_1000": 328.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 754,
+              "per_1000": 301.6
+            },
+            "literature": {
+              "hits": 123,
+              "per_1000": 297.101
+            }
+          },
+          "hits": 877,
+          "per_1000": 300.961
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 177,
+              "per_1000": 11.8
+            },
+            "wildchat": {
+              "hits": 93,
+              "per_1000": 15.5
+            }
+          },
+          "hits": 270,
+          "per_1000": 12.857
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 157,
+              "per_1000": 7.85
+            },
+            "literature": {
+              "hits": 29,
+              "per_1000": 3.625
+            }
+          },
+          "hits": 186,
+          "per_1000": 6.643
+        }
+      }
+    },
+    "de_noun_style": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 232,
+              "per_1000": 92.8
+            }
+          },
+          "hits": 232,
+          "per_1000": 92.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 514,
+              "per_1000": 205.6
+            },
+            "literature": {
+              "hits": 3,
+              "per_1000": 7.246
+            }
+          },
+          "hits": 517,
+          "per_1000": 177.419
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 97,
+              "per_1000": 6.467
+            },
+            "wildchat": {
+              "hits": 19,
+              "per_1000": 3.167
+            }
+          },
+          "hits": 116,
+          "per_1000": 5.524
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 166,
+              "per_1000": 8.3
+            },
+            "literature": {
+              "hits": 12,
+              "per_1000": 1.5
+            }
+          },
+          "hits": 178,
+          "per_1000": 6.357
+        }
+      }
+    },
+    "de_placeholder_text": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 9,
+              "per_1000": 3.6
+            }
+          },
+          "hits": 9,
+          "per_1000": 3.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1,
+              "per_1000": 0.4
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.343
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.333
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.095
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_prompt_refusal": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 47,
+              "per_1000": 18.8
+            }
+          },
+          "hits": 47,
+          "per_1000": 18.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 15,
+              "per_1000": 2.5
+            }
+          },
+          "hits": 15,
+          "per_1000": 0.714
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_redundant_pair": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 17,
+              "per_1000": 6.8
+            }
+          },
+          "hits": 17,
+          "per_1000": 6.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1,
+              "per_1000": 0.4
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.343
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 7,
+              "per_1000": 1.167
+            }
+          },
+          "hits": 7,
+          "per_1000": 0.333
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 1,
+              "per_1000": 0.125
+            }
+          },
+          "hits": 1,
+          "per_1000": 0.036
+        }
+      }
+    },
+    "de_repeated_connector": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 1.2
+            }
+          },
+          "hits": 3,
+          "per_1000": 1.2
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 14,
+              "per_1000": 5.6
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 14,
+          "per_1000": 4.804
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_search_link_citation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_section_summary": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 411,
+              "per_1000": 164.4
+            }
+          },
+          "hits": 411,
+          "per_1000": 164.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 33,
+              "per_1000": 13.2
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 33,
+          "per_1000": 11.325
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 52,
+              "per_1000": 3.467
+            },
+            "wildchat": {
+              "hits": 19,
+              "per_1000": 3.167
+            }
+          },
+          "hits": 71,
+          "per_1000": 3.381
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 10,
+              "per_1000": 0.5
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 10,
+          "per_1000": 0.357
+        }
+      }
+    },
+    "de_sentence_length": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 2439,
+              "per_1000": 975.6
+            }
+          },
+          "hits": 2439,
+          "per_1000": 975.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 2487,
+              "per_1000": 994.8
+            },
+            "literature": {
+              "hits": 373,
+              "per_1000": 900.966
+            }
+          },
+          "hits": 2860,
+          "per_1000": 981.469
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 4917,
+              "per_1000": 327.8
+            },
+            "wildchat": {
+              "hits": 1970,
+              "per_1000": 328.333
+            }
+          },
+          "hits": 6887,
+          "per_1000": 327.952
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 6156,
+              "per_1000": 307.8
+            },
+            "literature": {
+              "hits": 232,
+              "per_1000": 29.0
+            }
+          },
+          "hits": 6388,
+          "per_1000": 228.143
+        }
+      }
+    },
+    "de_signposting": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 1.2
+            }
+          },
+          "hits": 3,
+          "per_1000": 1.2
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 2,
+              "per_1000": 0.333
+            }
+          },
+          "hits": 2,
+          "per_1000": 0.095
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_stacked_conditions": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 92,
+              "per_1000": 36.8
+            }
+          },
+          "hits": 92,
+          "per_1000": 36.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 28,
+              "per_1000": 11.2
+            },
+            "literature": {
+              "hits": 42,
+              "per_1000": 101.449
+            }
+          },
+          "hits": 70,
+          "per_1000": 24.022
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 3,
+              "per_1000": 0.2
+            },
+            "wildchat": {
+              "hits": 7,
+              "per_1000": 1.167
+            }
+          },
+          "hits": 10,
+          "per_1000": 0.476
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 2,
+              "per_1000": 0.1
+            },
+            "literature": {
+              "hits": 9,
+              "per_1000": 1.125
+            }
+          },
+          "hits": 11,
+          "per_1000": 0.393
+        }
+      }
+    },
+    "de_stretched_verb": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 60,
+              "per_1000": 24.0
+            }
+          },
+          "hits": 60,
+          "per_1000": 24.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 55,
+              "per_1000": 22.0
+            },
+            "literature": {
+              "hits": 1,
+              "per_1000": 2.415
+            }
+          },
+          "hits": 56,
+          "per_1000": 19.218
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 23,
+              "per_1000": 1.533
+            },
+            "wildchat": {
+              "hits": 12,
+              "per_1000": 2.0
+            }
+          },
+          "hits": 35,
+          "per_1000": 1.667
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 16,
+              "per_1000": 0.8
+            },
+            "literature": {
+              "hits": 2,
+              "per_1000": 0.25
+            }
+          },
+          "hits": 18,
+          "per_1000": 0.643
+        }
+      }
+    },
+    "de_symbolism_inflation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 44,
+              "per_1000": 17.6
+            }
+          },
+          "hits": 44,
+          "per_1000": 17.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 30,
+              "per_1000": 12.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 30,
+          "per_1000": 10.295
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 5,
+              "per_1000": 0.333
+            },
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 0.5
+            }
+          },
+          "hits": 8,
+          "per_1000": 0.381
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 12,
+              "per_1000": 0.6
+            },
+            "literature": {
+              "hits": 1,
+              "per_1000": 0.125
+            }
+          },
+          "hits": 13,
+          "per_1000": 0.464
+        }
+      }
+    },
+    "de_therapeutic_validation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_triad": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 42,
+              "per_1000": 16.8
+            }
+          },
+          "hits": 42,
+          "per_1000": 16.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 41,
+              "per_1000": 16.4
+            },
+            "literature": {
+              "hits": 17,
+              "per_1000": 41.063
+            }
+          },
+          "hits": 58,
+          "per_1000": 19.904
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 9,
+              "per_1000": 0.6
+            },
+            "wildchat": {
+              "hits": 10,
+              "per_1000": 1.667
+            }
+          },
+          "hits": 19,
+          "per_1000": 0.905
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 3,
+              "per_1000": 0.15
+            },
+            "literature": {
+              "hits": 19,
+              "per_1000": 2.375
+            }
+          },
+          "hits": 22,
+          "per_1000": 0.786
+        }
+      }
+    },
+    "de_unexplained_abbreviation": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 151,
+              "per_1000": 60.4
+            }
+          },
+          "hits": 151,
+          "per_1000": 60.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 691,
+              "per_1000": 276.4
+            },
+            "literature": {
+              "hits": 6,
+              "per_1000": 14.493
+            }
+          },
+          "hits": 697,
+          "per_1000": 239.19
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 22,
+              "per_1000": 1.467
+            },
+            "wildchat": {
+              "hits": 6,
+              "per_1000": 1.0
+            }
+          },
+          "hits": 28,
+          "per_1000": 1.333
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 259,
+              "per_1000": 12.95
+            },
+            "literature": {
+              "hits": 9,
+              "per_1000": 1.125
+            }
+          },
+          "hits": 268,
+          "per_1000": 9.571
+        }
+      }
+    },
+    "de_uniform_paragraphs": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1755,
+              "per_1000": 702.0
+            }
+          },
+          "hits": 1755,
+          "per_1000": 702.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 271,
+              "per_1000": 108.4
+            },
+            "literature": {
+              "hits": 117,
+              "per_1000": 282.609
+            }
+          },
+          "hits": 388,
+          "per_1000": 133.15
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 6,
+              "per_1000": 1.0
+            }
+          },
+          "hits": 6,
+          "per_1000": 0.286
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 24,
+              "per_1000": 1.2
+            },
+            "literature": {
+              "hits": 2285,
+              "per_1000": 285.625
+            }
+          },
+          "hits": 2309,
+          "per_1000": 82.464
+        }
+      }
+    },
+    "de_uniform_rhythm": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1715,
+              "per_1000": 686.0
+            }
+          },
+          "hits": 1715,
+          "per_1000": 686.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 235,
+              "per_1000": 94.0
+            },
+            "literature": {
+              "hits": 34,
+              "per_1000": 82.126
+            }
+          },
+          "hits": 269,
+          "per_1000": 92.313
+        }
+      },
+      "scope": "document",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "wildchat": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 0,
+              "per_1000": 0.0
+            },
+            "literature": {
+              "hits": 0,
+              "per_1000": 0.0
+            }
+          },
+          "hits": 0,
+          "per_1000": 0.0
+        }
+      }
+    },
+    "de_verb_bracket": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 1752,
+              "per_1000": 700.8
+            }
+          },
+          "hits": 1752,
+          "per_1000": 700.8
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 1291,
+              "per_1000": 516.4
+            },
+            "literature": {
+              "hits": 85,
+              "per_1000": 205.314
+            }
+          },
+          "hits": 1376,
+          "per_1000": 472.203
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 1112,
+              "per_1000": 74.133
+            },
+            "wildchat": {
+              "hits": 535,
+              "per_1000": 89.167
+            }
+          },
+          "hits": 1647,
+          "per_1000": 78.429
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 647,
+              "per_1000": 32.35
+            },
+            "literature": {
+              "hits": 25,
+              "per_1000": 3.125
+            }
+          },
+          "hits": 672,
+          "per_1000": 24.0
+        }
+      }
+    },
+    "genitive_apostrophe": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 18,
+              "per_1000": 7.2
+            }
+          },
+          "hits": 18,
+          "per_1000": 7.2
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 90,
+              "per_1000": 36.0
+            },
+            "literature": {
+              "hits": 53,
+              "per_1000": 128.019
+            }
+          },
+          "hits": 143,
+          "per_1000": 49.073
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 14,
+              "per_1000": 0.933
+            },
+            "wildchat": {
+              "hits": 1,
+              "per_1000": 0.167
+            }
+          },
+          "hits": 15,
+          "per_1000": 0.714
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 19,
+              "per_1000": 0.95
+            },
+            "literature": {
+              "hits": 30,
+              "per_1000": 3.75
+            }
+          },
+          "hits": 49,
+          "per_1000": 1.75
+        }
+      }
+    },
+    "quote_marks": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 819,
+              "per_1000": 327.6
+            }
+          },
+          "hits": 819,
+          "per_1000": 327.6
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 231,
+              "per_1000": 92.4
+            },
+            "literature": {
+              "hits": 43,
+              "per_1000": 103.865
+            }
+          },
+          "hits": 274,
+          "per_1000": 94.029
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 466,
+              "per_1000": 31.067
+            },
+            "wildchat": {
+              "hits": 332,
+              "per_1000": 55.333
+            }
+          },
+          "hits": 798,
+          "per_1000": 38.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 119,
+              "per_1000": 5.95
+            },
+            "literature": {
+              "hits": 179,
+              "per_1000": 22.375
+            }
+          },
+          "hits": 298,
+          "per_1000": 10.643
+        }
+      }
+    },
+    "spaced_hyphen": {
+      "gate": "family_default",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 180,
+              "per_1000": 72.0
+            }
+          },
+          "hits": 180,
+          "per_1000": 72.0
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 112,
+              "per_1000": 44.8
+            },
+            "literature": {
+              "hits": 2,
+              "per_1000": 4.831
+            }
+          },
+          "hits": 114,
+          "per_1000": 39.121
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 50,
+              "per_1000": 3.333
+            },
+            "wildchat": {
+              "hits": 86,
+              "per_1000": 14.333
+            }
+          },
+          "hits": 136,
+          "per_1000": 6.476
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 19,
+              "per_1000": 0.95
+            },
+            "literature": {
+              "hits": 3,
+              "per_1000": 0.375
+            }
+          },
+          "hits": 22,
+          "per_1000": 0.786
+        }
+      }
+    },
+    "typed_ellipsis": {
+      "gate": "observe",
+      "paragraphs": {
+        "ai": {
+          "by_genre": {
+            "wildchat": {
+              "hits": 26,
+              "per_1000": 10.4
+            }
+          },
+          "hits": 26,
+          "per_1000": 10.4
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 10,
+              "per_1000": 4.0
+            },
+            "literature": {
+              "hits": 55,
+              "per_1000": 132.85
+            }
+          },
+          "hits": 65,
+          "per_1000": 22.306
+        }
+      },
+      "scope": "sentence",
+      "sentences": {
+        "ai": {
+          "by_genre": {
+            "coling": {
+              "hits": 1,
+              "per_1000": 0.067
+            },
+            "wildchat": {
+              "hits": 3,
+              "per_1000": 0.5
+            }
+          },
+          "hits": 4,
+          "per_1000": 0.19
+        },
+        "human": {
+          "by_genre": {
+            "encyclopedia": {
+              "hits": 6,
+              "per_1000": 0.3
+            },
+            "literature": {
+              "hits": 40,
+              "per_1000": 5.0
+            }
+          },
+          "hits": 46,
+          "per_1000": 1.643
+        }
+      }
+    }
+  },
+  "units": {
+    "paragraphs": {
+      "ai/wildchat": 2500,
+      "human/encyclopedia": 2500,
+      "human/literature": 414
+    },
+    "sentences": {
+      "ai/coling": 15000,
+      "ai/wildchat": 6000,
+      "human/encyclopedia": 20000,
+      "human/literature": 8000
+    }
+  }
+}
