@@ -10,6 +10,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
+from ai_corpus_de import AI_CORPUS_PATH, LABELS_PATH, AiRow, ai_corpus_digest, load_ai_corpus, load_labels
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_PATH = REPOSITORY_ROOT / "evals" / "corpus_human_sentences_de.jsonl"
 CORPUS_MANIFEST_PATH = REPOSITORY_ROOT / "evals" / "corpus_human_manifest_de.json"
@@ -21,6 +23,9 @@ CLEAN_PER_GENRE = 2
 GENRES = ("encyclopedia", "literature")
 MAX_CHARS = 220
 CLEAN = "clean"
+VIOLATING = "violating"
+VIOLATING_PER_RULE = 4
+LABELER = "claude-opus-5-5, by hand against the catalog definitions, 2026-10-01"
 MARKUP_RESIDUE_RE = re.compile(r"[|{}\[\]=<>*#_\r\n]|\s{2,}|https?://")
 SPLIT_FRAGMENT_RE = re.compile(
     r"(?:\b[A-ZÄÖÜ]|\b[IVXLC]+|\b(?:sel|bzw|usw|vgl|ca|St|Dr|Nr|z|Amtl|Hrsg))\.$"
@@ -108,11 +113,16 @@ def _balanced(text: str) -> bool:
     return text.count("(") == text.count(")") and text.count("„") == text.count("“")
 
 
+def usable_text(text: str) -> bool:
+    """Shared with the violating draw, because a side that admits markup the other side refuses lets markup cast the vote."""
+    return len(text) <= MAX_CHARS and _balanced(text) and not any(
+        pattern.search(text) for pattern in (MARKUP_RESIDUE_RE, SPLIT_FRAGMENT_RE, FRONT_MATTER_RE)
+    )
+
+
 def _usable(rule: str, row: CorpusRow) -> bool:
     """Skip obvious triggers, because a human sentence can still instantiate the pattern it should stand against."""
-    if len(row.text) > MAX_CHARS or not _balanced(row.text) or any(
-        pattern.search(row.text) for pattern in (MARKUP_RESIDUE_RE, SPLIT_FRAGMENT_RE, FRONT_MATTER_RE)
-    ):
+    if not usable_text(row.text):
         return False
     trigger = TRIGGERS.get(rule)
     return trigger is None or trigger.search(row.text) is None
@@ -151,6 +161,32 @@ def build(corpus: list[CorpusRow], rules: Iterable[str], seed: int = SEED) -> li
     return [_exemplar(rule, row) for rule in rules for genre in GENRES for row in _draw(pool, rule, genre)]
 
 
+def _violating_exemplar(rule: str, row: AiRow) -> dict:
+    return {
+        "rule": rule, "label": VIOLATING, "origin": f"assistant/{row.source}", "source": row.source,
+        "model": row.model, "document": row.document, "row": row.line, "text": row.text,
+    }
+
+
+def violating_side(labels: list[dict], corpus: list[AiRow], rules: Iterable[str]) -> tuple[list[dict], dict[str, int]]:
+    """First four in label order, because the labels follow the seeded candidate order and any later pick is a hand pick."""
+    by_line = {row.line: row for row in corpus}
+    chosen: list[dict] = []
+    short: dict[str, int] = {}
+    for rule in rules:
+        lines = [label["line"] for label in labels if label["rule"] == rule and label["label"] == VIOLATING]
+        if len(lines) < VIOLATING_PER_RULE:
+            short[rule] = len(lines)
+            continue
+        chosen.extend(_violating_exemplar(rule, by_line[line]) for line in lines[:VIOLATING_PER_RULE])
+    return chosen, short
+
+
+def merged(violating: list[dict], clean: list[dict], rules: Iterable[str]) -> list[dict]:
+    """Grouped by rule, because the judge prompt reads each rule's two sides together."""
+    return [row for rule in rules for row in violating + clean if row["rule"] == rule]
+
+
 def serialize(exemplars: list[dict]) -> str:
     encoder = json.JSONEncoder(ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "".join(encoder.encode(row) + "\n" for row in exemplars)
@@ -163,19 +199,36 @@ def _precisions() -> dict[str, float]:
     return {rule: row["after_judge"]["precision"] for rule, row in measured.items()}
 
 
-def build_manifest(exemplars: list[dict], digests: tuple[str, str]) -> dict[str, object]:
+class Digests(NamedTuple):
+    exemplars: str
+    corpus: str
+    ai_corpus: str
+    labels: str
+
+
+def _rule_entry(rule: str, exemplars: list[dict], precisions: dict[str, float]) -> dict[str, object]:
+    violating = sum(1 for row in exemplars if row["rule"] == rule and row["label"] == VIOLATING)
+    return {"catalog_row": CATALOG_ROWS[rule], "judge_precision": precisions.get(rule), "violating": violating}
+
+
+def build_manifest(exemplars: list[dict], digests: Digests, short: dict[str, int]) -> dict[str, object]:
     precisions = _precisions()
     rules = list(dict.fromkeys(row["rule"] for row in exemplars))
     return {
         "exemplars": OUTPUT_PATH.name,
-        "sha256": digests[0],
+        "sha256": digests.exemplars,
         "corpus": CORPUS_PATH.name,
-        "corpus_sha256": digests[1],
+        "corpus_sha256": digests.corpus,
+        "ai_corpus": AI_CORPUS_PATH.name,
+        "ai_corpus_sha256": digests.ai_corpus,
+        "labels": LABELS_PATH.name,
+        "labels_sha256": digests.labels,
+        "labeler": LABELER,
         "seed": SEED,
         "clean_per_rule": CLEAN_PER_GENRE * len(GENRES),
-        "rules": {
-            rule: {"catalog_row": CATALOG_ROWS[rule], "judge_precision": precisions.get(rule)} for rule in rules
-        },
+        "violating_per_rule": VIOLATING_PER_RULE,
+        "rules": {rule: _rule_entry(rule, exemplars, precisions) for rule in rules},
+        "silent_rules": {rule: f"{count} violating sentences labeled" for rule, count in short.items()},
     }
 
 
@@ -190,13 +243,17 @@ def registered_rules() -> tuple[str, ...]:
 
 def main() -> None:
     corpus_sha = corpus_digest()
-    exemplars = build(load_corpus(), registered_rules())
+    ai_sha = ai_corpus_digest()
+    rules = registered_rules()
+    violating, short = violating_side(load_labels(), load_ai_corpus(), rules)
+    exemplars = merged(violating, build(load_corpus(), rules), rules)
     serialized = serialize(exemplars)
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     OUTPUT_PATH.write_text(serialized, encoding="utf-8", newline="\n")
-    manifest = build_manifest(exemplars, (digest, corpus_sha))
+    labels_sha = hashlib.sha256(LABELS_PATH.read_bytes()).hexdigest()
+    manifest = build_manifest(exemplars, Digests(digest, corpus_sha, ai_sha, labels_sha), short)
     MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"{len(exemplars)} clean exemplars over {len(manifest['rules'])} rules")
+    print(f"{len(exemplars)} exemplars over {len(manifest['rules'])} rules, {len(short)} rules without a violating side")
     print(f"sha256 {digest}")
 
 

@@ -1,0 +1,570 @@
+{"rule":"de_passive_voice","line":3340,"label":"violating","reason":"instruction hides the reader who develops the characters"}
+{"rule":"de_passive_voice","line":7903,"label":"violating","reason":"who withholds the cause stays unnamed"}
+{"rule":"de_passive_voice","line":7300,"label":"clean","reason":"police named in the same sentence"}
+{"rule":"de_passive_voice","line":18885,"label":"clean","reason":"medical routine, the actor is obvious"}
+{"rule":"de_passive_voice","line":6649,"label":"violating","reason":"who refuses entry stays unnamed"}
+{"rule":"de_passive_voice","line":7368,"label":"clean","reason":"perceiving party named in the sentence"}
+{"rule":"de_passive_voice","line":15794,"label":"clean","reason":"quoted general demand"}
+{"rule":"de_passive_voice","line":19901,"label":"clean","reason":"project is the actor in the clause"}
+{"rule":"de_passive_voice","line":17204,"label":"clean","reason":"process description, actor not at issue"}
+{"rule":"de_passive_voice","line":11617,"label":"violating","reason":"subjectless passive hides who expands"}
+{"rule":"de_passive_voice","line":15358,"label":"clean","reason":"future tense, not passive"}
+{"rule":"de_passive_voice","line":17040,"label":"clean","reason":"future tense, not passive"}
+{"rule":"de_passive_voice","line":17223,"label":"violating","reason":"who can use the phone for surveillance stays unnamed"}
+{"rule":"de_passive_voice","line":540,"label":"clean","reason":"actor named in the apposition"}
+{"rule":"de_passive_voice","line":11886,"label":"clean","reason":"von phrase names the agent"}
+{"rule":"de_passive_voice","line":1237,"label":"clean","reason":"future tense, not passive"}
+{"rule":"de_stock_phrase","line":15721,"label":"violating","reason":"optimistisch in die Zukunft blicken"}
+{"rule":"de_stock_phrase","line":18404,"label":"violating","reason":"den Weg ebnen"}
+{"rule":"de_stock_phrase","line":4587,"label":"clean","reason":"literal sign, no worn phrase"}
+{"rule":"de_stock_phrase","line":11930,"label":"clean","reason":"plain report"}
+{"rule":"de_stock_phrase","line":20136,"label":"violating","reason":"ein Zeichen setzen"}
+{"rule":"de_stock_phrase","line":16933,"label":"violating","reason":"nichtsdestotrotz from the Gottschling list"}
+{"rule":"de_stock_phrase","line":8763,"label":"violating","reason":"ein wichtiger Meilenstein"}
+{"rule":"de_stock_phrase","line":11401,"label":"clean","reason":"literal way"}
+{"rule":"de_stock_phrase","line":8886,"label":"clean","reason":"plain causal link"}
+{"rule":"de_stock_phrase","line":12946,"label":"violating","reason":"in der heutigen Welt opener"}
+{"rule":"de_stock_phrase","line":15778,"label":"clean","reason":"ins Leben rufen is plain news German"}
+{"rule":"de_stock_phrase","line":10256,"label":"violating","reason":"in der heutigen Zeit opener"}
+{"rule":"de_stock_phrase","line":20878,"label":"clean","reason":"ins Leben rufen is plain news German"}
+{"rule":"de_stock_phrase","line":13779,"label":"clean","reason":"nach wie vor is plain German"}
+{"rule":"de_stock_phrase","line":17065,"label":"clean","reason":"heutigen means present-day name"}
+{"rule":"de_stock_phrase","line":16652,"label":"clean","reason":"nach wie vor is plain German"}
+{"rule":"de_unexplained_foreign_word","line":4616,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":13162,"label":"violating","reason":"Release where Veröffentlichung fits"}
+{"rule":"de_unexplained_foreign_word","line":14267,"label":"violating","reason":"Performance where Leistung fits"}
+{"rule":"de_unexplained_foreign_word","line":13462,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":18286,"label":"clean","reason":"Feature is a technical term in tech news"}
+{"rule":"de_unexplained_foreign_word","line":597,"label":"clean","reason":"Tool is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":14142,"label":"clean","reason":"Feature is a technical term in tech news"}
+{"rule":"de_unexplained_foreign_word","line":4935,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":12886,"label":"violating","reason":"Content-Anbieter where Inhalteanbieter fits"}
+{"rule":"de_unexplained_foreign_word","line":5925,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":6354,"label":"violating","reason":"Statement where Aussage fits"}
+{"rule":"de_unexplained_foreign_word","line":9087,"label":"clean","reason":"Online-Tool is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":4444,"label":"violating","reason":"Lifestyle where Lebensstil fits"}
+{"rule":"de_unexplained_foreign_word","line":8744,"label":"clean","reason":"Feature is a technical term in tech news"}
+{"rule":"de_unexplained_foreign_word","line":1214,"label":"violating","reason":"Mindset with no gloss"}
+{"rule":"de_unexplained_foreign_word","line":14610,"label":"clean","reason":"Tool is an established loanword"}
+{"rule":"de_unbacked_superlative","line":3006,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":9905,"label":"clean","reason":"superlative backed by the figure"}
+{"rule":"de_unbacked_superlative","line":17172,"label":"clean","reason":"game mechanic, no claim"}
+{"rule":"de_unbacked_superlative","line":8751,"label":"violating","reason":"genau das richtige with no source"}
+{"rule":"de_unbacked_superlative","line":17397,"label":"clean","reason":"opinion attributed to critics"}
+{"rule":"de_unbacked_superlative","line":9585,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":541,"label":"violating","reason":"revolutionierte die Klassik with no source"}
+{"rule":"de_unbacked_superlative","line":16986,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":6348,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":16977,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":11845,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":35,"label":"clean","reason":"chat reassurance, no claim about the world"}
+{"rule":"de_unbacked_superlative","line":13801,"label":"clean","reason":"ranking backed by the figure"}
+{"rule":"de_unbacked_superlative","line":2883,"label":"violating","reason":"berühmtesten Detektiven der Welt with no source"}
+{"rule":"de_unbacked_superlative","line":13422,"label":"violating","reason":"einer der einflussreichsten with no source"}
+{"rule":"de_unbacked_superlative","line":19064,"label":"clean","reason":"best placed jumper in a reported result"}
+{"rule":"de_dichotomy_template","line":17382,"label":"clean","reason":"reported admission, no template"}
+{"rule":"de_dichotomy_template","line":413,"label":"violating","reason":"complex challenge that needs consensus, outlook beat"}
+{"rule":"de_dichotomy_template","line":11421,"label":"clean","reason":"concrete news contrast"}
+{"rule":"de_dichotomy_template","line":13895,"label":"violating","reason":"success set against unrest and the coming outlook"}
+{"rule":"de_dichotomy_template","line":6086,"label":"clean","reason":"definition"}
+{"rule":"de_dichotomy_template","line":19261,"label":"violating","reason":"steht vor einer großen Herausforderung"}
+{"rule":"de_dichotomy_template","line":10257,"label":"clean","reason":"argument, not the praise and challenge beat"}
+{"rule":"de_dichotomy_template","line":1356,"label":"clean","reason":"list item about life challenges"}
+{"rule":"de_dichotomy_template","line":3877,"label":"violating","reason":"Trotz der Herausforderungen bleibt ein Symbol"}
+{"rule":"de_dichotomy_template","line":15182,"label":"clean","reason":"concrete city statement"}
+{"rule":"de_dichotomy_template","line":6494,"label":"violating","reason":"trotz der Erfolge auch Bedenken"}
+{"rule":"de_dichotomy_template","line":13906,"label":"clean","reason":"question about a coach change"}
+{"rule":"de_dichotomy_template","line":14570,"label":"violating","reason":"vor einer ihrer größten Herausforderungen"}
+{"rule":"de_dichotomy_template","line":13667,"label":"violating","reason":"Herausforderungen, die gemeistert werden müssen"}
+{"rule":"de_dichotomy_template","line":11227,"label":"violating","reason":"Trotz einigen Erfolgen mit Kritik zu kämpfen"}
+{"rule":"de_dichotomy_template","line":11845,"label":"violating","reason":"Trotz möglicher Herausforderungen entschlossen"}
+{"rule":"de_shallow_participle","line":18310,"label":"clean","reason":"anwesend is an adjective, no analysis tail"}
+{"rule":"de_shallow_participle","line":14678,"label":"clean","reason":"predicative adjective, no analysis tail"}
+{"rule":"de_shallow_participle","line":10763,"label":"clean","reason":"predicative adjective, no analysis tail"}
+{"rule":"de_shallow_participle","line":18196,"label":"clean","reason":"predicative adjective, no analysis tail"}
+{"rule":"de_shallow_participle","line":19418,"label":"clean","reason":"Jugend is a noun"}
+{"rule":"de_vague_authority","line":5096,"label":"clean","reason":"paraphrase of a quoted line"}
+{"rule":"de_vague_authority","line":1173,"label":"clean","reason":"experts as people to meet, not a source"}
+{"rule":"de_vague_authority","line":14124,"label":"violating","reason":"viele Menschen as the unnamed bearer of a concern"}
+{"rule":"de_vague_authority","line":768,"label":"clean","reason":"einige counts piercings"}
+{"rule":"de_vague_authority","line":12549,"label":"clean","reason":"einige counts reforms"}
+{"rule":"de_vague_authority","line":18332,"label":"clean","reason":"respondents of a survey in context"}
+{"rule":"de_vague_authority","line":9144,"label":"violating","reason":"Experten warnen with no name"}
+{"rule":"de_vague_authority","line":17998,"label":"clean","reason":"authority named"}
+{"rule":"de_vague_authority","line":4157,"label":"clean","reason":"writing advice"}
+{"rule":"de_vague_authority","line":14461,"label":"violating","reason":"Berichte with no source"}
+{"rule":"de_vague_authority","line":3850,"label":"clean","reason":"einige as affected users"}
+{"rule":"de_vague_authority","line":6590,"label":"violating","reason":"Berichte with no source"}
+{"rule":"de_vague_authority","line":7620,"label":"clean","reason":"research team located and described"}
+{"rule":"de_vague_authority","line":9467,"label":"clean","reason":"einige counts problems"}
+{"rule":"de_vague_authority","line":15498,"label":"violating","reason":"Es wurde bemängelt with no critic named"}
+{"rule":"de_vague_authority","line":15098,"label":"violating","reason":"Experten zeigen sich besorgt with no name"}
+{"rule":"de_false_range","line":20958,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":18693,"label":"clean","reason":"geographic span"}
+{"rule":"de_false_range","line":16448,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":11534,"label":"clean","reason":"time range"}
+{"rule":"de_false_range","line":9799,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":18610,"label":"violating","reason":"two examples posing as a span"}
+{"rule":"de_false_range","line":5833,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":17635,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":20764,"label":"clean","reason":"school grade range"}
+{"rule":"de_false_range","line":8143,"label":"violating","reason":"maskulin to zitronig has no scale"}
+{"rule":"de_false_range","line":19850,"label":"clean","reason":"qualification levels form a scale"}
+{"rule":"de_false_range","line":6944,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":1727,"label":"clean","reason":"upper bound, no span"}
+{"rule":"de_false_range","line":14016,"label":"clean","reason":"time range"}
+{"rule":"de_false_range","line":20916,"label":"clean","reason":"month range"}
+{"rule":"de_false_range","line":4233,"label":"violating","reason":"short stories to diary has no scale"}
+{"rule":"de_false_range","line":1726,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":8249,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":10018,"label":"clean","reason":"upper bound, no span"}
+{"rule":"de_false_range","line":10292,"label":"clean","reason":"time span"}
+{"rule":"de_false_range","line":10074,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":11239,"label":"clean","reason":"step in an argument, no span"}
+{"rule":"de_false_range","line":4182,"label":"clean","reason":"real process from start to end"}
+{"rule":"de_false_range","line":9014,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":12388,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":7891,"label":"clean","reason":"sentence range"}
+{"rule":"de_false_range","line":10551,"label":"clean","reason":"geographic span"}
+{"rule":"de_false_range","line":15399,"label":"clean","reason":"time span"}
+{"rule":"de_false_range","line":14829,"label":"clean","reason":"numeric range"}
+{"rule":"de_false_range","line":5078,"label":"clean","reason":"upper bound, no span"}
+{"rule":"de_false_range","line":5404,"label":"violating","reason":"dark chapters to triumphs has no scale"}
+{"rule":"de_false_range","line":7574,"label":"clean","reason":"year range"}
+{"rule":"de_false_range","line":2465,"label":"clean","reason":"frequency range"}
+{"rule":"de_false_range","line":16762,"label":"clean","reason":"date range"}
+{"rule":"de_false_range","line":17058,"label":"violating","reason":"Englisch to Chinesisch has no scale"}
+{"rule":"de_false_range","line":15136,"label":"clean","reason":"weekday range"}
+{"rule":"de_false_range","line":15283,"label":"clean","reason":"upper bound, no span"}
+{"rule":"de_false_range","line":20856,"label":"violating","reason":"bribery to money laundering has no scale"}
+{"rule":"de_false_range","line":14740,"label":"clean","reason":"time range"}
+{"rule":"de_false_range","line":3032,"label":"violating","reason":"scientific style to Dadaism has no scale"}
+{"rule":"de_synonym_rotation","line":12986,"label":"clean","reason":"one sentence shows no renaming"}
+{"rule":"de_synonym_rotation","line":8584,"label":"clean","reason":"generic manufacturers, no renaming"}
+{"rule":"de_synonym_rotation","line":7944,"label":"clean","reason":"name repeated"}
+{"rule":"de_synonym_rotation","line":12825,"label":"clean","reason":"club named"}
+{"rule":"de_synonym_rotation","line":10215,"label":"clean","reason":"one sentence shows no renaming"}
+{"rule":"de_synonym_rotation","line":11028,"label":"clean","reason":"one sentence shows no renaming"}
+{"rule":"de_synonym_rotation","line":19409,"label":"clean","reason":"capital named"}
+{"rule":"de_synonym_rotation","line":8301,"label":"clean","reason":"der Konzern is a plain anaphor"}
+{"rule":"de_synonym_rotation","line":8395,"label":"clean","reason":"name repeated"}
+{"rule":"de_synonym_rotation","line":20601,"label":"clean","reason":"one sentence shows no renaming"}
+{"rule":"de_synonym_rotation","line":15718,"label":"clean","reason":"der Konzern is a plain anaphor"}
+{"rule":"de_synonym_rotation","line":12926,"label":"clean","reason":"generic team"}
+{"rule":"de_synonym_rotation","line":9994,"label":"clean","reason":"rotation to die Japaner sits in the next sentence"}
+{"rule":"de_synonym_rotation","line":15725,"label":"clean","reason":"der Konzern is a plain anaphor"}
+{"rule":"de_synonym_rotation","line":13187,"label":"clean","reason":"der Konzern is a plain anaphor"}
+{"rule":"de_synonym_rotation","line":6213,"label":"clean","reason":"der Politiker is a plain anaphor"}
+{"rule":"de_fake_analysis_tail","line":18342,"label":"violating","reason":"was tail draws an unsupported verdict"}
+{"rule":"de_fake_analysis_tail","line":13998,"label":"violating","reason":"was tail adds a speculative consequence"}
+{"rule":"de_fake_analysis_tail","line":6061,"label":"clean","reason":"was clause reports an event"}
+{"rule":"de_fake_analysis_tail","line":6023,"label":"clean","reason":"was clause gives a causal fact"}
+{"rule":"de_fake_analysis_tail","line":687,"label":"violating","reason":"was tail restates the harm"}
+{"rule":"de_fake_analysis_tail","line":3716,"label":"clean","reason":"cover letter motive, not analysis"}
+{"rule":"de_fake_analysis_tail","line":2676,"label":"clean","reason":"was clause gives a safety fact"}
+{"rule":"de_fake_analysis_tail","line":3694,"label":"violating","reason":"was tail restates the identification"}
+{"rule":"de_fake_analysis_tail","line":2925,"label":"violating","reason":"was tail claims depth with no example"}
+{"rule":"de_fake_analysis_tail","line":10650,"label":"clean","reason":"wodurch clause states a claim"}
+{"rule":"de_fake_analysis_tail","line":10945,"label":"clean","reason":"wodurch clause states a sales claim"}
+{"rule":"de_fake_analysis_tail","line":11827,"label":"clean","reason":"wodurch clause gives a weather fact"}
+{"rule":"de_fake_analysis_tail","line":3302,"label":"clean","reason":"was is part of a title"}
+{"rule":"de_fake_analysis_tail","line":6704,"label":"clean","reason":"was clause gives a historical fact"}
+{"rule":"de_fake_analysis_tail","line":7686,"label":"clean","reason":"was is an object clause"}
+{"rule":"de_fake_analysis_tail","line":2895,"label":"violating","reason":"was tail claims a distinctive style with no example"}
+{"rule":"de_comparative_framing","line":1364,"label":"violating","reason":"Vielmehr frame carries a generic aim"}
+{"rule":"de_comparative_framing","line":20187,"label":"clean","reason":"reported correction in news"}
+{"rule":"de_comparative_framing","line":10843,"label":"clean","reason":"real comparison with expectation"}
+{"rule":"de_comparative_framing","line":5075,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":10257,"label":"violating","reason":"Vielmehr frame carries a generic demand"}
+{"rule":"de_comparative_framing","line":15794,"label":"clean","reason":"quoted demand"}
+{"rule":"de_comparative_framing","line":20277,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":19652,"label":"clean","reason":"idiom describing a relation"}
+{"rule":"de_comparative_framing","line":10821,"label":"violating","reason":"Vielmehr frame carries a generic demand"}
+{"rule":"de_comparative_framing","line":7162,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":15356,"label":"clean","reason":"nicht weniger als idiom"}
+{"rule":"de_comparative_framing","line":6950,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":13543,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":16809,"label":"clean","reason":"reported view in news"}
+{"rule":"de_comparative_framing","line":15886,"label":"clean","reason":"opinion comparison with content"}
+{"rule":"de_comparative_framing","line":15868,"label":"clean","reason":"quoted statement"}
+{"rule":"de_comparative_framing","line":13057,"label":"clean","reason":"concrete visual description"}
+{"rule":"de_comparative_framing","line":20346,"label":"clean","reason":"attributed view with content"}
+{"rule":"de_comparative_framing","line":18957,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":17842,"label":"clean","reason":"concrete proposal"}
+{"rule":"de_comparative_framing","line":10811,"label":"violating","reason":"vielmehr frame carries a generic debate call"}
+{"rule":"de_comparative_framing","line":19549,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":14587,"label":"clean","reason":"concrete explanation"}
+{"rule":"de_comparative_framing","line":6556,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":1291,"label":"violating","reason":"nicht X sondern vielmehr Y frame with a platitude"}
+{"rule":"de_comparative_framing","line":18246,"label":"violating","reason":"Vielmehr frame with the challenges of our time"}
+{"rule":"de_comparative_framing","line":6581,"label":"clean","reason":"reported position with content"}
+{"rule":"de_comparative_framing","line":8311,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":19136,"label":"violating","reason":"Vielmehr frame with a generic remedy"}
+{"rule":"de_comparative_framing","line":13305,"label":"clean","reason":"survey comparison"}
+{"rule":"de_comparative_framing","line":19049,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":20115,"label":"clean","reason":"reported fact"}
+{"rule":"de_comparative_framing","line":17982,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":7459,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":9211,"label":"clean","reason":"concrete critique"}
+{"rule":"de_comparative_framing","line":17928,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":16624,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":2416,"label":"violating","reason":"Vielmehr ist es eine Philosophie frame"}
+{"rule":"de_comparative_framing","line":12985,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_comparative_framing","line":19808,"label":"clean","reason":"study finding"}
+{"rule":"de_comparative_framing","line":9364,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":18243,"label":"violating","reason":"Vielmehr frame with generic new approaches"}
+{"rule":"de_comparative_framing","line":2315,"label":"clean","reason":"doctrine stated with content"}
+{"rule":"de_comparative_framing","line":2720,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":14107,"label":"clean","reason":"reported statement"}
+{"rule":"de_comparative_framing","line":8624,"label":"clean","reason":"real comparison"}
+{"rule":"de_comparative_framing","line":13802,"label":"clean","reason":"numeric comparison"}
+{"rule":"de_register_collapse","line":4439,"label":"clean","reason":"blog register throughout"}
+{"rule":"de_register_collapse","line":1442,"label":"clean","reason":"casual register throughout"}
+{"rule":"de_register_collapse","line":14588,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":11348,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":6078,"label":"clean","reason":"Wenn ja is a condition"}
+{"rule":"de_register_collapse","line":13764,"label":"clean","reason":"doch is a conjunction"}
+{"rule":"de_register_collapse","line":14747,"label":"clean","reason":"Ja is a vote"}
+{"rule":"de_register_collapse","line":15131,"label":"violating","reason":"particle ja in a formal news sentence"}
+{"rule":"de_register_collapse","line":20052,"label":"violating","reason":"particle doch in a formal news sentence"}
+{"rule":"de_register_collapse","line":2997,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":17965,"label":"clean","reason":"spoken quote"}
+{"rule":"de_register_collapse","line":18132,"label":"violating","reason":"particle eben in a formal news sentence"}
+{"rule":"de_register_collapse","line":17222,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":10474,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":11507,"label":"violating","reason":"particle mal in a formal weather report"}
+{"rule":"de_register_collapse","line":12521,"label":"clean","reason":"doch inside a headline fragment"}
+{"rule":"de_broken_link","line":4494,"label":"clean","reason":"link answered 200 on 2026-10-01"}
+{"rule":"de_broken_link","line":4468,"label":"clean","reason":"link answered 200 on 2026-10-01"}
+{"rule":"de_broken_link","line":4459,"label":"clean","reason":"links answered 200 on 2026-10-01"}
+{"rule":"de_broken_link","line":4458,"label":"clean","reason":"link answered 200 on 2026-10-01"}
+{"rule":"de_broken_link","line":4477,"label":"clean","reason":"link answered 200 on 2026-10-01"}
+{"rule":"de_fabricated_citation","line":7837,"label":"undecided","reason":"generated news, the document cannot be checked"}
+{"rule":"de_fabricated_citation","line":16790,"label":"undecided","reason":"book title not checked against a catalog"}
+{"rule":"de_fabricated_citation","line":13181,"label":"undecided","reason":"generated news, the e-mails cannot be checked"}
+{"rule":"de_fabricated_citation","line":2944,"label":"clean","reason":"Mörder ohne Gesicht did appear in 1991"}
+{"rule":"de_fabricated_citation","line":11280,"label":"clean","reason":"Word Ways is a quarterly since 1968"}
+{"rule":"de_fabricated_citation","line":9505,"label":"undecided","reason":"generated news, the tweet cannot be checked"}
+{"rule":"de_fabricated_citation","line":519,"label":"clean","reason":"Mozart died in Vienna in 1791 aged 35"}
+{"rule":"de_fabricated_citation","line":17435,"label":"undecided","reason":"book and year not checked against a catalog"}
+{"rule":"de_fabricated_citation","line":7797,"label":"undecided","reason":"generated news, the report cannot be checked"}
+{"rule":"de_fabricated_citation","line":14779,"label":"undecided","reason":"generated news, the magazine cannot be checked"}
+{"rule":"de_fabricated_citation","line":12984,"label":"undecided","reason":"generated news, the survey cannot be checked"}
+{"rule":"de_fabricated_citation","line":10204,"label":"undecided","reason":"no citation, a reported inquiry"}
+{"rule":"de_fabricated_citation","line":2920,"label":"clean","reason":"Gone Girl did appear in 2012"}
+{"rule":"de_fabricated_citation","line":17950,"label":"undecided","reason":"generated news, the report cannot be checked"}
+{"rule":"de_fabricated_citation","line":6531,"label":"undecided","reason":"Wifo study not checked"}
+{"rule":"de_fabricated_citation","line":7720,"label":"undecided","reason":"1938 article not checked against a catalog"}
+{"rule":"de_rhetorical_question","line":5983,"label":"clean","reason":"lyric question, no self answer"}
+{"rule":"de_rhetorical_question","line":4,"label":"clean","reason":"dialogue"}
+{"rule":"de_rhetorical_question","line":1183,"label":"clean","reason":"reflection prompt in a list"}
+{"rule":"de_rhetorical_question","line":13772,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":5978,"label":"clean","reason":"lyric question, no self answer"}
+{"rule":"de_rhetorical_question","line":20491,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":5984,"label":"clean","reason":"lyric question, no self answer"}
+{"rule":"de_rhetorical_question","line":2,"label":"clean","reason":"dialogue"}
+{"rule":"de_rhetorical_question","line":17050,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":2163,"label":"clean","reason":"template prompt in a list"}
+{"rule":"de_rhetorical_question","line":18806,"label":"violating","reason":"hook question before the explanation"}
+{"rule":"de_rhetorical_question","line":14404,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":2955,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":14663,"label":"clean","reason":"interview question"}
+{"rule":"de_rhetorical_question","line":8977,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_rhetorical_question","line":49,"label":"violating","reason":"question the next sentence answers"}
+{"rule":"de_markerless_closer","line":15685,"label":"clean","reason":"transition to a new fact"}
+{"rule":"de_markerless_closer","line":11785,"label":"clean","reason":"quote"}
+{"rule":"de_markerless_closer","line":5452,"label":"clean","reason":"introduction, not a closer"}
+{"rule":"de_markerless_closer","line":18250,"label":"clean","reason":"reported view"}
+{"rule":"de_markerless_closer","line":9686,"label":"violating","reason":"document ends on an importance claim with no fact"}
+{"rule":"de_markerless_closer","line":7853,"label":"violating","reason":"wrap-up verdict with no new fact"}
+{"rule":"de_markerless_closer","line":4598,"label":"violating","reason":"item ends on an importance claim with no fact"}
+{"rule":"de_markerless_closer","line":15380,"label":"violating","reason":"wrap-up about the future with no fact"}
+{"rule":"de_markerless_closer","line":15459,"label":"violating","reason":"document ends on an open question"}
+{"rule":"de_markerless_closer","line":4333,"label":"clean","reason":"opens a point"}
+{"rule":"de_markerless_closer","line":3826,"label":"clean","reason":"cover letter content"}
+{"rule":"de_markerless_closer","line":6196,"label":"clean","reason":"transition to the answer"}
+{"rule":"de_markerless_closer","line":734,"label":"clean","reason":"list item with advice"}
+{"rule":"de_markerless_closer","line":19056,"label":"clean","reason":"closing sentence carries a reason"}
+{"rule":"de_markerless_closer","line":18948,"label":"clean","reason":"claim followed by figures"}
+{"rule":"de_markerless_closer","line":12364,"label":"clean","reason":"figures"}
+{"rule":"de_retroactive_nuance","line":13087,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":12521,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":9671,"label":"clean","reason":"eigentlich in a quote"}
+{"rule":"de_retroactive_nuance","line":19504,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":19047,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":12759,"label":"clean","reason":"genauer as an adjective"}
+{"rule":"de_retroactive_nuance","line":13417,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":5896,"label":"clean","reason":"eigentlich in a question"}
+{"rule":"de_retroactive_nuance","line":13353,"label":"clean","reason":"eigentlich in a question"}
+{"rule":"de_retroactive_nuance","line":18178,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":20321,"label":"clean","reason":"eigentlich marks a plan"}
+{"rule":"de_retroactive_nuance","line":3510,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":9986,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":19515,"label":"clean","reason":"eigentlich marks a rule"}
+{"rule":"de_retroactive_nuance","line":10319,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":19661,"label":"clean","reason":"eigentlich in a quote"}
+{"rule":"de_retroactive_nuance","line":20610,"label":"clean","reason":"eigentlich marks an expectation"}
+{"rule":"de_retroactive_nuance","line":20402,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":13968,"label":"clean","reason":"Genau genommen adds a new fact"}
+{"rule":"de_retroactive_nuance","line":9225,"label":"clean","reason":"eigentlich gives a corrected figure"}
+{"rule":"de_retroactive_nuance","line":10603,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":14038,"label":"clean","reason":"eigentlich marks a duty"}
+{"rule":"de_retroactive_nuance","line":19868,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":15648,"label":"clean","reason":"eigentlich as an attribute"}
+{"rule":"de_retroactive_nuance","line":19885,"label":"clean","reason":"eigentlich in a sports joke"}
+{"rule":"de_retroactive_nuance","line":12983,"label":"clean","reason":"eigentlich marks a purpose"}
+{"rule":"de_retroactive_nuance","line":8019,"label":"clean","reason":"eigentlich marks a plan"}
+{"rule":"de_retroactive_nuance","line":18024,"label":"clean","reason":"Genau genommen adds a new claim"}
+{"rule":"de_retroactive_nuance","line":18594,"label":"clean","reason":"eigentlich marks an entitlement"}
+{"rule":"de_retroactive_nuance","line":8012,"label":"clean","reason":"eigentlich marks a plan"}
+{"rule":"de_retroactive_nuance","line":13396,"label":"clean","reason":"eigentlich in a question"}
+{"rule":"de_retroactive_nuance","line":1553,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":11958,"label":"violating","reason":"Genauer gesagt restates the previous claim, the first version can go"}
+{"rule":"de_retroactive_nuance","line":19528,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":19925,"label":"clean","reason":"genauer as a comparative"}
+{"rule":"de_retroactive_nuance","line":20242,"label":"clean","reason":"eigentlich marks a rule"}
+{"rule":"de_retroactive_nuance","line":12504,"label":"clean","reason":"eigentlich marks a wish"}
+{"rule":"de_retroactive_nuance","line":14531,"label":"clean","reason":"eigentlich marks a plan"}
+{"rule":"de_retroactive_nuance","line":14248,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_retroactive_nuance","line":5754,"label":"clean","reason":"eigentlich in a question"}
+{"rule":"de_retroactive_nuance","line":7274,"label":"clean","reason":"eigentlich as a particle"}
+{"rule":"de_epistemic_miscalibration","line":3314,"label":"clean","reason":"single hedge in a character sketch"}
+{"rule":"de_epistemic_miscalibration","line":17411,"label":"clean","reason":"ironic hedge"}
+{"rule":"de_epistemic_miscalibration","line":3629,"label":"clean","reason":"oft entscheidend is calibrated"}
+{"rule":"de_epistemic_miscalibration","line":6586,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":5824,"label":"clean","reason":"dialogue"}
+{"rule":"de_epistemic_miscalibration","line":18570,"label":"violating","reason":"scheint paired with kontinuierlich und erfolgreich"}
+{"rule":"de_epistemic_miscalibration","line":118,"label":"clean","reason":"hedged technical advice"}
+{"rule":"de_epistemic_miscalibration","line":4625,"label":"clean","reason":"question"}
+{"rule":"de_epistemic_miscalibration","line":10350,"label":"clean","reason":"single hedge in a match report"}
+{"rule":"de_epistemic_miscalibration","line":5106,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":3845,"label":"clean","reason":"narrative"}
+{"rule":"de_epistemic_miscalibration","line":9591,"label":"clean","reason":"hedge on reported speculation"}
+{"rule":"de_epistemic_miscalibration","line":4043,"label":"clean","reason":"suggestion"}
+{"rule":"de_epistemic_miscalibration","line":3965,"label":"clean","reason":"single hedge in advice"}
+{"rule":"de_epistemic_miscalibration","line":1587,"label":"violating","reason":"können paired with revolutionieren"}
+{"rule":"de_epistemic_miscalibration","line":7789,"label":"clean","reason":"overclaim without a hedge"}
+{"rule":"de_epistemic_miscalibration","line":1110,"label":"clean","reason":"single hedge in advice"}
+{"rule":"de_epistemic_miscalibration","line":4332,"label":"clean","reason":"entscheidend without a hedge"}
+{"rule":"de_epistemic_miscalibration","line":1933,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":18203,"label":"violating","reason":"scheint paired with eindeutig"}
+{"rule":"de_epistemic_miscalibration","line":7814,"label":"violating","reason":"sicher and tiefgreifend paired with möglicherweise"}
+{"rule":"de_epistemic_miscalibration","line":1930,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":12203,"label":"clean","reason":"lawyer view with hedges"}
+{"rule":"de_epistemic_miscalibration","line":884,"label":"violating","reason":"können paired with entscheidend"}
+{"rule":"de_epistemic_miscalibration","line":7914,"label":"clean","reason":"quote"}
+{"rule":"de_epistemic_miscalibration","line":11845,"label":"clean","reason":"hedges tied to a named source"}
+{"rule":"de_epistemic_miscalibration","line":5702,"label":"clean","reason":"single hedge on an intent"}
+{"rule":"de_epistemic_miscalibration","line":12022,"label":"violating","reason":"Offensichtlich paired with scheint"}
+{"rule":"de_epistemic_miscalibration","line":12467,"label":"clean","reason":"Revolutionsplatz is a name"}
+{"rule":"de_epistemic_miscalibration","line":12929,"label":"clean","reason":"overclaim without a hedge"}
+{"rule":"de_epistemic_miscalibration","line":17085,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":16938,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":1398,"label":"clean","reason":"single hedge in advice"}
+{"rule":"de_epistemic_miscalibration","line":465,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":4298,"label":"clean","reason":"empathic guess"}
+{"rule":"de_epistemic_miscalibration","line":10452,"label":"clean","reason":"hedge on a reported claim"}
+{"rule":"de_epistemic_miscalibration","line":1150,"label":"clean","reason":"entscheidend without a hedge"}
+{"rule":"de_epistemic_miscalibration","line":11173,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":10843,"label":"clean","reason":"single hedge"}
+{"rule":"de_epistemic_miscalibration","line":13764,"label":"clean","reason":"single hedge"}
+{"rule":"de_false_agency","line":2418,"label":"violating","reason":"technology dictates a way of life"}
+{"rule":"de_false_agency","line":5589,"label":"clean","reason":"Menschheit stands for people in a fairy tale"}
+{"rule":"de_false_agency","line":870,"label":"clean","reason":"a person wants to stop"}
+{"rule":"de_false_agency","line":17354,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":9828,"label":"clean","reason":"country as plain metonymy for its government"}
+{"rule":"de_false_agency","line":10248,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":17681,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":16662,"label":"clean","reason":"a player decided the match"}
+{"rule":"de_false_agency","line":12763,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":20790,"label":"clean","reason":"defence counsel are people"}
+{"rule":"de_false_agency","line":18113,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":20964,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":12986,"label":"clean","reason":"organisation is run by people"}
+{"rule":"de_false_agency","line":12191,"label":"clean","reason":"parties are run by people"}
+{"rule":"de_false_agency","line":9612,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":11109,"label":"clean","reason":"government is run by people"}
+{"rule":"de_false_agency","line":12631,"label":"clean","reason":"party is run by people"}
+{"rule":"de_false_agency","line":15723,"label":"clean","reason":"company as plain metonymy"}
+{"rule":"de_invented_anecdote","line":14320,"label":"clean","reason":"neulich in a news report"}
+{"rule":"de_invented_anecdote","line":112,"label":"clean","reason":"assistant reports a code finding"}
+{"rule":"de_invented_anecdote","line":8943,"label":"violating","reason":"generated column claims a personal lesson"}
+{"rule":"de_invented_anecdote","line":4439,"label":"violating","reason":"ghostwritten blog stages a first-person memory"}
+{"rule":"de_invented_anecdote","line":5710,"label":"clean","reason":"role-play dialogue"}
+{"rule":"de_invented_anecdote","line":20380,"label":"violating","reason":"Ehrlich gesagt in a generated first-person aside"}
+{"rule":"de_empty_standard_section","line":755,"label":"violating","reason":"summary sentence with no specific fact"}
+{"rule":"de_empty_standard_section","line":1237,"label":"violating","reason":"chapter intro announces without content"}
+{"rule":"de_empty_standard_section","line":2585,"label":"violating","reason":"chapter intro announces without content"}
+{"rule":"de_empty_standard_section","line":5455,"label":"clean","reason":"intro names the theory it applies"}
+{"rule":"de_empty_standard_section","line":3087,"label":"violating","reason":"Einleitung filler announcing a deep insight"}
+{"rule":"de_empty_standard_section","line":20781,"label":"violating","reason":"Fazit with no specific fact"}
+{"rule":"de_empty_standard_section","line":10942,"label":"clean","reason":"review remark about an article"}
+{"rule":"de_empty_standard_section","line":4577,"label":"violating","reason":"closing filler with no specific fact"}
+{"rule":"de_empty_standard_section","line":10717,"label":"clean","reason":"reported demand with content"}
+{"rule":"de_empty_standard_section","line":13785,"label":"violating","reason":"closing filler with no specific fact"}
+{"rule":"de_empty_standard_section","line":5215,"label":"clean","reason":"list intro with a count and topic"}
+{"rule":"de_empty_standard_section","line":10625,"label":"clean","reason":"summary carries the demand"}
+{"rule":"de_empty_standard_section","line":4011,"label":"clean","reason":"writing advice"}
+{"rule":"de_empty_standard_section","line":11248,"label":"clean","reason":"Ausblick is a rating outlook"}
+{"rule":"de_empty_standard_section","line":3856,"label":"clean","reason":"intro names the concrete task"}
+{"rule":"de_empty_standard_section","line":891,"label":"violating","reason":"section intro announces without content"}
+{"rule":"de_passive_voice","line":8797,"label":"violating","reason":"who dissolved the shelters stays unnamed"}
+{"rule":"de_passive_voice","line":14841,"label":"clean","reason":"future tense, not passive"}
+{"rule":"de_passive_voice","line":12450,"label":"clean","reason":"lab procedure, actor not at issue"}
+{"rule":"de_passive_voice","line":20415,"label":"clean","reason":"vom phrase names the agent"}
+{"rule":"de_passive_voice","line":16850,"label":"clean","reason":"finder not at issue in the report"}
+{"rule":"de_passive_voice","line":18960,"label":"clean","reason":"experimental condition"}
+{"rule":"de_passive_voice","line":553,"label":"clean","reason":"werden as copula, not passive"}
+{"rule":"de_passive_voice","line":7373,"label":"clean","reason":"speaker named"}
+{"rule":"de_passive_voice","line":17447,"label":"clean","reason":"organiser not at issue"}
+{"rule":"de_passive_voice","line":18546,"label":"clean","reason":"technical description"}
+{"rule":"de_passive_voice","line":20846,"label":"clean","reason":"von phrase names the agent"}
+{"rule":"de_passive_voice","line":13671,"label":"violating","reason":"who regards it as a masterpiece stays unnamed"}
+{"rule":"de_passive_voice","line":18098,"label":"violating","reason":"who accuses him stays unnamed"}
+{"rule":"de_passive_voice","line":19513,"label":"clean","reason":"descriptive list of what does not happen"}
+{"rule":"de_passive_voice","line":18958,"label":"clean","reason":"researchers are the obvious actor"}
+{"rule":"de_passive_voice","line":5038,"label":"clean","reason":"no passive"}
+{"rule":"de_unbacked_superlative","line":16384,"label":"violating","reason":"sogar besser als Flash with no source"}
+{"rule":"de_unbacked_superlative","line":2970,"label":"violating","reason":"immer eine wichtige Rolle with no source"}
+{"rule":"de_unbacked_superlative","line":15254,"label":"clean","reason":"trend backed in the sentence"}
+{"rule":"de_unbacked_superlative","line":15454,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":10469,"label":"clean","reason":"product feature"}
+{"rule":"de_unbacked_superlative","line":17022,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":12989,"label":"clean","reason":"reported trend"}
+{"rule":"de_unbacked_superlative","line":19014,"label":"clean","reason":"source named"}
+{"rule":"de_unbacked_superlative","line":7088,"label":"clean","reason":"source named"}
+{"rule":"de_unbacked_superlative","line":3280,"label":"violating","reason":"eine der wichtigsten with no source"}
+{"rule":"de_unbacked_superlative","line":16256,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":9548,"label":"clean","reason":"superlatives backed by figures"}
+{"rule":"de_unbacked_superlative","line":12924,"label":"violating","reason":"eines der aufregendsten Dinge with no source"}
+{"rule":"de_unbacked_superlative","line":14872,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":18198,"label":"clean","reason":"no superlative or absolute claim"}
+{"rule":"de_unbacked_superlative","line":7791,"label":"violating","reason":"Das Beste with no source"}
+{"rule":"de_register_collapse","line":5714,"label":"clean","reason":"dialogue"}
+{"rule":"de_register_collapse","line":10118,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":15976,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":8568,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":17095,"label":"clean","reason":"mal and dann alternate, formal"}
+{"rule":"de_register_collapse","line":13167,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":17029,"label":"clean","reason":"causal doch with verb first is formal"}
+{"rule":"de_register_collapse","line":10745,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":14520,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":5988,"label":"clean","reason":"casual ad copy throughout"}
+{"rule":"de_register_collapse","line":9210,"label":"clean","reason":"gerade eben is temporal"}
+{"rule":"de_register_collapse","line":20373,"label":"clean","reason":"ein für alle Mal is an idiom"}
+{"rule":"de_register_collapse","line":11712,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":10177,"label":"violating","reason":"exclamative doch in a news report"}
+{"rule":"de_register_collapse","line":7938,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_register_collapse","line":9270,"label":"clean","reason":"Mal is a noun"}
+{"rule":"de_unexplained_foreign_word","line":1970,"label":"clean","reason":"Toolkit glossed after the colon"}
+{"rule":"de_unexplained_foreign_word","line":20720,"label":"clean","reason":"Insight is part of a company name"}
+{"rule":"de_unexplained_foreign_word","line":13942,"label":"clean","reason":"Feature is a technical term in game news"}
+{"rule":"de_unexplained_foreign_word","line":1976,"label":"clean","reason":"Toolkit glossed after the colon"}
+{"rule":"de_unexplained_foreign_word","line":1513,"label":"clean","reason":"Soft Skills glossed by examples"}
+{"rule":"de_unexplained_foreign_word","line":1657,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":2047,"label":"clean","reason":"Soft Skills glossed by examples"}
+{"rule":"de_unexplained_foreign_word","line":17305,"label":"violating","reason":"Statement where Erklärung fits"}
+{"rule":"de_unexplained_foreign_word","line":12760,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":14859,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":4648,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":2648,"label":"clean","reason":"Highlight is a cosmetics term"}
+{"rule":"de_unexplained_foreign_word","line":4593,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":15289,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":1968,"label":"clean","reason":"Tool is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":9700,"label":"violating","reason":"Anchor-Woman and Performance with no gloss"}
+{"rule":"de_vague_authority","line":8938,"label":"clean","reason":"einige counts time"}
+{"rule":"de_vague_authority","line":11479,"label":"clean","reason":"einige refers to a group named in context"}
+{"rule":"de_vague_authority","line":6995,"label":"clean","reason":"viele Menschen counts the unemployed"}
+{"rule":"de_vague_authority","line":9403,"label":"violating","reason":"Unterstützer in der Automobilindustrie with no name"}
+{"rule":"de_vague_authority","line":18501,"label":"violating","reason":"Beamte und Experten with no name"}
+{"rule":"de_vague_authority","line":87,"label":"violating","reason":"Studien und Veröffentlichungen with no title"}
+{"rule":"de_vague_authority","line":9554,"label":"clean","reason":"einige counts time"}
+{"rule":"de_vague_authority","line":14655,"label":"clean","reason":"newspaper named"}
+{"rule":"de_vague_authority","line":6530,"label":"violating","reason":"Experten with no name"}
+{"rule":"de_vague_authority","line":14455,"label":"clean","reason":"einige counts devices"}
+{"rule":"de_vague_authority","line":12029,"label":"violating","reason":"viele Menschen as the unnamed bearer of a view"}
+{"rule":"de_vague_authority","line":7908,"label":"violating","reason":"viele Menschen as the unnamed complainants"}
+{"rule":"de_vague_authority","line":5953,"label":"clean","reason":"prediction, no appeal to a source"}
+{"rule":"de_vague_authority","line":7760,"label":"violating","reason":"viele Menschen as the unnamed bearer of a view"}
+{"rule":"de_vague_authority","line":20033,"label":"clean","reason":"bishops of the synod in context"}
+{"rule":"de_vague_authority","line":16652,"label":"violating","reason":"viele Menschen as the unnamed bearer of a view"}
+{"rule":"de_fake_analysis_tail","line":12922,"label":"clean","reason":"no tail clause"}
+{"rule":"de_fake_analysis_tail","line":16939,"label":"violating","reason":"was tail adds an empty verdict"}
+{"rule":"de_fake_analysis_tail","line":4876,"label":"violating","reason":"was tail adds a generic benefit"}
+{"rule":"de_fake_analysis_tail","line":13801,"label":"clean","reason":"was betrifft is a topic marker"}
+{"rule":"de_fake_analysis_tail","line":20847,"label":"violating","reason":"was bedeutet tail draws a conclusion the figure does not carry"}
+{"rule":"de_fake_analysis_tail","line":20445,"label":"clean","reason":"was clause gives the figure"}
+{"rule":"de_fake_analysis_tail","line":13017,"label":"clean","reason":"wodurch clause gives a result"}
+{"rule":"de_fake_analysis_tail","line":16542,"label":"clean","reason":"reported reasoning"}
+{"rule":"de_fake_analysis_tail","line":19175,"label":"clean","reason":"was is an object clause"}
+{"rule":"de_fake_analysis_tail","line":4880,"label":"clean","reason":"was clause explains the joke"}
+{"rule":"de_fake_analysis_tail","line":3519,"label":"clean","reason":"was is an object clause"}
+{"rule":"de_fake_analysis_tail","line":8266,"label":"clean","reason":"was is an object clause"}
+{"rule":"de_fake_analysis_tail","line":7281,"label":"clean","reason":"was clause gives the share"}
+{"rule":"de_fake_analysis_tail","line":14043,"label":"clean","reason":"was clause reports a reaction"}
+{"rule":"de_fake_analysis_tail","line":18349,"label":"clean","reason":"was clause gives a fact"}
+{"rule":"de_fake_analysis_tail","line":15995,"label":"clean","reason":"was clause gives a consequence with evidence"}
+{"rule":"de_stock_phrase","line":15632,"label":"clean","reason":"unter Beweis stellen used literally"}
+{"rule":"de_stock_phrase","line":20262,"label":"violating","reason":"auf Augenhöhe"}
+{"rule":"de_stock_phrase","line":7118,"label":"violating","reason":"ein heiß diskutiertes Thema"}
+{"rule":"de_stock_phrase","line":13096,"label":"violating","reason":"nichtsdestotrotz from the Gottschling list"}
+{"rule":"de_stock_phrase","line":9129,"label":"clean","reason":"ins Leben rufen is plain news German"}
+{"rule":"de_stock_phrase","line":16562,"label":"clean","reason":"im Fokus stehen is plain news German"}
+{"rule":"de_stock_phrase","line":4453,"label":"clean","reason":"plain phrasing"}
+{"rule":"de_stock_phrase","line":15948,"label":"clean","reason":"ins Leben rufen is plain news German"}
+{"rule":"de_stock_phrase","line":1784,"label":"violating","reason":"diesbezüglich from the Gottschling list"}
+{"rule":"de_stock_phrase","line":17580,"label":"clean","reason":"nach wie vor is plain German"}
+{"rule":"de_stock_phrase","line":18901,"label":"clean","reason":"nach wie vor is plain German"}
+{"rule":"de_stock_phrase","line":9986,"label":"violating","reason":"unter die Lupe nehmen"}
+{"rule":"de_stock_phrase","line":979,"label":"clean","reason":"unter Beweis stellen used literally"}
+{"rule":"de_stock_phrase","line":10825,"label":"violating","reason":"den Weg frei machen"}
+{"rule":"de_stock_phrase","line":17146,"label":"clean","reason":"Sturm is the football position"}
+{"rule":"de_stock_phrase","line":17246,"label":"clean","reason":"plain business report"}
+{"rule":"de_markerless_closer","line":4530,"label":"clean","reason":"blurb content"}
+{"rule":"de_markerless_closer","line":14002,"label":"violating","reason":"document ends on a verdict with no fact"}
+{"rule":"de_markerless_closer","line":16771,"label":"violating","reason":"document ends on Weichen für die Zukunft"}
+{"rule":"de_markerless_closer","line":6535,"label":"violating","reason":"Es bleibt abzuwarten wrap-up"}
+{"rule":"de_markerless_closer","line":1402,"label":"clean","reason":"advice with content"}
+{"rule":"de_markerless_closer","line":6322,"label":"clean","reason":"fact list"}
+{"rule":"de_markerless_closer","line":15695,"label":"clean","reason":"description"}
+{"rule":"de_markerless_closer","line":16305,"label":"clean","reason":"states a reason"}
+{"rule":"de_markerless_closer","line":18879,"label":"clean","reason":"opens a topic"}
+{"rule":"de_markerless_closer","line":5022,"label":"clean","reason":"advice"}
+{"rule":"de_markerless_closer","line":7876,"label":"violating","reason":"Insgesamt zeigte wrap-up with no fact"}
+{"rule":"de_markerless_closer","line":6687,"label":"clean","reason":"fact"}
+{"rule":"de_markerless_closer","line":20052,"label":"clean","reason":"reported criticism"}
+{"rule":"de_markerless_closer","line":6091,"label":"clean","reason":"medical fact"}
+{"rule":"de_markerless_closer","line":6285,"label":"clean","reason":"fact"}
+{"rule":"de_markerless_closer","line":10955,"label":"violating","reason":"document ends on unumstritten importance"}
+{"rule":"de_gap_filling_speculation","line":20568,"label":"violating","reason":"offenbar guesses a motive with no source"}
+{"rule":"de_gap_filling_speculation","line":9780,"label":"clean","reason":"wohl wissend is an idiom"}
+{"rule":"de_gap_filling_speculation","line":20126,"label":"violating","reason":"offenbar with no source named"}
+{"rule":"de_gap_filling_speculation","line":18239,"label":"violating","reason":"wohl guesses user behaviour with no data"}
+{"rule":"de_gap_filling_speculation","line":3935,"label":"clean","reason":"hypothetical scenario"}
+{"rule":"de_gap_filling_speculation","line":7592,"label":"violating","reason":"offenbar with no source named"}
+{"rule":"de_gap_filling_speculation","line":15477,"label":"violating","reason":"vermutlich extends the study past its finding"}
+{"rule":"de_gap_filling_speculation","line":18467,"label":"clean","reason":"sports commentary"}
+{"rule":"de_gap_filling_speculation","line":11148,"label":"clean","reason":"hedge on a future date"}
+{"rule":"de_gap_filling_speculation","line":7835,"label":"clean","reason":"police named in context"}
+{"rule":"de_gap_filling_speculation","line":19605,"label":"clean","reason":"marked opinion"}
+{"rule":"de_gap_filling_speculation","line":461,"label":"clean","reason":"guess reasoned from stated evidence"}
+{"rule":"de_gap_filling_speculation","line":12170,"label":"clean","reason":"states that the cause is unknown"}
+{"rule":"de_gap_filling_speculation","line":17589,"label":"clean","reason":"reports rumours as rumours"}
+{"rule":"de_gap_filling_speculation","line":15042,"label":"violating","reason":"wahrscheinlich guesses reception with no source"}
+{"rule":"de_gap_filling_speculation","line":13241,"label":"clean","reason":"marked opinion"}
+{"rule":"de_gap_filling_speculation","line":18486,"label":"violating","reason":"Angeblich with no source named"}
+{"rule":"de_gap_filling_speculation","line":20202,"label":"clean","reason":"reports rumours as rumours"}
+{"rule":"de_gap_filling_speculation","line":14448,"label":"clean","reason":"official named"}
+{"rule":"de_gap_filling_speculation","line":20612,"label":"violating","reason":"wohl forecast with no source"}
+{"rule":"de_gap_filling_speculation","line":9704,"label":"violating","reason":"offenbar guesses intent with no source"}
+{"rule":"de_gap_filling_speculation","line":19991,"label":"violating","reason":"wahrscheinlich forecast with no source"}
+{"rule":"de_gap_filling_speculation","line":20655,"label":"clean","reason":"states that the detail is unknown"}
+{"rule":"de_gap_filling_speculation","line":7735,"label":"violating","reason":"vermutlich forecast with no source"}
+{"rule":"de_gap_filling_speculation","line":15012,"label":"clean","reason":"police named"}
+{"rule":"de_gap_filling_speculation","line":10546,"label":"violating","reason":"offenbar guesses intent with no source"}
+{"rule":"de_gap_filling_speculation","line":12942,"label":"clean","reason":"states that the relation is unknown"}
+{"rule":"de_gap_filling_speculation","line":20731,"label":"violating","reason":"wahrscheinlich with no source named"}
+{"rule":"de_gap_filling_speculation","line":15557,"label":"clean","reason":"reported investigator view"}
+{"rule":"de_gap_filling_speculation","line":13496,"label":"clean","reason":"newspaper named"}
+{"rule":"de_gap_filling_speculation","line":14615,"label":"clean","reason":"marked opinion"}
+{"rule":"de_gap_filling_speculation","line":15560,"label":"clean","reason":"pilot and experts named as source"}
