@@ -307,7 +307,8 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
         scan_line = _line_or_blank(sources.punctuation, source_line.number)
         language = _line_or_blank(sources.languages, source_line.number) or ENGLISH
         findings.extend(_scan_punctuation(source_line, scan_line, context.prose, language))
-    if "english" in context.active_families and context.prose:
+    german = _line_or_blank(sources.languages, source_line.number) == GERMAN
+    if "english" in context.active_families and context.prose and not german:
         scan_line = _line_or_blank(sources.english, source_line.number)
         findings.extend(_scan_english(source_line, scan_line))
     if context.code_file:
@@ -323,6 +324,16 @@ def _scan_code_line(source_line: _SourceLine, comment_lines: list[str], active: 
     return findings
 
 
+def _english_view(masked: str, languages: list[str]) -> str:
+    """Blank German lines, because the English word and shape rules misread correct German."""
+    if GERMAN not in languages:
+        return masked
+    lines = masked.split("\n")
+    return "\n".join(
+        "" if _line_or_blank(languages, number) == GERMAN else line for number, line in enumerate(lines, 1)
+    )
+
+
 def _scan_english_families(path: str, masked: str, context: _ScanContext) -> list[dict]:
     if "english" not in context.active_families or not context.prose:
         return []
@@ -334,7 +345,7 @@ def _scan_english_families(path: str, masked: str, context: _ScanContext) -> lis
 
 
 def _scan_document_families(context: _ScanContext, masked: str, sources: _LineSources) -> list[dict]:
-    findings = _scan_english_families(context.path, masked, context)
+    findings = _scan_english_families(context.path, _english_view(masked, sources.languages), context)
     german = [paragraph for paragraph in sources.paragraphs if paragraph.language == GERMAN]
     if "english" in context.active_families and german:
         findings.extend(scan_german_document(context.path, german, context.config))

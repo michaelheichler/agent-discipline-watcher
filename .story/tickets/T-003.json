@@ -3,11 +3,12 @@
   "completedDate": null,
   "createdDate": "2026-10-01",
   "description": "Build reproducible German corpora under evals/, the same way the English ones rebuild byte for byte. Human side is dewiki-20180920-pages-articles.xml.bz2 from archive.org plus the German rows of sedthh/gutenberg_multilang (MIT). AI side is COLING 2025 GenAI Content Detection Task 1 (Apache-2.0, German rows) plus the German conversations of allenai/WildChat-4.8M. Store sentence and paragraph corpora like the English ones, with a fixed sample size and seed. Record source, license, and row counts in evals/README.md. See docs/research/2026-09-30-german-ai-text-datasets.md.\n\nAcceptance.\n1. One command rebuilds every German corpus byte for byte.\n2. evals/README.md names each source with license and row count.\n3. Large downloads stay out of git, the same as the English corpora.",
+  "displayId": "T-003",
   "id": "T-003",
   "order": 30,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "inprogress",
   "title": "Build the German measurement corpora",
   "type": "task"
 }

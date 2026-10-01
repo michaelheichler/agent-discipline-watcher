@@ -43,6 +43,13 @@ def test_a_long_german_sentence_reaches_the_document_rules_through_the_scanner()
     assert "de_sentence_length" not in _rules(english)
 
 
+def test_the_english_rules_leave_german_paragraphs_alone() -> None:
+    german = " ".join([GERMAN_FILLER.rstrip(".")] * 3) + "."
+
+    assert "long_sentence" not in _rules(german, {"sentence_word_cap": 20})
+    assert "long_sentence" in _rules(" ".join([ENGLISH_TAIL.rstrip(".")] * 3) + ".", {"sentence_word_cap": 20})
+
+
 def test_a_bis_strich_between_numbers_passes_in_german() -> None:
     assert _rules(f"Das Haus stand von 1990–2000 leer, {GERMAN_TAIL}") == []
 

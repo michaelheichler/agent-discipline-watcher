@@ -2,14 +2,15 @@
   "blockedBy": [
     "T-002"
   ],
-  "completedDate": null,
+  "completedDate": "2026-10-01",
   "createdDate": "2026-10-01",
   "description": "A paragraph that T-002 marks as weak goes to Luna for a language verdict right after the tool call, never in the Stop review (decision Q10). Claude Code runs it in the async PostToolUse route. Codex keeps the document language at write time and lets Luna classify in the background at the next prompt (decision Q17). ADW caches each verdict under the hash of the paragraph, so a paragraph costs at most one call (decision Q16). A changed verdict re-scans that paragraph with the right rule set.\n\nAcceptance.\n1. A second write of the same weak paragraph makes no Luna call.\n2. Codex never waits on Luna inside a hook.\n3. A wrong document-language guess gets corrected by the next prompt at the latest.",
+  "displayId": "T-006",
   "id": "T-006",
   "order": 60,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "complete",
   "title": "Luna classifies weak paragraphs after the write",
   "type": "task"
 }

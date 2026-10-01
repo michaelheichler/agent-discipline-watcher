@@ -5,11 +5,12 @@
   "completedDate": null,
   "createdDate": "2026-10-01",
   "description": "In German paragraphs, the punctuation family follows Duden typography instead of the English bans. The spaced Gedankenstrich passes, with a density rule at the threshold from the catalog (humanizer-de DASH_CLUSTER, 5 dashes and 15 per 1000 words, to confirm by measurement). The em dash stays banned. German quotes „…“ and ‚…‘ pass, straight quotes and English quotes report. The Ergänzungsstrich passes, a word ending in a hyphen before und, oder, or bis (decision Q22). Also apostrophe, ellipsis, and colon or semicolon density. Source is the typography section of docs/research/2026-09-30-german-style-catalog.md.\n\nAcceptance.\n1. `Ein- und Ausgang` raises no spaced_hyphen finding in German text and still raises one in English text.\n2. A spaced Gedankenstrich passes until the density threshold.\n3. English paragraphs keep today's punctuation behavior.",
+  "displayId": "T-004",
   "id": "T-004",
   "order": 40,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "inprogress",
   "title": "German typography rules after the Duden",
   "type": "task"
 }
