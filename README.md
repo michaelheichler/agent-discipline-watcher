@@ -397,6 +397,8 @@ Project configuration lives in `.agent-discipline.json` at the project root. The
 
 `adw-config tests allow` or `adw-config tests deny` sets the test write policy. `adw-config tests allow --for 30m` opens a timed window instead of a permanent change.
 
+`adw-config prose-languages en,de` sets the prose languages ADW detects per paragraph. The default is both. `adw-config prose-languages en` switches German off, so every paragraph runs the English rules.
+
 `adw-config family NAME on|off` toggles one family. An agent that calls a mutating subcommand through a tool call gets a block. Only the user sets policy from a terminal.
 
 Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge checks them before the watcher reports anything. Today only the OMP review route runs that judge. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.

@@ -54,8 +54,26 @@ def test_an_alias_family_switches_its_leaves(tmp_path: Path) -> None:
     assert "  comment: on (enforce)" in cli(tmp_path, "status").stdout.splitlines()
 
 
+def test_status_reports_both_prose_languages_without_a_file(tmp_path: Path) -> None:
+    assert "prose languages: en,de" in cli(tmp_path, "status").stdout.splitlines()
+
+
+def test_prose_languages_en_switches_german_off(tmp_path: Path) -> None:
+    assert cli(tmp_path, "prose-languages", "en").returncode == 0
+    assert policy(tmp_path) == {"prose_languages": ["en"]}
+    assert "prose languages: en" in cli(tmp_path, "status").stdout.splitlines()
+
+
+def test_prose_languages_keeps_one_order_whatever_the_user_types(tmp_path: Path) -> None:
+    cli(tmp_path, "prose-languages", "de,en")
+    assert policy(tmp_path) == {"prose_languages": ["en", "de"]}
+
+
 @pytest.mark.parametrize(("args", "code"), [
     (("tests", "maybe"), 1),
+    (("prose-languages", "fr"), 1),
+    (("prose-languages", "en,en"), 1),
+    (("prose-languages",), 2),
     (("family", "nope", "off"), 2),
     (("family", "prose", "observe"), 2),
     (("purge",), 2),

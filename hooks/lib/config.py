@@ -21,11 +21,12 @@ from typing import NamedTuple
 
 try:
     # Relative first because every hook entry script imports this module as lib.config, where a bare name cannot resolve.
-    from . import families, test_rules
+    from . import families, prose_language, test_rules
     from .findings import Outcome
     from .payloads import cwd as payload_cwd, exact_string_dict, session_id as payload_session_id
 except ImportError:
     import families
+    import prose_language
     import test_rules
     from findings import Outcome
     from payloads import cwd as payload_cwd, exact_string_dict, session_id as payload_session_id
@@ -141,6 +142,8 @@ DEFAULTS = {
     "data_boundary": {"enabled": False},
     # Allow, because a default deny stalls every project.
     "tests": "allow",
+    # German on by default, because the user decided so in N-007.
+    "prose_languages": list(prose_language.LANGUAGES),
 }
 TESTS_POLICIES = ("allow", "deny")
 

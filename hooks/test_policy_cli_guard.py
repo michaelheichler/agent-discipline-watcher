@@ -37,6 +37,8 @@ def decision(command: str) -> dict:
     "eval 'adw-config tests allow'",
     "echo tests allow | xargs adw-config",
     "$CFG tests allow",
+    "$CFG prose-languages en",
+    "find . -exec adw-config prose-languages en ;",
     "\"$(command -v adw-config)\" tests allow",
     "adw-config purge",
     "PYTHONPATH=hooks python3 -m lib.adw_config tests allow",

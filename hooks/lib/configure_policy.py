@@ -4,9 +4,10 @@ from __future__ import annotations
 import copy
 
 try:
-    from . import config
+    from . import config, prose_language
 except ImportError:
     import config
+    import prose_language
 
 MAX_CWD_CHARS = 4096
 MAX_VALUE_STRING_CHARS = 4096
@@ -233,6 +234,14 @@ def validate_tests_policy(value: object) -> dict[str, object]:
     if type(value) is not str or value not in config.TESTS_POLICIES:
         raise ConfigureError("invalid_value", "tests must be allow or deny")
     return {"tests": value}
+
+
+def validate_prose_languages(text: str) -> dict[str, object]:
+    """Kept off the screen like tests, because the terminal is the one place the user sets it."""
+    listed = [part.strip() for part in text.split(",")]
+    if set(listed) - set(prose_language.LANGUAGES) or len(set(listed)) != len(listed):
+        raise ConfigureError("invalid_value", "prose-languages takes en, de, or en,de")
+    return {"prose_languages": [language for language in prose_language.LANGUAGES if language in listed]}
 
 
 def _family_filtered(value: object) -> object:

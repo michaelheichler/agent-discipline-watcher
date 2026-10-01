@@ -6,9 +6,12 @@ import sys
 import time
 from pathlib import Path
 
-from . import config, configure_policy, configure_store, families, tests_policy
+from . import config, configure_policy, configure_store, families, prose_language, tests_policy
 
-USAGE = "usage: adw-config status | tests allow|deny | tests allow --for 30m|2h | family NAME on|off"
+USAGE = (
+    "usage: adw-config status | tests allow|deny | tests allow --for 30m|2h | family NAME on|off"
+    " | prose-languages en|de|en,de"
+)
 SWITCHES = {"on": "enforce", "off": "off"}
 WINDOW_CAP_SECONDS = 8 * 3600
 UNIT_SECONDS = {"m": 60, "h": 3600}
@@ -41,7 +44,11 @@ def status_lines(target: Path, settings: dict, now: float) -> list[str]:
     """Show one file, because upward search can pick a parent."""
     present = "present" if target.exists() else "absent"
     tests = settings.get("tests", config.DEFAULTS["tests"])
-    lines = [f"config: {target} ({present})", f"tests: {tests}", _window_line(settings, now), "families:"]
+    languages = ",".join(prose_language.allowed_languages(settings))
+    lines = [
+        f"config: {target} ({present})", f"tests: {tests}", _window_line(settings, now),
+        f"prose languages: {languages}", "families:",
+    ]
     for name in families.NAMES:
         state = config.gate_state(name, settings)
         lines.append(f"  {name}: {'off' if state == 'off' else 'on'} ({state})")
@@ -75,6 +82,8 @@ def _requested_values(
         return {**configure_policy.validate_tests_policy(args[1]), **_closed_window(settings)}
     if len(args) == 3 and args[0] == "family" and args[1] in families.NAMES and args[2] in SWITCHES:
         return configure_policy.validate_policy_values({"gates": {args[1]: SWITCHES[args[2]]}})
+    if len(args) == 2 and args[0] == "prose-languages":
+        return configure_policy.validate_prose_languages(args[1])
     return None
 
 

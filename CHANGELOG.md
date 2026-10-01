@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`adw-config prose-languages en,de` sets the prose languages.** The new `prose_languages` policy key defaults to `["en", "de"]`. `hooks/lib/prose_language.py` sorts each prose or commit paragraph into German or English by stop words, with umlauts as a tiebreak. A paragraph under 8 countable words takes the document language and carries a weak mark. No rule reads the language yet. `evals/measure_language_detection.py` reports accuracy per paragraph length for any corpus given as `LANG=PATH`.
+
 ## 0.24.1 (2026-09-30)
 
 ### Changed

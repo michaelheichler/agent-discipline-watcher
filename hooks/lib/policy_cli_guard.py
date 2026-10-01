@@ -12,7 +12,7 @@ from .shell_syntax import (
 
 CLI_NAME = "adw-config"
 MODULE_NAMES = frozenset({"lib.adw_config", "adw_config", "adw_config.py"})
-SUBCOMMANDS = frozenset({"tests", "family"})
+SUBCOMMANDS = frozenset({"tests", "family", "prose-languages"})
 READ_ONLY_ARGS = ([], ["status"])
 COPY_VERBS = frozenset({"ln", "cp", "install", "rsync"})
 REPARSE_VERBS = frozenset({"eval", "xargs"})
