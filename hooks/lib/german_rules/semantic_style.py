@@ -1,4 +1,4 @@
-"""Leave detection to the vote, because no word list separates these style patterns from correct German (catalog SEMANTIC rows)."""
+"""Leave the verdict to the judge, because no word list separates these style patterns from correct German (catalog SEMANTIC rows)."""
 from __future__ import annotations
 
 try:
@@ -18,18 +18,35 @@ PASSIVE_VOICE = Rule(
         "Meldet ein Passiv mit werden oder sein und Partizip, bei dem der fehlende Handelnde zählt",
         "Nenn den Handelnden und nimm ein aktives Verb.",
     ),
+    trigger=r"\b(?:wird|werden|wurde|wurden|worden)\b",
 )
 STOCK_PHRASE = Rule(
     "de_stock_phrase",
     Wording(
         "German stock phrase",
-        "Flags a worn German phrase or dead image, like eine Lanze brechen, that fills space without meaning",
+        "Flags a listed German stock phrase or a dead image like den Weg ebnen that one plain word replaces",
         "Replace the phrase with the plain statement it stands for.",
     ),
     Wording(
         "Abgegriffene Floskel",
-        "Meldet eine abgenutzte Wendung oder ein totes Bild wie eine Lanze brechen, das nur Platz füllt",
+        "Meldet eine Floskel aus der Liste oder ein totes Bild wie den Weg ebnen, das ein schlichtes Wort ersetzt",
         "Ersetz die Floskel durch die schlichte Aussage dahinter.",
+    ),
+    boundary=(
+        "Verstoß ist eine Wendung aus den Floskellisten, etwa diesbezüglich, nichtsdestotrotz, unter Zuhilfenahme, "
+        "in der heutigen Zeit oder Welt, seit Anbeginn der Zeit. Verstoß ist auch ein totes Bild, also eine bildhafte "
+        "feste Wendung, deren Bild niemand mehr sieht und die ein schlichtes Wort ohne Verlust ersetzt, etwa ins Leben "
+        "rufen für gründen, den Weg ebnen für ermöglichen, unter die Lupe nehmen für prüfen, im Fokus stehen, ein "
+        "Meilenstein, ein Zeichen setzen, eine Lanze brechen, auf Augenhöhe. Sauber sind feste Wendungen ohne Bild wie "
+        "nach wie vor, nicht zuletzt, in der Regel. Sauber sind Funktionsverbgefüge wie unter Beweis stellen oder in "
+        "Vergessenheit geraten, die eine eigene Regel prüft. Sauber ist jedes Wort in wörtlicher Bedeutung, etwa der "
+        "Weg zum Heim oder der Sturm im Fußball."
+    ),
+    trigger=(
+        r"\b(?:nach wie vor|unter die Lupe|im Fokus|Hand in Hand|auf Augenhöhe|in aller Munde|ins Leben gerufen"
+        r"|unter Beweis|an Bedeutung gewinn\w*|den Grundstein|Meilenstein|Dreh- und Angelpunkt|Schritt halten"
+        r"|Weichen|auf der Hand|an einem Strang|nicht zuletzt|in den Startlöchern|auf Hochtouren|im Mittelpunkt"
+        r"|ein Zeichen|den Weg|eine Lanze|im Endeffekt|diesbezüglich|nichtsdestotrotz|in der heutigen)\b"
     ),
 )
 DICHOTOMY_TEMPLATE = Rule(
@@ -44,6 +61,7 @@ DICHOTOMY_TEMPLATE = Rule(
         "Meldet die Schablone Trotz X steht Y vor Z, die Lob, Herausforderung und Ausblick gegeneinanderstellt",
         "Nenn den einen Befund, der zählt, mit seinem Beleg.",
     ),
+    trigger=r"\btrotz\b|Herausforderung",
 )
 SHALLOW_PARTICIPLE = Rule(
     "de_shallow_participle",
@@ -57,6 +75,7 @@ SHALLOW_PARTICIPLE = Rule(
         "Meldet einen Satz, der mit einem Partizip wie gewährleistend oder hervorhebend eine Analyse vortäuscht",
         "Streich das Partizip oder nenn die Folge in einem eigenen Satz.",
     ),
+    trigger=r",\s*(?:\w+\s+){0,3}(?!während\b)\w+end\b[.,]?\s*$|,\s*\w+end\b,",
 )
 SYNONYM_ROTATION = Rule(
     "de_synonym_rotation",
@@ -69,6 +88,10 @@ SYNONYM_ROTATION = Rule(
         "Wechselnde Namen für dieselbe Sache",
         "Meldet Text, der dieselbe Sache in jedem Satz anders nennt, etwa die Hansestadt und dann die Elbmetropole",
         "Bleib bei einem Namen für dieselbe Sache.",
+    ),
+    trigger=(
+        r"\b(?:die|der|das)\s+(?:\w+-)?(?:Metropole|Hansestadt|Hauptstadt|Konzern|Riese|Gigant|Hersteller"
+        r"|Sängerin|Sänger|Schauspieler\w*|Musiker\w*|Künstler\w*|Politiker\w*|Verein|Klub|Club|Mannschaft|Elf)\b"
     ),
 )
 FAKE_ANALYSIS_TAIL = Rule(
@@ -83,6 +106,7 @@ FAKE_ANALYSIS_TAIL = Rule(
         "Meldet einen Relativsatz am Ende wie was X unterstreicht, der keine neue Information bringt",
         "Streich den Anhang oder ersetz ihn durch die Tatsache dahinter.",
     ),
+    trigger=r",\s*(?:was|wodurch|womit)\b",
 )
 COMPARATIVE_FRAMING = Rule(
     "de_comparative_framing",
@@ -96,6 +120,7 @@ COMPARATIVE_FRAMING = Rule(
         "Meldet den Rahmen weniger X als vielmehr Y, wo eine schlichte Beschreibung reicht",
         "Beschreib Y direkt.",
     ),
+    trigger=r"\b(?:vielmehr|nicht so sehr|weniger\b[^.]{1,40}\bals)\b",
 )
 REGISTER_COLLAPSE = Rule(
     "de_register_collapse",
@@ -109,6 +134,7 @@ REGISTER_COLLAPSE = Rule(
         "Meldet eine lockere Partikel in einem sonst förmlichen Satz und Absatz",
         "Halte ein Sprachregister im ganzen Abschnitt.",
     ),
+    trigger=r"\b(?:halt|mal|eh|echt|krass|total|super|cool|okay)\b|\w\s+(?:ja|doch|eben)\b",
 )
 STYLE_SHIFT = Rule(
     "de_style_shift",
@@ -148,6 +174,7 @@ RHETORICAL_QUESTION = Rule(
         "Meldet eine Frage wie Aber was bedeutet das?, die der Text nur stellt, um sie selbst zu beantworten",
         "Streich die Frage und nenn die Antwort.",
     ),
+    trigger=r"\?$",
 )
 MARKERLESS_CLOSER = Rule(
     "de_markerless_closer",
@@ -161,6 +188,7 @@ MARKERLESS_CLOSER = Rule(
         "Meldet einen wertenden Satz am Absatzende, der keine neue Tatsache bringt",
         "Beende den Absatz nach der letzten Tatsache.",
     ),
+    trigger=r"\b(?:insgesamt|zeigt|bleibt|wichtig\w*|Bedeutung|beeindruckend\w*|spannend\w*|Zukunft|deutlich)\b",
 )
 RETROACTIVE_NUANCE = Rule(
     "de_retroactive_nuance",
@@ -173,6 +201,18 @@ RETROACTIVE_NUANCE = Rule(
         "Nachgeschobene Scheinnuance",
         "Meldet ein Genauer gesagt oder Fairerweise, das die vorige Aussage nur weicher wiederholt",
         "Behalte die genaue Fassung und streich die erste.",
+    ),
+    boundary=(
+        "Verstoß nur, wenn eine Präzisierungsformel wie genauer gesagt, besser gesagt, anders gesagt, mit anderen "
+        "Worten, fairerweise, streng genommen, genau genommen oder eigentlich ist es komplizierter eine eben gemachte "
+        "Aussage wiederholt und dabei keine neue Bedingung, Teilmenge, Ursache, Zahl, Ausnahme oder Gegenposition nennt. "
+        "Sauber ist eigentlich als Partikel oder im Sinn von ursprünglich, geplant, laut Regel. Sauber ist genauer als "
+        "Komparativ oder Adjektiv, etwa genauer untersuchen oder der genaue Standort. Sauber ist jede Formel, nach der "
+        "eine echte neue Angabe folgt, etwa Genauer gesagt bestanden 12 von 15 Prüffällen."
+    ),
+    trigger=(
+        r"\b(?:genauer|fairerweise|eigentlich|streng genommen|genau genommen|besser gesagt|anders gesagt"
+        r"|mit anderen Worten)\b"
     ),
 )
 

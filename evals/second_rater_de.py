@@ -7,7 +7,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from ai_corpus_de import LABELS_PATH, REPOSITORY_ROOT, load_ai_corpus, load_labels
+from ai_corpus_de import LABELS_PATH, REPOSITORY_ROOT, AiRow, load_ai_corpus, load_labels
+from pattern_candidates_de import neighbour
 
 SECOND_PATH = REPOSITORY_ROOT / "evals" / "pattern_labels_de_sonnet.jsonl"
 DECIDED = ("violating", "clean")
@@ -20,12 +21,34 @@ def _rules() -> dict[str, object]:
 
 def blind_items(labels: list[dict], texts: dict[int, str], rules: dict[str, object]) -> list[dict]:
     """No label and no reason, because a rater who sees the first verdict anchors on it."""
+    items = []
+    for row in labels:
+        rule = rules[row["rule"]]
+        item = {"rule": row["rule"], "line": row["line"], "muster": rule.german.title,
+                "beschreibung": rule.german.description, "korrektur": rule.german.action, "text": texts[row["line"]]}
+        if rule.boundary:
+            item["abgrenzung"] = rule.boundary
+        items.append(item)
+    return items
+
+
+def with_context(items: list[dict], corpus: list[AiRow]) -> list[dict]:
+    """Neighbours for the first rater only, because it labeled with them and the second never had them."""
+    by_line = {row.line: row for row in corpus}
     return [
-        {"rule": row["rule"], "line": row["line"], "muster": rules[row["rule"]].german.title,
-         "beschreibung": rules[row["rule"]].german.description, "korrektur": rules[row["rule"]].german.action,
-         "text": texts[row["line"]]}
-        for row in labels
+        {**item, "davor": neighbour(corpus, by_line[item["line"]], -1), "danach": neighbour(corpus, by_line[item["line"]], 1)}
+        for item in items
     ]
+
+
+def relabeled(labels: list[dict], answers: list[dict]) -> list[dict]:
+    """Whole rules only, because a half-replaced rule would mix two definitions in one kappa."""
+    rules = {row["rule"] for row in answers}
+    wanted = {(row["rule"], row["line"]) for row in labels if row["rule"] in rules}
+    found = {(row["rule"], row["line"]): row for row in answers}
+    if set(found) != wanted or len(found) != len(answers):
+        raise ValueError(f"relabel covers {len(found)} rows, the rules {sorted(rules)} hold {len(wanted)}")
+    return [found.get((row["rule"], row["line"]), row) for row in labels]
 
 
 def merged_second(parts: list[list[dict]], labels: list[dict]) -> list[dict]:
@@ -79,21 +102,38 @@ def _write(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(encoder.encode(row) + "\n" for row in rows), encoding="utf-8", newline="\n")
 
 
+def _export(arguments: argparse.Namespace, labels: list[dict]) -> None:
+    corpus = load_ai_corpus()
+    chosen = [row for row in labels if arguments.rules is None or row["rule"] in arguments.rules]
+    items = blind_items(chosen, {row.line: row.text for row in corpus}, _rules())
+    _write(arguments.paths[0], with_context(items, corpus) if arguments.context else items)
+
+
+def _relabel(arguments: argparse.Namespace, labels: list[dict]) -> None:
+    _write(LABELS_PATH, relabeled(labels, _read(arguments.paths[0])))
+    _write(SECOND_PATH, relabeled(_read(SECOND_PATH), _read(arguments.paths[1])))
+
+
+def _merge(arguments: argparse.Namespace, labels: list[dict]) -> None:
+    _write(SECOND_PATH, merged_second([_read(path) for path in arguments.paths], labels))
+
+
+def _compare(_arguments: argparse.Namespace, labels: list[dict]) -> None:
+    second = _read(SECOND_PATH)
+    print(json.dumps({"agreement": agreement(labels, second), "disagreements": disagreements(labels, second)},
+                     ensure_ascii=False, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("step", choices=("export", "merge", "compare"))
+    parser.add_argument("step", choices=("export", "merge", "relabel", "compare"))
     parser.add_argument("paths", nargs="*", type=Path)
+    parser.add_argument("--rules", nargs="*", default=None)
+    parser.add_argument("--context", action="store_true")
     arguments = parser.parse_args()
     labels = load_labels(LABELS_PATH)
-    if arguments.step == "export":
-        texts = {row.line: row.text for row in load_ai_corpus()}
-        _write(arguments.paths[0], blind_items(labels, texts, _rules()))
-    elif arguments.step == "merge":
-        _write(SECOND_PATH, merged_second([_read(path) for path in arguments.paths], labels))
-    else:
-        second = _read(SECOND_PATH)
-        print(json.dumps({"agreement": agreement(labels, second), "disagreements": disagreements(labels, second)},
-                         ensure_ascii=False, indent=2))
+    steps = {"export": _export, "relabel": _relabel, "merge": _merge, "compare": _compare}
+    steps[arguments.step](arguments, labels)
 
 
 if __name__ == "__main__":

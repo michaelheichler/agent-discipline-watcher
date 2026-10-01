@@ -14,38 +14,38 @@
 {"rule":"de_passive_voice","line":540,"label":"clean","reason":"Family named as appointer nearby"}
 {"rule":"de_passive_voice","line":11886,"label":"clean","reason":"Agent is stated with von"}
 {"rule":"de_passive_voice","line":1237,"label":"clean","reason":"This is active wir werden"}
-{"rule":"de_stock_phrase","line":15721,"label":"violating","reason":"Classic cliche look optimistically ahead"}
-{"rule":"de_stock_phrase","line":18404,"label":"violating","reason":"Dead metaphor paved the way"}
-{"rule":"de_stock_phrase","line":4587,"label":"clean","reason":"No stock phrase just a claim"}
-{"rule":"de_stock_phrase","line":11930,"label":"clean","reason":"No cliche just factual statement"}
-{"rule":"de_stock_phrase","line":20136,"label":"violating","reason":"Cliche setting a sign"}
-{"rule":"de_stock_phrase","line":16933,"label":"clean","reason":"Plain verb not a cliche"}
-{"rule":"de_stock_phrase","line":8763,"label":"violating","reason":"Milestone is a business cliche"}
-{"rule":"de_stock_phrase","line":11401,"label":"clean","reason":"No stock phrase present here"}
-{"rule":"de_stock_phrase","line":8886,"label":"clean","reason":"No stock phrase present here"}
-{"rule":"de_stock_phrase","line":12946,"label":"clean","reason":"No stock phrase present here"}
-{"rule":"de_stock_phrase","line":15778,"label":"violating","reason":"Cliche brought to life"}
-{"rule":"de_stock_phrase","line":10256,"label":"clean","reason":"No stock phrase present here"}
-{"rule":"de_stock_phrase","line":20878,"label":"violating","reason":"Cliche brought to life again"}
-{"rule":"de_stock_phrase","line":13779,"label":"clean","reason":"No stock phrase present here"}
-{"rule":"de_stock_phrase","line":17065,"label":"clean","reason":"No stock phrase just listing places"}
-{"rule":"de_stock_phrase","line":16652,"label":"violating","reason":"Fixed component is a cliche"}
-{"rule":"de_unexplained_foreign_word","line":4616,"label":"violating","reason":"Community is unexplained English loanword"}
-{"rule":"de_unexplained_foreign_word","line":13162,"label":"violating","reason":"Release is unexplained English loanword"}
-{"rule":"de_unexplained_foreign_word","line":14267,"label":"violating","reason":"Performance and design unexplained loanwords"}
-{"rule":"de_unexplained_foreign_word","line":13462,"label":"clean","reason":"Engagement is French not English"}
-{"rule":"de_unexplained_foreign_word","line":18286,"label":"violating","reason":"Features is unexplained English loanword"}
-{"rule":"de_unexplained_foreign_word","line":597,"label":"violating","reason":"Unexplained English loanword tools used"}
-{"rule":"de_unexplained_foreign_word","line":14142,"label":"violating","reason":"Unexplained English loanword feature used"}
-{"rule":"de_unexplained_foreign_word","line":4935,"label":"clean","reason":"Engagement is not an English word"}
-{"rule":"de_unexplained_foreign_word","line":12886,"label":"violating","reason":"Unexplained English terms virtual reality content"}
-{"rule":"de_unexplained_foreign_word","line":5925,"label":"violating","reason":"Unexplained English loanword community used"}
-{"rule":"de_unexplained_foreign_word","line":6354,"label":"violating","reason":"Unexplained English loanword statement used"}
-{"rule":"de_unexplained_foreign_word","line":9087,"label":"violating","reason":"Unexplained English loanword tool used"}
-{"rule":"de_unexplained_foreign_word","line":4444,"label":"violating","reason":"Unexplained English loanwords blog and lifestyle"}
-{"rule":"de_unexplained_foreign_word","line":8744,"label":"violating","reason":"Unexplained English loanword feature used"}
-{"rule":"de_unexplained_foreign_word","line":1214,"label":"violating","reason":"Unexplained English loanword mindset used"}
-{"rule":"de_unexplained_foreign_word","line":14610,"label":"violating","reason":"Unexplained English loanword tool used"}
+{"rule":"de_stock_phrase","line":15721,"label":"clean","reason":"nach wie vor is listed as clean fixed phrase"}
+{"rule":"de_stock_phrase","line":18404,"label":"violating","reason":"den Weg geebnet is the listed dead image"}
+{"rule":"de_stock_phrase","line":4587,"label":"clean","reason":"ein Zeichen fuer is literal not the listed idiom"}
+{"rule":"de_stock_phrase","line":11930,"label":"clean","reason":"nach wie vor is listed as clean"}
+{"rule":"de_stock_phrase","line":20136,"label":"violating","reason":"ein Zeichen setzen is the listed floskel"}
+{"rule":"de_stock_phrase","line":16933,"label":"violating","reason":"nichtsdestotrotz is on the floskel list"}
+{"rule":"de_stock_phrase","line":8763,"label":"violating","reason":"Meilenstein is on the floskel list"}
+{"rule":"de_stock_phrase","line":11401,"label":"clean","reason":"Weg zum Asylheim is literal like the clean example"}
+{"rule":"de_stock_phrase","line":8886,"label":"clean","reason":"nicht zuletzt is listed as clean"}
+{"rule":"de_stock_phrase","line":12946,"label":"violating","reason":"in der heutigen Welt is on the floskel list"}
+{"rule":"de_stock_phrase","line":15778,"label":"violating","reason":"ins Leben gerufen is the listed dead image"}
+{"rule":"de_stock_phrase","line":10256,"label":"violating","reason":"in der heutigen Zeit is on the floskel list"}
+{"rule":"de_stock_phrase","line":20878,"label":"violating","reason":"ins Leben gerufen is the listed dead image"}
+{"rule":"de_stock_phrase","line":13779,"label":"clean","reason":"nach wie vor is listed as clean"}
+{"rule":"de_stock_phrase","line":17065,"label":"clean","reason":"heutigen modifies a street name literally"}
+{"rule":"de_stock_phrase","line":16652,"label":"clean","reason":"nach wie vor is clean, Symbol not on the list"}
+{"rule":"de_unexplained_foreign_word","line":4616,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":13162,"label":"clean","reason":"Release is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":14267,"label":"clean","reason":"Performance and Design are established loanwords"}
+{"rule":"de_unexplained_foreign_word","line":13462,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":18286,"label":"clean","reason":"Features established, Engadget is a name"}
+{"rule":"de_unexplained_foreign_word","line":597,"label":"clean","reason":"Tools and Software are established loanwords"}
+{"rule":"de_unexplained_foreign_word","line":14142,"label":"clean","reason":"Feature is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":4935,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":12886,"label":"clean","reason":"Content established, Virtual Reality is a known tech term"}
+{"rule":"de_unexplained_foreign_word","line":5925,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":6354,"label":"clean","reason":"Statement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":9087,"label":"clean","reason":"Tool established, Check is a common single loanword"}
+{"rule":"de_unexplained_foreign_word","line":4444,"label":"clean","reason":"Lifestyle is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":8744,"label":"clean","reason":"Feature established, Magic Keyboard is a product name"}
+{"rule":"de_unexplained_foreign_word","line":1214,"label":"clean","reason":"Mindset is a single loanword, benefit of doubt"}
+{"rule":"de_unexplained_foreign_word","line":14610,"label":"clean","reason":"Software and Tool are established loanwords"}
 {"rule":"de_unbacked_superlative","line":3006,"label":"clean","reason":"No superlative or absolute claim present"}
 {"rule":"de_unbacked_superlative","line":9905,"label":"clean","reason":"Superlative backed by a percentage figure"}
 {"rule":"de_unbacked_superlative","line":17172,"label":"clean","reason":"No superlative or absolute claim present"}
@@ -287,47 +287,47 @@
 {"rule":"de_markerless_closer","line":19056,"label":"violating","reason":"vague importance justification"}
 {"rule":"de_markerless_closer","line":18948,"label":"clean","reason":"contains concrete rescue fact"}
 {"rule":"de_markerless_closer","line":12364,"label":"clean","reason":"purely factual no evaluation"}
-{"rule":"de_retroactive_nuance","line":13087,"label":"clean","reason":"genauer describes mission purpose"}
-{"rule":"de_retroactive_nuance","line":12521,"label":"clean","reason":"eigentlich states a date fact"}
-{"rule":"de_retroactive_nuance","line":9671,"label":"clean","reason":"eigentlich intensifies single judgment"}
-{"rule":"de_retroactive_nuance","line":19504,"label":"clean","reason":"genauer describes an action"}
-{"rule":"de_retroactive_nuance","line":19047,"label":"clean","reason":"genauer describes an action"}
-{"rule":"de_retroactive_nuance","line":12759,"label":"clean","reason":"genauer means exact location"}
-{"rule":"de_retroactive_nuance","line":13417,"label":"clean","reason":"eigentlich explains normal procedure"}
-{"rule":"de_retroactive_nuance","line":5896,"label":"clean","reason":"eigentlich in single question"}
-{"rule":"de_retroactive_nuance","line":13353,"label":"clean","reason":"eigentlich in single question"}
-{"rule":"de_retroactive_nuance","line":18178,"label":"clean","reason":"eigentlich signals surprising fact"}
-{"rule":"de_retroactive_nuance","line":20321,"label":"clean","reason":"eigentlich states original plan"}
-{"rule":"de_retroactive_nuance","line":3510,"label":"clean","reason":"genauer just means closely"}
-{"rule":"de_retroactive_nuance","line":9986,"label":"clean","reason":"genauer is standard idiom"}
-{"rule":"de_retroactive_nuance","line":19515,"label":"clean","reason":"eigentlich explains single exception"}
-{"rule":"de_retroactive_nuance","line":10319,"label":"clean","reason":"no retroactive softening present"}
-{"rule":"de_retroactive_nuance","line":19661,"label":"clean","reason":"single clause no softened repeat"}
-{"rule":"de_retroactive_nuance","line":20610,"label":"clean","reason":"no weaker restatement of claim"}
-{"rule":"de_retroactive_nuance","line":20402,"label":"clean","reason":"single clause not a repeat"}
-{"rule":"de_retroactive_nuance","line":13968,"label":"clean","reason":"genau genommen adds real detail"}
-{"rule":"de_retroactive_nuance","line":9225,"label":"clean","reason":"gives concrete corrected figure not weaker"}
-{"rule":"de_retroactive_nuance","line":10603,"label":"clean","reason":"no second weaker restatement here"}
-{"rule":"de_retroactive_nuance","line":14038,"label":"clean","reason":"single clause no nuance repeat"}
-{"rule":"de_retroactive_nuance","line":19868,"label":"clean","reason":"no retroactive softening structure"}
-{"rule":"de_retroactive_nuance","line":15648,"label":"clean","reason":"eigentlich modifies clause not repeat"}
-{"rule":"de_retroactive_nuance","line":19885,"label":"violating","reason":"eigentlich just weakly restates rotation"}
-{"rule":"de_retroactive_nuance","line":12983,"label":"clean","reason":"no second softened statement follows"}
-{"rule":"de_retroactive_nuance","line":8019,"label":"clean","reason":"contrast not a softened repeat"}
-{"rule":"de_retroactive_nuance","line":18024,"label":"clean","reason":"genau genommen adds specific attribution"}
-{"rule":"de_retroactive_nuance","line":18594,"label":"clean","reason":"single clause no repeat structure"}
-{"rule":"de_retroactive_nuance","line":8012,"label":"clean","reason":"contrast not a softened repeat"}
-{"rule":"de_retroactive_nuance","line":13396,"label":"clean","reason":"eigentlich is just a transition"}
-{"rule":"de_retroactive_nuance","line":1553,"label":"clean","reason":"genauer is a plain request"}
-{"rule":"de_retroactive_nuance","line":11958,"label":"clean","reason":"genauer gesagt defines real meaning"}
-{"rule":"de_retroactive_nuance","line":19528,"label":"clean","reason":"genauer modifies testing not repeat"}
-{"rule":"de_retroactive_nuance","line":19925,"label":"clean","reason":"genauer modifies analysis not repeat"}
-{"rule":"de_retroactive_nuance","line":20242,"label":"clean","reason":"embedded clause not retroactive nuance"}
-{"rule":"de_retroactive_nuance","line":12504,"label":"clean","reason":"contrast between groups not repeat"}
-{"rule":"de_retroactive_nuance","line":14531,"label":"violating","reason":"final clause weakly repeats postponement"}
-{"rule":"de_retroactive_nuance","line":14248,"label":"clean","reason":"single clause no nuance repeat"}
-{"rule":"de_retroactive_nuance","line":5754,"label":"clean","reason":"single clause question no repeat"}
-{"rule":"de_retroactive_nuance","line":7274,"label":"clean","reason":"single clause no repeat structure"}
+{"rule":"de_retroactive_nuance","line":13087,"label":"clean","reason":"genauer with verb is listed as clean comparative"}
+{"rule":"de_retroactive_nuance","line":12521,"label":"clean","reason":"eigentlich means originally, listed as clean"}
+{"rule":"de_retroactive_nuance","line":9671,"label":"clean","reason":"eigentlich is a plain emphasis particle"}
+{"rule":"de_retroactive_nuance","line":19504,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":19047,"label":"clean","reason":"genauer with verb phrase is listed as clean"}
+{"rule":"de_retroactive_nuance","line":12759,"label":"clean","reason":"genauer Standort is the clean adjective example"}
+{"rule":"de_retroactive_nuance","line":13417,"label":"clean","reason":"eigentlich means normally, listed as clean"}
+{"rule":"de_retroactive_nuance","line":5896,"label":"clean","reason":"eigentlich is a rhetorical particle here"}
+{"rule":"de_retroactive_nuance","line":13353,"label":"clean","reason":"eigentlich is a rhetorical particle here"}
+{"rule":"de_retroactive_nuance","line":18178,"label":"clean","reason":"eigentlich means in fact, no prior claim repeated"}
+{"rule":"de_retroactive_nuance","line":20321,"label":"clean","reason":"eigentlich means it was planned"}
+{"rule":"de_retroactive_nuance","line":3510,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":9986,"label":"clean","reason":"genauer modifies the verb phrase, clean comparative"}
+{"rule":"de_retroactive_nuance","line":19515,"label":"clean","reason":"eigentlich means normally and names the exception"}
+{"rule":"de_retroactive_nuance","line":10319,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":19661,"label":"clean","reason":"eigentlich is a plain emphasis particle"}
+{"rule":"de_retroactive_nuance","line":20610,"label":"clean","reason":"eigentlich means originally, listed as clean"}
+{"rule":"de_retroactive_nuance","line":20402,"label":"clean","reason":"eigentlich is a contrast particle, not a repeat"}
+{"rule":"de_retroactive_nuance","line":13968,"label":"clean","reason":"genau genommen adds a new number and names"}
+{"rule":"de_retroactive_nuance","line":9225,"label":"clean","reason":"eigentlich introduces a genuinely new figure"}
+{"rule":"de_retroactive_nuance","line":10603,"label":"clean","reason":"eigentlich is a plain emphasis particle"}
+{"rule":"de_retroactive_nuance","line":14038,"label":"clean","reason":"eigentlich means they were supposed to"}
+{"rule":"de_retroactive_nuance","line":19868,"label":"clean","reason":"eigentlich is a plain restriction particle"}
+{"rule":"de_retroactive_nuance","line":15648,"label":"clean","reason":"eigentlich means supposed to be protected"}
+{"rule":"de_retroactive_nuance","line":19885,"label":"clean","reason":"clause names the actual agent, new information"}
+{"rule":"de_retroactive_nuance","line":12983,"label":"clean","reason":"eigentlich means it was intended to"}
+{"rule":"de_retroactive_nuance","line":8019,"label":"clean","reason":"sentence names an explicit counter position"}
+{"rule":"de_retroactive_nuance","line":18024,"label":"clean","reason":"genau genommen adds genuinely new detail"}
+{"rule":"de_retroactive_nuance","line":18594,"label":"clean","reason":"eigentlich means by rule they are entitled"}
+{"rule":"de_retroactive_nuance","line":8012,"label":"clean","reason":"sentence names an explicit counter position"}
+{"rule":"de_retroactive_nuance","line":13396,"label":"clean","reason":"eigentlich is a rhetorical particle here"}
+{"rule":"de_retroactive_nuance","line":1553,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":11958,"label":"clean","reason":"genauer gesagt adds a real specific definition"}
+{"rule":"de_retroactive_nuance","line":19528,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":19925,"label":"clean","reason":"genauer with verb is listed as clean"}
+{"rule":"de_retroactive_nuance","line":20242,"label":"clean","reason":"eigentlich means by rule it is forbidden"}
+{"rule":"de_retroactive_nuance","line":12504,"label":"clean","reason":"eigentlich is a contrast particle"}
+{"rule":"de_retroactive_nuance","line":14531,"label":"clean","reason":"eigentlich means it was planned"}
+{"rule":"de_retroactive_nuance","line":14248,"label":"clean","reason":"eigentlich is a plain emphasis particle"}
+{"rule":"de_retroactive_nuance","line":5754,"label":"clean","reason":"eigentlich is a rhetorical particle here"}
+{"rule":"de_retroactive_nuance","line":7274,"label":"clean","reason":"eigentlich is a plain emphasis particle"}
 {"rule":"de_epistemic_miscalibration","line":3314,"label":"clean","reason":"only a hedge word present"}
 {"rule":"de_epistemic_miscalibration","line":17411,"label":"violating","reason":"muss and vielleicht clash"}
 {"rule":"de_epistemic_miscalibration","line":3629,"label":"clean","reason":"oft scopes frequency not confidence"}
@@ -368,24 +368,24 @@
 {"rule":"de_epistemic_miscalibration","line":11173,"label":"clean","reason":"hedge alone no strong claim"}
 {"rule":"de_epistemic_miscalibration","line":10843,"label":"clean","reason":"hedge alone no strong claim"}
 {"rule":"de_epistemic_miscalibration","line":13764,"label":"clean","reason":"hedge alone no strong claim"}
-{"rule":"de_false_agency","line":2418,"label":"clean","reason":"offers alternative not a decision"}
-{"rule":"de_false_agency","line":5589,"label":"violating","reason":"humanity personified making a decision"}
-{"rule":"de_false_agency","line":870,"label":"clean","reason":"named person is explicit agent"}
-{"rule":"de_false_agency","line":17354,"label":"clean","reason":"government is a real decision body"}
-{"rule":"de_false_agency","line":9828,"label":"clean","reason":"country as agent is conventional"}
-{"rule":"de_false_agency","line":10248,"label":"clean","reason":"government is a real decision body"}
-{"rule":"de_false_agency","line":17681,"label":"clean","reason":"government is a real decision body"}
-{"rule":"de_false_agency","line":16662,"label":"clean","reason":"named human decided not abstraction"}
-{"rule":"de_false_agency","line":12763,"label":"clean","reason":"government is a real decision body"}
-{"rule":"de_false_agency","line":20790,"label":"violating","reason":"defense team wants without named person"}
-{"rule":"de_false_agency","line":18113,"label":"violating","reason":"government plans without naming decision maker"}
-{"rule":"de_false_agency","line":20964,"label":"violating","reason":"government plans without naming decision maker"}
-{"rule":"de_false_agency","line":12986,"label":"violating","reason":"organization demands without naming decision maker"}
-{"rule":"de_false_agency","line":12191,"label":"violating","reason":"parties attempt without naming decision maker"}
-{"rule":"de_false_agency","line":9612,"label":"violating","reason":"government pushes without naming decision maker"}
-{"rule":"de_false_agency","line":11109,"label":"violating","reason":"government plans without naming decision maker"}
-{"rule":"de_false_agency","line":12631,"label":"violating","reason":"party wants without naming decision maker"}
-{"rule":"de_false_agency","line":15723,"label":"violating","reason":"company wants without naming decision maker"}
+{"rule":"de_false_agency","line":2418,"label":"violating","reason":"Technologie diktiert is the listed violating pattern"}
+{"rule":"de_false_agency","line":5589,"label":"clean","reason":"die Menschheit is listed as clean"}
+{"rule":"de_false_agency","line":870,"label":"clean","reason":"no abstractum subject deciding anything here"}
+{"rule":"de_false_agency","line":17354,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":9828,"label":"clean","reason":"das Land as a state is listed as clean"}
+{"rule":"de_false_agency","line":10248,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":17681,"label":"clean","reason":"Bundesregierung is a listed clean institution"}
+{"rule":"de_false_agency","line":16662,"label":"clean","reason":"John Klingberg is a named person"}
+{"rule":"de_false_agency","line":12763,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":20790,"label":"clean","reason":"Verteidigung is a listed clean institution"}
+{"rule":"de_false_agency","line":18113,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":20964,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":12986,"label":"clean","reason":"Organisation is a listed clean institution"}
+{"rule":"de_false_agency","line":12191,"label":"clean","reason":"Parteien is a listed clean institution"}
+{"rule":"de_false_agency","line":9612,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":11109,"label":"clean","reason":"Regierung is a listed clean institution"}
+{"rule":"de_false_agency","line":12631,"label":"clean","reason":"named party is a listed clean institution"}
+{"rule":"de_false_agency","line":15723,"label":"clean","reason":"VW is a named company, listed as clean"}
 {"rule":"de_invented_anecdote","line":14320,"label":"clean","reason":"no first person story present"}
 {"rule":"de_invented_anecdote","line":112,"label":"clean","reason":"lacks honestly or spoiler marker"}
 {"rule":"de_invented_anecdote","line":8943,"label":"clean","reason":"lacks honestly or spoiler marker"}
@@ -456,22 +456,22 @@
 {"rule":"de_register_collapse","line":10177,"label":"violating","reason":"informal exclamation breaks formal register"}
 {"rule":"de_register_collapse","line":7938,"label":"clean","reason":"plain formal sentence no register break"}
 {"rule":"de_register_collapse","line":9270,"label":"clean","reason":"formal reported sentence no particle"}
-{"rule":"de_unexplained_foreign_word","line":1970,"label":"violating","reason":"unexplained invented toolkit loanword"}
-{"rule":"de_unexplained_foreign_word","line":20720,"label":"clean","reason":"company name not unexplained loanword"}
-{"rule":"de_unexplained_foreign_word","line":13942,"label":"violating","reason":"unexplained feature and transmogrification jargon"}
-{"rule":"de_unexplained_foreign_word","line":1976,"label":"violating","reason":"unexplained invented toolkit loanword again"}
-{"rule":"de_unexplained_foreign_word","line":1513,"label":"clean","reason":"soft skills explained via examples"}
-{"rule":"de_unexplained_foreign_word","line":1657,"label":"clean","reason":"feedback is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":2047,"label":"clean","reason":"soft skills explained via examples"}
-{"rule":"de_unexplained_foreign_word","line":17305,"label":"clean","reason":"statement is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":12760,"label":"clean","reason":"feedback is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":14859,"label":"clean","reason":"no unusual foreign word present"}
-{"rule":"de_unexplained_foreign_word","line":4648,"label":"clean","reason":"engagement is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":2648,"label":"clean","reason":"highlight meaning clear from context"}
-{"rule":"de_unexplained_foreign_word","line":4593,"label":"clean","reason":"feedback is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":15289,"label":"clean","reason":"community is common known loanword"}
-{"rule":"de_unexplained_foreign_word","line":1968,"label":"violating","reason":"unexplained invented kit loanword"}
-{"rule":"de_unexplained_foreign_word","line":9700,"label":"violating","reason":"anchor woman term left unexplained"}
+{"rule":"de_unexplained_foreign_word","line":1970,"label":"clean","reason":"colon followed by an explanation of Toolkit"}
+{"rule":"de_unexplained_foreign_word","line":20720,"label":"clean","reason":"SMG Insight is a company name"}
+{"rule":"de_unexplained_foreign_word","line":13942,"label":"clean","reason":"Features is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":1976,"label":"clean","reason":"colon followed by an explanation of Toolkit"}
+{"rule":"de_unexplained_foreign_word","line":1513,"label":"clean","reason":"Soft Skills explained by the examples listed"}
+{"rule":"de_unexplained_foreign_word","line":1657,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":2047,"label":"clean","reason":"Soft Skills explained by the examples listed"}
+{"rule":"de_unexplained_foreign_word","line":17305,"label":"clean","reason":"Statement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":12760,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":14859,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":4648,"label":"clean","reason":"Engagement is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":2648,"label":"clean","reason":"Highlight is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":4593,"label":"clean","reason":"Feedback is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":15289,"label":"clean","reason":"Community is an established loanword"}
+{"rule":"de_unexplained_foreign_word","line":1968,"label":"clean","reason":"colon followed by an explanation of the kit"}
+{"rule":"de_unexplained_foreign_word","line":9700,"label":"violating","reason":"Anchor-Woman is the rule's own violating example"}
 {"rule":"de_vague_authority","line":8938,"label":"clean","reason":"names the specific person directly"}
 {"rule":"de_vague_authority","line":11479,"label":"violating","reason":"einige unnamed vague group appeal"}
 {"rule":"de_vague_authority","line":6995,"label":"clean","reason":"states fact not an appeal"}
@@ -504,22 +504,22 @@
 {"rule":"de_fake_analysis_tail","line":14043,"label":"clean","reason":"reports genuine new fact about Verdi"}
 {"rule":"de_fake_analysis_tail","line":18349,"label":"clean","reason":"reports how fact became publicly known"}
 {"rule":"de_fake_analysis_tail","line":15995,"label":"clean","reason":"reports concrete consequence lower ad revenue"}
-{"rule":"de_stock_phrase","line":15632,"label":"violating","reason":"unter Beweis stellen is a cliche"}
-{"rule":"de_stock_phrase","line":20262,"label":"violating","reason":"auf Augenhoehe is a worn phrase"}
-{"rule":"de_stock_phrase","line":7118,"label":"violating","reason":"heiss diskutiertes Thema is a cliche"}
-{"rule":"de_stock_phrase","line":13096,"label":"clean","reason":"no worn phrase or dead image"}
-{"rule":"de_stock_phrase","line":9129,"label":"violating","reason":"ins Leben gerufen is a cliche"}
-{"rule":"de_stock_phrase","line":16562,"label":"violating","reason":"im Fokus stehen is a cliche"}
-{"rule":"de_stock_phrase","line":4453,"label":"violating","reason":"in Vergessenheit geraten is a cliche"}
-{"rule":"de_stock_phrase","line":15948,"label":"violating","reason":"ins Leben gerufen is a cliche"}
-{"rule":"de_stock_phrase","line":1784,"label":"clean","reason":"plain sentence no cliche present"}
-{"rule":"de_stock_phrase","line":17580,"label":"clean","reason":"keine Entwarnung is plain reporting"}
-{"rule":"de_stock_phrase","line":18901,"label":"violating","reason":"auf dem Standpunkt stehen is cliche"}
-{"rule":"de_stock_phrase","line":9986,"label":"violating","reason":"unter die Lupe nehmen is cliche"}
-{"rule":"de_stock_phrase","line":979,"label":"violating","reason":"unter Beweis stellen is a cliche"}
-{"rule":"de_stock_phrase","line":10825,"label":"violating","reason":"den Weg frei machen is cliche"}
-{"rule":"de_stock_phrase","line":17146,"label":"clean","reason":"literal football description not a metaphor"}
-{"rule":"de_stock_phrase","line":17246,"label":"violating","reason":"unter Beweis stellen is a cliche"}
+{"rule":"de_stock_phrase","line":15632,"label":"clean","reason":"unter Beweis stellen is the listed clean verb phrase"}
+{"rule":"de_stock_phrase","line":20262,"label":"violating","reason":"auf Augenhoehe is on the floskel list"}
+{"rule":"de_stock_phrase","line":7118,"label":"clean","reason":"nach wie vor is listed as clean"}
+{"rule":"de_stock_phrase","line":13096,"label":"violating","reason":"nichtsdestotrotz is on the floskel list"}
+{"rule":"de_stock_phrase","line":9129,"label":"violating","reason":"ins Leben gerufen is the listed dead image"}
+{"rule":"de_stock_phrase","line":16562,"label":"violating","reason":"im Fokus stehen is on the floskel list"}
+{"rule":"de_stock_phrase","line":4453,"label":"clean","reason":"in Vergessenheit geraten and nach wie vor are listed clean"}
+{"rule":"de_stock_phrase","line":15948,"label":"violating","reason":"ins Leben gerufen is the listed dead image"}
+{"rule":"de_stock_phrase","line":1784,"label":"violating","reason":"diesbezueglich is on the floskel list"}
+{"rule":"de_stock_phrase","line":17580,"label":"clean","reason":"nach wie vor is listed as clean"}
+{"rule":"de_stock_phrase","line":18901,"label":"clean","reason":"nach wie vor is listed as clean"}
+{"rule":"de_stock_phrase","line":9986,"label":"violating","reason":"unter die Lupe nehmen is the listed dead image"}
+{"rule":"de_stock_phrase","line":979,"label":"clean","reason":"unter Beweis stellen is the listed clean verb phrase"}
+{"rule":"de_stock_phrase","line":10825,"label":"violating","reason":"den Weg frei machen is a dead image like Weg ebnen"}
+{"rule":"de_stock_phrase","line":17146,"label":"clean","reason":"nach wie vor clean, im Sturm is the literal example"}
+{"rule":"de_stock_phrase","line":17246,"label":"clean","reason":"nach wie vor and unter Beweis stellen are listed clean"}
 {"rule":"de_markerless_closer","line":4530,"label":"violating","reason":"pure marketing claim with no fact"}
 {"rule":"de_markerless_closer","line":14002,"label":"violating","reason":"evaluative closer demands a solution"}
 {"rule":"de_markerless_closer","line":16771,"label":"clean","reason":"states a concrete ongoing action"}

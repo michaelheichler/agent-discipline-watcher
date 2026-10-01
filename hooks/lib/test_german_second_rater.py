@@ -62,3 +62,18 @@ def test_parts_merge_back_into_first_label_order() -> None:
     merged = rater.merged_second([[_row(3, "violating")], [_row(5, "clean")]], labels)
 
     assert [row["line"] for row in merged] == [5, 3]
+
+
+def test_a_relabel_replaces_only_the_rules_it_covers() -> None:
+    labels = [_row(1, "clean", "de_a"), _row(2, "clean", "de_b"), _row(3, "clean", "de_a")]
+
+    merged = rater.relabeled(labels, [_row(3, "violating", "de_a"), _row(1, "violating", "de_a")])
+
+    assert [(row["line"], row["label"]) for row in merged] == [(1, "violating"), (2, "clean"), (3, "violating")]
+
+
+def test_a_relabel_that_skips_a_row_of_its_rule_is_refused() -> None:
+    labels = [_row(1, "clean", "de_a"), _row(3, "clean", "de_a")]
+
+    with pytest.raises(ValueError):
+        rater.relabeled(labels, [_row(1, "violating", "de_a")])

@@ -10,7 +10,7 @@ from typing import NamedTuple
 
 from ai_corpus_de import ai_corpus_digest, load_ai_corpus, load_labels
 from build_pattern_exemplars_de import MANIFEST_PATH, OUTPUT_PATH, REPOSITORY_ROOT, SEED, corpus_digest, load_corpus, usable_text
-from pattern_candidates_de import CANDIDATE_PATTERNS, MIN_WORDS
+from pattern_candidates_de import MIN_WORDS, candidate_patterns
 
 RECORD_PATH = REPOSITORY_ROOT / "evals" / "qualification_de.json"
 NEIGHBOUR_COUNTS = (1, 3, 5, 7)
@@ -132,7 +132,7 @@ def measured_rules(exemplars: list[dict], queries: dict[str, list[Query]], vecto
 
 
 def trigger_flags(rule: str, texts: Iterable[str]) -> list[bool]:
-    pattern = CANDIDATE_PATTERNS[rule]
+    pattern = candidate_patterns()[rule]
     return [len(text.split()) >= MIN_WORDS and usable_text(text) and bool(pattern.search(text)) for text in texts]
 
 

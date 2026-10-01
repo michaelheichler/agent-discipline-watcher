@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+import re
 from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
@@ -33,6 +34,8 @@ class Rule(NamedTuple):
     english: Wording
     german: Wording
     state: str = UNMEASURED_STATE
+    boundary: str = ""
+    trigger: str = ""
 
 
 class Hit(NamedTuple):
@@ -90,6 +93,11 @@ def voted(rule_sets: Iterable[RuleSet] | None = None) -> tuple[Rule, ...]:
     """List the SEMANTIC rules, because only these take German exemplars and the German rubric."""
     chosen = RULE_SETS if rule_sets is None else rule_sets
     return tuple(rule for rule_set in chosen if rule_set.voted for rule in rule_set.rules)
+
+
+def triggers(rule_sets: Iterable[RuleSet] | None = None) -> dict[str, re.Pattern[str]]:
+    """One source, because the labels cover the candidates these patterns drew and the hook must draw the same ones."""
+    return {rule.name: re.compile(rule.trigger, re.IGNORECASE) for rule in voted(rule_sets) if rule.trigger}
 
 
 def default_gates(rule_sets: Iterable[RuleSet] | None = None) -> dict[str, str]:
