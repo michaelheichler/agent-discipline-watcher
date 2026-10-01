@@ -8,6 +8,7 @@ import pytest
 
 from lib import embedding_session, german_rules, pattern_semantic
 from lib.judge_contracts import GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC, build_prompt
+from lib.luna_validation import parse_luna_version
 from lib.pattern_judge import PatternCandidate, request_for
 from lib.pattern_semantic import Exemplar, Layer
 
@@ -175,7 +176,8 @@ def test_every_german_semantic_rule_ships_a_clean_side_and_its_german_fix(rule: 
 
 
 def _judged_precisions() -> dict[str, float]:
-    measured = json.loads((Path(__file__).resolve().parents[2] / "evals" / "judge_stage_de.json").read_text(encoding="utf-8"))
+    runs = json.loads((Path(__file__).resolve().parents[2] / "evals" / "judge_stage_de.json").read_text(encoding="utf-8"))
+    measured = runs[max(runs, key=lambda model: parse_luna_version(model) or ())]
     return {rule: row["after_judge"]["precision"] for rule, row in measured.items() if row["after_judge"]["precision"] is not None}
 
 

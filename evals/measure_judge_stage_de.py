@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Score the German trigger and the Luna judge as one stage, because a German rule reports nothing until the judge confirms a trigger match."""
+import argparse
 import functools
 import json
 import math
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NamedTuple
 
@@ -119,19 +121,53 @@ def triggered_rules() -> list[str]:
     )
 
 
+class ModelMismatch(RuntimeError):
+    """Raised, because verdicts from another Luna under this model key would mix two judges in one table."""
+
+
+def pinned(judge: Judge, model: str) -> Judge:
+    """Checked per request, because the resolver may move to another Luna mid-run."""
+    def checked(request: Any) -> Any:
+        result = judge(request)
+        resolved = str(getattr(result, "model", ""))
+        print(f"  {len(request.candidates)} candidates resolved {resolved}", flush=True)
+        if resolved != model:
+            raise ModelMismatch(f"expected {model}, resolved {resolved}")
+        return result
+    return checked
+
+
+def newest_run(measured: dict[str, dict]) -> dict[str, dict]:
+    """The highest Luna, because the hook resolves the highest Luna the SDK lists."""
+    sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
+    from lib.luna_validation import parse_luna_version
+    return measured[max(measured, key=lambda model: parse_luna_version(model) or ())]
+
+
+def _arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True, help="the Luna id every request must resolve")
+    parser.add_argument("--scratch", type=Path, help="throwaway runtime and cache roots, so a newer SDK runs outside ~/.adw")
+    return parser.parse_args()
+
+
 def main() -> None:
+    arguments = _arguments()
     ai_corpus_digest()
     texts = {row.line: row.text for row in load_ai_corpus()}
     labels = load_labels(ADJUDICATED_PATH)
     rules = triggered_rules()
     from lib.luna_provider import LunaJudge
-    judge = LunaJudge().judge
+    roots = {"runtime_root": arguments.scratch / "runtime", "cache_root": arguments.scratch / "cache"} if arguments.scratch else {}
+    judge = pinned(LunaJudge(**roots).judge, arguments.model)
     report = {}
     for rule in rules:
         print(f"{rule}: judging", flush=True)
         report[rule] = {"judge": "luna", **measure(rule, rule_rows(rule, labels, texts), judge)}
         print(f"  {json.dumps(report[rule]['after_judge'])}", flush=True)
-    OUTPUT_PATH.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    runs = json.loads(OUTPUT_PATH.read_text(encoding="utf-8")) if OUTPUT_PATH.is_file() else {}
+    runs[arguments.model] = report
+    OUTPUT_PATH.write_text(json.dumps(runs, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

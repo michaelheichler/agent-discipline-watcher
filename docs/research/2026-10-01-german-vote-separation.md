@@ -273,9 +273,8 @@ Under Q21 only one foreign word sentence stays violating, `Anchor-Woman`. The ru
 
 A blind GPT-6 Luna subagent decided the 92 rows where the raters still disagreed. It saw the rule wording, the boundary, the German rubric and the neighbouring sentences. Two of three decided votes set the label, anything else stays undecided.
 
-1. 25 rows became violating, 55 clean and 12 undecided.
-2. The majority overturned rater 1 on 37 rows.
-3. `evals/pattern_labels_de_adjudicated.jsonl` holds all 570 rows. The exemplar builder now draws from it.
+1. The majority labelled 80 rows, with 25 of them violating. The other 12 rows stay undecided. The majority overturned rater 1 on 37 rows.
+2. `evals/pattern_labels_de_adjudicated.jsonl` holds all 570 rows. The exemplar builder now draws from it.
 
 ### Runtime
 
@@ -312,3 +311,34 @@ Reading.
 2. Dichotomy confirms nothing, so it records no precision and stays silent.
 3. A perfect run needs 22 confirmed rows to reach a lower bound of 0.85. Most rules hold fewer violating rows than that.
 4. The rebuilt `hooks/lib/pattern_exemplars_de.json` records the point precision for 13 rules. Those rules now report at observe. No gate changed.
+
+### Judged stage on gpt-6-luna
+
+openai-codex 0.160.0 lists `gpt-6-luna`, and the resolver picks it. The live runtime still holds 0.147.0, so the rerun used a scratch venv with 0.160.0 and throwaway runtime and cache roots under `/tmp`. The command was `measure_judge_stage_de.py --model gpt-6-luna --scratch DIR`. It ran on 2026-10-01 with the same candidates, prompt and batches.
+
+All 26 requests resolved `gpt-6-luna`. The script stops on the first request that resolves another model. `evals/judge_stage_de.json` now keys each run by model id, and both runs stay in it.
+
+| # | rule | n | violating | confirmed | precision | lower bound | recall | recommendation |
+|---|------|----|----|----|----|----|----|----|
+| 6 | de_passive_voice | 26 | 7 | 15 | 0.40 | 0.20 | 0.86 | observe |
+| 8 | de_stock_phrase | 26 | 12 | 14 | 0.86 | 0.60 | 1.00 | observe |
+| 15 | de_unbacked_superlative | 26 | 6 | 10 | 0.60 | 0.31 | 1.00 | observe |
+| 25 | de_dichotomy_template | 10 | 4 | 4 | 1.00 | 0.51 | 1.00 | observe |
+| 28 | de_vague_authority | 26 | 13 | 14 | 0.86 | 0.60 | 0.92 | observe |
+| 29 | de_false_range | 34 | 3 | 4 | 0.75 | 0.30 | 1.00 | observe |
+| 33 | de_fake_analysis_tail | 26 | 6 | 6 | 0.67 | 0.30 | 0.67 | observe |
+| 34 | de_comparative_framing | 41 | 7 | 18 | 0.39 | 0.20 | 1.00 | observe |
+| 38 | de_register_collapse | 26 | 1 | 3 | 0.33 | 0.06 | 1.00 | observe |
+| 57 | de_rhetorical_question | 10 | 5 | 5 | 0.60 | 0.23 | 0.60 | observe |
+| 62 | de_markerless_closer | 26 | 7 | 11 | 0.55 | 0.28 | 0.86 | observe |
+| 66 | de_epistemic_miscalibration | 34 | 1 | 3 | 0.33 | 0.06 | 1.00 | observe |
+| 67 | de_gap_filling_speculation | 26 | 14 | 16 | 0.88 | 0.64 | 1.00 | observe |
+| 73 | de_empty_standard_section | 10 | 5 | 5 | 0.80 | 0.38 | 0.80 | observe |
+
+Reading.
+
+1. Precision rose for 9 rules and fell only for fake analysis tail. Comparative framing, false range and rhetorical question held.
+2. The judge still confirms more rows than are violating for 10 of 14 rules, by a smaller margin.
+3. Dichotomy now confirms all 4 violating rows, so all 14 rules carry a precision.
+4. The best lower bound is 0.64, for gap filling speculation. No rule reaches 0.85, so every rule stays at observe.
+5. The exemplar builder now reads the highest Luna run. The rebuilt `hooks/lib/pattern_exemplars_de.json` carries the gpt-6-luna precisions. No gate changed.

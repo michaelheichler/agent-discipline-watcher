@@ -91,6 +91,20 @@ def test_an_exemplar_sentence_never_counts_toward_precision() -> None:
     assert measured["all_candidates"]["candidates"] == 3
 
 
+def test_a_request_resolving_another_luna_stops_the_run() -> None:
+    def judge(_request) -> SimpleNamespace:
+        return SimpleNamespace(model="gpt-5.6-luna", payload={"items": [{"index": 0, "verdict": "clean"}]})
+
+    with pytest.raises(stage.ModelMismatch):
+        stage.judged(RULE, [_row(1, True)], stage.pinned(judge, "gpt-6-luna"))
+
+
+def test_the_gate_reads_the_highest_luna_run() -> None:
+    runs = {"gpt-6-luna": {RULE: "six"}, "gpt-5.6-luna": {RULE: "five six"}}
+
+    assert stage.newest_run(runs) == {RULE: "six"}
+
+
 def test_a_judge_that_skips_a_candidate_is_refused() -> None:
     def judge(_request) -> SimpleNamespace:
         return SimpleNamespace(payload={"items": []})

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ai_corpus_de import ADJUDICATED_PATH as LABELS_PATH, AI_CORPUS_PATH, AiRow, ai_corpus_digest, load_ai_corpus, load_labels
+from measure_judge_stage_de import newest_run
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_PATH = REPOSITORY_ROOT / "evals" / "corpus_human_sentences_de.jsonl"
@@ -222,7 +223,7 @@ def serialize(exemplars: list[dict]) -> str:
 def _precisions() -> dict[str, float]:
     if not JUDGE_STAGE_PATH.is_file():
         return {}
-    measured = json.loads(JUDGE_STAGE_PATH.read_text(encoding="utf-8"))
+    measured = newest_run(json.loads(JUDGE_STAGE_PATH.read_text(encoding="utf-8")))
     return {rule: row["after_judge"]["precision"] for rule, row in measured.items()}
 
 

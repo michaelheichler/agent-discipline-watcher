@@ -56,7 +56,7 @@ The clean side mixes sources the way the English benchmark does. Each rule takes
 
 `adjudicate_de.py` exports the rows the two raters label apart for a blind third rater. It writes `pattern_labels_de_adjudicated.jsonl`, where two of three decided votes set each disputed label. The exemplar builder draws from this file.
 
-`measure_judge_stage_de.py` sends each German rule's adjudicated trigger candidates through the Luna judge path the hook uses, minus the shipped exemplars. It writes precision, its Wilson lower bound, and recall per rule to `judge_stage_de.json`, which the exemplar builder reads into `hooks/lib/pattern_exemplars_de.json`.
+`measure_judge_stage_de.py` sends each German rule's adjudicated trigger candidates through the Luna judge path the hook uses, minus the shipped exemplars. It writes precision, its Wilson lower bound, and recall per rule to `judge_stage_de.json` under the model id that `--model` names. It stops if any request resolves another model. `--scratch DIR` puts the runtime and cache roots under a throwaway directory, so a newer SDK venv can run outside `~/.adw`. The exemplar builder reads the highest Luna run into `hooks/lib/pattern_exemplars_de.json`.
 
 `measure_language_detection_short.py` tests the `MIN_STRONG_WORDS = 8` stop-word threshold (T-010, Q18) that `hooks/lib/prose_language.py` carries untested. It flattens `corpus_paragraphs.jsonl` and `corpus_paragraphs_de.jsonl` into individual paragraphs, keeps the ones with at least 16 words, draws 5000 per language under seed 20261001, and truncates that fixed sample to its first N words for N in 2 through 16. It writes `language_detection_short.json`.
 
