@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from lib import embedding_session, payloads, pattern_vote
+from lib import embedding_session, language_route, payloads, pattern_vote
 from lib.config import effective_hook_config
 from lib.hookio import PARSE_FAILURE, read_payload
 from lib.host import CODEX_ENV
@@ -51,12 +51,29 @@ def run(payload: object, *, voter: pattern_vote.Voter = pattern_vote.Voter()) ->
         pattern_vote.vote(turn, path, voter)
 
 
+def classify_languages(payload: object, *, judge: language_route.Judge | None = None) -> None:
+    """Before the vote, because a cached verdict costs no call and the vote may wait two minutes."""
+    if payload is PARSE_FAILURE:
+        return
+    config = _config(payload)
+    paths = tuple(_prose_paths(payload))
+    if config is None or not paths:
+        return
+    write = language_route.ProseWrite(payloads.session_id(payload), paths, config, bool(os.environ.get(CODEX_ENV)))
+    language_route.after_write(write, judge)
+
+
 def _run_quietly(payload: object, work: Callable[[object], None]) -> None:
     """Swallowed, because a failed vote must never block."""
     try:
         work(payload)
     except Exception as exc:
-        sys.stderr.write(f"agent-discipline-watcher: pattern vote skipped: {exc}\n")
+        sys.stderr.write(f"agent-discipline-watcher: post-write review skipped: {exc}\n")
+
+
+def after_write(payload: object) -> None:
+    for step in (classify_languages, run):
+        _run_quietly(payload, step)
 
 
 def _budget() -> float:
@@ -64,7 +81,7 @@ def _budget() -> float:
     return CODEX_BUDGET_SECONDS if os.environ.get(CODEX_ENV) else HOOK_TIMEOUT_SECONDS
 
 
-def main(*, work: Callable[[object], None] = run) -> int:
+def main(*, work: Callable[[object], None] = after_write) -> int:
     worker = threading.Thread(target=_run_quietly, args=(read_payload(), work), daemon=True)
     worker.start()
     worker.join(_budget())

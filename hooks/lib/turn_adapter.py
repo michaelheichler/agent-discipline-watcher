@@ -75,7 +75,17 @@ def prepare_turn(session_id: str, config: dict | None, environment: Any = None) 
     if _current_host(environment) != host.CODEX:
         return False
     _warm_codex(session_id, config)
+    _classify_codex_languages(session_id, config)
     return True
+
+
+def _classify_codex_languages(session_id: str, config: dict | None) -> None:
+    """Detached, because Codex queued its weak paragraphs at write time and must never wait on Luna."""
+    try:
+        from . import language_route
+    except ImportError:
+        return
+    language_route.start_drain(session_id, config)
 
 
 def for_turn(environment: Any = None, *, injected_provider: bool = False) -> TurnAdapter:

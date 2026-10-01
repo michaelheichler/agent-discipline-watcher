@@ -1,7 +1,5 @@
-"""Provider-neutral contracts and prompts for ADW model review."""
+"""Shared by every provider, because two prompt copies would let the judges disagree."""
 from __future__ import annotations
-# pylint: disable=too-many-branches
-# The schema validator handles the complete bounded provider wire shape in one pass.
 
 import hashlib
 import json
@@ -25,12 +23,15 @@ DOCUMENT_RUBRIC = (
     "Style: repeated paragraph shapes, register shifts, buried subjects, and stock openers or closers. "
     "Quote the sentence you mean exactly."
 )
+LANGUAGE_RUBRIC = "Name the language of each paragraph. Answer de for German and en for English."
+LANGUAGE_CODES = ("de", "en")
 
 
 class ReviewKind(StrEnum):
     COMMENT = "comment"
     PATTERN = "pattern"
     DOCUMENT = "document"
+    LANGUAGE = "language"
 
 
 @dataclass(frozen=True)
@@ -129,15 +130,40 @@ DOCUMENT_SCHEMA: dict[str, Any] = {
 }
 
 
+LANGUAGE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["items"],
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["index", "language"],
+                "properties": {
+                    "index": {"type": "integer"},
+                    "language": {"type": "string", "enum": list(LANGUAGE_CODES)},
+                },
+            },
+        }
+    },
+}
+
+
 def output_schema(request: JudgeRequest) -> dict[str, Any]:
     return {
         ReviewKind.COMMENT: COMMENT_SCHEMA,
         ReviewKind.PATTERN: PATTERN_SCHEMA,
         ReviewKind.DOCUMENT: DOCUMENT_SCHEMA,
+        ReviewKind.LANGUAGE: LANGUAGE_SCHEMA,
     }[request.review_kind]
 
 
 def build_prompt(request: JudgeRequest) -> str:
+    if request.review_kind is ReviewKind.LANGUAGE:
+        items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
+        return f"{LANGUAGE_RUBRIC}\nReturn one item per paragraph.\n\n{items}"
     if request.review_kind is ReviewKind.COMMENT:
         items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
         return f"{COMMENT_RUBRIC}\nReturn one item per candidate.\n\nJudge each line.\n{items}"
@@ -173,37 +199,48 @@ def validate_payload(payload: object, schema: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _validate_object(value: object, schema: dict[str, Any]) -> None:
+    if not isinstance(value, dict):
+        raise ValueError("expected an object")
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    if any(name not in value for name in required):
+        raise ValueError("response omitted a required field")
+    if schema.get("additionalProperties") is False and any(name not in properties for name in value):
+        raise ValueError("response has an unexpected field")
+    for name, child_schema in properties.items():
+        if name in value:
+            _validate(value[name], child_schema)
+
+
+def _validate_array(value: object, schema: dict[str, Any]) -> None:
+    if not isinstance(value, list):
+        raise ValueError("expected an array")
+    item_schema = schema.get("items")
+    if not isinstance(item_schema, dict):
+        return
+    for item in value:
+        _validate(item, item_schema)
+
+
+def _validate_scalar(value: object, kind: object) -> None:
+    if kind == "string" and not isinstance(value, str):
+        raise ValueError("expected a string")
+    if kind == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+        raise ValueError("expected an integer")
+    if kind not in ("string", "integer"):
+        raise ValueError("unsupported response schema")
+
+
 def _validate(value: object, schema: dict[str, Any]) -> None:
     kind = schema.get("type")
     if kind == "object":
-        if not isinstance(value, dict):
-            raise ValueError("expected an object")
-        properties = schema.get("properties", {})
-        required = schema.get("required", [])
-        if any(name not in value for name in required):
-            raise ValueError("response omitted a required field")
-        if schema.get("additionalProperties") is False and any(name not in properties for name in value):
-            raise ValueError("response has an unexpected field")
-        for name, child_schema in properties.items():
-            if name in value:
-                _validate(value[name], child_schema)
+        _validate_object(value, schema)
         return
     if kind == "array":
-        if not isinstance(value, list):
-            raise ValueError("expected an array")
-        item_schema = schema.get("items")
-        if isinstance(item_schema, dict):
-            for item in value:
-                _validate(item, item_schema)
+        _validate_array(value, schema)
         return
-    if kind == "string":
-        if not isinstance(value, str):
-            raise ValueError("expected a string")
-    elif kind == "integer":
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise ValueError("expected an integer")
-    else:
-        raise ValueError("unsupported response schema")
+    _validate_scalar(value, kind)
     choices = schema.get("enum")
     if choices is not None and value not in choices:
         raise ValueError("response has an unsupported value")
