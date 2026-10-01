@@ -110,6 +110,16 @@ DEFAULTS = {
         "low_sentence_variance": "observe",
         # Observe because the pattern is commoner in human literature (4.92 percent) than in assistant replies (0.55).
         "uniform_paragraph_endings": "observe",
+        # Observe because no German corpus data exists yet.
+        "de_satzlaenge": "observe",
+        # Observe because no German corpus data exists yet.
+        "de_gleichfoermiger_rhythmus": "observe",
+        # Observe because no German corpus data exists yet.
+        "de_isometrisches_dokument": "observe",
+        # Observe because no German corpus data exists yet.
+        "de_mechanische_konjunktionen": "observe",
+        # Observe because no German corpus data exists yet.
+        "de_komposita_lang": "observe",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.

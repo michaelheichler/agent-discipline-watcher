@@ -45,6 +45,26 @@ RULES: dict[str, Entry] = {
         "Pile of German dashes",
         "Reports German prose that leans on the spaced Gedankenstrich past the density limit",
     ),
+    "de_gleichfoermiger_rhythmus": Entry(
+        "Uniform German sentence rhythm",
+        "Flags German sentences whose lengths barely vary across the document",
+    ),
+    "de_isometrisches_dokument": Entry(
+        "Uniform German paragraph length",
+        "Flags German paragraphs that all run close to the same length",
+    ),
+    "de_komposita_lang": Entry(
+        "Long German compound",
+        "Flags a German compound word of six or more syllables with no hyphen",
+    ),
+    "de_mechanische_konjunktionen": Entry(
+        "Repeated German connector",
+        "Flags a paragraph opening more than one sentence on the same connector",
+    ),
+    "de_satzlaenge": Entry(
+        "German sentence length",
+        "Flags a German sentence that runs past the twenty-word cap",
+    ),
     "dramatic_fragmentation": Entry(
         "Fragments used for drama",
         "Cuts the one-word paragraph that leans on white space for weight",

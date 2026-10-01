@@ -1,0 +1,43 @@
+{
+  "error_rate": 0.075,
+  "license": "CC BY-SA 3.0 and GFDL, per de.wiktionary.org/wiki/Wiktionary:Impressum",
+  "mismatches": [
+    {
+      "computed": 2,
+      "reference": 1,
+      "word": "Idee"
+    },
+    {
+      "computed": 2,
+      "reference": 3,
+      "word": "Museum"
+    },
+    {
+      "computed": 2,
+      "reference": 3,
+      "word": "Quadrat"
+    },
+    {
+      "computed": 3,
+      "reference": 4,
+      "word": "Restaurant"
+    },
+    {
+      "computed": 5,
+      "reference": 4,
+      "word": "Universit\u00e4t"
+    },
+    {
+      "computed": 3,
+      "reference": 2,
+      "word": "Yoga"
+    }
+  ],
+  "n_mismatches": 6,
+  "n_resolved": 80,
+  "n_skipped": 0,
+  "n_words_requested": 80,
+  "retrieved": "2026-10-01",
+  "skipped_words": [],
+  "source": "https://de.wiktionary.org (Worttrennung field via the public action API)"
+}
