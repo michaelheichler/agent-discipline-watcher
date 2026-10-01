@@ -26,7 +26,7 @@ try:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from . import families, german_punctuation, test_rules
+    from . import families, german_punctuation, language_verdict, test_rules
     from .prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .markup import (
@@ -68,6 +68,7 @@ except ImportError:
     )
     import families
     import german_punctuation
+    import language_verdict
     import test_rules
     from prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
@@ -258,7 +259,10 @@ def _line_languages(context: _ScanContext, masked: str) -> list[str]:
     """Map prose lines only, because code comments keep the English rules."""
     if not context.prose:
         return []
-    starts = {block.line: block.language for block in paragraph_languages(masked, allowed_languages(context.config))}
+    blocks = language_verdict.apply_cached(
+        paragraph_languages(masked, allowed_languages(context.config)), context.config.get("state_root"),
+    )
+    starts = {block.line: block.language for block in blocks}
     languages, current = [], ENGLISH
     for number in range(1, len(context.lines) + 1):
         current = starts.get(number, current)
