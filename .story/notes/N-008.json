@@ -1,0 +1,12 @@
+{
+  "content": "User approved on 2026-10-01. Left out: 45 markdown instead of wikitext, the wikitext half of 46, 50 wrong category (all Wikipedia-only, ADW never scans wikitext). 49 reference format folds its date order into 76, name order needs a citation parser. 53 edit summary stays out, de_diff_anchored covers change stories in docs. 20 binnen-I drops per Q20.",
+  "createdDate": "2026-10-01",
+  "id": "N-008",
+  "status": "active",
+  "tags": [
+    "multilingual",
+    "decision"
+  ],
+  "title": "T-007 rules left out of the 80",
+  "updatedDate": "2026-10-01"
+}
