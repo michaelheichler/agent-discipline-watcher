@@ -21,11 +21,11 @@ then there these they this those to up us very we were what when where which whi
 with would you your
 """.split())
 GERMAN_STOP_WORDS = frozenset("""
-aber alle als auch auf aus bei beim bereits dass dem der des dich diese diesem diesen dieser
-dieses doch du durch ein eine einem einen einer eines etwa für gegen gibt habe haben hatte
-hier ich ihr im immer ist jedoch jetzt kann kein keine können mehr mich mit muss nach nicht
-noch nur ob oder ohne sehr sich sie sind sowie über und uns unter vom von weil wenn werden
-wie wir wird wurde wurden zum zur zwischen
+aber alle als auch auf aus bei beim bereits bis das dass dem der des dich diese diesem diesen
+dieser dieses doch du durch ein eine einem einen einer eines es etwa für gegen gibt habe haben
+hatte hier ich ihr im immer ist jedoch jetzt kann kein keine können man mehr mich mit muss nach
+nicht noch nur ob oder ohne sehr sich sie sind sowie über und uns unter vom von weil wenn werden
+wie wir wird wurde wurden zu zum zur zwischen
 """.split())
 
 FENCE_RE = re.compile(r"^\s*(?:`{3,}|~{3,})")
