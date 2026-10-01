@@ -11,7 +11,7 @@
   "order": 90,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "inprogress",
   "title": "German SEMANTIC rules with exemplars and a German rubric",
   "type": "task"
 }
