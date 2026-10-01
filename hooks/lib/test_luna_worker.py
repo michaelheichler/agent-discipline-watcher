@@ -86,3 +86,19 @@ def test_worker_converts_unknown_base_exception_to_bounded_internal_error(tmp_pa
         "ok": False,
         "error": {"category": "internal", "message": "Luna worker failed internally"},
     }
+
+
+@pytest.mark.parametrize(("sent", "expected"), ((None, ""), ("Meldet ein Passiv.", "Meldet ein Passiv.")))
+def test_worker_hands_the_rule_definition_to_the_judge(tmp_path: Path, sent: str | None, expected: str) -> None:
+    payload = _request_payload(tmp_path)
+    if sent is not None:
+        payload["rule_definition"] = sent
+    seen = []
+
+    def capture(request, _launch) -> NoReturn:
+        seen.append(request.rule_definition)
+        raise KeyboardInterrupt
+
+    _run_main(payload, capture)
+
+    assert seen == [expected]

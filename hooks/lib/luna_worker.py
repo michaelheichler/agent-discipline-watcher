@@ -96,6 +96,7 @@ def _decode_judge_request(row: dict) -> JudgeRequest:
         source_context=row["source_context"],
         rule_name=row["rule_name"],
         rule_action=row["rule_action"],
+        rule_definition=str(row.get("rule_definition") or ""),
         violating_examples=tuple(row["violating_examples"]),
         clean_examples=tuple(row["clean_examples"]),
         rubric_version=row["rubric_version"],

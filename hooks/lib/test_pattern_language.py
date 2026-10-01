@@ -22,9 +22,14 @@ BOTH_SIDES = (
 MANIFEST = {
     "rules": {
         "ai_closer": {"action": "End when the answer is done.", "judge_precision": 1.0},
-        "de_example": {"action": "Nenn den Handelnden.", "judge_precision": 1.0, "language": "de"},
+        "de_example": {
+            "action": "Nenn den Handelnden.", "judge_precision": 1.0, "language": "de", "trigger": r"\bwerden\b",
+            "definition": "Meldet ein Passiv, bei dem der Handelnde fehlt.",
+        },
     }
 }
+UNTRIGGERED_GERMAN = "Die Stadt erhöht die Gebühren für das Schwimmbad im nächsten Jahr."
+UNTRIGGERED_DOCUMENT = f"{GERMAN_SENTENCE}\n\n{UNTRIGGERED_GERMAN}\n"
 
 
 def _vector(text: str) -> tuple[float, float]:
@@ -55,9 +60,39 @@ def _voted_texts(found: dict, rule: str) -> set[str]:
 
 
 @pytest.mark.usefixtures("opted_in")
-def test_a_german_rule_votes_only_on_german_sentences() -> None:
-    found = pattern_semantic.candidates("notes.md", DOCUMENT, {}, layer=_layer(BOTH_SIDES))
+def test_a_german_rule_takes_only_german_sentences_its_trigger_matches() -> None:
+    found = pattern_semantic.candidates("notes.md", DOCUMENT + f"\n{UNTRIGGERED_GERMAN}\n", {}, layer=_layer(BOTH_SIDES))
 
+    assert _voted_texts(found, "de_example") == {GERMAN_SENTENCE}
+
+
+@pytest.mark.usefixtures("opted_in")
+def test_a_triggered_german_sentence_stays_a_candidate_when_the_vote_would_call_it_clean() -> None:
+    layer = _layer(BOTH_SIDES)._replace(vectors=lambda texts, *_config: {text: NEAR_CLEAN for text in texts})
+
+    found = pattern_semantic.candidates("notes.md", UNTRIGGERED_DOCUMENT, {}, layer=layer)
+
+    assert _voted_texts(found, "de_example") == {GERMAN_SENTENCE}
+
+
+@pytest.mark.usefixtures("opted_in")
+def test_a_german_rule_without_a_trigger_stays_silent() -> None:
+    untriggered = {"rules": {**MANIFEST["rules"], "de_example": {**MANIFEST["rules"]["de_example"], "trigger": ""}}}
+    layer = _layer(BOTH_SIDES)._replace(manifest=lambda: untriggered)
+
+    found = pattern_semantic.candidates("notes.md", UNTRIGGERED_DOCUMENT, {}, layer=layer)
+
+    assert "de_example" not in found
+
+
+@pytest.mark.usefixtures("opted_in")
+def test_a_german_document_costs_no_embedding() -> None:
+    embedded: list[tuple[str, ...]] = []
+    layer = _layer(BOTH_SIDES)._replace(vectors=lambda texts, *_config: embedded.append(tuple(texts)) or _vectors(texts))
+
+    found = pattern_semantic.candidates("notes.md", UNTRIGGERED_DOCUMENT, {}, layer=layer)
+
+    assert embedded == []
     assert _voted_texts(found, "de_example") == {GERMAN_SENTENCE}
 
 
@@ -93,6 +128,21 @@ def test_a_german_row_reaches_the_judge_with_the_german_rubric() -> None:
     assert GERMAN_PATTERN_RUBRIC in prompt
     assert PATTERN_RUBRIC not in prompt
     assert "Die Stadt sperrt die Straße." in prompt
+
+
+def test_a_german_judge_prompt_carries_the_rule_definition() -> None:
+    rule = pattern_semantic.rule_prompt("de_example", BOTH_SIDES, MANIFEST)
+
+    prompt = build_prompt(request_for(rule, (PatternCandidate("notes.md", 3, GERMAN_SENTENCE),)))
+
+    assert "Definition: Meldet ein Passiv, bei dem der Handelnde fehlt." in prompt
+
+
+@pytest.mark.parametrize("rule", [rule for rule in german_rules.voted() if rule.boundary], ids=lambda rule: rule.name)
+def test_a_sharpened_german_boundary_reaches_the_judge(rule: german_rules.Rule) -> None:
+    prompt = pattern_semantic.rule_prompt(rule.name, pattern_semantic.load_exemplars(), pattern_semantic.load_manifest())
+
+    assert rule.boundary in prompt.definition
 
 
 def test_an_english_row_keeps_the_english_rubric() -> None:

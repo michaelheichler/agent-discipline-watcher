@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter
 from collections.abc import Callable
@@ -16,7 +17,10 @@ try:
     from .embedding_session import enabled
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
-    from .pattern_language import GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language
+    from .pattern_language import (
+        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language, rule_trigger,
+    )
+    from .prose_language import GERMAN
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from .session_state import plugin_data_home
 except ImportError:
@@ -25,7 +29,10 @@ except ImportError:
     from embedding_session import enabled
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
-    from pattern_language import GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language
+    from pattern_language import (
+        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language, rule_trigger,
+    )
+    from prose_language import GERMAN
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
     from session_state import plugin_data_home
 
@@ -136,14 +143,24 @@ def rule_prompt(rule: str, exemplars: tuple[Exemplar, ...], manifest: dict) -> P
         label: tuple(row.text for row in exemplars if row.rule == rule and row.label == label)[:JUDGE_EXAMPLES]
         for label in (VIOLATING, CLEAN)
     }
+    row = manifest["rules"][rule]
     return PatternRule(
-        rule, manifest["rules"][rule]["action"], sides[VIOLATING], sides[CLEAN], rule_language(manifest, rule),
+        rule, row["action"], sides[VIOLATING], sides[CLEAN], rule_language(manifest, rule), str(row.get("definition") or ""),
     )
 
 
+def _has_violating_side(rule: str, exemplars: tuple[Exemplar, ...]) -> bool:
+    """Silent without one, because a German rule ships its clean side before its violating one."""
+    return any(row.rule == rule and row.label == VIOLATING for row in exemplars)
+
+
+def triggered_for(sentences: tuple[Sentence, ...], trigger: re.Pattern[str], path: str) -> tuple[PatternCandidate, ...]:
+    """Trigger, not vote, because the judge must face the same candidates its precision was measured on."""
+    return tuple(PatternCandidate(path, sentence.line, sentence.text) for sentence in sentences if trigger.search(sentence.text))
+
+
 def candidates_for(rule: str, sentences: tuple[Sentence, ...], vectors: dict[str, Vector], exemplars: tuple[Exemplar, ...], path: str) -> tuple[PatternCandidate, ...]:
-    """Silent without a violating side, because a German rule ships its clean side before its violating one."""
-    if not any(row.rule == rule and row.label == VIOLATING for row in exemplars):
+    if not _has_violating_side(rule, exemplars):
         return ()
     neighbours = [(row.label, vectors[row.text]) for row in exemplars if row.rule == rule and row.text in vectors]
     if not neighbours:
@@ -225,20 +242,48 @@ def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer
         return {}
     manifest = layer.manifest()
     rules = tuple(rule for rule in measured_rules(manifest) if rule_state(rule, config) != "off")
+    german = tuple(rule for rule in rules if rule_language(manifest, rule) == GERMAN)
     exemplars = tuple(row for row in layer.exemplars() if row.rule in rules)
+    draft = Draft(path, sentences_by_language(prose_source(path, text), sentences, config), exemplars, manifest, config)
+    found = {**_voted(draft, tuple(rule for rule in rules if rule not in german), layer), **_triggered(draft, german)}
+    return {rule: rows for rule, rows in found.items() if rows}
+
+
+class Draft(NamedTuple):
+    path: str
+    by_language: dict[str, tuple[Sentence, ...]]
+    exemplars: tuple[Exemplar, ...]
+    manifest: dict
+    config: dict | None
+
+
+def _triggered(draft: Draft, rules: tuple[str, ...]) -> dict[str, tuple[PatternCandidate, ...]]:
+    """No trigger or no violating side keeps a German rule silent, because it has nothing measured to stand on."""
+    found = {}
+    for rule in rules:
+        trigger = rule_trigger(draft.manifest, rule)
+        if trigger is not None and _has_violating_side(rule, draft.exemplars):
+            found[rule] = triggered_for(draft.by_language.get(GERMAN, ()), trigger, draft.path)
+    return found
+
+
+def _voted(draft: Draft, rules: tuple[str, ...], layer: Layer) -> dict[str, tuple[PatternCandidate, ...]]:
+    """Embeds only what the voting rules read, because a German sentence no longer meets a vote."""
+    languages = {rule_language(draft.manifest, rule) for rule in rules}
+    texts = tuple({sentence.text for language in languages for sentence in draft.by_language.get(language, ())})
+    if not texts:
+        return {}
+    exemplars = tuple(row for row in draft.exemplars if row.rule in rules)
+    config = draft.config
     cached = layer.exemplar_vectors(exemplars) if config is None else layer.exemplar_vectors(exemplars, config)
-    current = layer.vectors(tuple({item.text for item in sentences})) if config is None else layer.vectors(
-        tuple({item.text for item in sentences}), config
-    )
+    current = layer.vectors(texts) if config is None else layer.vectors(texts, config)
     vectors = {**cached, **current}
     if not vectors:
         return {}
-    by_language = sentences_by_language(prose_source(path, text), sentences, config)
-    voted = {
-        rule: candidates_for(rule, by_language.get(rule_language(manifest, rule), ()), vectors, exemplars, path)
+    return {
+        rule: candidates_for(rule, draft.by_language.get(rule_language(draft.manifest, rule), ()), vectors, exemplars, draft.path)
         for rule in rules
     }
-    return {rule: found for rule, found in voted.items() if found}
 
 
 def sentences_by_language(source: str, sentences: tuple[Sentence, ...], config: dict | None) -> dict[str, tuple[Sentence, ...]]:

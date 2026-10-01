@@ -53,6 +53,7 @@ class JudgeRequest:
     violating_examples: tuple[str, ...] = ()
     clean_examples: tuple[str, ...] = ()
     rubric_version: str = RUBRIC_VERSION
+    rule_definition: str = ""
 
     def __post_init__(self) -> None:
         if not self.rubric_version:
@@ -199,8 +200,9 @@ def _german_pattern_prompt(request: JudgeRequest) -> str:
     examples = [f"  violating: {text}" for text in request.violating_examples]
     examples += [f"  clean: {text}" for text in request.clean_examples]
     items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
+    definition = f"Definition: {request.rule_definition}\n" if request.rule_definition else ""
     return (
-        f"{GERMAN_PATTERN_RUBRIC}\nMuster: {request.rule_name}\nVerlangte Korrektur: {request.rule_action}\n"
+        f"{GERMAN_PATTERN_RUBRIC}\nMuster: {request.rule_name}\n{definition}Verlangte Korrektur: {request.rule_action}\n"
         "Echte Beispiele:\n" + "\n".join(examples) + f"\n\nBeurteile jeden Satz.\n{items}"
     )
 
@@ -215,6 +217,8 @@ def content_hash(request: JudgeRequest) -> str:
         "violating_examples": request.violating_examples,
         "clean_examples": request.clean_examples,
     }
+    if request.rule_definition:
+        payload["rule_definition"] = request.rule_definition
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 

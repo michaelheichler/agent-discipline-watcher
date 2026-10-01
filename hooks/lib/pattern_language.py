@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import bisect
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,9 +33,20 @@ def german_manifest_rules(measured: dict, rules: tuple[german_rules.Rule, ...] |
     chosen = german_rules.voted() if rules is None else rules
     recorded = measured.get("rules") if isinstance(measured.get("rules"), dict) else {}
     return {
-        rule.name: {"action": rule.german.action, "language": GERMAN, "judge_precision": _precision(recorded, rule.name)}
+        rule.name: {
+            "action": rule.german.action, "language": GERMAN, "judge_precision": _precision(recorded, rule.name),
+            "definition": " ".join(filter(None, (rule.german.description + ".", rule.boundary))), "trigger": rule.trigger,
+        }
         for rule in chosen
     }
+
+
+def rule_trigger(manifest: dict, rule: str) -> re.Pattern[str] | None:
+    """German only, because the German vote admitted half of all human sentences and the trigger under 1 percent (T-009)."""
+    row = manifest["rules"][rule]
+    if row.get("language") != GERMAN or not row.get("trigger"):
+        return None
+    return re.compile(str(row["trigger"]), re.IGNORECASE)
 
 
 def line_languages(source: str, config: dict | None) -> Callable[[int], str]:

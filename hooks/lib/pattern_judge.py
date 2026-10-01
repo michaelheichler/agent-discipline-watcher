@@ -49,6 +49,7 @@ class PatternRule(NamedTuple):
     violating_examples: tuple[str, ...]
     clean_examples: tuple[str, ...]
     language: str = "en"
+    definition: str = ""
 
 
 class JudgedOutcome(NamedTuple):
@@ -65,6 +66,7 @@ def request_for(rule: PatternRule, candidates: tuple[PatternCandidate, ...]) -> 
         candidates=tuple(candidate.text for candidate in candidates),
         rule_name=rule.name,
         rule_action=rule.action,
+        rule_definition=rule.definition,
         violating_examples=rule.violating_examples,
         clean_examples=rule.clean_examples,
         rubric_version=PATTERN_RUBRIC_VERSIONS[rule.language],

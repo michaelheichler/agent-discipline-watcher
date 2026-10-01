@@ -14,6 +14,7 @@ def request_payload(request: JudgeRequest, launch: Any) -> dict[str, Any]:
         "source_context": request.source_context,
         "rule_name": request.rule_name,
         "rule_action": request.rule_action,
+        "rule_definition": request.rule_definition,
         "violating_examples": request.violating_examples,
         "clean_examples": request.clean_examples,
         "rubric_version": request.rubric_version,
