@@ -26,7 +26,8 @@ try:
         _what_comment_findings,
         _what_docstring_findings,
     )
-    from . import families, test_rules
+    from . import families, german_punctuation, test_rules
+    from .prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .markup import (
         MARKDOWN_EXTS,
@@ -66,7 +67,9 @@ except ImportError:
         _what_docstring_findings,
     )
     import families
+    import german_punctuation
     import test_rules
+    from prose_language import ENGLISH, GERMAN, allowed_languages, paragraph_languages
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from markup import (
         MARKDOWN_EXTS,
@@ -109,6 +112,7 @@ DECADE_APOS_RE = re.compile(r"(?:\b\d{3}0|'\d0)'s\b")
 HTML_CODE_RE = re.compile(r"<(code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 HTML_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 TABLE_SEPARATOR_RE = re.compile(r"^\|?[\s:|-]*-[\s:|-]*\|?$")
+PROSE_FINDING_FAMILIES = frozenset({"punctuation", "english"})
 ENGLISH_RULES = (
     (re.compile(r"\bsmoking gun\b", re.IGNORECASE), "dead_metaphor", "Name the evidence and what it proves."),
     (re.compile(r"\bat the end of the day\b", re.IGNORECASE), "filler", "State the conclusion directly."),
@@ -232,6 +236,7 @@ class _LineSources(NamedTuple):
     punctuation: list[str]
     english: list[str]
     comment: list[str]
+    languages: list[str]
 
 
 class _SourceLine(NamedTuple):
@@ -245,7 +250,30 @@ def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _L
         _strip_punctuation_blocks(context.path, masked, context.prose).splitlines() or [""],
         _strip_english_hidden(masked).splitlines() or [""],
         comment_source.splitlines() or [""],
+        _line_languages(context, masked),
     )
+
+
+def _line_languages(context: _ScanContext, masked: str) -> list[str]:
+    """Map prose lines only, because code comments keep the English rules."""
+    if not context.prose:
+        return []
+    starts = {block.line: block.language for block in paragraph_languages(masked, allowed_languages(context.config))}
+    languages, current = [], ENGLISH
+    for number in range(1, len(context.lines) + 1):
+        current = starts.get(number, current)
+        languages.append(current)
+    return languages
+
+
+def _with_languages(findings: list[dict], languages: list[str]) -> list[dict]:
+    if not languages:
+        return findings
+    return [
+        {**row, "language": _line_or_blank(languages, row["line"]) or ENGLISH}
+        if row["family"] in PROSE_FINDING_FAMILIES else row
+        for row in findings
+    ]
 
 
 def _mask_hidden_ranges(text: str, hidden_ranges: tuple[tuple[int, int], ...]) -> str:
@@ -263,7 +291,8 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
     findings: list[dict] = []
     if "punctuation" in context.active_families:
         scan_line = _line_or_blank(sources.punctuation, source_line.number)
-        findings.extend(_scan_punctuation(source_line, scan_line, context.prose))
+        language = _line_or_blank(sources.languages, source_line.number) or ENGLISH
+        findings.extend(_scan_punctuation(source_line, scan_line, context.prose, language))
     if "english" in context.active_families and context.prose:
         scan_line = _line_or_blank(sources.english, source_line.number)
         findings.extend(_scan_english(source_line, scan_line))
@@ -287,6 +316,13 @@ def _scan_english_families(path: str, masked: str, context: _ScanContext) -> lis
     findings.extend(cast(list[dict], _scan_slop_structure(path, masked)))
     if slop_phrase_candidate(masked):
         findings.extend(cast(list[dict], scan_slop_phrases(path, masked, context.config)))
+    return findings
+
+
+def _scan_document_families(context: _ScanContext, masked: str, sources: _LineSources) -> list[dict]:
+    findings = _scan_english_families(context.path, masked, context)
+    if "punctuation" in context.active_families:
+        findings.extend(german_punctuation.dash_cluster_findings(context.path, sources.punctuation, sources.languages))
     return findings
 
 
@@ -314,8 +350,8 @@ def scan_all(
     for number, line in enumerate(context.lines, 1):
         source_line = _SourceLine(path=path, number=number, text=line)
         findings.extend(_scan_line_families(source_line, sources, context))
-    findings.extend(_scan_english_families(path, masked, context))
-    return calibrated_findings(findings)
+    findings.extend(_scan_document_families(context, masked, sources))
+    return calibrated_findings(_with_languages(findings, sources.languages))
 
 
 def _line_or_blank(lines: list[str], number: int) -> str:
@@ -360,15 +396,23 @@ PUNCTUATION_RULES = (
     ("clean", (DECADE_APOS_RE,), "decade_apostrophe",
      "Decade written as a possessive in ", "Write the decade as a plural."),
 )
+GERMAN_PUNCTUATION_RULES = german_punctuation.german_rules(PUNCTUATION_RULES)
 
 
-def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool) -> list[dict]:
+def _punctuation_texts(path: str, clean: str, prose: bool) -> dict[str, str]:
+    prose_part = _punctuation_prose_part(path, clean, prose)
+    semicolon = "" if _is_config(path) else URL_RE.sub("", prose_part)
+    return {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
+
+
+def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool, language: str = ENGLISH) -> list[dict]:
     clean = mask_quoted(_strip_inline_code(scan_line))
-    prose_part = _punctuation_prose_part(source_line.path, clean, prose)
-    semicolon = "" if _is_config(source_line.path) else URL_RE.sub("", prose_part)
-    texts = {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
+    rules = PUNCTUATION_RULES
+    if language == GERMAN:
+        clean, rules = german_punctuation.german_view(clean), GERMAN_PUNCTUATION_RULES
+    texts = _punctuation_texts(source_line.path, clean, prose)
     rows = []
-    for target, regexes, rule, detail, action in PUNCTUATION_RULES:
+    for target, regexes, rule, detail, action in rules:
         found = _first_match(regexes, texts[target])
         if found is not None:
             rows.append(_finding(

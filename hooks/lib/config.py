@@ -134,6 +134,11 @@ DEFAULTS = {
         "weak_sentence_starter": "enforce",
         "file_length_warning": "observe",
         "file_length_critical": "observe",
+        # Observe because T-010 has not measured German yet.
+        "dash_cluster": "observe",
+        "quote_marks": "observe",
+        "genitive_apostrophe": "observe",
+        "typed_ellipsis": "observe",
         **test_rules.default_gates(test_rules.RULE_SETS),
     },
     # Bypassed by ALWAYS_BLOCKING_RULES because those rules must stay unsuppressable.

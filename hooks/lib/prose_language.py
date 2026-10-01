@@ -31,7 +31,7 @@ wie wir wird wurde wurden zu zum zur zwischen
 FENCE_RE = re.compile(r"^\s*(?:`{3,}|~{3,})")
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
-PATH_RE = re.compile(r"\S*[/\\]\S*|\b[\w-]+\.[a-z0-9]{1,5}\b")
+PATH_RE = re.compile(r"(?<!\S)\S*[/\\]\S*|\b[\w-]+\.[a-z0-9]{1,5}\b")
 WORD_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?")
 GERMAN_LETTER_RE = re.compile(r"[äöüß]", re.IGNORECASE)
 

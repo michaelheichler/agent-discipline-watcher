@@ -41,6 +41,10 @@ RULES: dict[str, Entry] = {
         "Office idiom",
         "Cuts stock office phrasing that carries no specific claim",
     ),
+    "dash_cluster": Entry(
+        "Pile of German dashes",
+        "Reports German prose that leans on the spaced Gedankenstrich past the density limit",
+    ),
     "dramatic_fragmentation": Entry(
         "Fragments used for drama",
         "Cuts the one-word paragraph that leans on white space for weight",
@@ -76,6 +80,10 @@ RULES: dict[str, Entry] = {
     "formulaic_opener": Entry(
         "Stock opening line",
         "Cuts in a world where, imagine this, and whether you are a beginner",
+    ),
+    "genitive_apostrophe": Entry(
+        "English genitive apostrophe",
+        "Reports Peter's in German prose, where the genitive takes a bare s",
     ),
     "greeting_opener": Entry(
         "Greeting before the answer",
@@ -133,6 +141,10 @@ RULES: dict[str, Entry] = {
         "Performed sincerity",
         "Cuts creeps in, they exist I promise, and I promise",
     ),
+    "quote_marks": Entry(
+        "Quote marks not German",
+        "Reports straight or English quote marks in German prose, which takes „…“ and ‚…‘",
+    ),
     "rhetorical_setup": Entry(
         "Question asked to answer it",
         "Cuts the rhetorical question that stages a point already underway",
@@ -152,6 +164,10 @@ RULES: dict[str, Entry] = {
     "throat_clearing_opener": Entry(
         "Warm-up before the point",
         "Cuts here is the thing, it turns out, and the real X is",
+    ),
+    "typed_ellipsis": Entry(
+        "Ellipsis typed as periods",
+        "Reports three typed periods or an extra point where German takes one … character",
     ),
     "uniform_paragraph_endings": Entry(
         "Paragraphs ending alike",
