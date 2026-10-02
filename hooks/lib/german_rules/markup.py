@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Martin Moeller, humanizer-de trigger lists (see NOTICE)
+# SPDX-License-Identifier: MIT AND CC-BY-SA-4.0
 """Stay STATIC, because each rule here reads Markdown structure a chatbot sets for looks rather than meaning."""
 from __future__ import annotations
 

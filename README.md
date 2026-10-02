@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.24.1**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.0**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -113,7 +113,7 @@ The em dash (U+2014) stays banned in German. A spaced ASCII hyphen still reports
 uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora.py
 ```
 
-**Gate policy.** A German rule blocks only when the Wilson lower bound of its precision reaches 0.85 (decision Q23). It reports only when its point precision is above 0.70. At 0.70 or under it goes off (N-009). An unmeasured rule stays at observe. `evals/german_static_precision.json` and `evals/judge_stage_de.json` hold the numbers, and `hooks/lib/test_german_rule_registry.py` checks every measured rule against the 0.70 bar.
+**Gate policy.** Three bands decide what a German rule does. A Wilson lower bound of 0.85 or more blocks (decision Q23). A point precision above 0.70 reports. A point precision of 0.70 or less turns the rule off (N-009). An unmeasured rule stays at observe. `evals/german_static_precision.json` and `evals/judge_stage_de.json` hold the numbers, and `hooks/lib/test_german_rule_registry.py` checks every measured rule against the 0.70 bar.
 
 Two measured rules block German lines today.
 

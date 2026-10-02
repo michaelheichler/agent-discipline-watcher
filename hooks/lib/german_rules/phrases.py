@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Martin Moeller, humanizer-de trigger lists (see NOTICE)
+# SPDX-License-Identifier: MIT AND CC-BY-SA-4.0
 """Stay STATIC, because each rule here matches a stock phrase from humanizer-de references/patterns.md (decision Q13)."""
 from __future__ import annotations
 

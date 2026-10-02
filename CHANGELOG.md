@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.25.0 (2026-10-02)
 
 ### Added
 
@@ -11,12 +11,13 @@
 - **The German rule catalog.** `hooks/lib/german_rules/` declares the static and SEMANTIC rows of the catalog in `docs/research/2026-09-30-german-style-catalog.md`, minus the rows N-008 leaves out. `hooks/lib/german_document_rules.py` adds the document rules. `hooks/lib/german_readability.py` computes LIX and the first Wiener Sachtextformel, and no rule gates on either yet. The trigger lists follow humanizer-de closely (decision Q13).
 - **German SEMANTIC rules go from a trigger to the Luna judge.** The embedding vote admitted about half of all German human sentences, so a German rule now sends every German sentence its trigger matches. A German pattern row reaches Luna with a German rubric under rubric version `adw-rubric-de-v1`. The prompt carries the rule definition and a boundary for stock phrase, foreign word, false agency, and retroactive nuance. Rater agreement rose from kappa 0.52 to 0.67, and a Luna majority settled the rest. `evals/build_pattern_exemplars_de.py` writes the exemplars to `hooks/lib/pattern_exemplars_de.jsonl` and reads the highest Luna run into `hooks/lib/pattern_exemplars_de.json`.
 - **German corpora and measurements.** `evals/build_german_corpora.py` rebuilds three gitignored corpora byte for byte. The human side holds 28000 sentences from a 2018 German Wikipedia dump and German Gutenberg books. The AI side holds 21000 sentences from COLING 2025 and German WildChat. The paragraph corpus holds 5414 documents. `evals/german_static_precision.json` holds the labeled precision of every static rule, from Sonnet and Luna labels with Opus deciding splits. `evals/judge_stage_de.json` holds the judged stage of 14 SEMANTIC rules per model id. On `gpt-6-luna` precision rose for 9 of 14 rules over `gpt-5.6-luna`, and the best lower bound rose from 0.55 to 0.64.
+- **humanizer-de attribution in each file.** The seven `hooks/lib/german_rules/` modules that adapt humanizer-de trigger lists carry SPDX headers that name Martin Moeller and the license `MIT AND CC-BY-SA-4.0`. `NOTICE` holds the full credit.
 - **`de_meta_commentary` blocks.** It holds 40 of 40 under two raters, lower bound 0.9124, so `hooks/lib/german_rules/phrases.py` sets it to enforce.
 
 ### Changed
 
 - **German rules report only above 0.70 point precision.** This holds the user's 2026-10-02 decision (N-009). A rule at 0.70 or under goes off. A rule above it observes, and enforce still needs a Wilson lower bound of 0.85. `hooks/lib/german_rules/*.py` sets 31 rules to `state="off"` where `evals/german_static_precision.json` or `evals/judge_stage_de.json` measured 0.70 precision or under. `hooks/lib/config.py` sets 7 more `rule_gates` entries to `off` for the same reason. `banned_dash` and `spaced_hyphen` keep their family default, because the decision covers German rules, not these two English ones. `spaced_hyphen` clears the enforce bar on German text at 39 of 40, lower bound 0.8712. `hooks/lib/reporting.py` now drops an off-gated finding from inherited debt too, so an old hit in an edited file stays silent instead of showing as debt to fix. `hooks/lib/test_german_rule_registry.py` adds a test that reads both eval files and checks every measured rule's state against the 0.70 bar, with no rule name fixed in the test.
-- **Luna judges run on `gpt-6-luna`.** The Codex runtime pin moves from `openai-codex==0.147.0` to `0.160.0`. The 0.147.0 model list stopped at `gpt-5.6-luna`, so every judge resolved that model. The 0.160.0 list offers `gpt-6-luna` at high effort. The fallback `LUNA_MODEL` moves to `gpt-6-luna` as well. Run `./install.sh --codex` to upgrade the runtime, because the installer reinstalls when the pinned requirements file changes. The first judge call that misses the cache replaces the remembered `gpt-5.6-luna`.
+- **Luna judges run on `gpt-6-luna`.** The Codex runtime pin moves from `openai-codex==0.147.0` to `0.160.0`. The 0.147.0 model list stopped at `gpt-5.6-luna`, so every judge resolved that model. The 0.160.0 list offers `gpt-6-luna` at high effort. The fallback `LUNA_MODEL` moves to `gpt-6-luna` as well. The installer reinstalls the runtime when the pinned requirements file changes, so `./install.sh --codex` upgrades it. The first judge call that misses the cache replaces the remembered `gpt-5.6-luna`.
 
 ## 0.24.1 (2026-09-30)
 

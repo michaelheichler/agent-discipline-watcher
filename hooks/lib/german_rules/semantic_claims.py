@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Martin Moeller, humanizer-de trigger lists (see NOTICE)
+# SPDX-License-Identifier: MIT AND CC-BY-SA-4.0
 """Leave the verdict to the judge, because judging a claim against its evidence needs context no word list holds (catalog SEMANTIC rows)."""
 from __future__ import annotations
 
