@@ -1,0 +1,12 @@
+{
+  "content": "User decision 2026-10-02. A German rule reports only when its measured point precision is above 0.7. At or below 0.7 the rule goes off. Above 0.7 it observes. Enforce still needs a Wilson lower bound of 0.85 (Q23). banned_dash and spaced_hyphen stay family-gated, the em dash ban stands. Unmeasured rules stay unchanged.",
+  "createdDate": "2026-10-02",
+  "id": "N-009",
+  "status": "active",
+  "tags": [
+    "multilingual",
+    "decision"
+  ],
+  "title": "German rules report only above 0.7 precision",
+  "updatedDate": "2026-10-02"
+}
