@@ -26,6 +26,7 @@ LETTER_FRAME = Rule(
         "Meldet Briefhüllen wie „Betreff:“, eine Anrede mit „Liebe“ oder „Mit freundlichen Grüßen“ um den Inhalt",
         "Streich die Briefhülle und behalte den Inhalt.",
     ),
+    state="off",
 )
 CHATBOT_TALK = Rule(
     "de_chatbot_talk",

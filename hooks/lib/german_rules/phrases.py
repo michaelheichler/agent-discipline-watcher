@@ -24,6 +24,7 @@ SYMBOLISM = Rule(
         "Meldet Wendungen wie „steht als Zeugnis für“ oder „spielt eine wichtige Rolle“, die eine schlichte Tatsache aufblähen",
         "Nenn die Tatsache direkt.",
     ),
+    state="off",
 )
 META_COMMENTARY = Rule(
     "de_meta_commentary",
@@ -51,6 +52,7 @@ SECTION_SUMMARY = Rule(
         "Meldet Sätze, die mit „zusammenfassend“, „insgesamt“ oder „kurz gesagt“ beginnen und Gesagtes wiederholen",
         "Streich den Satz oder bau seine neue Tatsache in den Text ein.",
     ),
+    state="off",
 )
 AI_MARKER_VOCABULARY = Rule(
     "de_ai_marker_vocabulary",
@@ -64,6 +66,7 @@ AI_MARKER_VOCABULARY = Rule(
         "Meldet drei oder mehr KI-Marker wie „beleuchten“, „nahtlos“ oder „spannend“ in einem Text",
         "Nimm das gewöhnliche Wort, etwa „untersuchen“ statt „beleuchten“.",
     ),
+    state="off",
 )
 CORPORATE_CLOSING = Rule(
     "de_corporate_closing",

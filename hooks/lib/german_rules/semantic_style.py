@@ -19,6 +19,7 @@ PASSIVE_VOICE = Rule(
         "Nenn den Handelnden und nimm ein aktives Verb.",
     ),
     trigger=r"\b(?:wird|werden|wurde|wurden|worden)\b",
+    state="off",
 )
 STOCK_PHRASE = Rule(
     "de_stock_phrase",
@@ -107,6 +108,7 @@ FAKE_ANALYSIS_TAIL = Rule(
         "Streich den Anhang oder ersetz ihn durch die Tatsache dahinter.",
     ),
     trigger=r",\s*(?:was|wodurch|womit)\b",
+    state="off",
 )
 COMPARATIVE_FRAMING = Rule(
     "de_comparative_framing",
@@ -121,6 +123,7 @@ COMPARATIVE_FRAMING = Rule(
         "Beschreib Y direkt.",
     ),
     trigger=r"\b(?:vielmehr|nicht so sehr|weniger\b[^.]{1,40}\bals)\b",
+    state="off",
 )
 REGISTER_COLLAPSE = Rule(
     "de_register_collapse",
@@ -135,6 +138,7 @@ REGISTER_COLLAPSE = Rule(
         "Halte ein Sprachregister im ganzen Abschnitt.",
     ),
     trigger=r"\b(?:halt|mal|eh|echt|krass|total|super|cool|okay)\b|\w\s+(?:ja|doch|eben)\b",
+    state="off",
 )
 STYLE_SHIFT = Rule(
     "de_style_shift",
@@ -175,6 +179,7 @@ RHETORICAL_QUESTION = Rule(
         "Streich die Frage und nenn die Antwort.",
     ),
     trigger=r"\?$",
+    state="off",
 )
 MARKERLESS_CLOSER = Rule(
     "de_markerless_closer",
@@ -189,6 +194,7 @@ MARKERLESS_CLOSER = Rule(
         "Beende den Absatz nach der letzten Tatsache.",
     ),
     trigger=r"\b(?:insgesamt|zeigt|bleibt|wichtig\w*|Bedeutung|beeindruckend\w*|spannend\w*|Zukunft|deutlich)\b",
+    state="off",
 )
 RETROACTIVE_NUANCE = Rule(
     "de_retroactive_nuance",

@@ -1,6 +1,7 @@
 """Prove the German rule seam, because a new German rule must land as one module file and nothing else."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -66,9 +67,12 @@ def test_no_german_paragraph_runs_no_check() -> None:
     assert german_rules.check_paragraphs("doc.md", [], (exploding,)) == []
 
 
+STATE_OUTCOME = {"enforce": Outcome.BLOCK, "off": Outcome.RELEASE}
+
+
 @pytest.mark.parametrize("rule", german_rules.declared(), ids=lambda rule: rule.name)
 def test_every_registered_rule_blocks_only_when_its_measured_state_says_so(rule: Rule) -> None:
-    expected = Outcome.BLOCK if rule.state == "enforce" else Outcome.WOULD_BLOCK
+    expected = STATE_OUTCOME.get(rule.state, Outcome.WOULD_BLOCK)
 
     assert config.resolve_outcome({"family": "english", "rule": rule.name}, {}) == expected
 
@@ -79,3 +83,49 @@ def test_every_registered_rule_renders_its_own_wording_in_each_language(rule: Ru
 
     assert catalog.rule_entry(rule.name).title == rule.english.title
     assert rule.german.title in format_row({**row, "language": "de"})
+
+
+EVALS = Path(__file__).resolve().parents[2] / "evals"
+PRECISION_BAR = 0.7
+# Skipped, because a family gate already decides these two.
+RULE_GATE_EXEMPT = frozenset({"banned_dash", "spaced_hyphen"})
+
+
+def _static_precisions() -> dict[str, float]:
+    payload = json.loads((EVALS / "german_static_precision.json").read_text(encoding="utf-8"))
+    return {
+        name: info["precision"]
+        for name, info in payload["rules"].items()
+        if name not in RULE_GATE_EXEMPT and info.get("precision") is not None
+    }
+
+
+def _semantic_precisions() -> dict[str, float]:
+    payload = json.loads((EVALS / "judge_stage_de.json").read_text(encoding="utf-8"))
+    runs = payload["gpt-6-luna"]
+    return {
+        name: info["after_judge"]["precision"]
+        for name, info in runs.items()
+        if info.get("after_judge", {}).get("precision") is not None
+    }
+
+
+def _measured_precisions() -> dict[str, float]:
+    merged = dict(_static_precisions())
+    merged.update(_semantic_precisions())
+    return merged
+
+
+def _declared_state(name: str) -> str:
+    rule = next((candidate for candidate in german_rules.declared() if candidate.name == name), None)
+    if rule is not None:
+        return rule.state
+    return config.DEFAULTS["rule_gates"][name]
+
+
+@pytest.mark.parametrize("name,precision", sorted(_measured_precisions().items()))
+def test_every_measured_german_rule_state_follows_the_point_precision_bar(name: str, precision: float) -> None:
+    """Hold the 2026-10-02 decision, because a measured rule reports only above 0.7 point precision."""
+    reports = _declared_state(name) in ("observe", "enforce")
+
+    assert reports == (precision > PRECISION_BAR)

@@ -24,6 +24,7 @@ NOUN_STYLE = Rule(
         "Meldet Substantive auf -ung, -heit, -keit oder -schaft mit Stützverb wie erfolgt oder findet statt",
         "Mach aus dem Substantiv wieder ein Verb, etwa versenden statt der Versand erfolgt.",
     ),
+    state="off",
 )
 MODAL_VERB = Rule(
     "de_modal_verb",
@@ -37,6 +38,7 @@ MODAL_VERB = Rule(
         "Meldet Modalverben wie möchten oder könnte, die das Vollverb ans Satzende schieben",
         "Sag mit dem Vollverb, was passiert.",
     ),
+    state="off",
 )
 DOUBLE_NEGATION = Rule(
     "de_double_negation",
@@ -50,6 +52,7 @@ DOUBLE_NEGATION = Rule(
         "Meldet Sätze mit zwei oder mehr Verneinungen wie nicht, kein oder einem Wort mit un-",
         "Formulier den Satz positiv.",
     ),
+    state="off",
 )
 STACKED_CONDITIONS = Rule(
     "de_stacked_conditions",
@@ -63,6 +66,7 @@ STACKED_CONDITIONS = Rule(
         "Meldet Sätze, die zwei oder mehr Bedingungen mit wenn, falls oder sofern stapeln",
         "Sag das Ergebnis und behalte höchstens eine Bedingung.",
     ),
+    state="off",
 )
 
 NOMINALIZATION_RE = re.compile(r"\b[A-ZÄÖÜ][a-zäöüß]+(?:ung|heit|keit|schaft)(?:en)?\b")

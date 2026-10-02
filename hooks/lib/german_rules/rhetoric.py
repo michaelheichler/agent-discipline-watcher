@@ -24,6 +24,7 @@ TRIAD = Rule(
         "Meldet Dreierreihen aus kleingeschriebenen Wörtern wie vielfältig, kreativ und stark am Satzende",
         "Behalte die zwei Glieder, die die Aussage tragen.",
     ),
+    state="off",
 )
 AUTHORITY_PHRASE = Rule(
     "de_authority_phrase",
@@ -37,6 +38,7 @@ AUTHORITY_PHRASE = Rule(
         "Meldet Einleitungen wie Die eigentliche Frage ist oder Im Kern, die eine schlichte Aussage als Einsicht verkaufen",
         "Streich die Einleitung und sag die Aussage.",
     ),
+    state="off",
 )
 SIGNPOSTING = Rule(
     "de_signposting",
@@ -63,6 +65,7 @@ APHORISM_FORMULA = Rule(
         "Meldet Schablonen wie X ist die Sprache des Y oder X wird zur Falle",
         "Ersetz die Formel durch die konkrete Aussage dahinter.",
     ),
+    state="off",
 )
 ANNOUNCING_CLEFT = Rule(
     "de_announcing_cleft",
@@ -76,6 +79,7 @@ ANNOUNCING_CLEFT = Rule(
         "Meldet zwei oder mehr Spaltsätze wie Was mich überrascht hat, war, die eine Aussage erst ankündigen",
         "Sag die Aussage direkt, etwa Die Ladezeit hat mich überrascht.",
     ),
+    state="off",
 )
 
 # humanizer-de Muster 9 shape, because Q13 credits it.

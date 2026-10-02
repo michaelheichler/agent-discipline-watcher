@@ -77,6 +77,7 @@ DIFF_ANCHORED = Rule(
         "Meldet Text, der eine Änderung nacherzählt, etwa wurde jetzt ergänzt oder ersetzt die alte Lösung",
         "Beschreib, was jetzt gilt, nicht was sich geändert hat.",
     ),
+    state="off",
 )
 HIDDEN_UNICODE = Rule(
     "de_hidden_unicode",
@@ -90,6 +91,7 @@ HIDDEN_UNICODE = Rule(
         "Meldet unsichtbare Zeichen wie Nullbreiten-Leerzeichen, weiches Trennzeichen, BOM oder Bidi-Steuerzeichen",
         "Lösch das unsichtbare Zeichen.",
     ),
+    state="off",
 )
 ENGLISH_NUMBER_FORMAT = Rule(
     "de_english_number_format",

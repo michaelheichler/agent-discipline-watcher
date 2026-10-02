@@ -25,6 +25,7 @@ NESTED_CLAUSES = Rule(
         "Meldet Sätze mit mehr als drei Kommas und mindestens zwei eingeschobenen Nebensätzen",
         "Teil den Satz, sodass die Nebensätze aufeinander folgen.",
     ),
+    state="off",
 )
 VERB_BRACKET = Rule(
     "de_verb_bracket",
@@ -38,6 +39,7 @@ VERB_BRACKET = Rule(
         "Meldet mehr als sechs Wörter zwischen Modalverb oder haben und dem Infinitiv oder Partizip",
         "Zieh den zweiten Verbteil nach vorn, direkt hinter den Kern des Satzes.",
     ),
+    state="off",
 )
 UNEXPLAINED_ABBREVIATION = Rule(
     "de_unexplained_abbreviation",
@@ -51,6 +53,7 @@ UNEXPLAINED_ABBREVIATION = Rule(
         "Meldet Abkürzungen wie usw., bzw. oder d.h., hinter denen ein unfertiger Gedanke steckt",
         "Streich die Abkürzung oder schreib den Satz aus.",
     ),
+    state="off",
 )
 EXCLAMATION_STACCATO = Rule(
     "de_exclamation_staccato",
@@ -64,6 +67,7 @@ EXCLAMATION_STACCATO = Rule(
         "Meldet drei oder mehr kurze Sätze hintereinander, die alle mit Ausrufezeichen enden",
         "Fass die Satzfetzen zu einem ruhigen Satz mit Punkt zusammen.",
     ),
+    state="off",
 )
 CASUAL_GREETING = Rule(
     "de_casual_greeting",
@@ -90,6 +94,7 @@ INFORMATION_CLUSTER = Rule(
         "Meldet Sätze, die mehr als acht Aufzählungsglieder und Zahlen auf einmal liefern",
         "Verteil die Angaben auf zwei oder mehr Sätze.",
     ),
+    state="off",
 )
 
 PREPOSITION = r"(?:mit|von|in|an|auf|für|bei|aus|zu|nach|über|unter|durch|gegen|ohne|um|vor|hinter)"

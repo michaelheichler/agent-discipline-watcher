@@ -157,14 +157,16 @@ def verdict_message(
 
 
 def inherited_advice(findings: list[dict], config: dict | None = None) -> str:
-    if not findings:
+    """Drop off-gated findings here, because inherited debt skips verdict_message and would otherwise ignore the gate."""
+    live = [finding for finding in findings if _resolve_outcome(finding, config) != Outcome.RELEASE]
+    if not live:
         return ""
     lead = (
-        f"agent-discipline-watcher: this file already carried {len(findings)} findings "
+        f"agent-discipline-watcher: this file already carried {len(live)} findings "
         "you did not write. Fix them while you are in here."
     )
-    german = catalog_de.INHERITED_LEAD.format(count=len(findings))
-    return compact_block(findings, config, lead=Lead(lead, german))[0]
+    german = catalog_de.INHERITED_LEAD.format(count=len(live))
+    return compact_block(live, config, lead=Lead(lead, german))[0]
 
 
 def _default_ledger_root() -> Path:

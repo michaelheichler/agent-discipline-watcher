@@ -111,16 +111,16 @@ DEFAULTS = {
         "low_sentence_variance": "observe",
         # Observe because the pattern is commoner in human literature (4.92 percent) than in assistant replies (0.55).
         "uniform_paragraph_endings": "observe",
-        # Observe because no German corpus data exists yet.
+        # Observe because German hits (n=40) yielded 0.9500 precision.
         "de_sentence_length": "observe",
-        # Observe because no German corpus data exists yet.
-        "de_uniform_rhythm": "observe",
-        # Observe because no German corpus data exists yet.
-        "de_uniform_paragraphs": "observe",
-        # Observe because no German corpus data exists yet.
+        # Off because German hits (n=20) yielded 0.6000 precision.
+        "de_uniform_rhythm": "off",
+        # Off because German hits (n=20) yielded 0.4500 precision.
+        "de_uniform_paragraphs": "off",
+        # Observe because German hits (n=17) yielded 1.0000 precision.
         "de_repeated_connector": "observe",
-        # Observe because no German corpus data exists yet.
-        "de_long_compound": "observe",
+        # Off because German hits (n=20) yielded 0.0000 precision.
+        "de_long_compound": "off",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
@@ -145,11 +145,14 @@ DEFAULTS = {
         "weak_sentence_starter": "enforce",
         "file_length_warning": "observe",
         "file_length_critical": "observe",
-        # Observe because T-010 has not measured German yet.
-        "dash_cluster": "observe",
-        "quote_marks": "observe",
-        "genitive_apostrophe": "observe",
-        "typed_ellipsis": "observe",
+        # Off because German hits (n=20) yielded 0.1500 precision.
+        "dash_cluster": "off",
+        # Off because 0.7000 precision is not above the bar.
+        "quote_marks": "off",
+        # Off because German hits (n=20) yielded 0.0500 precision.
+        "genitive_apostrophe": "off",
+        # Off because German hits (n=20) yielded 0.3500 precision.
+        "typed_ellipsis": "off",
         **test_rules.default_gates(test_rules.RULE_SETS),
         **german_rules.default_gates(german_rules.RULE_SETS),
     },

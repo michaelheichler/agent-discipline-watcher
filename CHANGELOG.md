@@ -11,6 +11,7 @@
 
 ### Changed
 
+- **German rules report only above 0.70 point precision.** This holds the user's 2026-10-02 decision. `hooks/lib/german_rules/*.py` sets 31 rules to `state="off"` where `evals/german_static_precision.json` or `evals/judge_stage_de.json` measured 0.70 precision or under. `hooks/lib/config.py` sets 7 more `rule_gates` entries to `off` for the same reason, and keeps `de_meta_commentary` at enforce. `banned_dash` and `spaced_hyphen` keep their family default, because the decision covers German rules, not these two English ones. `hooks/lib/reporting.py` now drops an off-gated finding from inherited debt too, so an old hit in an edited file stays silent instead of showing as debt to fix. `hooks/lib/test_german_rule_registry.py` adds a test that reads both eval files and checks every measured rule's state against the 0.70 bar, with no rule name fixed in the test.
 - **Luna judges run on `gpt-6-luna`.** The Codex runtime pin moves from `openai-codex==0.147.0` to `0.160.0`. The 0.147.0 model list stopped at `gpt-5.6-luna`, so every judge resolved that model. The 0.160.0 list offers `gpt-6-luna` at high effort. The fallback `LUNA_MODEL` moves to `gpt-6-luna` as well. Run `./install.sh --codex` to upgrade the runtime, because the installer reinstalls when the pinned requirements file changes. The first judge call that misses the cache replaces the remembered `gpt-5.6-luna`.
 
 ## 0.24.1 (2026-09-30)

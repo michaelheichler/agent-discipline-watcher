@@ -24,6 +24,7 @@ FILLER_WORD = Rule(
         "Meldet Füllwörter wie eigentlich oder irgendwie, die nichts aussagen",
         "Streich das Füllwort.",
     ),
+    state="off",
 )
 EMPTY_INTENSIFIER = Rule(
     "de_empty_intensifier",
@@ -37,6 +38,7 @@ EMPTY_INTENSIFIER = Rule(
         "Meldet Verstärker wie sehr, absolut oder völlig, die eine Aussage ohne Beleg aufblähen",
         "Streich das Blähwort oder belege die Aussage.",
     ),
+    state="off",
 )
 REDUNDANT_PAIR = Rule(
     "de_redundant_pair",
@@ -76,6 +78,7 @@ ANGLICISM = Rule(
         "Meldet wörtlich übertragene englische Wendungen wie am Ende des Tages oder Potenzial freischalten",
         "Nimm die deutsche Wendung, etwa schließlich statt am Ende des Tages.",
     ),
+    state="off",
 )
 ABSTRACT_NOUNS = Rule(
     "de_abstract_nouns",
@@ -89,6 +92,7 @@ ABSTRACT_NOUNS = Rule(
         "Meldet drei oder mehr Oberbegriffe wie Maßnahmen oder Lösungen statt der konkreten Sache",
         "Nenn die konkrete Sache statt des Oberbegriffs.",
     ),
+    state="off",
 )
 
 FILLER_PARTICLES = r"(?i:\b(?:irgendwie|eigentlich|jedoch|obschon|na|nunmehr|lediglich)\b)"

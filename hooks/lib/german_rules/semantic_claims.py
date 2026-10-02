@@ -47,6 +47,7 @@ UNBACKED_SUPERLATIVE = Rule(
         "Nenn die Quelle oder die Person mit dieser Meinung, oder streich den Superlativ.",
     ),
     trigger=r"\b(?:(?:am|der|die|das|den|dem|des)\s+\w+(?:st|ßt)e[nmrs]?|\w*(?:beste|einzige|immer|niemals)\w*)\b",
+    state="off",
 )
 VAGUE_AUTHORITY = Rule(
     "de_vague_authority",
@@ -123,6 +124,7 @@ EPISTEMIC_MISCALIBRATION = Rule(
         r"\b(?:grundlegend|entscheidend|zweifellos|unbestreitbar|enorm|revolution\w*|bahnbrechend|scheint"
         r"|möglicherweise|vielleicht|eventuell)\b"
     ),
+    state="off",
 )
 GAP_FILLING_SPECULATION = Rule(
     "de_gap_filling_speculation",
