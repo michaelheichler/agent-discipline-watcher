@@ -86,6 +86,42 @@ A project can deny test writes outright. With `tests: deny` set through `adw-con
 
 `adw-test-writer` ships on three hosts. Claude Code runs it on Opus 5.5 at high effort. Codex runs it on `gpt-6-luna` at high effort. OMP runs it with a model the user picks, through a limited tool set. Each host loads the `unit-testing-principles` skill first. That skill holds a full-depth summary of the Khorikov book in the project's own words, one chapter file per book chapter.
 
+## German prose
+
+German prose gets its own rule set. Prose files and commit messages get the German rules. Code comments keep the English rules.
+
+**Language per paragraph.** `hooks/lib/prose_language.py` sorts each paragraph into German or English by stop words, with umlauts as a tiebreak. A paragraph decides on its own once it has 4 countable words. Code, URLs, and paths do not count. A shorter paragraph takes the document language and carries a weak mark. With `data_boundary` enabled, Luna classifies each weak paragraph after the write, never in the Stop review. Claude Code makes that call on the async `JudgeReview` route. Codex queues the paragraph and classifies it in the background at the next prompt. ADW caches each verdict under the paragraph hash, so a paragraph costs at most one Luna call. With `data_boundary` off, no paragraph goes to Luna, and a weak paragraph keeps the document language.
+
+`adw-config prose-languages en|de|en,de` sets the languages per project. The default is `en,de`. With one language set, every paragraph takes that language and no detection runs.
+
+**Typography after Duden.** A German paragraph drops the English semicolon and colon bans, because German uses both marks as ordinary connectors. These dash and quote forms pass in German.
+
+1. The Gedankenstrich, an en dash (U+2013) with a space on each side.
+2. The Bis-Strich and Streckenstrich, an en dash with no spaces between two numbers or two names, as in a year range or a ferry route.
+3. The Ergänzungsstrich, a word that ends in a hyphen before `und`, `oder`, or `bis`.
+4. German quotation marks, the low-high double pair and the low-high single pair.
+
+The em dash (U+2014) stays banned in German. A spaced ASCII hyphen still reports as `spaced_hyphen`. `dash_cluster` limits Gedankenstrich density. It reports at 5 or more spaced dashes and more than 15 per 1000 German words. It ships off, because its measured precision is 0.15.
+
+**German findings speak German.** A finding on a German line carries a German message and a German action. The rule id stays English, such as `de_meta_commentary` or `spaced_hyphen`, so configuration and reports keep one set of names. The message language also shows which language ADW detected.
+
+**LIX and WSTF.** `hooks/lib/german_readability.py` computes LIX after Björnsson and the first Wiener Sachtextformel after Bamberger and Vanecek, with their published weights. WSTF needs a syllable count. `hooks/lib/german_syllables.py` counts vowel groups and treats `ei`, `ie`, `au`, `eu`, and `äu` as one nucleus. It miscounts 6 of 80 German Wiktionary words, an error rate of 0.075, recorded in `evals/syllable_counter.json`. No rule gates on either score yet.
+
+**German corpora.** The human side holds 28000 sentences, 20000 from a 2018 German Wikipedia dump and 8000 from German Gutenberg books. The AI side holds 21000 sentences, 15000 from the COLING 2025 GenAI detection data and 6000 German WildChat replies. A paragraph corpus keeps 5414 documents with their paragraph breaks. Git ignores all three, and they rebuild byte for byte.
+
+```bash
+uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora.py
+```
+
+**Gate policy.** A German rule blocks only when the Wilson lower bound of its precision reaches 0.85 (decision Q23). It reports only when its point precision is above 0.70. At 0.70 or under it goes off (N-009). An unmeasured rule stays at observe. `evals/german_static_precision.json` and `evals/judge_stage_de.json` hold the numbers, and `hooks/lib/test_german_rule_registry.py` checks every measured rule against the 0.70 bar.
+
+Two measured rules block German lines today.
+
+1. `de_meta_commentary` holds 40 of 40, lower bound 0.9124.
+2. `spaced_hyphen` holds 39 of 40, lower bound 0.8712.
+
+The punctuation family also applies its family default to German lines. `banned_dash`, `dash_break`, `pronoun_apostrophe`, and `decade_apostrophe` therefore block there as well. `banned_dash` measured 0.15 on German text and still blocks. N-009 keeps the em dash ban and leaves `banned_dash` and `spaced_hyphen` at their family default. The German SEMANTIC rules send trigger matches to Luna. Their best lower bound on `gpt-6-luna` is 0.64, so none of them blocks.
+
 ## Install
 
 ### Claude Code

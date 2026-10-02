@@ -1,0 +1,153 @@
+Agent Discipline Watcher
+Copyright (c) the Agent Discipline Watcher authors. LICENSE holds the MIT terms.
+
+This file lists third-party material that ships in this repository, and the
+sources that the rules derive from. Each entry names the source, its license
+as stated upstream, and the files that carry it. The MIT license in LICENSE
+covers the rest of the repository.
+
+
+1. humanizer-de 5.28.1
+
+The source is https://github.com/marmbiz/humanizer-de at tag v5.28.1, by
+Martin Moeller. Portions of it derive from blader/humanizer by Siqi Chen.
+
+humanizer-de ships its scripts and original material under MIT. It ships
+references/patterns.md and the matching pattern tables under CC BY-SA 4.0.
+Those tables adapt the Wikipedia project pages "Anzeichen für KI-generierte
+Inhalte" (German) and "Signs of AI writing" (English). The humanizer-de
+NOTICE file states this split.
+
+The German rule trigger lists here follow the humanizer-de patterns closely.
+They keep the same patterns and trigger words (decision Q13). We wrote the
+rule descriptions in our own words. A code comment names the humanizer-de
+pattern number (Muster N) next to each borrowed trigger list.
+
+These files carry that material.
+
+  hooks/lib/german_rules/chatbot.py
+  hooks/lib/german_rules/format.py
+  hooks/lib/german_rules/markup.py
+  hooks/lib/german_rules/phrases.py
+  hooks/lib/german_rules/rhetoric.py
+  hooks/lib/german_rules/semantic_claims.py
+  hooks/lib/german_rules/words.py
+  docs/research/2026-09-30-german-style-catalog.md, rules 21 to 80
+
+
+2. German style books, rules in our own words
+
+The German rules below restate points from these books in our own words.
+No sentence from them ships in this repository.
+
+  Monika Salchert, Verständliches Schreiben. Selbstlernheft. Bundesakademie
+  für öffentliche Verwaltung im Bundesministerium des Innern (BAköV),
+  2nd edition, September 2012.
+
+  Andreas Baumert, Professionell texten. dtv Ratgeber, C.H. Beck.
+
+  Stefan Gottschling, Einfach besser texten. GABAL, 2006.
+
+Rules 1 to 20 of docs/research/2026-09-30-german-style-catalog.md cite
+these books, and the German rule modules implement those rows.
+
+
+3. Duden
+
+The source is Dudenredaktion, Einfach können. Rechtschreibung,
+Zeichensetzung und Grammatik. Cornelsen, 2025. ISBN 978-3-411-75696-4.
+
+hooks/lib/german_punctuation.py and hooks/lib/catalog_de.py restate German
+typography rules in our own words. These cover the Gedankenstrich, the
+Bis-Strich, the Ergänzungsstrich, German quotation marks, the ellipsis, and
+the genitive apostrophe. No Duden text ships.
+
+
+4. German exemplar sentences
+
+hooks/lib/pattern_exemplars_de.jsonl stores one sentence per row. The
+"source" field of each row names one of these four sources.
+
+  dewiki-20180920 holds German Wikipedia sentences from the 2018-09-20 dump
+  at https://archive.org/download/dewiki-20180920. Wikipedia licensed that
+  text under CC BY-SA 3.0 and GFDL.
+
+  sedthh/gutenberg_multilang holds German public-domain books from Project
+  Gutenberg, read through
+  https://huggingface.co/datasets/sedthh/gutenberg_multilang. Its dataset
+  card states MIT for the collection.
+
+  wildchat holds German assistant replies from
+  https://huggingface.co/datasets/allenai/WildChat-4.8M under ODC-BY.
+
+  coling holds German machine-written text from the COLING 2025 GenAI
+  Content Detection Task 1 data, read through
+  https://huggingface.co/datasets/Jinyan1/COLING_2025_MGT_multingual. The
+  task repository at
+  https://github.com/mbzuai-nlp/COLING-2025-Workshop-on-MGT-Detection-Task1
+  carries Apache-2.0. The Hugging Face dataset card states no license.
+
+hooks/lib/pattern_exemplars_de.json holds hashes, counts, and precision
+numbers. It stores no third-party text.
+
+
+5. English exemplar sentences
+
+hooks/lib/pattern_exemplars.jsonl stores one sentence per row. The "origin"
+field of each row names one of these sources.
+
+  assistant/wildchat comes from
+  https://huggingface.co/datasets/allenai/WildChat-4.8M under ODC-BY.
+
+  assistant/arena comes from
+  https://huggingface.co/datasets/lmarena-ai/arena-human-preference-100k.
+  Its dataset card puts user prompts under CC BY 4.0, and model outputs
+  under the terms of use of each model provider.
+
+  human/encyclopedia, human/literature, and human/news come from local
+  files named Wikipedia.csv, Gutenberg.csv, and CNN_DailyMail.csv, read by
+  evals/build_human_corpus.py. The repository does not record where these
+  files came from. Wikipedia text carries CC BY-SA. Gutenberg text is in
+  the public domain. CNN and the Daily Mail hold the copyright in their
+  articles.
+
+
+6. German Wiktionary
+
+evals/syllable_counter.json records the syllable counter error rate against
+the Worttrennung field of https://de.wiktionary.org. The Wiktionary Impressum
+names CC BY-SA 3.0 and GFDL. The file stores six German words with their
+reference syllable counts, and no definitions or other Wiktionary text.
+
+
+7. Label files
+
+These label files store corpus row references, labels, and short rater
+reasons, not the corpus sentences. A reason can quote a few words of the
+sentence it judges.
+
+  evals/pattern_labels_de.jsonl
+  evals/pattern_labels_de_sonnet.jsonl
+  evals/pattern_labels_de_adjudicated.jsonl
+  evals/german_static_sample.jsonl
+  evals/german_static_labels_sonnet.jsonl
+  evals/german_static_labels_luna.jsonl
+  evals/german_static_labels_adjudicated.jsonl
+
+Git ignores the corpora themselves, and they rebuild from their sources.
+evals/README.md describes the rebuild.
+
+
+8. Sources fetched at install, not shipped
+
+hooks/lib/principle_kb.py downloads these two sources at install or update
+into ~/.adw/cache/principles.sqlite. This repository tracks no text from
+them.
+
+  DevIQ, https://github.com/NimblePros/deviq-hugo at commit
+  2c5341047e6cf62bc0598dd3cdc2f55951cd125a. The repository carries no
+  license file. See upstream.
+
+  programming-principles, https://github.com/webpro/programming-principles
+  at commit a0c299c981cc31f4d4bd5c265cba80d3e9471429. The repository carries
+  no license file. See upstream.
