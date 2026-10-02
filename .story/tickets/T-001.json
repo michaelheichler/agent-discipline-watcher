@@ -1,12 +1,13 @@
 {
   "blockedBy": [],
-  "completedDate": null,
+  "completedDate": "2026-10-02",
   "createdDate": "2026-09-30",
   "description": "Goal. ADW gates German prose with the same depth it gates English prose today. The user asked for this on 2026-09-30.\n\nSources.\n1. The Duden skill `duden-rechtschreibung` in ~/Development/skills-agents/skills/duden-rechtschreibung. It summarizes Duden \"Einfach können\" (Cornelsen 2025) with core rules and a chapter on AI writing traps in German.\n2. The Duden online at duden.de.\n3. The humanizer-de plugin 5.28.1 (MIT, Martin Moeller). It ships pattern references and lint scripts, among them german_pattern_lint.py, register_lint.py, and rhythm_lint.py.\n\nStatus. Open questions go to a grilling session first. The ticket gets split into sub-tickets after the user answers them.",
+  "displayId": "T-001",
   "id": "T-001",
   "order": 10,
   "phase": "multilingual",
-  "status": "open",
+  "status": "complete",
   "title": "Implement multi-lingual prose discipline, German first",
   "type": "feature"
 }

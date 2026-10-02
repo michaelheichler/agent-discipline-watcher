@@ -2,14 +2,15 @@
   "blockedBy": [
     "T-010"
   ],
-  "completedDate": null,
+  "completedDate": "2026-10-02",
   "createdDate": "2026-10-01",
   "description": "Add a NOTICE file that credits humanizer-de (MIT scripts, CC BY-SA 4.0 patterns) and names the BAköV brochure, Baumert, and Gottschling as sources of rules written in our own words. Update README for language detection, German typography, German findings, `prose-languages`, LIX and WSTF, and the German corpora. Add the CHANGELOG entry. The user approves the release.",
+  "displayId": "T-011",
   "id": "T-011",
   "order": 110,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "open",
+  "status": "complete",
   "title": "NOTICE, README, and CHANGELOG for German",
   "type": "chore"
 }
