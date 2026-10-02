@@ -7,7 +7,7 @@
     "T-008",
     "T-009"
   ],
-  "completedDate": null,
+  "completedDate": "2026-10-02",
   "createdDate": "2026-10-01",
   "description": "Run every German rule over the T-003 corpora. Record hit rate on human text and precision after the judge, the same way evals/human_hit_rate.json and pattern_exemplars.json work for English. Any rule at or above 0.85 blocks hard, any rule below observes (decision Q23). Also measure the T-002 stop-word detection and set its length threshold (decision Q18).\n\nAcceptance.\n1. evals/ holds the German precision per rule and the detection accuracy per paragraph length.\n2. Gate states in the code match the measurement.\n3. The user sees the list of rules that block before the release.",
   "displayId": "T-010",
@@ -15,7 +15,7 @@
   "order": 100,
   "parentTicket": "T-001",
   "phase": "multilingual",
-  "status": "inprogress",
+  "status": "complete",
   "title": "Measure German precision and set the gates",
   "type": "task"
 }
