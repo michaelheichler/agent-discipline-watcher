@@ -1,12 +1,13 @@
 {
   "blockedBy": [],
-  "completedDate": null,
+  "completedDate": "2026-10-05",
   "createdDate": "2026-10-05",
   "description": "`DIRECTIVE_COMMENT_RE` in hooks/lib/comment_rules.py still carries the old alternative `#\\s*eslint-disable(?:-\\w+)*\\b`. It exempts `# eslint-disable <any prose>` in every file type, so an agent can hide a prose comment behind it. `#` is not a JavaScript comment, so the alternative has no legitimate use in JS or TS. Remove it or anchor it to an exact shape, and add a test that prose after the prefix gets a finding. Found by the T-012 agent on 2026-10-05.",
+  "displayId": "T-019",
   "id": "T-019",
   "order": 80,
   "phase": null,
-  "status": "open",
+  "status": "complete",
   "title": "Close the loose hash eslint-disable directive escape",
   "type": "task"
 }

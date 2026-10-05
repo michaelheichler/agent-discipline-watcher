@@ -85,7 +85,7 @@ def _on_claude(monkeypatch: pytest.MonkeyPatch) -> Path:
     return claude_native.settings_path()
 
 
-def test_a_fresh_settings_file_gains_the_haiku_block_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_fresh_settings_file_gains_the_sonnet_command_block_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """Written once, because the plugin ships no reviewer."""
     settings = _on_claude(monkeypatch)
 
@@ -94,9 +94,10 @@ def test_a_fresh_settings_file_gains_the_haiku_block_once(monkeypatch: pytest.Mo
     session_start.run({"source": "startup"})
 
     assert settings.read_text(encoding="utf-8") == first
-    expected = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("haiku")})
+    expected = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("mixed")})
     assert expected
     assert claude_presets.managed_hooks(json.loads(first)) == expected
+    assert claude_native.read_preset() == "mixed"
 
 
 def _moved(settings: Path, preset: str, edit_timeout: bool) -> None:
@@ -117,8 +118,44 @@ def test_a_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.Monkey
     session_start.run({"source": "startup"})
 
     stop = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["Stop"][0]["hooks"][0]
-    assert stop["prompt"] == claude_presets.stop_prompt("mixed")
+    assert stop["command"] == claude_presets.sonnet_command()
     assert stop["timeout"] == 45
+    assert claude_native.read_preset() == "mixed"
+
+
+def _retired_agent(model: str, prompt_line: str) -> dict:
+    prompt = f"{claude_presets.MANAGED_MARKER}\nreview one finished turn\n1. {prompt_line}"
+    return {"type": "agent", "model": model, "timeout": 120, "prompt": prompt}
+
+
+RETIRED_AGENT_BLOCKS = {
+    "haiku": ("claude-haiku-4-5", "Run this exact helper: '/old/hooks/read_claude_journal.sh'"),
+    "mixed": ("claude-sonnet-5-5", "Run this exact helper with --documents: '/old/hooks/read_claude_journal.sh'"),
+    "luna-native": ("luna", "Run this exact helper: '/old/hooks/read_claude_journal.sh'"),
+}
+
+
+@pytest.mark.parametrize("retired", sorted(RETIRED_AGENT_BLOCKS))
+def test_a_retired_agent_block_is_replaced_by_the_sonnet_command(monkeypatch: pytest.MonkeyPatch, retired: str) -> None:
+    """Replaced, because an agent hook cannot run the helper and silently drops every model verdict."""
+    settings = _on_claude(monkeypatch)
+    unrelated = {"type": "command", "command": "keep-this"}
+    model, line = RETIRED_AGENT_BLOCKS[retired]
+    settings.write_text(json.dumps({"hooks": {"Stop": [
+        {"hooks": [_retired_agent(model, line)]}, {"hooks": [unrelated]},
+    ]}}), encoding="utf-8")
+    claude_native.preset_path().parent.mkdir(parents=True, exist_ok=True)
+    claude_native.preset_path().write_text(f"{retired}\n", encoding="utf-8")
+
+    session_start.run({"source": "startup"})
+
+    configured = json.loads(settings.read_text(encoding="utf-8"))
+    handlers = [hook for group in configured["hooks"]["Stop"] for hook in group["hooks"]]
+    assert unrelated in handlers
+    assert {hook["type"] for hook in handlers} == {"command"}
+    assert claude_presets.managed_hooks(configured) == claude_presets.managed_hooks(
+        {"hooks": claude_presets.generated_hooks("mixed")}
+    )
     assert claude_native.read_preset() == "mixed"
 
 
@@ -131,6 +168,19 @@ def test_a_luna_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.M
 
     current = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("luna")})
     assert claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8"))) == current
+    assert claude_native.read_preset() == "luna"
+
+
+def test_a_current_luna_block_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kept, because the user chose Luna."""
+    settings = _on_claude(monkeypatch)
+    claude_native.set_preset("luna", settings_path=settings, preset_path=claude_native.preset_path())
+    before = settings.read_text(encoding="utf-8")
+
+    session_start.run({"source": "startup"})
+
+    assert settings.read_text(encoding="utf-8") == before
+    assert claude_native.read_preset() == "luna"
 
 
 def test_a_block_the_user_changed_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,75 +2,53 @@ from __future__ import annotations
 
 import pytest
 
-from lib import claude_presets
-from lib.judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC
+from lib import claude_native, claude_presets
 
 
-def test_the_roster_is_exactly_the_four_the_user_chose() -> None:
-    """Pin the roster because a sonnet-everywhere preset was rejected and must not return quietly."""
-    assert claude_presets.PRESETS == ("haiku", "mixed", "luna", "luna-native")
+@pytest.mark.parametrize("retired", ("haiku", "luna-native", "sonnet"))
+def test_a_retired_preset_is_refused(retired: str) -> None:
+    """Refuse it by name because an old settings file may still ask for it."""
+    with pytest.raises(ValueError, match="mixed or luna"):
+        claude_presets.validate_preset(retired)
 
 
-def test_a_sonnet_everywhere_preset_is_refused() -> None:
-    """Refuse it by name because it was a real preset and an old settings file may still ask for it."""
-    with pytest.raises(ValueError, match="haiku, mixed, luna, or luna-native"):
-        claude_presets.validate_preset("sonnet")
-
-
-def test_a_stored_sonnet_preset_reads_as_the_preset_that_replaced_it(tmp_path) -> None:
-    """Map it because a dropped name reads as no preset, and status would then report haiku while Sonnet still runs."""
-    from lib import claude_native
-
+@pytest.mark.parametrize("retired", ("haiku", "luna-native", "sonnet"))
+def test_a_stored_retired_preset_reads_as_the_preset_that_replaced_it(tmp_path, retired: str) -> None:
+    """Map it because a dropped name reads as no preset, and status would then report a default while a retired reviewer runs."""
     stored = tmp_path / "preset"
-    stored.write_text("sonnet\n", encoding="utf-8")
+    stored.write_text(f"{retired}\n", encoding="utf-8")
 
-    assert claude_native._read_preset_unlocked(stored) == "mixed"
-
-
-def test_mixed_judges_the_turn_with_sonnet() -> None:
-    """Sonnet, because mixed also reads whole documents."""
-    assert claude_presets.model_for("mixed") == "claude-sonnet-5-5"
+    assert claude_native.read_preset(stored, settings_path=tmp_path / "settings.json") == "mixed"
 
 
-def test_haiku_judges_the_turn_with_haiku() -> None:
-    """Keep it uniform because this preset exists to hold cost flat."""
-    assert claude_presets.model_for("haiku") == "claude-haiku-4-5"
+@pytest.mark.parametrize("preset", claude_presets.PRESETS)
+def test_no_preset_registers_an_agent_hook(preset: str) -> None:
+    """Command only, because an agent hook runs in don't-ask mode and cannot run a Bash helper."""
+    types = {
+        hook["type"]
+        for groups in claude_presets.generated_hooks(preset).values()
+        for group in groups
+        for hook in group["hooks"]
+    }
+
+    assert types == {"command"}
 
 
-def test_luna_native_names_the_model_the_harness_injects() -> None:
-    """Name it because LeverFrame puts Luna in the Claude model list and an agent hook can then ask for it."""
-    assert claude_presets.model_for("luna-native") == claude_presets.LUNA_NATIVE_MODEL
-
-
-def test_luna_refuses_a_native_model_because_it_runs_a_command() -> None:
-    """Separate the two because the SDK preset reaches Luna through a handler rather than the host."""
-    with pytest.raises(ValueError, match="command handlers"):
-        claude_presets.model_for("luna")
-
-
-@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
-def test_every_agent_preset_registers_only_a_stop_reviewer(preset: str) -> None:
+def test_mixed_registers_one_sonnet_command_on_stop_only() -> None:
     """Stop only, because the journal already holds each write."""
-    generated = claude_presets.generated_hooks(preset)
+    generated = claude_presets.generated_hooks("mixed")
 
     assert set(generated) == {"Stop"}
-    entry = generated["Stop"][0]["hooks"][0]
-    assert entry["type"] == "agent"
-    assert "StructuredOutput" in entry["prompt"]
-    assert "exactly once" in entry["prompt"]
-    assert "plain text" in entry["prompt"]
-    assert "JSON:" not in entry["prompt"]
-    stop_prompt = entry["prompt"]
-    assert "skip every remaining step" in stop_prompt
-    assert stop_prompt.index("Batch all") < stop_prompt.index("OUTPUT CONTRACT")
+    assert len(generated["Stop"]) == 1
+    assert generated["Stop"][0]["hooks"][0]["command"] == claude_presets.sonnet_command()
 
 
 def test_the_luna_preset_registers_a_command_on_both_events() -> None:
     """Register a command because python reaches Luna through the SDK rather than through the host."""
     generated = claude_presets.generated_hooks("luna")
 
-    assert generated["PostToolUse"][0]["hooks"][0]["type"] == "command"
-    assert generated["Stop"][0]["hooks"][0]["type"] == "command"
+    assert generated["PostToolUse"][0]["hooks"][0]["command"] == claude_presets.luna_command()
+    assert generated["Stop"][0]["hooks"][0]["command"] == claude_presets.luna_command()
 
 
 @pytest.mark.parametrize("preset", claude_presets.PRESETS)
@@ -80,61 +58,52 @@ def test_no_preset_registers_a_handler_on_pre_tool_use(preset: str) -> None:
 
 
 @pytest.mark.parametrize("preset", claude_presets.PRESETS)
-def test_every_generated_handler_carries_the_managed_marker(preset: str) -> None:
+def test_every_generated_handler_is_recognised_as_managed(preset: str) -> None:
     """Mark them because a second merge duplicates any entry the merger cannot recognise as ours."""
-    generated = claude_presets.generated_hooks(preset)
-    entries = [group["hooks"][0] for groups in generated.values() for group in groups]
+    entries = [
+        hook
+        for groups in claude_presets.generated_hooks(preset).values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
 
-    for entry in entries:
-        carrier = entry.get("prompt") or entry.get("command")
-        assert claude_presets.MANAGED_MARKER in carrier
+    assert entries
+    assert all(claude_presets.is_managed_hook(entry) for entry in entries)
 
 
-def test_the_haiku_preset_names_the_reader_by_absolute_path() -> None:
+@pytest.mark.parametrize("preset", claude_presets.PRESETS)
+def test_every_handler_names_its_script_by_absolute_path(preset: str) -> None:
     """Absolute, because settings hooks get no plugin root."""
-    prompt = claude_presets.generated_hooks("haiku")["Stop"][0]["hooks"][0]["prompt"]
+    commands = [
+        hook["command"]
+        for groups in claude_presets.generated_hooks(preset).values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
 
-    assert claude_presets.JOURNAL_READER_PATH in prompt
-    assert "CLAUDE_PLUGIN_ROOT" not in prompt
-
-
-@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
-def test_no_stop_reviewer_carries_a_stand_down_step(preset: str) -> None:
-    """Gone, because one reviewer set has nothing to yield to."""
-    assert "--superseded" not in claude_presets.stop_prompt(preset)
-
-
-@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
-def test_every_stop_reviewer_judges_pattern_rows_against_their_examples(preset: str) -> None:
-    """Pinned, because a rubric-free judge drifted to taste."""
-    prompt = claude_presets.stop_prompt(preset)
-
-    assert PATTERN_RUBRIC in prompt
-    assert "rule entry" in prompt
-    assert "four violating and four clean" in prompt
-    assert prompt.index(PATTERN_RUBRIC) < prompt.index("OUTPUT CONTRACT")
+    assert commands
+    assert all("CLAUDE_PLUGIN_ROOT" not in command and "/hooks/claude_" in command for command in commands)
 
 
-@pytest.mark.parametrize("preset", ("haiku", "luna-native"))
-def test_only_mixed_asks_for_document_rows(preset: str) -> None:
-    """Opt in, because a whole document costs the most tokens."""
-    prompt = claude_presets.stop_prompt(preset)
+def test_a_retired_agent_hook_still_counts_as_managed_and_as_retired() -> None:
+    """Keep recognising it because a settings file written before the change must be cleaned, not left to fail."""
+    agent = {"type": "agent", "model": "haiku", "prompt": f"{claude_presets.MANAGED_MARKER}\nreview"}
+    settings = {"hooks": {"Stop": [{"hooks": [agent]}]}}
 
-    assert claude_presets.DOCUMENTS_FLAG not in prompt
-    assert DOCUMENT_RUBRIC not in prompt
-
-
-def test_mixed_judges_document_rows_as_whole_documents() -> None:
-    prompt = claude_presets.stop_prompt("mixed")
-
-    assert f"{claude_presets.DOCUMENTS_FLAG} " in prompt
-    assert DOCUMENT_RUBRIC in prompt
+    assert claude_presets.is_managed_hook(agent)
+    assert claude_presets.has_retired_agent_hook(settings)
+    assert claude_presets.without_managed(settings)["hooks"] == {}
 
 
-@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna-native"))
-def test_no_stop_reviewer_opens_a_file(preset: str) -> None:
-    """Rows carry the text, because a file read costs the whole file."""
-    prompt = claude_presets.stop_prompt(preset)
+def test_an_agent_hook_without_the_marker_is_not_retired() -> None:
+    """Leave it alone because it belongs to the user."""
+    foreign = {"type": "agent", "model": "haiku", "prompt": "someone else's reviewer"}
 
-    assert "Never open a file" in prompt
-    assert "Read the named path" not in prompt
+    assert not claude_presets.has_retired_agent_hook({"hooks": {"Stop": [{"hooks": [foreign]}]}})
+
+
+def test_a_luna_command_block_is_not_retired() -> None:
+    """Leave it alone because a user-chosen luna block is a choice."""
+    luna = {"type": "command", "command": claude_presets.luna_command()}
+
+    assert not claude_presets.has_retired_agent_hook({"hooks": {"Stop": [{"hooks": [luna]}]}})

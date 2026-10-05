@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.25.2 (2026-10-05)
+
+### Fixed
+
+- **The Claude Code model review runs again.** The `haiku`, `mixed`, and `luna-native` presets registered `agent` Stop hooks. Each hook told the agent to run `read_claude_journal.sh`. Agent hooks run in the mode that asks no questions, and no allow rule covered that helper. So the review never ran, and its verdicts disappeared. The `mixed` preset is now a command handler in `hooks/lib/claude_sonnet.py`. It reads the journal itself and makes one `claude -p --model claude-sonnet-5-5` call per Stop. That call has no tools, no MCP servers, and no nested hooks. An empty turn makes no call. If the CLI is missing, times out, or returns no usable verdict, the Stop shows "ADW Sonnet review did not run this turn". The rows then stay queued for the next Stop (T-021).
+- **Hash directives match exact tool syntax.** The scanner treated `# eslint-disable` and eight other `#` prefixes as directives. Prose after the prefix escaped every comment rule. `# eslint-disable` had no legitimate use and is gone. The other eight prefixes now pass only in their real tool shapes. The Python ones are `noqa`, `type:`, `pragma`, `ruff:`, and `fmt:`. The Dockerfile ones are `syntax=`, `escape=`, and `check=`. The ADW fence follows the same rule (T-019).
+
+### Removed
+
+- **The `haiku` and `luna-native` presets.** Haiku spent more tokens on wrong verdicts than on usable ones (user decision 2026-10-05). `--model luna` returns HTTP 404 through the Claude CLI, and the `luna` preset already reaches Luna through the Codex runtime. `CLAUDE_HAIKU_MODEL`, `ADW_CLAUDE_HAIKU_ONLY`, and `hooks/read_claude_journal.py` and `.sh` are gone too. A stored retired preset name reads as `mixed` (T-021).
+
+### Changed
+
+- **`mixed` is the default preset.** SessionStart replaces any managed block that registers an agent hook with the `mixed` command. A `luna` block that the user chose stays. `adw-judge` accepts `mixed`, `luna`, and `status` (T-021).
+- **The comment corpus covers subject openers.** `hooks/lib/corpus_what_comments.jsonl` grows from 49 to 187 rows. No lexical rule separated narration from a genuine reason better than the current rule on 80 unseen rows, so the rule stays. Three tests pin the subject-opener guard (T-020).
+
 ## 0.25.1 (2026-10-05)
 
 ### Fixed

@@ -13,26 +13,28 @@ import pytest
 from lib import claude_native, journal, session_state
 
 
-def test_generated_preset_contract_has_batched_roles_and_no_pretool_hook() -> None:
+def test_generated_mixed_preset_is_one_sonnet_command_on_stop() -> None:
     generated = claude_native.generated_hooks("mixed")
 
     assert set(generated) == {"Stop"}
-    stop = generated["Stop"][0]
-    assert stop["hooks"][0]["type"] == "agent"
-    assert stop["hooks"][0]["model"] == "claude-sonnet-5-5"
-    assert "batch" in stop["hooks"][0]["prompt"].lower()
-    for preset in claude_native.PRESETS:
-        assert "PreToolUse" not in claude_native.generated_hooks(preset)
-    luna = claude_native.generated_hooks("luna")
-    for lifecycle in ("PostToolUse", "Stop"):
-        handler = luna[lifecycle][0]["hooks"][0]
-        assert handler["type"] == "command"
-        assert "model" not in handler
-        assert "claude_luna.sh" in handler["command"]
-        assert claude_native.MANAGED_MARKER in handler["command"]
+    handler = generated["Stop"][0]["hooks"][0]
+    assert handler["type"] == "command"
+    assert "model" not in handler
+    assert "claude_sonnet.sh" in handler["command"]
+    assert claude_native.MANAGED_MARKER in handler["command"]
 
 
-@pytest.mark.parametrize("preset", ("haiku", "mixed", "luna", "luna-native"))
+@pytest.mark.parametrize("lifecycle", ("PostToolUse", "Stop"))
+def test_generated_luna_preset_is_one_luna_command_per_lifecycle(lifecycle: str) -> None:
+    handler = claude_native.generated_hooks("luna")[lifecycle][0]["hooks"][0]
+
+    assert handler["type"] == "command"
+    assert "model" not in handler
+    assert "claude_luna.sh" in handler["command"]
+    assert claude_native.MANAGED_MARKER in handler["command"]
+
+
+@pytest.mark.parametrize("preset", ("mixed", "luna"))
 def test_preset_switch_is_idempotent_and_preserves_unrelated_settings(tmp_path: Path, preset: str) -> None:
     settings = tmp_path / "settings.json"
     settings.write_text(json.dumps({
@@ -55,22 +57,30 @@ def test_preset_switch_is_idempotent_and_preserves_unrelated_settings(tmp_path: 
     ]
     assert "other" in commands
     managed = [command for command in commands if claude_native.MANAGED_MARKER in command]
-    assert len(managed) == (1 if preset == "luna" else 0)
+    assert len(managed) == 1
 
 
-def test_preset_default_is_haiku_and_the_mix_is_opt_in(tmp_path: Path) -> None:
+def test_preset_default_is_mixed_and_a_retired_haiku_variable_is_ignored(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
-    assert claude_native.default_preset({}, preset_path=missing) == "haiku"
-    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "true"}, preset_path=missing) == "haiku"
-    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "TRUE"}, preset_path=missing) == "haiku"
-    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=missing) == "haiku"
-    assert claude_native.default_preset({"TERM_PROGRAM": "Claude"}, preset_path=missing) == "haiku"
-    assert claude_native.default_preset({"ADW_CLAUDE_PRESET": "mixed"}, preset_path=missing) == "mixed"
+    assert claude_native.default_preset({}, preset_path=missing) == "mixed"
+    assert claude_native.default_preset({"CLAUDE_CODE_REMOTE": "true"}, preset_path=missing) == "mixed"
+    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=missing) == "mixed"
+    assert claude_native.default_preset({"TERM_PROGRAM": "Claude"}, preset_path=missing) == "mixed"
+    assert claude_native.default_preset({"ADW_CLAUDE_PRESET": "luna"}, preset_path=missing) == "luna"
 
     stored = tmp_path / "preset"
-    claude_native.set_preset("mixed", settings_path=tmp_path / "settings.json", preset_path=stored)
-    assert claude_native.default_preset({}, preset_path=stored) == "mixed"
-    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=stored) == "haiku"
+    claude_native.set_preset("luna", settings_path=tmp_path / "settings.json", preset_path=stored)
+    assert claude_native.default_preset({}, preset_path=stored) == "luna"
+    assert claude_native.default_preset({"ADW_CLAUDE_HAIKU_ONLY": "1"}, preset_path=stored) == "luna"
+
+
+@pytest.mark.parametrize("retired", ("haiku", "luna-native", "sonnet"))
+def test_a_stored_retired_preset_reads_as_mixed(tmp_path: Path, retired: str) -> None:
+    """Mapped, because status would report a default while the retired reviewer's name sat in the file."""
+    stored = tmp_path / "preset"
+    stored.write_text(f"{retired}\n", encoding="utf-8")
+
+    assert claude_native.read_preset(stored, settings_path=tmp_path / "settings.json") == "mixed"
 
 
 def test_candidate_journal_deduplicates_final_content_hash_and_excludes_unrelated_files(tmp_path: Path) -> None:
@@ -182,26 +192,14 @@ def test_candidate_journal_rejects_oversized_regular_file(tmp_path: Path, monkey
     assert journal.record_edit("session", "turn", "tool", source, state_root=tmp_path / "state") == []
 
 
-MIXED_MODELS = {"Stop": "claude-sonnet-5-5"}
-
-
-def _agent_models(configured: dict) -> dict[str, str]:
-    return {
-        lifecycle: hook["model"]
-        for lifecycle, groups in configured["hooks"].items()
-        for group in groups
-        for hook in group["hooks"]
-        if hook.get("type") == "agent"
-    }
-
-
-def _managed_agents(configured: dict) -> list[dict]:
+def _sonnet_commands(configured: dict) -> list[dict]:
     return [
         hook
         for groups in configured["hooks"].values()
         for group in groups
         for hook in group.get("hooks", [])
-        if isinstance(hook, dict) and claude_native.MANAGED_MARKER in str(hook.get("prompt", ""))
+        if isinstance(hook, dict) and hook.get("type") == "command"
+        and claude_native.MANAGED_MARKER in hook.get("command", "") and "claude_sonnet.sh" in hook["command"]
     ]
 
 
@@ -224,7 +222,8 @@ def test_managed_luna_command_and_agent_entries_are_replaced_without_touching_un
     assert managed_luna_command not in handlers
     assert unrelated_luna_command in handlers
     assert unrelated in handlers
-    assert merged["hooks"]["Stop"][0]["hooks"][0]["type"] == "agent"
+    assert merged["hooks"]["Stop"][0]["hooks"][0]["type"] == "command"
+    assert "claude_sonnet.sh" in merged["hooks"]["Stop"][0]["hooks"][0]["command"]
 
 
 def test_cli_rejects_extra_preset_arguments(tmp_path: Path) -> None:
@@ -263,7 +262,7 @@ def test_adw_judge_launcher_uses_the_newest_compatible_python(tmp_path: Path) ->
         }, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert '"preset": "haiku"' in result.stdout
+    assert '"preset": "mixed"' in result.stdout
 
 
 def test_adw_judge_launcher_resolves_a_symlinked_install(tmp_path: Path) -> None:
@@ -282,7 +281,7 @@ def test_adw_judge_launcher_resolves_a_symlinked_install(tmp_path: Path) -> None
         }, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert '"preset": "haiku"' in result.stdout
+    assert '"preset": "mixed"' in result.stdout
 
 
 def test_luna_failure_switches_to_role_fallback_once(tmp_path: Path) -> None:
@@ -319,8 +318,7 @@ def test_concurrent_role_failures_serialize_to_one_consistent_fallback(tmp_path:
     assert selected == "mixed"
     assert all(result["preset"] == selected for result in results)
     assert sum(result["switched"] is True for result in results) == 1
-    assert _managed_agents(configured)
-    assert _agent_models(configured) == MIXED_MODELS
+    assert _sonnet_commands(configured)
 
 
 def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -346,8 +344,7 @@ def test_fallback_recovers_a_crash_between_settings_and_preset_replacements(tmp_
 
     assert claude_native.status(settings_path=settings, preset_path=preset)["preset"] == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert _managed_agents(configured)
-    assert _agent_models(configured) == MIXED_MODELS
+    assert _sonnet_commands(configured)
     assert not preset.with_name(preset.name + ".txn").exists()
 
 
@@ -464,11 +461,11 @@ def test_settings_update_retries_after_external_regular_target_mutation(
         original(parent_fd, name, leaf, text, **kwargs)
 
     monkeypatch.setattr(claude_native, "_atomic_write_regular_open", mutate_before_replace)
-    claude_native.set_preset("luna-native", settings_path=settings, preset_path=preset)
+    claude_native.set_preset("mixed", settings_path=settings, preset_path=preset)
 
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert configured["external_setting"] == "keep me"
-    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == claude_native.LUNA_NATIVE_MODEL
+    assert _sonnet_commands(configured)
 
 
 def test_descriptor_open_failure_does_not_leak_parent_fd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

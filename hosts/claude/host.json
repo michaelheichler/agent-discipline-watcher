@@ -4,10 +4,10 @@
   "summary": "Preset CLI and legacy cleanup. Hook wiring arrives with the plugin, not this script.",
   "adapters": [
     "claude_cache", "claude_default", "claude_luna", "claude_native", "claude_presets",
-    "claude_quarantine", "claude_transaction"
+    "claude_quarantine", "claude_sonnet", "claude_transaction"
   ],
   "entry_scripts": [
-    "claude_luna.py", "merge-claude-settings.py", "read_claude_journal.py",
+    "claude_luna.py", "claude_sonnet.py", "merge-claude-settings.py",
     "claude_cache_nuke.py"
   ],
   "installer": "install.sh",
@@ -16,7 +16,7 @@
   "writes": [
     "~/.adw/bin/adw-judge",
     "~/.adw/bin/adw-nuke",
-    "~/.claude/settings.json, to remove legacy watcher hooks and write the default haiku reviewer at SessionStart",
+    "~/.claude/settings.json, to remove legacy watcher hooks and write the default Sonnet reviewer at SessionStart",
     "~/.claude/plugins/cache/agent-discipline-watcher, cleared then reinstalled by the claude CLI"
   ],
   "reclaims": [

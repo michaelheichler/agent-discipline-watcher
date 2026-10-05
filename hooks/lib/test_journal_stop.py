@@ -1,9 +1,7 @@
 """Split out because the Stop read has its own turn and budget contract."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
-import subprocess
 
 from lib import journal, session_state
 
@@ -56,23 +54,6 @@ def test_stop_read_applies_one_aggregate_character_budget(tmp_path: Path) -> Non
 
     assert sum(len(row["source_context"]) for row in rows) <= journal.MAX_STOP_TOTAL_CHARS == 48_000
     assert len(rows) == 2
-
-
-def test_the_stop_helper_serves_an_earlier_document_once(tmp_path: Path) -> None:
-    document = tmp_path / "doc.md"
-    document.write_text("Served to one Stop reviewer.\n", encoding="utf-8")
-    journal.record_edit("session", "turn", "tool", document, state_root=tmp_path / ".adw" / "state")
-    reader = Path(__file__).parents[1] / "read_claude_journal.sh"
-
-    def read() -> str:
-        result = subprocess.run(
-            [str(reader), "--documents", "session"], env={**os.environ, "HOME": str(tmp_path)},
-            capture_output=True, text=True, check=True,
-        )
-        return result.stdout
-
-    assert "Served to one Stop reviewer." in read()
-    assert read().strip() == "[]"
 
 
 def test_stop_read_skips_a_reviewed_digest_until_the_content_changes(tmp_path: Path) -> None:

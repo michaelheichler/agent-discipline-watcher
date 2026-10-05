@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "User decision 2026-10-05: Haiku spends more tokens on hallucinations than on usable verdicts. The reviewer runs on Luna through the OpenAI/Codex runtime or on Sonnet 5.5 through Claude Code.\n\nObserved 2026-10-05: the managed Stop hook (`haiku` preset, type agent) failed with \"permissions denied for reading helper script and running Bash commands in don't-ask mode\". An agent hook receives only its prompt and the hook input. So `stop_prompt` in hooks/lib/claude_presets.py tells it to run `read_claude_journal.sh` to fetch the journal rows. Agent hooks run in don't-ask mode, and no allow rule covers the helper, so the review never ran. The helper path also changes with every version directory.\n\nScope:\n1. Remove the `haiku` preset, `CLAUDE_HAIKU_MODEL`, and `ADW_CLAUDE_HAIKU_ONLY`. SessionStart seeds a non-Haiku preset when no managed block exists.\n2. The reviewer runs without Bash. `luna` already uses a command handler that reads the journal itself. For Sonnet 5.5, replace the agent hook with a command handler that reads the journal and calls the model, or hand the rows to the agent another way. Measure both and pick one.\n3. Decide the default seed: `luna` needs `data_boundary.enabled` per project, because it sends source off the machine. Without it, Sonnet 5.5.\n4. Update README line 29 and the preset section, adw-judge usage, and tests.",
+  "displayId": "T-021",
+  "id": "T-021",
+  "order": 100,
+  "phase": null,
+  "status": "complete",
+  "title": "Drop the Haiku reviewer and stop the Stop reviewer from needing Bash",
+  "type": "task"
+}

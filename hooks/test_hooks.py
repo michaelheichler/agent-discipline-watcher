@@ -277,6 +277,14 @@ PROSE_BEHIND_DIRECTIVE_CASES = (
     ("script.ts", "// prettier-ignore this loops over the pages\nrun()\n"),
     ("script.ts", '/// <reference types="node" /> this loops over the pages\nrun()\n'),
     ("main.go", "//go:note this loops over the pages\npackage main\n"),
+    ("script.py", "# eslint-disable this loops over every page and returns the count\nx = 1\n"),
+    ("script.sh", "# eslint-disable-next-line this loops over every page and returns the count\nx=1\n"),
+    ("script.py", "# noqa this loops over every page and returns the count\nx = 1\n"),
+    ("script.py", "# pragma this loops over every page and returns the count\nx = 1\n"),
+    ("Dockerfile", "# syntax=this loops over every page and returns the count\nFROM scratch\n"),
+    ("Dockerfile", "# escape=this loops over every page and returns the count\nFROM scratch\n"),
+    ("Dockerfile", "# check=this loops over every page and returns the count\nFROM scratch\n"),
+    ("script.sh", "# >>> agent-discipline-watcher this loops over every page and returns the count\nx=1\n"),
 )
 
 
@@ -285,6 +293,28 @@ def test_pre_write_still_flags_prose_hidden_behind_a_directive_prefix(path, cont
     payload = {"tool_input": {"file_path": path, "content": content}}
     response = pre_write.run(payload, {"ledger_path": _ledger_path()})
     assert f"{path}:1 " in _style_advice(response)
+
+
+HASH_DIRECTIVE_CASES = (
+    ("script.py", "# noqa\nx = 1\n"),
+    ("script.py", "# NOQA: E501,W291\nx = 1\n"),
+    ("script.py", "# noqa:E501 W291\nx = 1\n"),
+    ("script.py", "# type: ignore[arg-type, attr-defined]\nx = 1\n"),
+    ("script.py", "# pragma: no branch\nx = 1\n"),
+    ("script.py", "# pragma: allowlist secret\nx = 1\n"),
+    ("script.py", "# ruff: noqa: E501,W291\nx = 1\n"),
+    ("script.py", "# fmt: on\nx = 1\n"),
+    ("script.py", "# fmt: skip\nx = 1\n"),
+    ("Dockerfile", "# syntax=docker/dockerfile:1\nFROM scratch\n"),
+    ("Dockerfile", "# check=skip=JSONArgsRecommended,StageNameCasing;error=true\nFROM scratch\n"),
+    ("script.sh", "# >>> agent-discipline-watcher >>>\nx=1\n# <<< agent-discipline-watcher <<<\n"),
+)
+
+
+@pytest.mark.parametrize("path, content", HASH_DIRECTIVE_CASES)
+def test_pre_write_allows_exact_hash_directive_forms(path, content):
+    payload = {"tool_input": {"file_path": path, "content": content}}
+    assert pre_write.run(payload, {"ledger_path": _ledger_path()}) == {}
 
 
 def _rules_for(path: str, text: str) -> set[str]:

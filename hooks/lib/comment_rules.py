@@ -94,10 +94,20 @@ _TOOL_DIRECTIVE_PATTERNS = (
     r"//\s*prettier-ignore$",
     r"///\s*<reference(?:\s+[\w-]+=(?:\"[^\"]*\"|'[^']*'|(?=\s)|(?=/>))){1,3}\s*/>$",
 )
+_HASH_TOOL_DIRECTIVE_PATTERNS = (
+    r"#\s*noqa(?::\s*[a-z]+\d+(?:[\s,]+[a-z]+\d+)*)?$",
+    r"#\s*type:\s*ignore(?:\[[\w\s,.-]+\])?$",
+    r"#\s*pragma:\s*(?:no\s+(?:cover|branch)|allowlist\s+(?:nextline-)?secret)$",
+    r"#\s*ruff:\s*noqa(?::\s*[a-z]+\d+(?:[\s,]+[a-z]+\d+)*)?$",
+    r"#\s*fmt:\s*(?:off|on|skip)$",
+    r"#\s*syntax=\S+$",
+    r"#\s*escape=[\\`]$",
+    r"#\s*check=[\w=,;]+$",
+    r"#\s*(?:>>>|<<<)\s*agent-discipline-watcher(?:\s*(?:>>>|<<<))?$",
+)
 DIRECTIVE_COMMENT_RE = re.compile(
-    r"^(?:#!|#\s*(?:(?:syntax|escape|check)=|noqa\b|type:|pragma\b|ruff:|fmt:|"
-    r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+|"
-    + "|".join(_TOOL_DIRECTIVE_PATTERNS) + ")",
+    r"^(?:#!|//\s*@ts-[\w-]+|"
+    + "|".join(_HASH_TOOL_DIRECTIVE_PATTERNS + _TOOL_DIRECTIVE_PATTERNS) + ")",
     re.IGNORECASE,
 )
 TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)

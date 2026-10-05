@@ -8,7 +8,7 @@ import pytest
 
 from lib import claude_transaction
 
-PRESETS = ("haiku", "mixed", "luna", "luna-native")
+PRESETS = ("mixed", "luna")
 VERSION = 2
 HASH = "a" * 64
 
@@ -16,7 +16,7 @@ HASH = "a" * 64
 def _payload(**overrides) -> dict:
     base = {
         "version": VERSION,
-        "preset": "haiku",
+        "preset": "mixed",
         "base_preset": None,
         "base_settings_hash": None,
     }
@@ -29,13 +29,13 @@ def _validate(payload: dict) -> dict:
 
 def test_a_minimal_transaction_survives_validation() -> None:
     """Accept the required four because a stricter shape would reject every real transaction."""
-    assert _validate(_payload())["preset"] == "haiku"
+    assert _validate(_payload())["preset"] == "mixed"
 
 
 def test_a_transaction_naming_a_retired_preset_is_refused() -> None:
-    """Refuse it because a settings file written before the roster shrank still names sonnet."""
+    """Refuse it because a settings file written before the roster shrank still names haiku."""
     with pytest.raises(ValueError, match="invalid preset transaction"):
-        _validate(_payload(preset="sonnet"))
+        _validate(_payload(preset="haiku"))
 
 
 def test_a_transaction_from_another_version_is_refused() -> None:

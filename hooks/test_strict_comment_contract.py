@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 import pre_write
-from lib.comment_rules import COMMENT_CHAR_CAP
+from lib.comment_rules import COMMENT_CHAR_CAP, SUBJECT_OPENER_RE
 from lib.scanner import scan_all
 
 ENFORCE_DEFERRED_WORK = {"baseline": "none", "rule_gates": {"deferred_work_comment": "enforce"}}
@@ -252,6 +253,37 @@ def test_so_without_a_comma_does_not_state_why() -> None:
 
 def test_a_subject_opener_still_narrates_when_a_so_clause_follows() -> None:
     assert "what_comment" in _rules("# The reader votes a sentence, so the count updates.\nx = 1\n")
+
+
+@pytest.mark.parametrize("comment", [
+    "The reader votes a sentence, so the vote stays stable.",
+    "The loader reads the file, so the cache stays warm.",
+    "The handler returns the response because callers need a result.",
+    "This method stores the key in the map so that lookups stay fast.",
+    "The parser fails on bad input, so callers get an error.",
+    "The user service drops duplicate rows, so the table stays unique.",
+    "The feeder pulls one page at a time, so each page is fed in turn.",
+    "The scanner returns early when the file is empty, so empty files skip.",
+])
+def test_a_causal_clause_does_not_rescue_a_subject_opener_that_restates_the_code(comment: str) -> None:
+    assert "what_comment" in _rules("# " + comment + "\nx = 1\n")
+
+
+def _subject_opener_corpus_rows() -> list[dict]:
+    corpus = Path(__file__).parent / "lib" / "corpus_what_comments.jsonl"
+    rows = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines() if line]
+    return [row for row in rows if row["kind"] == "comment" and SUBJECT_OPENER_RE.match(row["text"])]
+
+
+def test_every_subject_opener_narration_in_the_corpus_is_blocked() -> None:
+    narrations = [row["text"] for row in _subject_opener_corpus_rows() if row["label"] == "what"]
+    escaped = [text for text in narrations if "what_comment" not in _rules("# " + text + "\nx = 1\n")]
+    assert len(narrations) >= 20
+    assert escaped == []
+
+
+def test_the_corpus_keeps_enough_genuine_subject_opener_why_rows_to_judge_a_new_rule() -> None:
+    assert sum(row["label"] == "why" for row in _subject_opener_corpus_rows()) >= 20
 
 
 def test_post_write_source_path_is_not_required_for_pending_contract(tmp_path: Path) -> None:

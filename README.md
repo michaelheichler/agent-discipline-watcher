@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.1**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.2**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -10,7 +10,7 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
-**Document.** Opt in on Claude Code through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
+**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
 
 Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
 
@@ -26,7 +26,7 @@ A rule speaks only where a measurement covers it, and blocks only where that mea
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude CLI judge pins Haiku, because a nested top-tier model bills the account for work that only drives a gate. The `mixed` preset runs the Stop review on Sonnet, and it is the one agent preset that adds the whole-document review. The `luna-native` preset uses Luna through a native agent handler. The `luna` preset sits outside the Claude CLI path, because it routes through a command handler on the subscription-backed GPT-5.6 Luna provider. The five precision numbers above came from a Sonnet reader, so they need re-measuring against Haiku before anyone treats them as current. One earlier run showed Haiku blocking two ordinary sentences as `ai_closer`. Sonnet cleared the same document four times out of four.
+The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews whole documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. The precision numbers above came from a Sonnet reader, so they stay current.
 
 ## What the rules were measured against
 
@@ -303,44 +303,58 @@ The plugin manifest ships command hooks only. The reviewer lives in
 `~/.claude/settings.json` as the managed block, the hook entries whose first
 line or command carries the `adw-managed-hook-v1` marker. When a Claude Code
 session starts and `settings.json` holds no managed block, the SessionStart hook
-writes the `haiku` preset. A plain install needs no preset step. Claude Code
-picks up the configuration change without a restart. SessionStart leaves an
-existing managed block alone, so a preset you chose or edited stays. When
-SessionStart cannot read `settings.json`, it prints one line to stderr and
+writes the `mixed` preset. A plain install needs no preset step. Claude Code
+picks up the configuration change without a restart. SessionStart leaves a
+current managed block alone, so a preset you chose or edited stays. It
+replaces an old block that registers an agent hook, such as the retired
+`haiku` preset, with the `mixed` default. It also points a stale script path
+in a `mixed` or `luna` block at the current plugin. When SessionStart cannot
+read `settings.json`, it prints one line to stderr and
 the session goes on without a reviewer. Select a different preset with
-`/agent-discipline-watcher:adw-judge haiku|mixed|luna|luna-native|status`.
+`/agent-discipline-watcher:adw-judge mixed|luna|status`.
 Each selection replaces the managed block, so `settings.json` never holds two
 reviewer sets.
 
-Each agent preset registers one reviewer, on Stop. No agent runs per write.
-The PostToolUse command hook records comment candidates in the journal, and the
-async `JudgeReview` route adds pattern candidates. The Stop agent judges both
-from those rows. The journal helper prints the rows, and beside them one rule
-entry per rule with four violating and four clean examples. The agent judges
-every row in one batch against `PATTERN_RUBRIC` and opens no file.
+Both presets register command handlers, because an agent hook runs in a
+mode that asks no questions and cannot run a helper script. The PostToolUse command hook
+records comment candidates in the journal, and the
+async `JudgeReview` route adds pattern candidates. The Stop handler judges both
+from those rows, plus the documents the turn wrote. It sends one request per
+pattern rule, with four violating and four clean examples, beside the document
+rows. Each upheld pattern row prints its path, line, rule title, matched text,
+and action. Pattern and document rows share one 48,000 character Stop budget.
 
-`haiku` runs the Stop review on Haiku. `mixed` runs it on Sonnet.
+`mixed` is the Sonnet preset. Its Stop handler makes one batch call per Stop:
 
-Among the agent presets, only `mixed` adds the whole-document review. Its Stop
-agent passes `--documents` to the helper, which then prints document rows too.
+```
+claude -p --model claude-sonnet-5-5 --output-format json --json-schema <schema> \
+  --tools "" --no-session-persistence --settings '{"disableAllHooks":true}' \
+  --strict-mcp-config --mcp-config '{"mcpServers":{}}' --disable-slash-commands \
+  --system-prompt <prompt>
+```
 
-`luna-native` names the Luna model directly. It works where a tool such as LeverFrame injects
-Luna into the Claude model list. `luna` emits no native agent at all. It uses a
-command handler on the subscription-backed Codex runtime and switches to
-`mixed` only after Luna is unavailable. Its Stop handler judges the same
-journal rows as the agent presets. It sends one request per pattern rule, with
-four violating and four clean examples, beside the document rows. Each upheld
-pattern row prints its path, line, rule title, matched text, and action.
-Pattern and document rows share one 48,000 character Stop budget.
+The prompt goes in on stdin. The call has no tools, so the reviewer never needs
+Bash. `disableAllHooks` stops the nested session from firing ADW on its own
+review. An empty turn makes no call. The call uses your Claude Code login.
+
+The review can fail. The CLI can be missing, run past 90 seconds, or return
+no usable verdict. If the review fails, the Stop shows one line that the
+review did not run. It does not block. The rows stay unreviewed, so the next
+Stop retries.
+
+`luna` uses a command handler on the subscription-backed Codex runtime for
+both PostToolUse and Stop, and switches to `mixed` only after Luna is
+unavailable. The Claude CLI cannot call Luna, so no Luna preset runs through it.
 
 The Luna routes send source text off the machine. The Claude Luna handler and
 the Codex Stop review run only with `data_boundary.enabled` set to `true` in
-`.agent-discipline.json`. The OMP review uses the same gate.
+`.agent-discipline.json`. The OMP review uses the same gate. The `mixed`
+preset sends text to Anthropic on your own account and needs no gate.
 
-`status` counts the reviewers in the managed block rather than echoing the
-stored preset, so an unwired gate says so. An agent preset counts one. `luna`
-counts two, one command handler on PostToolUse and one on Stop. If an install needs
-the explicit Haiku-only environment, set `ADW_CLAUDE_HAIKU_ONLY=1`.
+`status` counts the reviewers in the managed block. It does not echo the
+stored preset, so an unwired gate says so. `mixed` counts one. `luna`
+counts two, one command handler on PostToolUse and one on Stop. Haiku has no
+preset, and `ADW_CLAUDE_HAIKU_ONLY` no longer does anything.
 
 Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
 Missing runtime, subscription login, model availability, or provider

@@ -13,8 +13,8 @@ except ImportError:
     import claude_native
     import claude_presets
 
-DEFAULT_PRESET = "haiku"
-SCRIPT_TOKEN = re.compile(r"'[^']*/hooks/(?:read_claude_journal|claude_luna)\.sh'|/[^\s']*/hooks/(?:read_claude_journal|claude_luna)\.sh")
+DEFAULT_PRESET = "mixed"
+SCRIPT_TOKEN = re.compile(r"'[^']*/hooks/claude_(?:luna|sonnet)\.sh'|/[^\s']*/hooks/claude_(?:luna|sonnet)\.sh")
 
 
 def _current_token(token: str) -> str:
@@ -27,34 +27,21 @@ def _repointed_text(text: str) -> str:
 
 
 def _repoint_hook(hook: dict[str, Any]) -> None:
-    field = "prompt" if hook.get("type") == "agent" else "command"
-    hook[field] = _repointed_text(hook[field])
-
-
-def _hook_entries(settings: dict[str, Any]) -> list[object]:
-    lifecycles = settings.get("hooks")
-    groups = [
-        group
-        for entries in (lifecycles.values() if isinstance(lifecycles, dict) else [])
-        if isinstance(entries, list)
-        for group in entries
-        if isinstance(group, dict) and isinstance(group.get("hooks"), list)
-    ]
-    return [hook for group in groups for hook in group["hooks"]]
+    hook["command"] = _repointed_text(hook["command"])
 
 
 def _repointed(settings: dict[str, Any]) -> dict[str, Any]:
     """Paths only, because the rest may be a user edit."""
     updated = copy.deepcopy(settings)
-    for hook in _hook_entries(updated):
+    for _lifecycle, hook in claude_presets.hook_entries(updated):
         if claude_presets.is_managed_hook(hook):
             _repoint_hook(hook)
     return updated
 
 
 def ensure_default_block() -> str | None:
-    """Only into an empty slot, because any block is a choice."""
-    return claude_native.ensure_managed_block(DEFAULT_PRESET, _repointed)
+    """Into an empty slot or over a retired agent block, because any other block is a choice."""
+    return claude_native.ensure_managed_block(DEFAULT_PRESET, _repointed, claude_presets.has_retired_agent_hook)
 
 
 def ensure_with_notice() -> None:

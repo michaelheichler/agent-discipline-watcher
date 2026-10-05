@@ -8,9 +8,10 @@ from .finding_output import ReviewNote, format_row, review_row
 
 MAX_FEEDBACK_CHARS = 900
 MAX_LISTED_ROWS = 5
-COMMENT_LEAD = "ADW Luna comment review:"
-DOCUMENT_LEAD = "ADW Luna document review:"
-PATTERN_LEAD = "ADW Luna pattern review:"
+LUNA = "Luna"
+COMMENT_LEAD = "ADW {reviewer} comment review:"
+DOCUMENT_LEAD = "ADW {reviewer} document review:"
+PATTERN_LEAD = "ADW {reviewer} pattern review:"
 COMMENT_ACTION = "Rewrite the comment to say why the code exists, or delete it."
 DOCUMENT_ACTION = "Fix the named document issue."
 
@@ -68,18 +69,18 @@ def _finding_rows(result: Any, found: tuple[Any, ...], rule: str, action: str) -
     ]
 
 
-def comment_feedback(result: Any, found: tuple[Any, ...]) -> str:
+def comment_feedback(result: Any, found: tuple[Any, ...], reviewer: str = LUNA) -> str:
     feedback = _item_rows(result, found, "describes_code", COMMENT_ACTION)
-    return _listing(COMMENT_LEAD, feedback) if feedback else ""
+    return _listing(COMMENT_LEAD.format(reviewer=reviewer), feedback) if feedback else ""
 
 
-def pattern_feedback(result: Any, found: tuple[Any, ...], action: str, rule: str = "") -> str:
+def pattern_feedback(result: Any, found: tuple[Any, ...], action: str, rule: str = "", reviewer: str = LUNA) -> str:
     """Rule optional, because the Codex caller passes none."""
     if rule:
         feedback = _finding_rows(result, found, rule, bounded(action))
     else:
         feedback = _item_rows(result, found, "violating", bounded(action))
-    return _listing(PATTERN_LEAD, feedback) if feedback else ""
+    return _listing(PATTERN_LEAD.format(reviewer=reviewer), feedback) if feedback else ""
 
 
 def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
@@ -90,7 +91,7 @@ def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
     return "document"
 
 
-def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
+def document_feedback(result: Any, rows: list[dict[str, Any]], reviewer: str = LUNA) -> str:
     """Require a named problem because a note without one gives the writer nothing to act on."""
     notes = result.payload.get("notes")
     if not isinstance(notes, list):
@@ -103,4 +104,4 @@ def document_feedback(result: Any, rows: list[dict[str, Any]]) -> str:
         location = _quote_location(str(row.get("quote", "")), rows)
         note = ReviewNote(location, quote, bounded(row["problem"]), bounded(row.get("fix", DOCUMENT_ACTION)))
         feedback.append(review_row(note))
-    return _listing(DOCUMENT_LEAD, feedback) if feedback else ""
+    return _listing(DOCUMENT_LEAD.format(reviewer=reviewer), feedback) if feedback else ""

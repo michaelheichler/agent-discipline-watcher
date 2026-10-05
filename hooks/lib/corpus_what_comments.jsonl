@@ -47,3 +47,141 @@
 {"label":"what","kind":"comment","text":"Returns the row and must cache or raise"}
 {"label":"what","kind":"comment","text":"Returns the row, or None instead of raising"}
 {"label":"what","kind":"surface","path":"sample.py","source":"def fetch(key):\n    \"\"\"Fetch.\"\"\"\n"}
+{"label":"what","kind":"comment","text":"The reader votes a sentence, so the vote stays stable."}
+{"label":"what","kind":"comment","text":"The loader reads the file, so the cache stays warm."}
+{"label":"what","kind":"comment","text":"The handler returns the response because callers need a result."}
+{"label":"what","kind":"comment","text":"The function loops over every entry to build the index."}
+{"label":"what","kind":"comment","text":"This method stores the key in the map so that lookups stay fast."}
+{"label":"what","kind":"comment","text":"Each worker pulls a job from the queue, so the queue drains."}
+{"label":"what","kind":"comment","text":"The parser splits the line on commas because the fields are separate."}
+{"label":"what","kind":"comment","text":"A helper copies the record to keep the original intact."}
+{"label":"what","kind":"comment","text":"The cache holds the last result because reuse is faster."}
+{"label":"what","kind":"comment","text":"The loop walks the items and bumps the counter, so the total is right."}
+{"label":"what","kind":"comment","text":"This function validates the payload because validation is needed."}
+{"label":"what","kind":"comment","text":"The list collects every handler, so the dispatcher has them all."}
+{"label":"what","kind":"comment","text":"The wrapper holds the connection, so the connection stays held."}
+{"label":"what","kind":"comment","text":"The map stores users by id so that the code can find users by id."}
+{"label":"what","kind":"comment","text":"The test creates a temp dir and writes the config file into it."}
+{"label":"what","kind":"comment","text":"The goroutine sends each result on the channel, so the channel fills."}
+{"label":"what","kind":"comment","text":"The hook returns the state and a setter, so components can read state."}
+{"label":"what","kind":"comment","text":"The view model fetches the items on load, so the list shows the items."}
+{"label":"what","kind":"comment","text":"The scanner reads each file, so the findings stay complete."}
+{"label":"what","kind":"comment","text":"The list is sorted by name before printing, so the output is ordered."}
+{"label":"what","kind":"comment","text":"The network client retries the request, so failures are handled."}
+{"label":"what","kind":"comment","text":"The disk cache writes the entry to a file, so the entry is persisted."}
+{"label":"what","kind":"comment","text":"The scanner returns early when the file is empty, so empty files skip."}
+{"label":"what","kind":"comment","text":"The feeder pulls one page at a time, so each page is fed in turn."}
+{"label":"what","kind":"comment","text":"A user record carries the name and email, so the profile has both."}
+{"label":"what","kind":"comment","text":"The server handler decodes the body and passes it on to the service."}
+{"label":"what","kind":"comment","text":"The parser fails on bad input, so callers get an error."}
+{"label":"what","kind":"comment","text":"The loop ends when the list is empty, so no item is left over."}
+{"label":"what","kind":"comment","text":"The cache expires each entry after a minute, so entries stay fresh."}
+{"label":"what","kind":"comment","text":"The handler blocks until the queue drains, so the order is kept."}
+{"label":"what","kind":"comment","text":"The user service drops duplicate rows, so the table stays unique."}
+{"label":"what","kind":"comment","text":"The network client closes the socket after the reply, so no socket leaks."}
+{"label":"what","kind":"comment","text":"The disk writer fails when the path is empty, so callers see an error."}
+{"label":"why","kind":"comment","text":"An empty feeder ends a batch with a non-zero status, so pages count as success."}
+{"label":"why","kind":"comment","text":"The server closes idle sockets after 60 seconds, so the client must reconnect."}
+{"label":"why","kind":"comment","text":"A stale lock survives a crash, so startup ignores locks over a day old."}
+{"label":"why","kind":"comment","text":"The vendor caps traffic at 100 requests a minute, so batches stay under it."}
+{"label":"why","kind":"comment","text":"A full disk fails mid-write, so the temp file is renamed only after a flush."}
+{"label":"why","kind":"comment","text":"The filesystem ignores case on Windows, so raw string compares miss matches."}
+{"label":"why","kind":"comment","text":"The upstream parser drops trailing newlines, so every offset is one short."}
+{"label":"why","kind":"comment","text":"The browser fires blur twice, so the handler must ignore the second call."}
+{"label":"why","kind":"comment","text":"The network drops packets under load, so the retry count is three."}
+{"label":"why","kind":"comment","text":"Each shard holds at most 10k rows because the vendor caps one response."}
+{"label":"why","kind":"comment","text":"A user revokes a token at any time, so cache entries expire within a minute."}
+{"label":"why","kind":"comment","text":"The kernel zeroes new pages, so the explicit memset is skipped."}
+{"label":"why","kind":"comment","text":"The vendor library returns nil on timeout, so nil is not an error."}
+{"label":"why","kind":"comment","text":"The scanner never sees compiled output, so the generated header is excluded."}
+{"label":"why","kind":"comment","text":"A mobile app gets killed after 30 seconds idle, so uploads are chunked."}
+{"label":"why","kind":"comment","text":"The provider sends each webhook twice or more, so the handler is idempotent."}
+{"label":"why","kind":"comment","text":"The device clock jumps backwards, so durations use a monotonic timer."}
+{"label":"why","kind":"comment","text":"Every reply uses UTF-16, so the body is decoded before parsing."}
+{"label":"why","kind":"comment","text":"The database locks the table during migration, so the job retries."}
+{"label":"why","kind":"comment","text":"A headless run has no display, so the window tests are skipped there."}
+{"label":"why","kind":"comment","text":"The feeder returns status 3 when empty, because firmware reads it as done."}
+{"label":"why","kind":"comment","text":"Its watcher misses events on network drives, so polling stays at 1 second."}
+{"label":"why","kind":"comment","text":"The vendor feed repeats keys, so the last value wins."}
+{"label":"why","kind":"comment","text":"The plugin boots first, so the cache is not ready when the loader runs."}
+{"label":"why","kind":"comment","text":"A handler that blocks on disk stalls the event loop, so writes go to a thread."}
+{"label":"why","kind":"comment","text":"The retry count is three because the vendor allows three tries per hour."}
+{"label":"what","kind":"comment","text":"The loader reads the config file and returns a parsed dict."}
+{"label":"what","kind":"comment","text":"A cache wrapper stores each response, so repeat calls skip the network."}
+{"label":"what","kind":"comment","text":"This handler maps incoming webhook payloads to internal event types."}
+{"label":"what","kind":"comment","text":"Each worker pulls jobs from the queue and runs them in order."}
+{"label":"what","kind":"comment","text":"The feeder pushes sensor readings into the buffer every second."}
+{"label":"what","kind":"comment","text":"An enum holds the supported export formats for the CLI."}
+{"label":"what","kind":"comment","text":"The vendor adapter converts invoice rows into the shared schema."}
+{"label":"what","kind":"comment","text":"One helper trims whitespace from user input before validation."}
+{"label":"what","kind":"comment","text":"The server struct holds the listener and a shutdown channel."}
+{"label":"what","kind":"comment","text":"This list collects every device that failed its health check."}
+{"label":"what","kind":"comment","text":"The retry wrapper calls the API again, to avoid dropping the request."}
+{"label":"what","kind":"comment","text":"A background task flushes the log buffer to disk, so entries persist."}
+{"label":"what","kind":"comment","text":"Its constructor builds the session store because the router needs one."}
+{"label":"what","kind":"comment","text":"The browser module opens each URL and records the page title."}
+{"label":"what","kind":"comment","text":"That parser splits the header line on commas to ensure clean fields."}
+{"label":"what","kind":"comment","text":"The clock service returns the current time in UTC."}
+{"label":"what","kind":"comment","text":"Each user record gets a UUID assigned when it is created."}
+{"label":"what","kind":"comment","text":"The disk scanner walks the tree and sums file sizes, to report usage."}
+{"label":"what","kind":"comment","text":"A mutex guards the counter so only one goroutine updates it."}
+{"label":"what","kind":"comment","text":"The network layer sends the payload over TLS and awaits an ack."}
+{"label":"why","kind":"comment","text":"The vendor API returns timestamps in local time, not UTC."}
+{"label":"why","kind":"comment","text":"A device can drop off the network mid-write, so partial files occur."}
+{"label":"why","kind":"comment","text":"The browser caps concurrent connections per host at six."}
+{"label":"why","kind":"comment","text":"This loader must stay lazy because the server starts before config exists."}
+{"label":"why","kind":"comment","text":"The clock on embedded boards drifts by seconds per day."}
+{"label":"why","kind":"comment","text":"Every retry doubles the wait, since the upstream rate limiter bans bursts."}
+{"label":"why","kind":"comment","text":"The disk returns stale metadata when a network mount is slow."}
+{"label":"why","kind":"comment","text":"A handler may run twice, because the broker delivers at least once."}
+{"label":"why","kind":"comment","text":"That cache never expires entries, as the vendor forbids refetching data."}
+{"label":"why","kind":"comment","text":"Safari rejects this cookie unless the SameSite flag is explicit."}
+{"label":"why","kind":"comment","text":"The feeder sends duplicate frames after a reconnect."}
+{"label":"why","kind":"comment","text":"One wrapper stays in place because the C library is not thread safe."}
+{"label":"why","kind":"comment","text":"This list is unbounded, so memory grows with every connected user."}
+{"label":"why","kind":"comment","text":"The server closes idle sockets after 30 seconds, which breaks long polls."}
+{"label":"why","kind":"comment","text":"An iOS app gets suspended in the background and loses its open sockets."}
+{"label":"why","kind":"comment","text":"The user can edit the file while we read it, so checksums may mismatch."}
+{"label":"why","kind":"comment","text":"Its callback fires on the main thread, which blocks the UI if slow."}
+{"label":"why","kind":"comment","text":"The legacy endpoint ignores the limit parameter and returns everything."}
+{"label":"why","kind":"comment","text":"A zero value here means unlimited, which the upstream docs never mention."}
+{"label":"why","kind":"comment","text":"The queue loses messages on restart unless the broker has persistence on."}
+{"label":"why","kind":"comment","text":"The loader reads UTF-16 files because the vendor exports from Windows tools."}
+{"label":"what","kind":"comment","text":"The stream closes after the last chunk, so no handle stays open."}
+{"label":"why","kind":"comment","text":"The cache stores keys in lowercase because the API ignores id case."}
+{"label":"what","kind":"comment","text":"The retry loop gives up after three tries, to keep the call bounded."}
+{"label":"why","kind":"comment","text":"The queue holds at most 100 jobs because the vendor caps traffic per minute."}
+{"label":"what","kind":"comment","text":"Each cache entry expires after sixty seconds, so stale reads get replaced."}
+{"label":"why","kind":"comment","text":"The wrapper returns a copy because the SDK reuses its buffer after each call."}
+{"label":"what","kind":"comment","text":"This filter drops empty rows, so the output has only filled records."}
+{"label":"why","kind":"comment","text":"The handler sends a 202 because the gateway kills calls after 30 seconds."}
+{"label":"what","kind":"comment","text":"The worker skips hidden files, so the walk covers visible paths only."}
+{"label":"why","kind":"comment","text":"The parser maps month names by hand because Go time parses only English."}
+{"label":"what","kind":"comment","text":"A guard rejects negative sizes, so the buffer never gets a bad length."}
+{"label":"why","kind":"comment","text":"A hook writes the lockfile first because npm rewrites it on every install."}
+{"label":"what","kind":"comment","text":"The client waits for the ack, so the send call returns after delivery."}
+{"label":"why","kind":"comment","text":"The function loops twice because Safari fires resize before layout settles."}
+{"label":"what","kind":"comment","text":"The handler ignores unknown keys, so extra fields pass through untouched."}
+{"label":"why","kind":"comment","text":"This list stores ids as strings because JSON numbers lose digits past 2^53."}
+{"label":"what","kind":"comment","text":"The request times out after ten seconds, to keep the caller from hanging."}
+{"label":"why","kind":"comment","text":"Each wrapper sleeps 200 ms because the printer drops bytes sent any faster."}
+{"label":"what","kind":"comment","text":"The lock blocks other writers, so only one thread updates the map."}
+{"label":"why","kind":"comment","text":"The decoder reads the header twice because the format repeats it after a seek."}
+{"label":"what","kind":"comment","text":"The feeder pulls items from the list, so the loop gets one item per pass."}
+{"label":"why","kind":"comment","text":"That helper returns early on macOS because kqueue reports closed fds late."}
+{"label":"what","kind":"comment","text":"The user model stores a name and email, so profile pages can render them."}
+{"label":"why","kind":"comment","text":"The scheduler holds the lock past commit because SQLite allows one writer."}
+{"label":"what","kind":"comment","text":"The network layer wraps each call in a retry, so callers see one result."}
+{"label":"why","kind":"comment","text":"The callback runs on the main thread because UIKit rejects off-thread updates."}
+{"label":"what","kind":"comment","text":"The disk writer flushes the buffer on exit, so the file holds every line."}
+{"label":"why","kind":"comment","text":"One retry list keeps 429 responses because the host asks clients to back off."}
+{"label":"what","kind":"comment","text":"The scanner splits input into tokens, so the parser gets a flat list."}
+{"label":"why","kind":"comment","text":"Its serializer writes dates as strings because datetime is not JSON safe."}
+{"label":"what","kind":"comment","text":"A vendor client posts the payload as JSON, so the endpoint can decode it."}
+{"label":"why","kind":"comment","text":"An index sorts by name first because the store returns rows unordered."}
+{"label":"what","kind":"comment","text":"The device registry maps ids to handles, so lookups avoid a linear scan."}
+{"label":"why","kind":"comment","text":"The middleware stores the token in memory because CI has no unlocked keychain."}
+{"label":"what","kind":"comment","text":"The server struct holds the listener and config, so Run can start both."}
+{"label":"why","kind":"comment","text":"The handler converts bytes to str because the old driver returns latin-1 data."}
+{"label":"what","kind":"comment","text":"The browser helper opens the page in a tab, so the test can click through."}
+{"label":"why","kind":"comment","text":"A cache wrapper reads the clock once because NTP can step the clock backward."}

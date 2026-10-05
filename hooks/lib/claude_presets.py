@@ -7,122 +7,36 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-try:
-    from .judge_contracts import DOCUMENT_RUBRIC, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC
-except ImportError:
-    from judge_contracts import DOCUMENT_RUBRIC, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC
-
-PRESETS = ("haiku", "mixed", "luna", "luna-native")
-CLAUDE_HAIKU_MODEL = "claude-haiku-4-5"
+PRESETS = ("mixed", "luna")
 CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
-LUNA_NATIVE_MODEL = "luna"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
-JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
-DOCUMENTS_FLAG = "--documents"
+SONNET_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_sonnet.sh"
 HANDLER_TIMEOUT = 120
-STRUCTURED_OUTPUT_CONTRACT = (
-    "OUTPUT CONTRACT. Use the native StructuredOutput tool exactly once at the end of the review. "
-    "Pass one object in exactly one of these two shapes.\n"
-    "{\"ok\": true}\n"
-    "{\"ok\": false, \"reason\": \"one remediation instruction under 200 characters\"}\n"
-    "Do not return the object as plain text. Do not add an output label or any prose after the tool call.\n"
-)
 
 
 def validate_preset(value: str) -> str:
     if value not in PRESETS:
-        raise ValueError("preset must be exactly haiku, mixed, luna, or luna-native")
+        raise ValueError("preset must be exactly mixed or luna")
     return value
 
 
-def model_for(preset: str) -> str:
-    """luna-native names a model the harness injects, because LeverFrame puts Luna in the Claude model list."""
-    if preset == "mixed":
-        return CLAUDE_SONNET_MODEL
-    if preset == "haiku":
-        return CLAUDE_HAIKU_MODEL
-    if preset == "luna-native":
-        return LUNA_NATIVE_MODEL
-    raise ValueError("luna uses command handlers, not a native model")
+def _command(handler: Path) -> str:
+    return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(handler))}"
 
 
 def luna_command() -> str:
-    return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(LUNA_HANDLER_PATH))}"
+    return _command(LUNA_HANDLER_PATH)
 
 
-def _numbered(steps: list[str]) -> str:
-    return "".join(f"{index}. {step}\n" for index, step in enumerate(steps, start=1))
-
-
-def comment_prompt(preset: str) -> str:
-    validate_preset(preset)
-    steps = [
-        "Read the named path.",
-        "Judge only what deterministic rules cannot decide, meaning reader-facing English and the intent "
-        "behind a comment. Text a question puts to the user counts as reader-facing English.",
-        "Choose one output shape below.",
-    ]
-    return (
-        f"{MANAGED_MARKER}\n"
-        "Review one completed write for reader-facing English and comment discipline.\n\n"
-        "SCOPE. Inspect only the path named in the hook input. Read only. Never edit a file, never change "
-        "a setting, never undo the write that already landed.\n\n"
-        "STEPS, in order.\n" + _numbered(steps) + "\n"
-        + STRUCTURED_OUTPUT_CONTRACT + "\n"
-        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. A reply that "
-        "opens with wording such as \"The answer is\" fails this hook and denies nothing, so it wastes the call. "
-        "When the input is empty, malformed, unrelated to a write, or carries no candidate, use the successful "
-        "StructuredOutput shape. When uncertain, use the successful StructuredOutput shape.\n\n"
-        "Hook input: $ARGUMENTS"
-    )
-
-
-def _reader_steps(preset: str) -> list[str]:
-    """Documents only on mixed, because a whole file costs the most."""
-    if preset != "mixed":
-        return [
-            "Run this exact helper with the session_id from the hook input as its only argument: "
-            + JOURNAL_READER_PATH,
-        ]
-    return [
-        f"Run this exact helper with {DOCUMENTS_FLAG} and then the session_id from the hook input as its two "
-        "arguments: " + JOURNAL_READER_PATH,
-        f"Judge each document row as one whole document. {DOCUMENT_RUBRIC}",
-    ]
-
-
-def stop_prompt(preset: str) -> str:
-    selected = validate_preset(preset)
-    steps = [
-        "Read stop_hook_active in the hook input. When it is true, skip every remaining step and use the "
-        "successful StructuredOutput shape.",
-        *_reader_steps(selected),
-        "Judge each pattern row. Find the rule entry with the same rule name. It carries the fix the rule "
-        "asks for and four violating and four clean examples. Decide whether the row text is violating or "
-        f"clean for that rule alone. {PATTERN_RUBRIC}",
-        f"A row whose rule name starts with de_ is German. Judge it by this rubric instead. {GERMAN_PATTERN_RUBRIC}",
-        "Batch all rows the helper returns into one judgement rather than one call each.",
-        "When any row fails, name its path, line, and rule in the reason.",
-        "Choose one output shape below.",
-    ]
-    return (
-        f"{MANAGED_MARKER}\n"
-        "Review one finished turn for reader-facing English across every row the journal helper prints.\n\n"
-        "SCOPE. Judge only the rows the journal helper prints. Never open a file, never open a state file, "
-        "never edit anything.\n\n"
-        "STEPS, in order.\n" + _numbered(steps) + "\n"
-        + STRUCTURED_OUTPUT_CONTRACT + "\n"
-        "FAILURE MODE TO AVOID. Emit no prose, no preamble, no explanation, no markdown fence. When the helper "
-        "returns nothing, when the input is malformed, or when uncertain, use the successful StructuredOutput shape.\n\n"
-        "Hook input: $ARGUMENTS"
-    )
+def sonnet_command() -> str:
+    return _command(SONNET_HANDLER_PATH)
 
 
 def is_managed_hook(value: object) -> bool:
-    """Recognised by marker, because an agent hook carries a prompt where a command hook carries a command."""
+    """Recognised by marker, because a retired agent hook carries a prompt where a command hook carries a command."""
     if not isinstance(value, dict):
         return False
     if value.get("type") == "agent":
@@ -144,23 +58,33 @@ def is_managed_hook(value: object) -> bool:
     )
 
 
-def managed_hooks(settings: object) -> dict[str, list[object]]:
+def hook_entries(settings: object) -> list[tuple[str, object]]:
     if not isinstance(settings, dict) or not isinstance(settings.get("hooks"), dict):
-        return {}
+        return []
+    return [
+        (lifecycle, hook)
+        for lifecycle, groups in settings["hooks"].items()
+        if isinstance(lifecycle, str) and isinstance(groups, list)
+        for group in groups
+        if isinstance(group, dict) and isinstance(group.get("hooks"), list)
+        for hook in group["hooks"]
+    ]
+
+
+def managed_hooks(settings: object) -> dict[str, list[object]]:
     managed: dict[str, list[object]] = {}
-    for lifecycle, groups in settings["hooks"].items():
-        if not isinstance(lifecycle, str) or not isinstance(groups, list):
-            continue
-        entries = [
-            hook
-            for group in groups
-            if isinstance(group, dict) and isinstance(group.get("hooks"), list)
-            for hook in group["hooks"]
-            if is_managed_hook(hook)
-        ]
-        if entries:
-            managed[lifecycle] = entries
+    for lifecycle, hook in hook_entries(settings):
+        if is_managed_hook(hook):
+            managed.setdefault(lifecycle, []).append(hook)
     return managed
+
+
+def has_retired_agent_hook(settings: object) -> bool:
+    """Retired, because a tool-less agent hook cannot run the journal helper its prompt names."""
+    return any(
+        isinstance(hook, dict) and hook.get("type") == "agent" and is_managed_hook(hook)
+        for _lifecycle, hook in hook_entries(settings)
+    )
 
 
 def managed_hash(settings: object) -> str:
@@ -198,19 +122,19 @@ def without_managed(settings: dict[str, Any]) -> dict[str, Any]:
     return {**settings, "hooks": cleaned_hooks}
 
 
-def _agent(model: str, prompt: str) -> dict[str, Any]:
-    return {"type": "agent", "model": model, "timeout": HANDLER_TIMEOUT, "prompt": prompt}
+def _handler(command: str) -> dict[str, Any]:
+    return {"type": "command", "command": command, "timeout": HANDLER_TIMEOUT}
 
 
 def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    """Stop only for agents, because the journal holds each write."""
+    """Luna also reads live comments on PostToolUse, because only its handler judges them per write."""
     if preset == "luna":
-        handler = {"type": "command", "command": luna_command(), "timeout": HANDLER_TIMEOUT}
+        handler = _handler(luna_command())
         return {
             "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
             "Stop": [{"hooks": [handler]}],
         }
-    return {"Stop": [{"hooks": [_agent(model_for(preset), stop_prompt(preset))]}]}
+    return {"Stop": [{"hooks": [_handler(sonnet_command())]}]}
 
 
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:

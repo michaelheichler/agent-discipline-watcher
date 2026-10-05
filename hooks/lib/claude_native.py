@@ -9,7 +9,6 @@ import fcntl
 import hashlib
 import os
 import secrets
-import shlex
 import stat
 import threading
 from pathlib import Path
@@ -24,11 +23,9 @@ except ImportError:
 
 
 PRESETS = claude_presets.PRESETS
-LUNA_NATIVE_MODEL = claude_presets.LUNA_NATIVE_MODEL
 # Mapped, because a dropped name reads as no preset.
-RETIRED_PRESETS = {"sonnet": "mixed"}
+RETIRED_PRESETS = {"sonnet": "mixed", "haiku": "mixed", "luna-native": "mixed"}
 REMOTE_ENV = "CLAUDE_CODE_REMOTE"
-HAIKU_ONLY_ENV = "ADW_CLAUDE_HAIKU_ONLY"
 PRESET_ENV = "ADW_CLAUDE_PRESET"
 SETTINGS_ENV = "ADW_CLAUDE_SETTINGS"
 PRESET_FILE_ENV = "ADW_CLAUDE_PRESET_FILE"
@@ -44,7 +41,6 @@ WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 MAX_FAILURE_MESSAGE = 256
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
-JOURNAL_READER_PATH = shlex.quote(str(PLUGIN_ROOT / "hooks" / "read_claude_journal.sh"))
 
 
 class _SettingsChanged(RuntimeError):
@@ -512,13 +508,10 @@ def _default_preset_unlocked(env: Mapping[str, str], target_preset: Path) -> str
     explicit = env.get(PRESET_ENV, "").strip()
     if explicit:
         return _validate_preset(explicit)
-    haiku_only = env.get(HAIKU_ONLY_ENV, "").strip().lower()
-    if haiku_only in {"1", "true", "yes"}:
-        return "haiku"
     stored = _read_preset_unlocked(target_preset)
     if stored is not None:
         return stored
-    return "haiku"
+    return "mixed"
 
 
 def default_preset(
@@ -538,9 +531,7 @@ def default_preset(
         return _default_preset_unlocked(env, target_preset)
 
 
-_model_for = claude_presets.model_for
 _luna_command = claude_presets.luna_command
-stop_prompt = claude_presets.stop_prompt
 generated_hooks = claude_presets.generated_hooks
 
 
@@ -793,13 +784,18 @@ def set_preset(
         return _set_preset_unlocked(selected, target_settings, target_preset)
 
 
-def ensure_managed_block(default: str, repoint: Callable[[dict[str, Any]], dict[str, Any]]) -> str | None:
+def ensure_managed_block(
+    default: str,
+    repoint: Callable[[dict[str, Any]], dict[str, Any]],
+    is_retired: Callable[[dict[str, Any]], bool],
+) -> str | None:
     """One lock, because a racing set_preset must not interleave."""
     target_settings = _canonical(settings_path())
     target_preset = _canonical(preset_path())
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
-        if not _managed_hooks(_load_settings(target_settings)):
+        current = _load_settings(target_settings)
+        if not _managed_hooks(current) or is_retired(current):
             return _set_preset_unlocked(default, target_settings, target_preset)
         _rewrite_settings(target_settings, repoint)
         return None

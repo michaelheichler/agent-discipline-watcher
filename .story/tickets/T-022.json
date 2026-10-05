@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Found by the T-019 and T-020 agents on 2026-10-05.\n\n1. Article drop. `SUBJECT_OPENER_RE` needs a leading article. \"Reader votes a sentence, so the vote stays stable.\" passes. 54 of 72 narration rows in hooks/lib/corpus_what_comments.jsonl escape this way.\n2. Tag lines. `TAG_LINE_RE` makes `_narrates_code` skip any `label: text` comment. `# note: this loops over every page and returns the count` and `# noqa: E501 loops over every page` pass.\n3. `//\\s*@ts-[\\w-]+` in `DIRECTIVE_COMMENT_RE` is unanchored, so `// @ts-expect-error <prose>` likely escapes.\n\nMeasure each fix on the extended corpus (187 rows after T-020). Narration recall must not drop.",
+  "id": "T-022",
+  "order": 110,
+  "phase": null,
+  "status": "open",
+  "title": "Close the article-drop and tag-line comment escapes",
+  "type": "task"
+}

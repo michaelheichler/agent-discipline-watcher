@@ -528,22 +528,8 @@ def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path
     assert claude_native.read_preset(preset) == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
     assert "PostToolUse" not in configured["hooks"]
-    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-5-5"
+    assert "claude_sonnet.sh" in configured["hooks"]["Stop"][0]["hooks"][0]["command"]
 
-
-def test_exact_stop_reader_script_returns_only_current_session_documents(tmp_path: Path) -> None:
-    document = tmp_path / "doc.md"
-    document.write_text("Only the current session document.\n", encoding="utf-8")
-    state_root = tmp_path / ".adw" / "state"
-    journal.record_edit("session", "turn", "tool", document, state_root=state_root)
-    reader = Path(__file__).parents[1] / "read_claude_journal.sh"
-    result = subprocess.run(
-        [str(reader), "--documents", "session"], env={**os.environ, "HOME": str(tmp_path)},
-        capture_output=True, text=True, check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Only the current session document." in result.stdout
 
 def test_luna_launcher_ignores_exported_cdpath(tmp_path: Path) -> None:
     launcher = Path(__file__).parents[1] / "claude_luna.sh"
@@ -616,7 +602,7 @@ def test_luna_success_has_no_native_double_spend_and_failure_switches_the_matchi
     assert "login required" in response["hookSpecificOutput"]["additionalContext"]
     assert claude_native.read_preset(preset) == "mixed"
     configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert configured["hooks"]["Stop"][0]["hooks"][0]["model"] == "claude-sonnet-5-5"
+    assert "claude_sonnet.sh" in configured["hooks"]["Stop"][0]["hooks"][0]["command"]
 
 
 def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:

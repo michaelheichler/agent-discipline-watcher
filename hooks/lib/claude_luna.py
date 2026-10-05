@@ -12,6 +12,7 @@ from .document_review import data_boundary_enabled, document_work
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from .luna_feedback import LUNA
 from .luna_feedback import bounded as _bounded
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
@@ -240,7 +241,7 @@ def post_request(payload: object) -> tuple[JudgeRequest, tuple[Candidate, ...]] 
     return comment_request(found), found
 
 
-def _stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str, Any]]:
+def stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str, Any]]:
     if type(payload) is not dict or payloads.stop_hook_active(payload):
         return []
     session_id = payloads.session_id(payload)
@@ -273,13 +274,16 @@ def _pattern_work(rows: list[dict[str, Any]], config: dict | None) -> list[Work]
     ]
 
 
-def stop_request(payload: object, state_root: str | Path | None, config: dict | None = None) -> list[Work] | None:
+def stop_work(rows: list[dict[str, Any]], config: dict | None = None) -> list[Work] | None:
     """Split across requests, because a cut document reads as reviewed."""
-    rows = _stop_rows(payload, state_root)
     return document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows, config) or None
 
 
-def _hook_config(payload: object) -> dict:
+def stop_request(payload: object, state_root: str | Path | None, config: dict | None = None) -> list[Work] | None:
+    return stop_work(stop_rows(payload, state_root), config)
+
+
+def hook_config(payload: object) -> dict:
     cwd = payloads.cwd(payload) if type(payload) is dict else ""
     try:
         return effective_hook_config({}, cwd or None)
@@ -331,24 +335,24 @@ def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> J
     return result
 
 
-def _feedback(request: JudgeRequest, result: JudgeResult, sources: Any) -> str:
+def feedback(request: JudgeRequest, result: JudgeResult, sources: Any, reviewer: str = LUNA) -> str:
     if request.review_kind is ReviewKind.COMMENT:
-        return _comment_feedback(result, sources)
+        return _comment_feedback(result, sources, reviewer)
     if request.review_kind is ReviewKind.PATTERN:
         found = tuple(map(_pattern_candidate, sources))
-        return _pattern_feedback(result, found, request.rule_action, rule=request.rule_name)
-    return _document_feedback(result, sources)
+        return _pattern_feedback(result, found, request.rule_action, rule=request.rule_name, reviewer=reviewer)
+    return _document_feedback(result, sources, reviewer)
 
 
 def _judge_all(operation: Any, provider: object | None, work: list[Work]) -> list[str] | None:
     """None when Luna is no longer selected, because another preset owns the turn."""
-    feedback = []
+    results = []
     for request, sources in work:
         result = _invoke(operation, provider, request)
         if result is None:
             return None
-        feedback.append(_feedback(request, result, sources))
-    return [text for text in feedback if text]
+        results.append(feedback(request, result, sources))
+    return [text for text in results if text]
 
 
 def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[str] | dict:
@@ -358,17 +362,16 @@ def _judged(event: str, work: list[Work], provider: object | None, paths: dict[s
             if operation is None:
                 return {}
             try:
-                feedback = _judge_all(operation, provider, work)
-                return {} if feedback is None else feedback
+                texts = _judge_all(operation, provider, work)
+                return {} if texts is None else texts
             except Exception as exc:
                 return _failure(event, role, exc, **paths)
     except (OSError, ValueError) as exc:
         return _failure(event, role, exc, **paths)
 
 
-def _mark_reviewed(payload: object, work: list[Work], state_root: str | Path | None) -> None:
+def mark_reviewed(payload: object, rows: list[dict[str, Any]], state_root: str | Path | None) -> None:
     """Best effort, because a lost mark only costs one more review."""
-    rows = [row for _request, sources in work for row in sources]
     try:
         journal.mark_reviewed(payloads.session_id(payload), rows, state_root=state_root)
     except (OSError, RuntimeError, TypeError, ValueError):
@@ -384,7 +387,7 @@ def run(
     preset_path: str | Path | None = None,
 ) -> dict:
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
-    cfg = _hook_config(payload)
+    cfg = hook_config(payload)
     if event not in {"PostToolUse", "Stop"} or not data_boundary_enabled(cfg):
         return {}
     root = state_root if state_root is not None else cfg.get("state_root")
@@ -396,7 +399,7 @@ def run(
         return outcome
     if event == "PostToolUse":
         return context(_bounded("\n\n".join(outcome)), event) if outcome else {}
-    _mark_reviewed(payload, work, root)
+    mark_reviewed(payload, [row for _request, sources in work for row in sources], root)
     return stop_block(_bounded("\n\n".join(outcome))) if outcome else {}
 
 

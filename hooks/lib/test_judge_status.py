@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lib import claude_native, judge_status
+from lib import claude_native, claude_presets, judge_status
 
-AGENT = {"type": "agent", "model": "haiku", "timeout": 30, "prompt": "adw-managed-hook-v1\nreview"}
+AGENT = {"type": "agent", "model": "claude-sonnet-5-5", "timeout": 30, "prompt": "adw-managed-hook-v1\nreview"}
 COMMAND = {"type": "command", "command": "run.sh Stop", "timeout": 10}
 
 
@@ -35,11 +35,11 @@ def test_the_shipped_manifest_carries_no_reviewer() -> None:
     assert judge_status.plugin_reviewers(shipped) == 0
 
 
-def test_status_counts_the_one_haiku_reviewer(tmp_path: Path, monkeypatch) -> None:
+def test_status_counts_the_one_sonnet_reviewer(tmp_path: Path, monkeypatch) -> None:
     """Report one because a second set doubles the spend."""
     monkeypatch.setenv(judge_status.PLUGIN_ROOT_ENV, str(Path(__file__).parents[2]))
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
-    claude_native.set_preset("haiku", settings_path=settings, preset_path=preset)
+    claude_native.set_preset("mixed", settings_path=settings, preset_path=preset)
 
     assert claude_native.status(settings_path=settings, preset_path=preset)["reviewers"] == "1"
 
@@ -85,19 +85,19 @@ def test_a_corrupt_manifest_reports_zero_rather_than_raising(tmp_path: Path) -> 
 def test_settings_reviewers_count_only_the_managed_entries(tmp_path: Path) -> None:
     """Count ours alone because deleting somebody else's hook is not this command's business."""
     settings = tmp_path / "settings.json"
-    foreign = {"type": "agent", "model": "haiku", "prompt": "someone else's reviewer"}
+    foreign = {"type": "agent", "model": "claude-sonnet-5-5", "prompt": "someone else's reviewer"}
     settings.write_text(
         json.dumps({"hooks": {"Stop": [{"hooks": [AGENT, foreign, COMMAND]}]}}), encoding="utf-8"
     )
 
-    counted = judge_status.settings_reviewers(settings, claude_native._is_managed_hook)
+    counted = judge_status.settings_reviewers(settings, claude_presets.is_managed_hook)
 
     assert counted == 1
 
 
 def test_an_unwired_gate_says_so_instead_of_naming_a_preset() -> None:
     """Say it plainly because a preset naming a model that nothing runs still reads as working."""
-    described = judge_status.describe("haiku", stored=False, reviewers=0)
+    described = judge_status.describe("mixed", stored=False, reviewers=0)
 
     assert described["judging"].startswith("no reviewer is registered")
     assert described["source"] == "default"
