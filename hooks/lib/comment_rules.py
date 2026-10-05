@@ -81,6 +81,13 @@ COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while 
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]")
 TAG_LINE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 _/-]{0,24}:(?:\s|$)")
+STRUCTURED_TAG_RE = re.compile(r"^(?:why|invariant):\s*\S", re.IGNORECASE)
+TOOL_CODE_PREFIX_RE = re.compile(r"^(?:[A-Za-z]{1,6}\d{1,4}(?:[\s,]+|$))+")
+SECTION_LABEL_RE = re.compile(
+    r"^(?:args|arguments|parameters|params|keyword args|returns?|yields?|raises?|attributes|examples?|see also):$",
+    re.IGNORECASE,
+)
+TS_DIRECTIVE = r"@ts-(?:ignore|expect-error|nocheck|check)"
 # Tight anchors, because prose could hide behind a prefix.
 _TOOL_DIRECTIVE_PATTERNS = (
     r"//\s*swift-tools-version:[ \t]*\d+(?:\.\d+){0,2}(?:-[a-z0-9]+)?$",
@@ -93,6 +100,7 @@ _TOOL_DIRECTIVE_PATTERNS = (
     r"//\s*eslint-(?:disable(?:-(?:next-)?line)?|enable)(?:\s+[\w@/-]+(?:\s*,\s*[\w@/-]+)*)?$",
     r"//\s*prettier-ignore$",
     r"///\s*<reference(?:\s+[\w-]+=(?:\"[^\"]*\"|'[^']*'|(?=\s)|(?=/>))){1,3}\s*/>$",
+    r"//\s*" + TS_DIRECTIVE + "$",
 )
 _HASH_TOOL_DIRECTIVE_PATTERNS = (
     r"#\s*noqa(?::\s*[a-z]+\d+(?:[\s,]+[a-z]+\d+)*)?$",
@@ -100,16 +108,21 @@ _HASH_TOOL_DIRECTIVE_PATTERNS = (
     r"#\s*pragma:\s*(?:no\s+(?:cover|branch)|allowlist\s+(?:nextline-)?secret)$",
     r"#\s*ruff:\s*noqa(?::\s*[a-z]+\d+(?:[\s,]+[a-z]+\d+)*)?$",
     r"#\s*fmt:\s*(?:off|on|skip)$",
+    r"#\s*pylint:\s*(?:disable|enable)(?:-next)?=[\w-]+(?:\s*,\s*[\w-]+)*$",
+    r"#\s*pyright:\s*(?:basic|standard|strict|ignore(?:\[[\w\s,.-]+\])?)$",
+    r"#\s*mypy:\s*[\w-]+(?:=[\w\"',.-]+)?$",
+    r"#\s*isort:\s*(?:skip(?:_file)?|off|on|split)$",
     r"#\s*syntax=\S+$",
     r"#\s*escape=[\\`]$",
     r"#\s*check=[\w=,;]+$",
     r"#\s*(?:>>>|<<<)\s*agent-discipline-watcher(?:\s*(?:>>>|<<<))?$",
 )
 DIRECTIVE_COMMENT_RE = re.compile(
-    r"^(?:#!|//\s*@ts-[\w-]+|"
-    + "|".join(_HASH_TOOL_DIRECTIVE_PATTERNS + _TOOL_DIRECTIVE_PATTERNS) + ")",
+    r"^(?:#!|" + "|".join(_HASH_TOOL_DIRECTIVE_PATTERNS + _TOOL_DIRECTIVE_PATTERNS) + ")",
     re.IGNORECASE,
 )
+TS_REASON_RE = re.compile(r"^" + TS_DIRECTIVE + r"\s+(?=\S)", re.IGNORECASE)
+INLINE_DIRECTIVE_SPLIT_RE = re.compile(r"\s+#\s*")
 TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)
 
 
@@ -187,14 +200,21 @@ READABILITY_RULES = (
 )
 
 
+def _inline_directive(text: str) -> bool:
+    return all(DIRECTIVE_COMMENT_RE.match("# " + part) for part in INLINE_DIRECTIVE_SPLIT_RE.split(text))
+
+
 def _comment_text(line: str) -> str | None:
-    body = COMMENT_RE.match(line) or INLINE_HASH_COMMENT_RE.search(line)
+    leading = COMMENT_RE.match(line)
+    body = leading or INLINE_HASH_COMMENT_RE.search(line)
     if not body:
         return None
     text = body.group(1).strip()
     if DIRECTIVE_COMMENT_RE.match(line.strip()) or HEADER_COMMENT_RE.search(text):
         return None
-    return text
+    if not leading and _inline_directive(text):
+        return None
+    return TS_REASON_RE.sub("", text, count=1)
 
 
 def _comment_body_lines(text: str) -> list[tuple[int, str, str]]:
@@ -259,10 +279,17 @@ def _has_strong_why_marker(text: str) -> bool:
     return bool(SINCE_RE.search(text) and not TEMPORAL_SINCE_RE.search(text))
 
 
+def _tag_body(text: str) -> str:
+    match = TAG_LINE_RE.match(text)
+    return TOOL_CODE_PREFIX_RE.sub("", text[match.end():].strip()) if match else text
+
+
 def _narrates_code(text: str) -> bool:
     if not text or not LETTER_RE.search(text):
         return False
-    return not (TAG_LINE_RE.match(text) or DEFERRED_TAG_RE.match(text))
+    if DEFERRED_TAG_RE.match(text) or STRUCTURED_TAG_RE.match(text):
+        return False
+    return bool(LETTER_RE.search(_tag_body(text)))
 
 
 def _identifier_tokens(parts) -> frozenset[str]:
@@ -289,9 +316,28 @@ SUBJECT_OPENER_RE = re.compile(
 )
 
 
+_FUNCTION_WORD = (
+    r"(?!(?i:instead|of|to|for|in|on|at|by|with|from|into|as|and|or|but|not|so|if|when|then|than|that|which|"
+    r"because|otherwise|unless|since|until|after|before|while|only|also|never|always|just)\b)"
+)
+_IMPERATIVE_WORD = (
+    r"(?!(?i:keep|skip|use|pass|drop|add|make|take|put|give|treat|avoid|prefer|wait|retry|leave|reject|allow|"
+    r"ignore|strip|fail|stop|start|force|pin|clamp|ensure|prevent|preserve|reuse|bypass|defer|count|send|read|"
+    r"write|set|hold|return|call|run|check|load|open|close|match|trim|sort|join|split|wrap|copy|build|let)\b)"
+)
+# Because an article drop hid the narration, a bare subject needs its own test.
+BARE_SUBJECT_OPENER_RE = re.compile(
+    r"^" + _FUNCTION_WORD + _IMPERATIVE_WORD + r"[A-Za-z][A-Za-z-]*(?:\s+" + _FUNCTION_WORD + r"[a-z][a-z-]*){0,2}"
+    r"\s+[a-z]{2,}[a-rt-z]s\s+(?:the|an?|it|its|each|every|all|any|one|two|three|no|both|"
+    r"their|his|her|\d+)\b",
+)
+
+
 def opens_with_narration(text: str) -> bool:
     stripped = text.strip()
-    return bool(NARRATION_OPENER_RE.match(stripped) or SUBJECT_OPENER_RE.match(stripped))
+    return bool(
+        NARRATION_OPENER_RE.match(stripped) or SUBJECT_OPENER_RE.match(stripped) or BARE_SUBJECT_OPENER_RE.match(stripped)
+    )
 
 
 def states_why(text: str) -> bool:
@@ -299,9 +345,10 @@ def states_why(text: str) -> bool:
 
 
 def _comment_is_what(text: str) -> bool:
-    if WHAT_OPENER_RE.match(text) or opens_with_narration(text):
-        return not states_why(text)
-    return not _has_why_marker(text)
+    body = _tag_body(text)
+    if WHAT_OPENER_RE.match(body) or opens_with_narration(body):
+        return not states_why(body)
+    return not _has_why_marker(body)
 
 
 def _what_comment_findings(path: str, comment_rows: list[tuple[int, str, str]]) -> list[dict]:
@@ -420,11 +467,11 @@ def _what_docstring_rows(path: str, hit: tuple[int, str]) -> list[dict]:
     for offset, raw_line in enumerate(value.splitlines()):
         line = raw_line.strip()
         if not _narrates_code(line):
-            structured = structured or bool(TAG_LINE_RE.match(line))
+            structured = structured or bool(SECTION_LABEL_RE.match(line))
             continue
         if structured:
             continue
-        if states_why(line):
+        if states_why(_tag_body(line)):
             continue
         rows.append(_finding(Finding(family="comment", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
     return rows

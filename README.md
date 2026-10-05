@@ -14,7 +14,7 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
 
-A rule speaks only where a measurement covers it, and blocks only where that measurement earned the block.
+A prose rule speaks only where a measurement covers it, and blocks only where that measurement earned the block. The comment rules are the exception. They block on judgement, as the comment policy section explains.
 
 | rule | precision after the judge | gate |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ The rules used to have no false-positive denominator. They have one now.
 
 Among the AI-tell rules, the raw regex candidate rate is at most 1 in 20000 human sentences. Structural rules such as `three_item_list` are outside that rate. Its raw regex fires on 278 of 60000 human sentences before the judge decides which candidates count. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
 
-**88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire zero times on human prose. Without this side, they have no violating class and no measurement can reach them.
+**88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire on at most 1 in 20000 human sentences. Without this side, they have no violating class and no measurement can reach them.
 
 **9256 documents that still carry their paragraph breaks**, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, 4256 assistant from the same two chat sets. Both sentence corpora flatten a document to one line, so no paragraph-shaped rule had anything to stand on until this one existed. It is what `uniform_paragraph_endings` measures against, and it is also why that rule stays at observe. The shape it names runs commoner in human literature than in model prose.
 
@@ -72,7 +72,9 @@ Code comments and docstrings can contain one strict WHY line of at most 80 chara
 
 A WHY line names its reason with `because`, `otherwise`, `so that`, or a consequence clause after a comma, such as `, so pages count as success`. The `what_comment` action lists these markers.
 
-Tool directives are not comments for these rules. In Swift, the scanner skips `// swift-tools-version`, `// swiftlint:`, and a `// MARK:` heading of up to 40 characters. In Go, it skips `//go:` directives and `//nolint`. In TypeScript and JavaScript, it skips `// eslint-disable`, `// eslint-enable`, `// prettier-ignore`, and `/// <reference />`. Each form matches an exact shape, so prose after a directive prefix still gets a finding. A `///` doc comment counts from its first word.
+Tool directives are not comments for these rules. In Swift, the scanner skips `// swift-tools-version`, `// swiftlint:`, and a `// MARK:` heading of up to 40 characters. In Go, it skips `//go:` directives and `//nolint`. In TypeScript and JavaScript, it skips `// eslint-disable`, `// eslint-enable`, `// prettier-ignore`, and `/// <reference />`. In TypeScript, it also skips a bare `// @ts-ignore`, `// @ts-expect-error`, `// @ts-nocheck`, or `// @ts-check`. A reason after one of these must pass the comment rules itself. In Python, it skips `noqa`, `type: ignore`, `pragma`, `ruff`, `fmt`, `pylint`, `pyright`, `mypy`, and `isort` directives, also inline. Each form matches an exact shape, so prose after a directive prefix still gets a finding. A `///` doc comment counts from its first word.
+
+A `label: text` comment counts as its text. The scanner drops a generic label such as `note:` and judges the words after the colon. `WHY:`, `invariant:`, deferred-work markers, and docstring section headings such as `Args:` keep their meaning. A subject without an article opens a narration too. `Reader votes a sentence, so the vote stays stable` blocks like its form with `The`.
 
 A deferred-work marker such as `TODO` gives an observed `deferred_work_comment` warning and does not block. The marker line still answers to the length cap and to the block rule. A long marker line blocks. A marker followed by more comment lines blocks too.
 

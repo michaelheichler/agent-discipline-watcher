@@ -185,3 +185,18 @@
 {"label":"why","kind":"comment","text":"The handler converts bytes to str because the old driver returns latin-1 data."}
 {"label":"what","kind":"comment","text":"The browser helper opens the page in a tab, so the test can click through."}
 {"label":"why","kind":"comment","text":"A cache wrapper reads the clock once because NTP can step the clock backward."}
+{"label":"what","kind":"comment","text":"Reader votes a sentence, so the vote stays stable."}
+{"label":"what","kind":"comment","text":"Loader reads the file, so the cache stays warm."}
+{"label":"what","kind":"comment","text":"Cache stores the last result because reuse is faster."}
+{"label":"what","kind":"comment","text":"Disk cache writes the entry to a file, so the entry is persisted."}
+{"label":"what","kind":"comment","text":"Network client retries the request, so failures are handled."}
+{"label":"what","kind":"comment","text":"Dispatcher routes each event to its subscriber list, so every subscriber hears it."}
+{"label":"what","kind":"comment","text":"Handler returns the response because callers need a result."}
+{"label":"what","kind":"comment","text":"note: this loops over every page and returns the count"}
+{"label":"what","kind":"comment","text":"noqa: E501 loops over every page"}
+{"label":"what","kind":"comment","text":"note: The reader votes a sentence, so the vote stays stable."}
+{"label":"what","kind":"comment","text":"@ts-expect-error this loops over the pages"}
+{"label":"why","kind":"comment","text":"Callers need stable identity, because a fresh read renumbers every row."}
+{"label":"why","kind":"comment","text":"Empty feeders end a batch with a non-zero status, so pages count as success."}
+{"label":"why","kind":"comment","text":"Skip empty files to avoid a divide by zero in the ratio."}
+{"label":"why","kind":"comment","text":"WHY: the vendor caps traffic at 100 requests a minute"}

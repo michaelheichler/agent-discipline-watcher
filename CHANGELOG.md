@@ -1,10 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The WHAT comment check closes three escapes (T-022).**
+  1. A subject without an article opens a narration. `Reader votes a sentence, so the vote stays stable` now blocks like its form with `The`. On article-dropped corpus rows, blocked narrations rose from 18 of 72 to 50 of 72.
+  2. A `label: text` comment counts as its text. `# note: this loops over every page` blocks. `WHY:`, `invariant:`, deferred-work markers, and docstring section headings keep their meaning.
+  3. `// @ts-ignore`, `// @ts-expect-error`, `// @ts-nocheck`, and `// @ts-check` are directives only in their bare form. A reason after them must pass the comment rules itself.
+- **Python directives also pass inline.** `x = 1  # noqa` and `# type: ignore` stay directives at the end of a code line. `pylint`, `pyright`, `mypy`, and `isort` directives join the list.
+
+### Known limits
+
+- A plural subject with a base verb, such as `Readers vote a sentence, so ...`, still passes. It has the same shape as a real reason like `Callers need stable identity, because ...`. About 22 of 72 article-dropped corpus narrations escape this way.
+- `WHY: <narration>` still passes. A check of the text after `WHY:` fails 18 of the 26 `WHY:` lines in this repo, so the label stays trusted.
+
 ## 0.25.2 (2026-10-05)
 
 ### Fixed
 
-- **The Claude Code model review runs again.** The `haiku`, `mixed`, and `luna-native` presets registered `agent` Stop hooks. Each hook told the agent to run `read_claude_journal.sh`. Agent hooks run in the mode that asks no questions, and no allow rule covered that helper. So the review never ran, and its verdicts disappeared. The `mixed` preset is now a command handler in `hooks/lib/claude_sonnet.py`. It reads the journal itself and makes one `claude -p --model claude-sonnet-5-5` call per Stop. That call has no tools, no MCP servers, and no nested hooks. An empty turn makes no call. If the CLI is missing, times out, or returns no usable verdict, the Stop shows "ADW Sonnet review did not run this turn". The rows then stay queued for the next Stop (T-021).
+- **The Claude Code model review runs again.** The `haiku`, `mixed`, and `luna-native` presets registered `agent` Stop hooks. Each hook told the agent to run `read_claude_journal.sh`. Agent hooks run in the mode that asks no questions, and no allow rule covered that helper. So the review never ran, and its verdicts disappeared. The `mixed` preset is now a command handler in `hooks/lib/claude_sonnet.py`. It reads the journal itself and makes one `claude -p --model claude-sonnet-5-5` call per Stop. That call has no tools, no MCP servers, and no nested hooks. An empty turn makes no call. If the CLI is missing, times out, or returns no usable verdict, the Stop shows "ADW Sonnet review did not run this turn". The journal rows then stay queued for the next Stop (T-021).
 - **Hash directives match exact tool syntax.** The scanner treated `# eslint-disable` and eight other `#` prefixes as directives. Prose after the prefix escaped every comment rule. `# eslint-disable` had no legitimate use and is gone. The other eight prefixes now pass only in their real tool shapes. The Python ones are `noqa`, `type:`, `pragma`, `ruff:`, and `fmt:`. The Dockerfile ones are `syntax=`, `escape=`, and `check=`. The ADW fence follows the same rule (T-019).
 
 ### Removed
@@ -39,7 +54,7 @@
 - **German typography after Duden.** On German lines, the semicolon and colon bans drop. The spaced Gedankenstrich, the Bis-Strich and Streckenstrich, the Ergänzungsstrich, and German quotation marks pass. The em dash stays banned. `dash_cluster` limits Gedankenstrich density per document.
 - **German findings speak German.** `hooks/lib/catalog_de.py` gives each rule a German message and action. Rule ids stay English.
 - **The German rule catalog.** `hooks/lib/german_rules/` declares the static and SEMANTIC rows of the catalog in `docs/research/2026-09-30-german-style-catalog.md`, minus the rows N-008 leaves out. `hooks/lib/german_document_rules.py` adds the document rules. `hooks/lib/german_readability.py` computes LIX and the first Wiener Sachtextformel, and no rule gates on either yet. The trigger lists follow humanizer-de closely (decision Q13).
-- **German SEMANTIC rules go from a trigger to the Luna judge.** The embedding vote admitted about half of all German human sentences, so a German rule now sends every German sentence its trigger matches. A German pattern row reaches Luna with a German rubric under rubric version `adw-rubric-de-v1`. The prompt carries the rule definition and a boundary for stock phrase, foreign word, false agency, and retroactive nuance. Rater agreement rose from kappa 0.52 to 0.67, and a Luna majority settled the rest. `evals/build_pattern_exemplars_de.py` writes the exemplars to `hooks/lib/pattern_exemplars_de.jsonl` and reads the highest Luna run into `hooks/lib/pattern_exemplars_de.json`.
+- **German SEMANTIC rules go from a trigger to the Luna judge.** The embedding vote admitted about half of all German human sentences, so a German rule now sends every German sentence its trigger matches. A German pattern row reaches Luna with a German rubric under rubric version `adw-rubric-de-v1`. The prompt carries the rule definition and a boundary for stock phrase, foreign word, false agency, and retroactive nuance. Rater agreement rose from kappa 0.52 to 0.67. A blind Luna majority then labelled 80 of the 92 rows where the raters still disagreed. `evals/build_pattern_exemplars_de.py` writes the exemplars to `hooks/lib/pattern_exemplars_de.jsonl` and reads the highest Luna run into `hooks/lib/pattern_exemplars_de.json`.
 - **German corpora and measurements.** `evals/build_german_corpora.py` rebuilds three gitignored corpora byte for byte. The human side holds 28000 sentences from a 2018 German Wikipedia dump and German Gutenberg books. The AI side holds 21000 sentences from COLING 2025 and German WildChat. The paragraph corpus holds 5414 documents. `evals/german_static_precision.json` holds the labeled precision of every static rule, from Sonnet and Luna labels with Opus deciding splits. `evals/judge_stage_de.json` holds the judged stage of 14 SEMANTIC rules per model id. On `gpt-6-luna` precision rose for 9 of 14 rules over `gpt-5.6-luna`, and the best lower bound rose from 0.55 to 0.64.
 - **humanizer-de attribution in each file.** The seven `hooks/lib/german_rules/` modules that adapt humanizer-de trigger lists carry SPDX headers that name Martin Moeller and the license `MIT AND CC-BY-SA-4.0`. `NOTICE` holds the full credit.
 - **`de_meta_commentary` blocks.** It holds 40 of 40 under two raters, lower bound 0.9124, so `hooks/lib/german_rules/phrases.py` sets it to enforce.
@@ -81,7 +96,7 @@
 ### Added
 
 - A third rule family, Code Check, covers test and code quality. `catalog.FAMILIES` names `prose`, `comment`, and `code`. A configuration that names `punctuation` or `english` still selects a `prose` subfamily, and `clean_code` still enables or disables both `comment` and `code` together.
-- Nine Code Check test rules live under `hooks/lib/test_rules/`, each with one violating and one clean fixture from the Khorikov catalog. `assert_in_loop` blocks new loops after Luna and Sonnet called 25 of 26 hits bogus under the user's criterion. The other eight rules stay at observe.
+- Nine Code Check test rules live under `hooks/lib/test_rules/`, each with one violating and one clean fixture from the Khorikov catalog. `assert_in_loop` blocks new loops. Luna and Sonnet judged 25 of the 26 flagged tests to be bogus tests, so the rule was right 25 times out of 26. The other eight rules stay at observe.
 - A Code Check finding carries one plain-text principle line from DevIQ or programming-principles, at most 80 words and no URL. The text shows once per rule per session. The lookup reads `~/.adw/cache/principles.sqlite`, built by the update path from pinned commits at `NimblePros/deviq-hugo` and `webpro/programming-principles`. No source text enters this repository, and a test scans the tracked files for it.
 - `evals/code_check_precision.json`, `evals/code_check_labels_luna.jsonl`, and `evals/code_check_labels_sonnet_user.jsonl` hold the self-audit measurement on the ADW suite, 131 hand-labeled rows. Luna and Sonnet agree on 120 of 131 hits, Cohen's kappa 0.833.
 - `bin/adw-config` gives a small policy CLI, `status`, `tests allow|deny`, `tests allow --for DURATION`, and `family NAME on|off`. An agent that calls the mutating subcommands through a tool call gets a block, because only the user sets policy from a terminal.
@@ -97,7 +112,7 @@
 
 ### Removed
 
-- The clock rule, `time_as_ambient_context`. Luna and Sonnet called 0 of 17 hits bogus, because a test cannot see whether the production code under test reads the system clock.
+- The clock rule, `time_as_ambient_context`. Luna and Sonnet judged none of the 17 flagged tests to be a bogus test, so the rule was wrong every time. A test cannot see whether the production code under test reads the system clock.
 - Five test assertions that pinned a constant, a manifest field, a description word, or CI text, and caught no change in behavior.
 
 ## 0.23.1 (2026-09-28)
