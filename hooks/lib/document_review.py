@@ -23,8 +23,19 @@ try:
 except ImportError:
     from reporting import _safe_text
 
+try:
+    from .document_hunks import hunk_text
+except ImportError:
+    from document_hunks import hunk_text
+
 REVIEW_MODEL = JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
+HUNK_NOTICE = (
+    "These are the hunks the agent changed this turn. Each block names its line range. "
+    "A line that starts with + changed this turn. Judge only those lines. "
+    "Use the other lines only to understand them, and never flag them. "
+    "Quote a sentence without its leading marker."
+)
 MAX_NOTES = 6
 WHITESPACE_RE = re.compile(r"\s+")
 # Two named axes to prevent the model grading subject matter.
@@ -137,6 +148,44 @@ def document_work(rows: list[dict[str, Any]], maximum: int, label: str) -> list[
             else JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=context),
             sources,
         )
+        for context, sources in contexts
+    ]
+
+
+def _halves(hunk: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    middle = len(hunk["lines"]) // 2
+    split = hunk["start"] + middle
+    return (
+        {"start": hunk["start"], "lines": hunk["lines"][:middle], "changed": [n for n in hunk["changed"] if n < split]},
+        {"start": split, "lines": hunk["lines"][middle:], "changed": [n for n in hunk["changed"] if n >= split]},
+    )
+
+
+def _fitted(path: str, hunk: dict[str, Any], limit: int) -> list[str]:
+    """Split by lines, because a hunk cut mid-sentence reads as a finished one."""
+    text = hunk_text(path, hunk)
+    if len(text) <= limit or len(hunk["lines"]) < 2:
+        return [text[:limit]]
+    return [piece for half in _halves(hunk) for piece in _fitted(path, half, limit)]
+
+
+def _hunk_entries(rows: list[dict[str, Any]], limit: int) -> list[tuple[str, dict]]:
+    return [
+        (piece, row)
+        for row in rows
+        if row.get("role") == "document" and row.get("path")
+        for hunk in row.get("hunks") or ()
+        for piece in _fitted(str(row["path"])[:512], hunk, limit)
+    ]
+
+
+def changed_document_work(rows: list[dict[str, Any]], maximum: int, label: str) -> list[tuple[JudgeRequest, list[Any]]]:
+    """Because a rewrite of one line must not re-bill the whole file, only labelled hunks go out."""
+    header = f"Document: {label}\n\n{HUNK_NOTICE}\n\n"
+    limit = max(1, maximum - len(header))
+    contexts = _pack_document_entries(_hunk_entries(rows, limit), limit)
+    return [
+        (JudgeRequest(review_kind=ReviewKind.DOCUMENT, source_context=header + context), sources)
         for context, sources in contexts
     ]
 

@@ -9,12 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from lib.baseline import strip_against
+from lib.baseline import split_against
 from lib.config import SURFACE_COMMIT, StorageRoots, effective_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
-from lib.reporting import record_findings, run_with_ledger, verdict_message
+from lib.merge_state import incoming_commits, revision_text
+from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
 from lib.shell_parse import SEPARATORS
@@ -93,12 +94,19 @@ def _gate(context: _CommitRunContext, turn_id: str) -> dict:
     )
     scan = _CommitScan(repo_rows, message_findings, outer_cfg)
     decisions = _record_all(scan, stamp)
-    if not decisions:
-        return allow()
-    kind, message = verdict_message(decisions, outer_cfg)
+    kind, message = verdict_message(decisions, outer_cfg) if decisions else ("release", "")
     if kind == "block":
         return deny(message)
-    return advise(message, "PreToolUse") if kind == "observe" else allow()
+    notice = _inherited_notice(scan)
+    if kind == "observe":
+        return advise("\n".join(part for part in (message, notice) if part), "PreToolUse")
+    return {"systemMessage": notice} if notice else allow()
+
+
+def _inherited_notice(scan: _CommitScan) -> str:
+    """Report merged-in debt here, because letting it pass must not hide it."""
+    notices = (inherited_advice(row.inherited, row.cfg) for row in scan.repository_rows)
+    return "\n".join(notice for notice in notices if notice)
 
 
 class _RecordStamp(NamedTuple):
@@ -111,8 +119,15 @@ class _RecordStamp(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
+class _RepoScan:
+    cfg: dict
+    owned: list[dict]
+    inherited: list[dict]
+
+
+@dataclass(frozen=True, slots=True)
 class _CommitScan:
-    repository_rows: list[tuple[Path, dict, list[dict]]]
+    repository_rows: list[_RepoScan]
     message_rows: list[dict]
     outer_config: dict
 
@@ -121,11 +136,11 @@ def _record_all(
     scan: _CommitScan, stamp: _RecordStamp
 ) -> list[tuple[dict, str]]:
     decisions: list[tuple[dict, str]] = []
-    for _repo, cfg, findings in scan.repository_rows:
+    for row in scan.repository_rows:
         decisions.extend(record_findings(
             session_id=stamp.session_id, hook="pre_commit", event="PreCommit",
-            findings=findings, turn_id=stamp.turn_id, tool_use_id=stamp.tool_use_id,
-            duration_ms=stamp.duration_ms, root=stamp.ledger_root, config=cfg,
+            findings=row.owned, turn_id=stamp.turn_id, tool_use_id=stamp.tool_use_id,
+            duration_ms=stamp.duration_ms, root=stamp.ledger_root, config=row.cfg,
         ))
     decisions.extend(record_findings(
         session_id=stamp.session_id, hook="pre_commit", event="PreCommit",
@@ -136,11 +151,9 @@ def _record_all(
     return decisions
 
 
-def _repo_findings_by_repo(
-    commit_cwds: list[Path], config: dict | None
-) -> list[tuple[Path, dict, list[dict]]]:
+def _repo_findings_by_repo(commit_cwds: list[Path], config: dict | None) -> list[_RepoScan]:
     """Because two repos in one commit command can carry different gate configs, adjudicate each under its own, not the caller's cwd."""
-    rows: list[tuple[Path, dict, list[dict]]] = []
+    rows: list[_RepoScan] = []
     seen: set[Path] = set()
     for commit_cwd in commit_cwds:
         repo = _repo_root(commit_cwd)
@@ -148,12 +161,15 @@ def _repo_findings_by_repo(
             continue
         seen.add(repo)
         cfg = effective_config(config, repo)
-        rows.append((repo, cfg, _repo_findings(repo, cfg)))
+        rows.append(_RepoScan(cfg, *_repo_findings(repo, cfg)))
     return rows
 
 
-def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
-    findings = []
+def _repo_findings(repo: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Split owned from inherited here, because a merge brings lines the agent did not write and must not own."""
+    incoming = incoming_commits(repo)
+    findings: list[dict] = []
+    inherited: list[dict] = []
     for path in _staged(repo):
         raw = _staged_bytes(repo, path)
         if is_binary_content(path, raw):
@@ -162,23 +178,12 @@ def _repo_findings(repo: Path, cfg: dict) -> list[dict]:
         if scannable_text(text, cfg) is None:
             findings.extend({**finding, "path": path} for finding in file_length_findings(path, text))
             continue
-        owned = strip_against(_head_text(repo, path), path, scan_all(path, text, cfg), cfg)
-        for finding in owned:
-            item = dict(finding)
-            item["path"] = path
-            findings.append(item)
-    return findings
-
-
-def _head_text(repo: Path, path: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "show", "HEAD:" + path], cwd=repo, text=True,
-            capture_output=True, check=True, timeout=30, errors="replace",
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return None
-    return result.stdout
+        previous = [revision_text(repo, revision, path) for revision in ("HEAD", *incoming)]
+        owned, carried = split_against(previous, path, scan_all(path, text, cfg), cfg)
+        findings.extend({**finding, "path": path} for finding in owned)
+        if incoming:
+            inherited.extend({**finding, "path": path} for finding in carried)
+    return findings, inherited
 
 
 def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:

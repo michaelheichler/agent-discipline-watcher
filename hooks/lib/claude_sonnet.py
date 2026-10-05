@@ -25,11 +25,13 @@ NO_MCP_CONFIG = '{"mcpServers":{}}'
 SYSTEM_PROMPT = (
     "You review one finished turn for reader-facing English. The user message holds numbered sections.\n"
     "A pattern section names one rule, the fix it asks for, real examples of both sides, and numbered "
-    "candidate sentences. A document section holds one whole document.\n"
+    "candidate sentences. A document section holds the hunks the agent changed this turn, each labelled "
+    "with its line range. A line that starts with + changed this turn.\n"
     "Answer every candidate of every pattern section with one item. Set section to the section number "
     "and index to the candidate number inside that section. Judge each candidate against that section's rule alone.\n"
-    "For document sections, add one note per problem a reader can check against the text, six at most. "
-    "Quote the sentence exactly. Return no notes when the documents are fine.\n"
+    "For document sections, judge only the changed lines. Use the other lines only to understand them, "
+    "and never flag them. Add one note per problem a reader can check against the text, six at most. "
+    "Quote the sentence exactly, without its leading marker. Return no notes when the documents are fine.\n"
     "Answer from the message alone. You have no tools and never open a file. When uncertain, answer clean."
 )
 _VERDICT = PATTERN_SCHEMA["properties"]["items"]["items"]
@@ -78,7 +80,7 @@ def claude_command() -> list[str]:
 
 
 def _claude_judge(prompt: str) -> str:
-    """Stdin carries the prompt, because argv would show source text in the process list."""
+    """Because argv would show source text in the process list, stdin carries the prompt."""
     try:
         done = subprocess.run(
             claude_command(), input=prompt, capture_output=True, text=True, check=False,

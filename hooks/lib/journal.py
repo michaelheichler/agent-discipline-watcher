@@ -8,6 +8,8 @@ import stat
 from typing import Any, NamedTuple
 
 from . import session_state
+from .baseline import committed_text
+from .document_hunks import changed_hunks, hunk_chars
 from .narration_candidates import candidates
 from .scanner import PROSE_EXTS
 
@@ -192,6 +194,25 @@ def candidate_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
     )
 
 
+def _document_row(path: Path, digest: str, text: str, turn_id: str, tool_use_id: str) -> dict[str, Any]:
+    return {
+        "role": "document",
+        "path": str(path),
+        "path_identity": str(path),
+        "content_hash": digest,
+        "source_context": text[:MAX_DOCUMENT_CHARS],
+        "source_truncated": len(text) > MAX_DOCUMENT_CHARS,
+        "turn_id": turn_id,
+        "tool_use_id": tool_use_id,
+    }
+
+
+def _with_before(rows: list[dict[str, Any]], before: str | None) -> list[dict[str, Any]]:
+    """Capped like the source, because an oversize base would cost more than the whole document."""
+    kept = before if before is not None and len(before) <= MAX_DOCUMENT_CHARS else None
+    return [{**row, "before_context": kept} if row["role"] == "document" else row for row in rows]
+
+
 def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_id: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     rows.extend({
@@ -206,16 +227,7 @@ def _candidate_rows(path: Path, digest: str, text: str, turn_id: str, tool_use_i
         "tool_use_id": tool_use_id,
     } for candidate in candidates(str(path), text))
     if path.suffix.lower() in PROSE_EXTS:
-        rows.append({
-            "role": "document",
-            "path": str(path),
-            "path_identity": str(path),
-            "content_hash": digest,
-            "source_context": text[:MAX_DOCUMENT_CHARS],
-            "source_truncated": len(text) > MAX_DOCUMENT_CHARS,
-            "turn_id": turn_id,
-            "tool_use_id": tool_use_id,
-        })
+        rows.append(_document_row(path, digest, text, turn_id, tool_use_id))
     return rows
 
 
@@ -405,6 +417,31 @@ def _refresher(target: str, digest: str, turn_id: str, fresh: list, added: list)
     return update
 
 
+def _prior_document(state: dict, target: str) -> dict[str, Any] | None:
+    prior = None
+    for row in _stored_rows(state):
+        if isinstance(row, dict) and row.get("role") == "document" and _row_identity(row) == target:
+            prior = row
+    return prior
+
+
+def _turn_before(prior: dict[str, Any] | None, turn_id: str, target: Path) -> str | None:
+    """Carried inside a turn, because the first write of the turn defines what the agent changed."""
+    if prior is None or document_source_truncated(prior):
+        return committed_text(target)
+    if prior.get("turn_id") == turn_id and "before_context" in prior:
+        return prior["before_context"]
+    return str(prior.get("source_context", ""))
+
+
+def _before_text(session_id: str, turn_id: str, target: Path, state_root: str | Path | None) -> str | None:
+    """Prose only, because code files never reach the document review."""
+    if target.suffix.lower() not in PROSE_EXTS:
+        return None
+    prior = _prior_document(session_state.read_state(session_id, state_root), str(target))
+    return _turn_before(prior, turn_id, target)
+
+
 def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Path, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
     if not isinstance(session_id, str) or not session_id:
         return []
@@ -416,7 +453,8 @@ def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Pat
         session_state.update_state(session_id, lambda state: _drop_target(state, str(target)), state_root)
         return []
     digest, text = outcome.value
-    fresh = _candidate_rows(target, digest, text, turn_id, tool_use_id)
+    before = _before_text(session_id, turn_id, target, state_root)
+    fresh = _with_before(_candidate_rows(target, digest, text, turn_id, tool_use_id), before)
     added: list[dict[str, Any]] = []
     session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, added), state_root)
     return added
@@ -498,12 +536,19 @@ def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
             "line": line if isinstance(line, int) and not isinstance(line, bool) else 1,
             "text": str(row.get("text", ""))[:MAX_CANDIDATE_CHARS],
         }
+    before = row.get("before_context")
     return {
         "role": "document",
         "path": str(row.get("path", ""))[:512],
         "content_hash": str(row.get("content_hash", ""))[:64],
-        "source_context": str(row.get("source_context", ""))[:MAX_STOP_DOCUMENT_CHARS],
+        "hunks": changed_hunks(before if isinstance(before, str) else "", str(row.get("source_context", ""))),
     }
+
+
+def _row_chars(row: dict[str, Any]) -> int:
+    if row.get("role") == "document":
+        return hunk_chars(row["hunks"])
+    return len(row.get("text") or "")
 
 
 def _within_budget(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -511,7 +556,7 @@ def _within_budget(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     kept: list[dict[str, Any]] = []
     total = 0
     for row in rows:
-        total += len(row.get("source_context") or row.get("text") or "")
+        total += _row_chars(row)
         if total > MAX_STOP_TOTAL_CHARS and kept:
             break
         kept.append(row)
@@ -549,7 +594,8 @@ def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | 
     documents = [
         _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed)
     ]
-    return _within_budget(patterns + documents[:MAX_STOP_ROWS])
+    changed = [row for row in documents if row["hunks"]]
+    return _within_budget(patterns + changed[:MAX_STOP_ROWS])
 
 
 def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:

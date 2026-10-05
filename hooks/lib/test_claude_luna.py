@@ -18,12 +18,6 @@ from lib.luna_storage import LunaProviderFailure
 COMMENT = "# Counts the retries because the report header needs a total.\nvalue = 1\n"
 
 
-@pytest.fixture(autouse=True)
-def _open_data_boundary(tmp_path: Path) -> None:
-    """Opened here, because the gate has its own test file."""
-    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
-
-
 def _result(request: JudgeRequest, payload: dict) -> JudgeResult:
     return JudgeResult(
         payload=payload, provider="openai-codex", model="gpt-5.6-luna", effort="high",

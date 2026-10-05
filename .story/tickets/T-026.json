@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "Observed 2026-10-05 in tweakcc-fixed: a merge of upstream 2.8.35 brought 949 ADW findings. The commit gate blocked the agent, and the user had to commit by hand.\n\nCause: hooks/pre_commit.py `_repo_findings` calls `strip_against(_head_text(repo, path), ...)`. It compares the staged file only against HEAD. In a merge, every upstream line is new relative to HEAD, so every old upstream finding counts as the agent's own.\n\nFix: while MERGE_HEAD exists (also CHERRY_PICK_HEAD and REVERT_HEAD), a finding is inherited when it exists in the HEAD version or in any incoming parent version of the file. Only lines that exist in no parent block, which are the agent's conflict resolutions and new lines. This matches git's combined diff (`git diff --cc`). Inherited findings stay visible as reported debt, as baseline mode \"report\" already does.",
+  "displayId": "T-026",
+  "id": "T-026",
+  "order": 150,
+  "phase": null,
+  "status": "complete",
+  "title": "Commit gate treats merged upstream findings as inherited",
+  "type": "task"
+}

@@ -5,6 +5,7 @@ import copy
 import re
 import shlex
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -13,13 +14,12 @@ except ImportError:
     import claude_native
     import claude_presets
 
-DEFAULT_PRESET = "mixed"
 SCRIPT_TOKEN = re.compile(r"'[^']*/hooks/claude_(?:luna|sonnet)\.sh'|/[^\s']*/hooks/claude_(?:luna|sonnet)\.sh")
 
 
 def _current_token(token: str) -> str:
     leaf = shlex.split(token)[0].rsplit("/", 1)[1]
-    return shlex.quote(str(claude_presets.PLUGIN_ROOT / "hooks" / leaf))
+    return shlex.quote(str(claude_presets.handler_root() / "hooks" / leaf))
 
 
 def _repointed_text(text: str) -> str:
@@ -39,9 +39,13 @@ def _repointed(settings: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
-def ensure_default_block() -> str | None:
+def ensure_default_block(settings_path: str | Path | None = None, preset_path: str | Path | None = None) -> str | None:
     """Into an empty slot or over a retired agent block, because any other block is a choice."""
-    return claude_native.ensure_managed_block(DEFAULT_PRESET, _repointed, claude_presets.has_retired_agent_hook)
+    preset = claude_native.default_preset(preset_path=preset_path, settings_path=settings_path)
+    return claude_native.ensure_managed_block(
+        preset, _repointed, claude_presets.has_retired_agent_hook,
+        settings_path=settings_path, preset_path=preset_path,
+    )
 
 
 def ensure_with_notice() -> None:

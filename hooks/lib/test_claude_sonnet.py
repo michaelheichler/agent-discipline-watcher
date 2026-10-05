@@ -145,6 +145,43 @@ def test_a_document_note_is_reported(tmp_path: Path) -> None:
     assert "weak bridge" in response["reason"]
 
 
+def _readme_after_a_two_line_edit(tmp_path: Path, state_root: Path) -> None:
+    readme = tmp_path / "README.md"
+    sentences = [f"Sentence {number} of the untouched README." for number in range(1, 481)]
+    readme.write_text("\n".join(sentences) + "\n", encoding="utf-8")
+    journal.record_edit("sonnet", "turn-1", "tool-1", readme, state_root=state_root)
+    journal.mark_reviewed("sonnet", journal.read_stop("sonnet", turn_id="turn-1", state_root=state_root), state_root=state_root)
+    sentences[99:101] = ["The preset picks the reviewer.", "It also names the model."]
+    readme.write_text("\n".join(sentences) + "\n", encoding="utf-8")
+    journal.record_edit("sonnet", "turn-2", "tool-2", readme, state_root=state_root)
+    session_state.update_state("sonnet", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+
+
+def test_a_two_line_edit_to_a_long_document_sends_only_those_lines_and_their_context(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_after_a_two_line_edit(tmp_path, state_root)
+    judge = Judge(_cli({"items": [], "notes": []}))
+
+    _stop(tmp_path, state_root, judge)
+
+    prompt = judge.prompts[0]
+    assert "README.md lines 97-104, changed lines: 100-101" in prompt
+    assert "+ The preset picks the reviewer.\n+ It also names the model." in prompt
+    assert "Sentence 97 of" in prompt and "Sentence 96 of" not in prompt
+    assert "Sentence 480 of" not in prompt
+    assert len(prompt) < 2_000
+
+
+def test_a_reverted_edit_makes_no_model_call(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_after_a_two_line_edit(tmp_path, state_root)
+    readme = tmp_path / "README.md"
+    readme.write_text("\n".join(f"Sentence {n} of the untouched README." for n in range(1, 481)) + "\n", encoding="utf-8")
+    journal.record_edit("sonnet", "turn-2", "tool-3", readme, state_root=state_root)
+
+    assert _stop(tmp_path, state_root, Judge(error=AssertionError("must not judge"))) == {}
+
+
 def test_a_reviewed_document_is_not_sent_again(tmp_path: Path) -> None:
     state_root = tmp_path / "state"
     journal.record_edit("sonnet", "turn-1", "tool", _document(tmp_path), state_root=state_root)

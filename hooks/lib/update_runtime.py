@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import importlib
 import json
 import os
 import pwd
@@ -21,6 +22,7 @@ from install_runtime import EXCLUDED_NAMES, INSTALL_MARKER, INSTALL_MARKER_CONTE
 from . import principle_kb, update_release
 
 INSTALL_PATH = Path(".adw/install/agent-discipline-watcher")
+CLAUDE_PRESET_PATH = Path(".adw/claude/preset")
 HOSTS = ("claude", "codex", "omp")
 EXTENSION_PATH = Path("pi/extensions/agent-discipline-watcher")
 PLUGIN_NAME = "agent-discipline-watcher"
@@ -324,6 +326,12 @@ def _install_claude(home: Path, source: Path, commit: str, environment: dict[str
     install_pinned_plugin(home, source, commit, environment)
 
 
+def _default_claude_reviewer(settings: Path, preset: Path) -> str | None:
+    """Looked up by name, because a core module must not import a host module."""
+    adapter = importlib.import_module(".claude_default", __package__)
+    return adapter.ensure_default_block(settings, preset)
+
+
 def _build_principles() -> str:
     """Run here, not in a hook, because a fetch must stay off the write path."""
     result = principle_kb.build()
@@ -346,6 +354,7 @@ class UpdateSteps:
     latest_release: Callable[[], update_release.Release] = update_release.latest_release
     stage_release: Callable[[update_release.Release, Path], None] = update_release.stage_release
     install_claude: Callable[[Path, Path, str, dict[str, str]], None] = _install_claude
+    write_claude_reviewer: Callable[[Path, Path], str | None] = _default_claude_reviewer
     run_installer: Callable[[Path, tuple[str, ...], dict[str, str]], None] = _run_installer
     build_principles: Callable[[], str] = _build_principles
 
@@ -474,9 +483,20 @@ def _install_hosts(
     steps.run_installer(source, hosts, environment)
 
 
+def _verify_then_write_reviewer(
+    steps: UpdateSteps, home: Path, source: Path, hosts: tuple[str, ...], expected: dict, environment: dict[str, str],
+) -> str | None:
+    """Verified first, because a bad install must not touch settings."""
+    _verify_install(home, source, hosts, expected)
+    if "claude" not in hosts:
+        return None
+    settings = Path(environment["CLAUDE_CONFIG_DIR"]) / "settings.json"
+    return steps.write_claude_reviewer(settings, home / CLAUDE_PRESET_PATH)
+
+
 def _perform_update(
     home: Path, updates: Path, hosts: tuple[str, ...], release: update_release.Release, steps: UpdateSteps,
-) -> None:
+) -> str | None:
     workspace = Path(tempfile.mkdtemp(prefix="update-", dir=updates))
     retain_backup = False
     try:
@@ -487,8 +507,9 @@ def _perform_update(
         backups = _backup_paths(paths, workspace / "backup")
         try:
             _install_hosts(steps, home, source, release.commit, hosts, environment)
-            _verify_install(home, source, hosts, expected)
+            written = _verify_then_write_reviewer(steps, home, source, hosts, expected, environment)
             _record_release(updates, release, hosts)
+            return written
         except BaseException:
             try:
                 _restore_paths(backups, home)
@@ -512,8 +533,10 @@ def main(argv: list[str] | None = None, *, steps: UpdateSteps = UpdateSteps()) -
             print(f"Would install {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
             return 0
         with _update_lock(home) as updates:
-            _perform_update(home, updates, args.hosts, release, steps)
+            written = _perform_update(home, updates, args.hosts, release, steps)
         print(f"Installed {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
+        if "claude" in args.hosts:
+            print(f"Claude reviewer preset written: {written}" if written else "Claude reviewer block kept.")
         note = _run_build_principles(steps)
         if note:
             print(note)

@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import tempfile
 from pathlib import Path
 
@@ -42,8 +43,22 @@ def is_watcher_agent_hook(value) -> bool:
     return isinstance(prompt, str) and prompt.splitlines()[:1] == [MANAGED_MARKER]
 
 
+def is_managed_command(value) -> bool:
+    """Exact shape, because the handler path also names the package."""
+    if not isinstance(value, dict) or value.get("type") != "command":
+        return False
+    command = value.get("command")
+    if not isinstance(command, str):
+        return False
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    return len(parts) == 2 and parts[0] == f"ADW_CLAUDE_MANAGED={MANAGED_MARKER}" and Path(parts[1]).is_absolute()
+
+
 def is_legacy_command(value) -> bool:
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or is_managed_command(value):
         return False
     command = value.get("command")
     is_named_legacy = isinstance(command, str) and any(name in command for name in LEGACY)

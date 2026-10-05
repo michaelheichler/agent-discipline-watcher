@@ -83,11 +83,25 @@ def pattern_feedback(result: Any, found: tuple[Any, ...], action: str, rule: str
     return _listing(PATTERN_LEAD.format(reviewer=reviewer), feedback) if feedback else ""
 
 
+def _hunk_line(quote: str, row: dict[str, Any]) -> int | None:
+    """Hunks first, because a Stop row holds changed hunks and no whole text."""
+    for hunk in row.get("hunks") or ():
+        text = "\n".join(hunk["lines"])
+        if quote in text:
+            return hunk["start"] + text[:text.index(quote)].count("\n")
+    return None
+
+
 def _quote_location(quote: str, rows: list[dict[str, Any]]) -> str:
     for row in rows:
-        source = str(row.get("source_context", "")) if isinstance(row, dict) else ""
-        if quote and quote in source:
-            return f"{row.get('path', '')}:{source[:source.index(quote)].count(chr(10)) + 1}"
+        if not quote or not isinstance(row, dict):
+            continue
+        line = _hunk_line(quote, row)
+        source = str(row.get("source_context", ""))
+        if line is None and quote in source:
+            line = source[:source.index(quote)].count("\n") + 1
+        if line is not None:
+            return f"{row.get('path', '')}:{line}"
     return "document"
 
 

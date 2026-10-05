@@ -1,19 +1,12 @@
 """Split out because the Luna request shape has its own contract."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
-from lib import claude_luna, claude_native, journal
+from lib import claude_luna, claude_native, journal, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult
-
-
-@pytest.fixture(autouse=True)
-def _open_data_boundary(tmp_path: Path) -> None:
-    """Opened here, because the gate has its own test file."""
-    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"data_boundary": {"enabled": True}}), encoding="utf-8")
 
 
 class Provider:  # pylint: disable=too-few-public-methods
@@ -84,6 +77,52 @@ def test_a_successful_luna_stop_review_judges_every_request_once(tmp_path: Path)
     assert judged > 1
     claude_luna.run(payload, provider=provider, state_root=state_root, settings_path=settings, preset_path=preset)
     assert len(provider.requests) == judged
+
+
+def _readme_after_a_two_line_edit(tmp_path: Path, state_root: Path) -> None:
+    readme = tmp_path / "README.md"
+    sentences = [f"Sentence {number} of the untouched README." for number in range(1, 481)]
+    readme.write_text("\n".join(sentences) + "\n", encoding="utf-8")
+    journal.record_edit("session", "turn-1", "tool-1", readme, state_root=state_root)
+    journal.mark_reviewed("session", journal.read_stop("session", turn_id="turn-1", state_root=state_root), state_root=state_root)
+    sentences[99:101] = ["The preset picks the reviewer.", "It also names the model."]
+    readme.write_text("\n".join(sentences) + "\n", encoding="utf-8")
+    journal.record_edit("session", "turn-2", "tool-2", readme, state_root=state_root)
+    session_state.update_state("session", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+
+
+def test_a_two_line_edit_to_a_long_document_sends_only_those_lines_and_their_context(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_after_a_two_line_edit(tmp_path, state_root)
+
+    work = claude_luna.stop_request({"session_id": "session", "stop_hook_active": False}, state_root)
+
+    ((request, _rows),) = work
+    assert "README.md lines 97-104, changed lines: 100-101" in request.source_context
+    assert "+ The preset picks the reviewer.\n+ It also names the model." in request.source_context
+    assert "Sentence 97 of" in request.source_context and "Sentence 96 of" not in request.source_context
+    assert "Sentence 480 of" not in request.source_context
+    assert len(request.source_context) < 1_500
+
+
+def test_a_reverted_edit_makes_no_luna_call(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_after_a_two_line_edit(tmp_path, state_root)
+    readme = tmp_path / "README.md"
+    readme.write_text("\n".join(f"Sentence {n} of the untouched README." for n in range(1, 481)) + "\n", encoding="utf-8")
+    journal.record_edit("session", "turn-2", "tool-3", readme, state_root=state_root)
+    provider = Provider()
+    payload = {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False, "cwd": str(tmp_path)}
+
+    response = claude_luna.run(payload, provider=provider, state_root=state_root, **_luna_paths(tmp_path))
+
+    assert response == {} and provider.requests == []
+
+
+def _luna_paths(tmp_path: Path) -> dict:
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    return {"settings_path": settings, "preset_path": preset}
 
 
 def test_the_comment_reviewer_skips_a_file_with_no_comment_syntax(tmp_path: Path) -> None:

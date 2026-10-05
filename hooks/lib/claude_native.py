@@ -788,10 +788,13 @@ def ensure_managed_block(
     default: str,
     repoint: Callable[[dict[str, Any]], dict[str, Any]],
     is_retired: Callable[[dict[str, Any]], bool],
+    *,
+    settings_path: str | Path | None = None,
+    preset_path: str | Path | None = None,
 ) -> str | None:
     """One lock, because a racing set_preset must not interleave."""
-    target_settings = _canonical(settings_path())
-    target_preset = _canonical(preset_path())
+    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         current = _load_settings(target_settings)

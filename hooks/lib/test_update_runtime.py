@@ -5,12 +5,14 @@ import fcntl
 import json
 import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from lib import update_runtime
+from lib import claude_native, claude_presets, update_runtime
 
 
 RELEASE = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
@@ -135,6 +137,7 @@ def _simulate_install(source, hosts, environment):
         judge = home / ".adw/bin/adw-judge"
         judge.unlink(missing_ok=True)
         judge.symlink_to(installed / "bin/adw-judge")
+        Path(environment["CLAUDE_CONFIG_DIR"]).mkdir(parents=True, exist_ok=True)
     if "omp" in hosts:
         _simulate_omp(home, installed)
     if "codex" in hosts:
@@ -172,8 +175,8 @@ def test_update_verifies_files_and_wiring_before_recording_release(available_upd
     assert receipt["hosts"] == ["codex", "omp"]
     assert (available_update.installed / "hooks/lib/update_runtime.py").read_text() == "runtime = 'new'\n"
     assert json.loads(settings.read_text())["theme"] == "dark"
-    for name in ("state", "ledger", "reports"):
-        assert (home / ".adw" / name / "keep.json").read_text() == '{"pending":true}'
+    kept = {name: (home / ".adw" / name / "keep.json").read_text() for name in ("state", "ledger", "reports")}
+    assert kept == {name: '{"pending":true}' for name in ("state", "ledger", "reports")}
 
 
 def test_successful_update_prints_the_principle_kb_build_note(available_update, capsys):
@@ -496,3 +499,85 @@ def test_failed_claude_reinstall_restores_cache_and_registration(available_updat
     assert {path: path.read_bytes() for path in previous} == previous
     assert not new_guard.exists()
     assert not (available_update.home / ".adw/updates/installed.json").exists()
+
+
+MERGE_SCRIPT = Path(__file__).resolve().parents[1] / "merge-claude-settings.py"
+CLAUDE_PRESET_FILE = ".adw/claude/preset"
+
+
+def _claude_files(home: Path) -> tuple[Path, Path]:
+    settings = home / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    preset = home / CLAUDE_PRESET_FILE
+    preset.parent.mkdir(parents=True, exist_ok=True)
+    return settings, preset
+
+
+def _prune_legacy_hooks(source, hosts, environment) -> None:
+    _simulate_install(source, hosts, environment)
+    settings = Path(environment["CLAUDE_CONFIG_DIR"]) / "settings.json"
+    subprocess.run([sys.executable, str(MERGE_SCRIPT), "--settings", str(settings), "--remove-legacy"], check=True)
+
+
+def _managed(settings: Path) -> dict:
+    return claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8")))
+
+
+@pytest.mark.parametrize(("stored", "written"), [("mixed", "mixed"), ("luna", "luna"), (None, "mixed"), ("sonnet", "mixed"), ("luna-native", "mixed")])
+def test_update_writes_the_block_for_the_stored_preset_when_none_survives(available_update, capsys, stored, written) -> None:
+    settings, preset = _claude_files(available_update.home)
+    settings.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+    if stored:
+        preset.write_text(f"{stored}\n", encoding="utf-8")
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None) == 0
+    assert _managed(settings) == claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks(written)})
+    assert json.loads(settings.read_text(encoding="utf-8"))["theme"] == "dark"
+    assert preset.read_text(encoding="utf-8") == f"{written}\n"
+    assert f"Claude reviewer preset written: {written}" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("chosen", ["mixed", "luna"])
+def test_update_keeps_a_user_edited_block_through_the_legacy_cleanup(available_update, capsys, chosen) -> None:
+    settings, preset = _claude_files(available_update.home)
+    edited = claude_native.settings_for_preset({}, chosen)
+    edited["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 45
+    settings.write_text(json.dumps(edited), encoding="utf-8")
+    preset.write_text(f"{chosen}\n", encoding="utf-8")
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None, run_installer=_prune_legacy_hooks) == 0
+    assert json.loads(settings.read_text(encoding="utf-8")) == edited
+    assert preset.read_text(encoding="utf-8") == f"{chosen}\n"
+    assert "Claude reviewer block kept." in capsys.readouterr().out
+
+
+def test_update_hands_the_block_writer_the_profile_settings_and_the_account_preset(available_update) -> None:
+    calls = []
+
+    def fake_writer(settings, preset) -> str:
+        calls.append((settings, preset))
+        return "luna"
+
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None, write_claude_reviewer=fake_writer) == 0
+    assert calls == [(available_update.home / ".claude/settings.json", available_update.home / CLAUDE_PRESET_FILE)]
+
+
+def test_update_without_claude_never_touches_the_block_writer(available_update, capsys) -> None:
+    def forbidden_writer(settings, preset) -> None:
+        raise AssertionError("block writer ran")
+
+    assert _update(available_update, ["update", "--omp"], write_claude_reviewer=forbidden_writer) == 0
+    assert "Claude reviewer" not in capsys.readouterr().out
+
+
+def test_failed_block_write_rolls_the_update_back(available_update, capsys) -> None:
+    settings, _preset = _claude_files(available_update.home)
+    settings.write_text('{"theme":"dark"}', encoding="utf-8")
+
+    def broken_writer(settings, preset) -> None:
+        settings.write_text('{"theme":"changed"}', encoding="utf-8")
+        raise ValueError("settings are not JSON")
+
+    assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None, write_claude_reviewer=broken_writer) == 2
+    assert "settings are not JSON" in capsys.readouterr().err
+    assert settings.read_text(encoding="utf-8") == '{"theme":"dark"}'
+    assert not (available_update.home / ".adw/updates/installed.json").exists()
+

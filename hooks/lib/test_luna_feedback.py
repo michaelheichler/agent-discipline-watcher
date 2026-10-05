@@ -45,6 +45,16 @@ def test_document_rows_carry_the_path_and_line_of_the_quote() -> None:
     assert lines[1] == '1. docs/a.md:2 Found "ships soon". Problem: Vague date. Action: Give the date.'
 
 
+def test_a_quote_inside_a_hunk_reports_its_line_in_the_whole_file() -> None:
+    hunk = {"start": 40, "lines": ["Intro.", "The release ships soon."], "changed": [41]}
+    rows = [{"path": "docs/a.md", "hunks": [hunk]}]
+    result = SimpleNamespace(payload={"notes": [{"quote": "ships soon", "problem": "Vague date", "fix": "Give the date"}]})
+
+    lines = luna_feedback.document_feedback(result, rows).split("\n")
+
+    assert lines[1] == '1. docs/a.md:41 Found "ships soon". Problem: Vague date. Action: Give the date.'
+
+
 def _closer_verdict() -> tuple[tuple[PatternCandidate, ...], SimpleNamespace]:
     found = (PatternCandidate("docs/a.md", 4, "Hope this helps."), PatternCandidate("docs/a.md", 9, "It ships Monday."))
     items = [{"index": 0, "verdict": "violating", "reason": "Stock closer."}, {"index": 1, "verdict": "clean", "reason": ""}]

@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.3**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.4**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -10,7 +10,7 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
-**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the whole file and names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset.
+**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the lines the agent changed this turn and a few lines around them. It names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. The reader judges the changed lines only. The lines around them help it understand the change, and it never flags them. Each hunk carries its line range, so these questions stay meaningful on a partial view. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset, and they still read the whole file.
 
 Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
 
@@ -26,7 +26,7 @@ A prose rule speaks only where a measurement covers it, and blocks only where th
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews whole documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. A Sonnet reader measured the precision numbers above, the same model family as the default judge. If the default judge changes, the numbers need a new run against it.
+The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews the changed hunks of documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. A Sonnet reader measured the precision numbers above, the same model family as the default judge. If the default judge changes, the numbers need a new run against it.
 
 ## What the rules were measured against
 
@@ -326,6 +326,17 @@ pattern rule, with four violating and four clean examples, beside the document
 rows. Each upheld pattern row prints its path, line, rule title, matched text,
 and action. Pattern and document rows share one 48,000 character Stop budget.
 
+The document rows hold only what the agent changed. ADW compares the file after
+the turn with the file before the turn's first write. The journal keeps that
+earlier text. It takes it from the file's last recorded write. If the session
+has no earlier write, it takes the committed version in git. A file with
+neither counts as new, so the whole file is the change. Each changed hunk
+comes with three lines of context before and after it. Hunks that overlap
+merge into one. Every hunk carries its line range and marks its changed lines
+with a plus sign. The prompt tells the model to judge the marked lines and to
+use the others only to understand them. If the agent reverts a change, the turn
+has nothing to review and makes no call.
+
 `mixed` is the Sonnet preset. Its Stop handler makes one batch call per Stop:
 
 ```
@@ -348,10 +359,12 @@ Stop retries.
 both PostToolUse and Stop, and switches to `mixed` only after Luna is
 unavailable. The Claude CLI cannot call Luna, so no Luna preset runs through it.
 
-The Luna routes send source text off the machine. The Claude Luna handler and
-the Codex Stop review run only with `data_boundary.enabled` set to `true` in
-`.agent-discipline.json`. The OMP review uses the same gate. The `mixed`
-preset sends text to Anthropic on your own account and needs no gate.
+The Codex Stop review and the OMP review send source text off the machine.
+They run only with `data_boundary.enabled` set to `true` in
+`.agent-discipline.json`. The Claude `luna` preset has no such gate. Choosing
+`luna` is your consent to send journal rows to OpenAI through your ChatGPT
+subscription, so its handlers review without a project setting. The `mixed`
+preset sends text to Anthropic on your own account and needs no gate either.
 
 `status` counts the reviewers in the managed block. It does not echo the
 stored preset, so an unwired gate says so. `mixed` counts one. `luna`

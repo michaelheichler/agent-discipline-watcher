@@ -12,8 +12,8 @@ CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
-SONNET_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_sonnet.sh"
+STABLE_ROOT = Path(".adw") / "install" / "agent-discipline-watcher"
+CACHE_PARTS = ("plugins", "cache")
 HANDLER_TIMEOUT = 120
 
 
@@ -23,16 +23,25 @@ def validate_preset(value: str) -> str:
     return value
 
 
-def _command(handler: Path) -> str:
+def handler_root() -> Path:
+    """The stable install, because a plugin cache revision vanishes on update."""
+    if PLUGIN_ROOT.parts[-5:-3] != CACHE_PARTS:
+        return PLUGIN_ROOT
+    stable = Path.home() / STABLE_ROOT
+    return stable if (stable / "hooks" / "claude_sonnet.sh").is_file() else PLUGIN_ROOT
+
+
+def _command(leaf: str) -> str:
+    handler = handler_root() / "hooks" / leaf
     return f"ADW_CLAUDE_MANAGED={MANAGED_MARKER} {shlex.quote(str(handler))}"
 
 
 def luna_command() -> str:
-    return _command(LUNA_HANDLER_PATH)
+    return _command("claude_luna.sh")
 
 
 def sonnet_command() -> str:
-    return _command(SONNET_HANDLER_PATH)
+    return _command("claude_sonnet.sh")
 
 
 def is_managed_hook(value: object) -> bool:

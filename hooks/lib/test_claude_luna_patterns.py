@@ -22,9 +22,9 @@ STOP = {"hook_event_name": "Stop", "session_id": "patterns", "stop_hook_active":
 
 
 @pytest.fixture(autouse=True)
-def _open_data_boundary(tmp_path: Path) -> None:
-    """Opened here, because the gate has its own test file."""
-    policy = {"data_boundary": {"enabled": True}, "rule_gates": {"ai_closer": "enforce"}}
+def _enforce_the_closer(tmp_path: Path) -> None:
+    """Enforced here, because the shipped default only observes this rule."""
+    policy = {"rule_gates": {"ai_closer": "enforce"}}
     (tmp_path / ".agent-discipline.json").write_text(json.dumps(policy), encoding="utf-8")
 
 

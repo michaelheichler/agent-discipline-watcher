@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "User decisions 2026-10-05:\n1. On Claude Code the user picks `luna` or `mixed` (Sonnet), and both behave the same. Picking `luna` is the consent to send rows to OpenAI through the ChatGPT subscription. Today hooks/lib/claude_luna.py:391 returns {} when `data_boundary.enabled` is off, which no project sets, so the luna preset silently reviews nothing. Sonnet has no such gate. Remove the gate for the Claude luna preset. Codex and OMP stay as they are.\n2. Save tokens. The reviewer looks only at what the turn changed. Pattern and comment rows already come from changed files, but the document review sends whole documents, so every turn re-flags old text across the whole README. Send only the changed hunks plus a small context window, for both presets.\n3. Luna model: the provider already picks the highest Luna id in the Codex model list (`_resolve_luna_model`), so gpt-6-luna or a newer 6.1 is chosen automatically.",
+  "displayId": "T-025",
+  "id": "T-025",
+  "order": 140,
+  "phase": null,
+  "status": "complete",
+  "title": "Luna and Sonnet presets work alike, and review only changed lines",
+  "type": "task"
+}

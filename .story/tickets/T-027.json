@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Found by the T-026 agent on 2026-10-05. Only `git commit` reaches the commit gate. `git merge --continue`, `git cherry-pick --continue`, `git revert --continue`, and `git rebase --continue` create a commit with no scan, so a conflict resolution committed that way skips the gate. The fix sits in `_commit_cwd_for_verb` in hooks/pre_commit.py. It is a visible behavior change, so the user decides. With T-026 in place, gating these forms blocks only the agent's own resolution lines.",
+  "id": "T-027",
+  "order": 160,
+  "phase": null,
+  "status": "open",
+  "title": "Gate the --continue forms of merge, cherry-pick, revert, and rebase",
+  "type": "task"
+}

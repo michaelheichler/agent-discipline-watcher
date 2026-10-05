@@ -82,6 +82,17 @@ class LegacyRemovalTests(unittest.TestCase):
         self.assertNotEqual(first, once)
         self.assertEqual(once, twice, "a second migration must change nothing")
 
+    def test_managed_reviewer_blocks_survive_while_path_hooks_go(self) -> None:
+        prefix = "ADW_CLAUDE_MANAGED=adw-managed-hook-v1"
+        stable = "/Users/u/.adw/install/agent-discipline-watcher/hooks/claude_sonnet.sh"
+        cached = "/Users/u/.claude/plugins/cache/agent-discipline-watcher/agent-discipline-watcher/1.0/hooks/claude_luna.sh"
+        managed = [{"type": "command", "command": f"{prefix} {path}", "timeout": 45} for path in (stable, cached)]
+        path_hook = {"type": "command", "command": f"{prefix} {CHECKOUT}/hooks/run.sh Stop"}
+        settings = {"hooks": {"Stop": [{"hooks": [managed[0]]}, {"hooks": [managed[1]]}, {"hooks": [path_hook]}]}}
+        self.settings.write_text(json.dumps(settings), encoding="utf-8")
+        merged = self.migrate()
+        self.assertEqual(merged["hooks"]["Stop"], [{"hooks": [managed[0]]}, {"hooks": [managed[1]]}])
+
     def test_clean_settings_are_left_alone(self):
         clean = {"model": "claude-opus-5", "hooks": {"Notification": [
             {"hooks": [{"type": "command", "command": "python /x/notify.py"}]}

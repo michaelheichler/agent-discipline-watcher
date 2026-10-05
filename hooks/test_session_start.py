@@ -171,6 +171,63 @@ def test_a_luna_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.M
     assert claude_native.read_preset() == "luna"
 
 
+def test_a_missing_block_is_seeded_with_the_stored_preset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seeded as stored, because a lost block must not silently downgrade a chosen Luna."""
+    settings = _on_claude(monkeypatch)
+    claude_native.preset_path().parent.mkdir(parents=True, exist_ok=True)
+    claude_native.preset_path().write_text("luna\n", encoding="utf-8")
+
+    session_start.run({"source": "startup"})
+
+    assert claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8"))) == claude_presets.managed_hooks(
+        {"hooks": claude_presets.generated_hooks("luna")}
+    )
+    assert claude_native.read_preset() == "luna"
+
+
+CACHE_REVISION = Path(".claude/plugins/cache/agent-discipline-watcher/agent-discipline-watcher")
+
+
+def _from_a_plugin_cache(monkeypatch: pytest.MonkeyPatch, home: Path, stable_installed: bool) -> Path:
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(claude_presets, "PLUGIN_ROOT", home / CACHE_REVISION / "1.0.0")
+    stable = home / claude_presets.STABLE_ROOT
+    if stable_installed:
+        (stable / "hooks").mkdir(parents=True)
+        (stable / "hooks" / "claude_sonnet.sh").write_text("", encoding="utf-8")
+    return stable if stable_installed else home / CACHE_REVISION / "1.0.0"
+
+
+def _stop_command(settings: Path) -> str:
+    return json.loads(settings.read_text(encoding="utf-8"))["hooks"]["Stop"][0]["hooks"][0]["command"]
+
+
+@pytest.mark.parametrize("stable_installed", [True, False])
+def test_a_plugin_cache_run_seeds_the_stable_handler_when_it_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stable_installed: bool) -> None:
+    """Stable first, because adw-judge writes it and a cache revision vanishes on update."""
+    settings = _on_claude(monkeypatch)
+    root = _from_a_plugin_cache(monkeypatch, tmp_path, stable_installed)
+
+    session_start.run({"source": "startup"})
+
+    assert _stop_command(settings).endswith(f" {root}/hooks/claude_sonnet.sh")
+
+
+@pytest.mark.parametrize("stable_installed", [True, False])
+def test_an_old_cache_block_is_repointed_to_the_same_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stable_installed: bool) -> None:
+    """Repointed to one root, because the two writers must agree."""
+    settings = _on_claude(monkeypatch)
+    root = _from_a_plugin_cache(monkeypatch, tmp_path, stable_installed)
+    old = tmp_path / CACHE_REVISION / "0.9.0"
+    settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_presets.MANAGED_MARKER} {old}/hooks/claude_sonnet.sh", "timeout": 45},
+    ]}]}}), encoding="utf-8")
+
+    session_start.run({"source": "startup"})
+
+    assert _stop_command(settings).endswith(f" {root}/hooks/claude_sonnet.sh")
+
+
 def test_a_current_luna_block_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kept, because the user chose Luna."""
     settings = _on_claude(monkeypatch)

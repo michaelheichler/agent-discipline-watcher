@@ -100,3 +100,47 @@ def test_message_sanitizes_hostile_path_and_note_fields() -> None:
 ))
 def test_the_data_boundary_opens_only_on_an_exact_true(config: dict, expected: bool) -> None:
     assert document_review.data_boundary_enabled(config) is expected
+
+
+def _hunk_row(path: str, start: int, lines: list[str], changed: list[int]) -> dict:
+    return {"role": "document", "path": path, "hunks": [{"start": start, "lines": lines, "changed": changed}]}
+
+
+def test_changed_work_names_the_range_and_tells_the_model_to_judge_changed_lines_only() -> None:
+    rows = [_hunk_row("README.md", 10, ["context", "a new line", "context"], [11])]
+
+    ((request, sources),) = document_review.changed_document_work(rows, 24_000, "journal")
+
+    assert request.review_kind is ReviewKind.DOCUMENT
+    assert "README.md lines 10-12, changed lines: 11" in request.source_context
+    assert "Judge only those lines" in request.source_context
+    assert "+ a new line" in request.source_context
+    assert sources == rows
+
+
+def test_changed_work_sends_nothing_for_a_row_with_no_hunk() -> None:
+    rows = [{"role": "document", "path": "a.md", "hunks": []}]
+
+    assert document_review.changed_document_work(rows, 24_000, "journal") == []
+
+
+def test_changed_work_splits_an_oversize_hunk_by_lines_and_labels_every_piece() -> None:
+    lines = [f"sentence number {number} stays whole." for number in range(1, 201)]
+    rows = [_hunk_row("big.md", 1, lines, list(range(1, 201)))]
+
+    work = document_review.changed_document_work(rows, 1_500, "journal")
+
+    assert len(work) > 1
+    assert all(len(request.source_context) <= 1_500 for request, _rows in work)
+    joined = "\n".join(request.source_context for request, _rows in work)
+    assert all(line in joined for line in lines)
+    assert all("big.md lines " in request.source_context for request, _rows in work)
+
+
+def test_changed_work_packs_small_hunks_from_two_files_into_one_request() -> None:
+    rows = [_hunk_row("a.md", 1, ["one"], [1]), _hunk_row("b.md", 4, ["two"], [4])]
+
+    ((request, sources),) = document_review.changed_document_work(rows, 24_000, "journal")
+
+    assert "a.md lines 1-1" in request.source_context and "b.md lines 4-4" in request.source_context
+    assert sources == rows

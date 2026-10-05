@@ -8,7 +8,7 @@ from typing import Any
 
 from . import journal, claude_native, payloads
 from .config import effective_hook_config
-from .document_review import data_boundary_enabled, document_work
+from .document_review import changed_document_work
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -276,7 +276,7 @@ def _pattern_work(rows: list[dict[str, Any]], config: dict | None) -> list[Work]
 
 def stop_work(rows: list[dict[str, Any]], config: dict | None = None) -> list[Work] | None:
     """Split across requests, because a cut document reads as reviewed."""
-    return document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows, config) or None
+    return changed_document_work(rows, MAX_DOCUMENT_CHARS, STOP_LABEL) + _pattern_work(rows, config) or None
 
 
 def stop_request(payload: object, state_root: str | Path | None, config: dict | None = None) -> list[Work] | None:
@@ -388,7 +388,7 @@ def run(
 ) -> dict:
     event = payloads.exact_string_dict(payload).get("hook_event_name") if type(payload) is dict else ""
     cfg = hook_config(payload)
-    if event not in {"PostToolUse", "Stop"} or not data_boundary_enabled(cfg):
+    if event not in {"PostToolUse", "Stop"}:
         return {}
     root = state_root if state_root is not None else cfg.get("state_root")
     work = _built(event, payload, root, cfg)

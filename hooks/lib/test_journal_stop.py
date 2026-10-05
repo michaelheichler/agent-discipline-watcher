@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib import journal, session_state
+from lib import document_hunks, journal, session_state
 
 
 def _document(path: Path, digest: str, turn_id: str = "") -> dict:
@@ -52,7 +52,7 @@ def test_stop_read_applies_one_aggregate_character_budget(tmp_path: Path) -> Non
 
     rows = journal.read_stop("session", state_root=state_root)
 
-    assert sum(len(row["source_context"]) for row in rows) <= journal.MAX_STOP_TOTAL_CHARS == 48_000
+    assert sum(document_hunks.hunk_chars(row["hunks"]) for row in rows) <= journal.MAX_STOP_TOTAL_CHARS == 48_000
     assert len(rows) == 2
 
 
@@ -134,4 +134,4 @@ def test_a_document_gets_two_review_rounds_at_most(tmp_path: Path) -> None:
         served.extend(row["content_hash"] for row in rows)
 
     assert served == ["first", "second"]
-    assert journal.MAX_DOCUMENT_ROUNDS == 2
+    assert len(served) == journal.MAX_DOCUMENT_ROUNDS

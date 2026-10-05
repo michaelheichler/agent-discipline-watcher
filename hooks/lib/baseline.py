@@ -4,6 +4,7 @@ from __future__ import annotations
 import difflib
 import subprocess
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 try:
@@ -17,6 +18,7 @@ except ImportError:
 BASELINE_MODES = ("git", "report", "none")
 DEFAULT_BASELINE_MODE = "report"
 GIT_TIMEOUT_SECONDS = 10
+Texts = Sequence[str | None]
 
 
 def baseline_mode(cfg: dict) -> str:
@@ -132,15 +134,18 @@ def split_committed(path: Path, findings: list[dict], cfg: dict) -> tuple[list[d
     return _halves(findings, scan_all(str(path), text, cfg), cfg)
 
 
-def split_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    if not findings or text is None or baseline_mode(cfg) == "none":
+def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Pool every previous text because a merge resolution may take a line from any parent."""
+    present = [text for text in texts if text is not None]
+    if not findings or not present or baseline_mode(cfg) == "none":
         return findings, []
-    return _halves(findings, scan_all(path, text, cfg), cfg)
+    pooled = [row for text in present for row in scan_all(path, text, cfg)]
+    return _halves(findings, pooled, cfg)
 
 
 def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:
     return split_committed(path, findings, cfg)[0]
 
 
-def strip_against(text: str | None, path: str, findings: list[dict], cfg: dict) -> list[dict]:
-    return split_against(text, path, findings, cfg)[0]
+def strip_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> list[dict]:
+    return split_against(texts, path, findings, cfg)[0]

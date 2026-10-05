@@ -181,11 +181,24 @@ class StripCommittedTests(unittest.TestCase):
             baseline.split_committed(self.path, rows, cfg)[0],
         )
 
+    def test_a_finding_any_previous_text_carries_is_inherited(self):
+        cfg = {"baseline": "report"}
+        rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
+        owned, inherited = baseline.split_against([None, LEGACY, EXTRA_DEBT], "legacy.py", rows, cfg)
+        self.assertEqual(owned, [])
+        self.assertEqual(len(inherited), 2)
+
+    def test_split_against_owns_everything_when_no_previous_text_exists(self):
+        cfg = {"baseline": "report"}
+        rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
+        self.assertEqual(baseline.split_against([None, None], "legacy.py", rows, cfg), (rows, []))
+        self.assertEqual(baseline.split_against([], "legacy.py", rows, cfg), (rows, []))
+
     def test_strip_against_still_returns_the_owned_half_alone(self):
         cfg = {"baseline": "report"}
         rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
         self.assertEqual(
-            [item["snippet"] for item in baseline.strip_against(LEGACY, "legacy.py", rows, cfg)],
+            [item["snippet"] for item in baseline.strip_against([LEGACY], "legacy.py", rows, cfg)],
             ["# resets the counter"],
         )
 

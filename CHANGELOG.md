@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.4 (2026-10-05)
+
+### Fixed
+
+- **The Claude luna preset reviews again.** If `data_boundary.enabled` was off, `hooks/lib/claude_luna.py` returned early. No project set it, so the `luna` preset reviewed nothing. Choosing `luna` is now the consent to send journal rows to OpenAI through the ChatGPT subscription. `luna` and `mixed` now behave the same. The Codex Stop review and the OMP review keep the gate (T-025).
+- **`adw update --claude` keeps the reviewer block.** The legacy cleanup in `hooks/merge-claude-settings.py` removed every command that named the plugin, the managed reviewer included. It now leaves the managed handler alone. If no block survives a Claude update, the updater writes the block for the stored preset. It prints the preset it wrote. SessionStart seeds the stored preset on the stable `~/.adw/install` path, the same path `adw-judge` uses (T-023).
+- **The commit gate lets a merge through.** If HEAD or an incoming parent already carries a finding, that finding counts as inherited. This holds during a merge, cherry-pick, or revert. Only conflict resolutions and new lines block. ADW reports the inherited findings and does not block them. A branch, remote, or tag must carry each incoming commit, so a forged MERGE_HEAD cannot launder the agent's own lines (T-026).
+
+### Changed
+
+- **The document review reads only changed lines.** On Claude Code, both presets send the hunks the turn changed, with 3 context lines per side. Each hunk carries its line range and marks changed lines with `+`. The model judges only marked lines. For one 2-line README edit, the Sonnet prompt dropped from 24,798 to 1,296 characters. The journal keeps the pre-turn text of a prose file. It takes that text from the last recorded write, else from git HEAD. Codex and OMP still review whole documents (T-025).
+
 ## 0.25.3 (2026-10-05)
 
 ### Fixed
