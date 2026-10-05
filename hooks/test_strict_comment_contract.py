@@ -2,12 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import pre_write
+from lib.comment_rules import COMMENT_CHAR_CAP
 from lib.scanner import scan_all
+
+ENFORCE_DEFERRED_WORK = {"baseline": "none", "rule_gates": {"deferred_work_comment": "enforce"}}
+WHY_STEM = "Pages count as success because an empty feeder ends the batch"
 
 
 def _rules(source: str) -> set[str]:
     return {row["rule"] for row in scan_all("sample.py", source, {})}
+
+
+def _comment_of_length(length: int) -> str:
+    return "# " + (WHY_STEM + " " + "x" * length)[:length] + "\nx = 1\n"
 
 
 def _write(source: str, config: dict | None = None) -> dict:
@@ -55,14 +65,14 @@ def test_generic_causal_tails_are_hard_blocks() -> None:
         assert response["decision"] == "block"
 
 
-def test_inline_trailing_todo_is_a_hard_block() -> None:
-    response = _write("x = 1  # " + ("TO" + "DO") + ": fix this later\n")
+def test_inline_trailing_todo_blocks_when_enforced() -> None:
+    response = _write("x = 1  # " + ("TO" + "DO") + ": fix this later\n", ENFORCE_DEFERRED_WORK)
     assert response["decision"] == "block"
     assert "deferred_work_comment" in response["reason"]
 
 
-def test_no_space_todo_marker_is_a_hard_block() -> None:
-    response = _write("#" + ("TO" + "DO") + ": fix this later\nx = 1\n")
+def test_no_space_todo_marker_blocks_when_enforced() -> None:
+    response = _write("#" + ("TO" + "DO") + ": fix this later\nx = 1\n", ENFORCE_DEFERRED_WORK)
     assert response["decision"] == "block"
     assert "deferred_work_comment" in response["reason"]
 
@@ -198,6 +208,50 @@ def test_semantic_release_cannot_release_a_what_comment() -> None:
     )
     assert response["decision"] == "block"
     assert calls == []
+
+
+def test_a_why_comment_of_exactly_the_cap_is_allowed() -> None:
+    assert _rules(_comment_of_length(COMMENT_CHAR_CAP)) == set()
+
+
+def test_a_why_comment_one_past_the_cap_is_a_long_comment() -> None:
+    assert _rules(_comment_of_length(COMMENT_CHAR_CAP + 1)) == {"long_comment"}
+
+
+def test_the_long_comment_action_names_the_cap() -> None:
+    row = next(row for row in scan_all("sample.py", _comment_of_length(COMMENT_CHAR_CAP + 1), {}))
+    assert str(COMMENT_CHAR_CAP) in row["action"]
+
+
+@pytest.mark.parametrize("comment", [
+    "Pages count as success because an empty feeder ends the batch.",
+    "Pages count as success, otherwise an empty feeder fails the batch.",
+    "Pages count as success so that an empty feeder never fails the batch.",
+    "Pages count as success, so an empty feeder never fails the batch.",
+])
+def test_every_marker_the_what_comment_action_names_states_why(comment: str) -> None:
+    assert _rules("# " + comment + "\nx = 1\n") == set()
+
+
+def test_the_what_comment_action_names_the_accepted_markers() -> None:
+    row = next(row for row in scan_all("sample.py", "# Increment the counter.\nx = 1\n", {}))
+    assert all(marker in row["action"] for marker in ("because", "otherwise", "so that", ", so"))
+
+
+@pytest.mark.parametrize("comment", [
+    "Files instead of pipes, because a full pipe buffer would block scanimage.",
+    "Empty feeders end a batch with a non-zero status, so pages count as success.",
+])
+def test_a_consequence_comment_within_the_cap_is_allowed(comment: str) -> None:
+    assert _rules("# " + comment + "\nx = 1\n") == set()
+
+
+def test_so_without_a_comma_does_not_state_why() -> None:
+    assert "what_comment" in _rules("# Pages count as success so an empty feeder ends the batch.\nx = 1\n")
+
+
+def test_a_subject_opener_still_narrates_when_a_so_clause_follows() -> None:
+    assert "what_comment" in _rules("# The reader votes a sentence, so the count updates.\nx = 1\n")
 
 
 def test_post_write_source_path_is_not_required_for_pending_contract(tmp_path: Path) -> None:

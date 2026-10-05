@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Craftsman DDD review, 2026-10-05. hooks/lib/hookio.py:225 `advise()` calls `host.is_codex_host()` directly to choose its output. Inject the host decision as a parameter or strategy, so the function stays testable without patching host detection. This fits the earlier seam work that replaced monkeypatches with injected seams. User approved the idea on 2026-10-05. Not started.",
+  "id": "T-018",
+  "order": 70,
+  "phase": null,
+  "status": "open",
+  "title": "advise() receives host detection as a parameter",
+  "type": "chore"
+}

@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "A read-only `python3 - <<EOF` probe that imports a project module is blocked with the action \"Use Write or Edit for file content\". The rule stays. The action tells the agent to save the script with Write and run the file.",
+  "displayId": "T-015",
+  "id": "T-015",
+  "order": 40,
+  "phase": null,
+  "status": "complete",
+  "title": "interpreter_heredoc_write action fits read-only scripts",
+  "type": "chore"
+}

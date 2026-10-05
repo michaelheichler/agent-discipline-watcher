@@ -16,7 +16,10 @@ DASHED = "The scan ran — then it stopped.\n"
 
 
 def _config(tmp_path: Path) -> dict:
-    return {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")}
+    return {
+        "ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state"),
+        "rule_gates": {"deferred_work_comment": "enforce"},
+    }
 
 
 def _project(tmp_path: Path) -> Path:

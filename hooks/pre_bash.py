@@ -48,6 +48,7 @@ STATE_DELETE_VERBS = frozenset({"rm", "unlink", "shred"})
 STATE_TARGET_RE = re.compile(r"\.adw\b|\.agent-discipline\b|agent-discipline/(?:state|ledger)")
 
 WRITE_OR_EDIT_ACTION = "Use the Write or Edit tool for file content."
+SAVE_THEN_RUN_ACTION = "Save the script with Write or Edit, then run the file."
 MAX_SHELL_PAYLOAD_DEPTH = 1
 
 RULES: dict[str, Rule] = {
@@ -95,7 +96,7 @@ RULES: dict[str, Rule] = {
     ),
     "interpreter_heredoc_write": Rule(
         detail="Heredoc or pipe feeding an interpreter's stdin can write or is unreadable",
-        action=WRITE_OR_EDIT_ACTION,
+        action=SAVE_THEN_RUN_ACTION,
     ),
     "dynamic_heredoc_write": Rule(
         detail="Dynamic or unterminated heredoc aimed at a file",

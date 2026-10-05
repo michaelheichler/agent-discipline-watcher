@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.25.1 (2026-10-05)
+
+### Fixed
+
+- **Tool directives pass the comment rules.** The scanner blocked the required first line `// swift-tools-version`, so an agent failed to write `Package.swift`. `hooks/lib/comment_rules.py` now skips exact directive shapes for Swift, Go, TypeScript, and JavaScript, and a short `// MARK:` heading. Prose after a directive prefix still gets a finding. A `///` doc comment counts from its first word. The JavaScript test case moved from `#` to `//`, because `#` is not a JavaScript comment (T-012).
+- **The heredoc action names the next step.** `interpreter_heredoc_write` still blocks. Its action now reads "Save the script with Write or Edit, then run the file." (T-015).
+
+### Changed
+
+- **Comments cap at 80 characters, up from 60.** The 60 cap pushed agents to cut the marker word. The shorter comment then failed as a WHAT comment. The `long_comment` action reads the cap from `COMMENT_CHAR_CAP` (T-013).
+- **A consequence clause states WHY.** A comment like "Empty feeders end a batch with a non-zero status, so pages count as success." passes. "so" needs the comma before it. A subject opener that describes the code still blocks. The `what_comment` action lists the accepted markers (T-013).
+- **`deferred_work_comment` observes.** A short marker line gives a warning instead of a block (user decision 2026-10-05). The marker line still answers to `long_comment` and `prose_comment_block` (T-013).
+- **The contract overrides plugin docstring demands.** The session contract now ranks above plugin and skill guidance. A demand for a docstring on every function does not apply (T-014).
+
 ## 0.25.0 (2026-10-02)
 
 ### Added

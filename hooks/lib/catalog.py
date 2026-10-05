@@ -66,6 +66,10 @@ RULES: dict[str, Entry] = {
         "Uniform German sentence rhythm",
         "Flags German sentences whose lengths barely vary across the document",
     ),
+    "deferred_work_comment": Entry(
+        "Deferred work comment",
+        "Reports a deferred-work marker in a comment without blocking the write",
+    ),
     "dramatic_fragmentation": Entry(
         "Fragments used for drama",
         "Cuts the one-word paragraph that leans on white space for weight",
@@ -361,7 +365,7 @@ FAMILIES: dict[str, Entry] = {
     ),
     "comment": Entry(
         "Comment check",
-        "Blocks comments and docstrings that narrate code, park deferred work, or apologize",
+        "Blocks comments and docstrings that narrate code or apologize, and reports deferred-work markers",
     ),
     "code": Entry(
         "Code check",

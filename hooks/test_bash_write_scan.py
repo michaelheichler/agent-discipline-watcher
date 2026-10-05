@@ -13,6 +13,7 @@ from testing import make_repo, run_git as git
 PROSE = "We leverage a rich tapestry of utilities."
 CODE = "# Returns the total value\nvalue = 1\n"
 CLEAN_ADDITION = CODE + "other = 2\n"
+ENFORCE_DEFERRED_WORK = {"rule_gates": {"deferred_work_comment": "enforce"}}
 
 
 def _commit(repo, name, body):
@@ -76,7 +77,8 @@ def test_bash_write_is_blocked_before_execution(tmp_path):
     target = tmp_path / "target.py"
     command = 'echo "# ' + ("TO" + "DO") + r' later\nvalue = 1\n" > target.py'
     pre_response = pre_bash.run(
-        {"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}}
+        {"tool_name": "Bash", "cwd": str(tmp_path), "tool_input": {"command": command}},
+        ENFORCE_DEFERRED_WORK,
     )
     assert pre_response["decision"] == "block"
     assert "deferred_work_comment" in pre_response["reason"]
@@ -99,7 +101,7 @@ def test_tilde_bash_postwrite_blocks_without_mutation(monkeypatch, tmp_path):
             "cwd": str(tmp_path),
             "tool_input": {"command": command},
         },
-        {"ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
+        {**ENFORCE_DEFERRED_WORK, "ledger_root": str(tmp_path / "ledger"), "state_root": str(tmp_path / "state")},
     )
 
     assert response["decision"] == "block"

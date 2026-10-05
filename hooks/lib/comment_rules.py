@@ -13,14 +13,16 @@ WHY_RULE_IS_HEURISTIC = (
     "A WHAT comment with a marker can pass, and a genuine WHY comment without one can be blocked. "
     "Its deliberate bias toward over-blocking matches the hard-block policy with no exceptions."
 )
+# Comma required because so alone also means very or thus.
+CONSEQUENCE_SO = r",\s+so\s+(?!that\b)(?=\S)"
 STRONG_WHY_COMMENT_RE = re.compile(
     r"(?:^why:\s*\S|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
-    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
+    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b|" + CONSEQUENCE_SO + ")",
     re.IGNORECASE,
 )
 CAUSAL_REASON_RE = re.compile(
     r"(?:^why:|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
-    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)\s*(?P<reason>.+)$",
+    r"\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b|" + CONSEQUENCE_SO + r")\s*(?P<reason>.+)$",
     re.IGNORECASE,
 )
 VAGUE_REASON_RE = re.compile(r"^(?:yes|no|reason|reasons|needed|necessary|stuff|things|logic)[.!]?$", re.IGNORECASE)
@@ -30,7 +32,7 @@ WHY_COMMENT_RE = re.compile(
     r"\bdue to\b|\bso that\b|\bin order to\b|\bexcept when\b|\binstead of\b|"
     r"\brather than\b|\bwork(?:around for|s around)\b|\bbug in\b|"
     r"\bcallers (?:rely on|must)\b|\brelied on by\b|\binvariant:\s*\S|"
-    r"\bmust\b.{0,80}\bor\b|\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b)",
+    r"\bmust\b.{0,80}\bor\b|\bto (?:avoid|prevent|ensure|preserve|keep|allow|support)\b|" + CONSEQUENCE_SO + ")",
     re.IGNORECASE,
 )
 SINCE_RE = re.compile(r"\bsince\s+\S", re.IGNORECASE)
@@ -52,10 +54,11 @@ CONTENT_STOPWORDS = frozenset({
     "of", "on", "or", "the", "this", "to", "with",
 })
 IMPLICIT_BUDGET_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:ms|s|us|ns)\s+budget\b", re.IGNORECASE)
-COMMENT_CHAR_CAP = 60
+COMMENT_CHAR_CAP = 80
 WHAT_COMMENT_ACTION = (
     "Only WHY comments are allowed. WHAT comments are never allowed. "
-    "State the reason the code is this way, or delete the comment."
+    "State the reason with because, otherwise, so that, or a `, so` clause, or delete the comment. "
+    "Open with the reason, not with a subject and a verb that describe the code."
 )
 VC_COMMENT_RE = re.compile(
     r"^\s*(changed?|renamed?|moved?|removed?|added?|replaced?|refactored?|"
@@ -65,7 +68,7 @@ VC_COMMENT_RE = re.compile(
 )
 # Uppercase-only lookahead because lowercase forms collide with CSS id selectors and preprocessor tokens.
 _NO_SPACE_HASH = "(?=(?:" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK")) + r")\b)"
-COMMENT_RE = re.compile(r"^\s*(?://[ \t]*|#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")|/\*[ \t]*)(.*)")
+COMMENT_RE = re.compile(r"^\s*(?:///?[ \t]*|#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")|/\*[ \t]*)(.*)")
 # Kept to "#" only mid-line so that "//" is not misread as Python floor division.
 INLINE_HASH_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")(.*)")
 BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
@@ -78,9 +81,23 @@ COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while 
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]")
 TAG_LINE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 _/-]{0,24}:(?:\s|$)")
+# Tight anchors, because prose could hide behind a prefix.
+_TOOL_DIRECTIVE_PATTERNS = (
+    r"//\s*swift-tools-version:[ \t]*\d+(?:\.\d+){0,2}(?:-[a-z0-9]+)?$",
+    r"//\s*swiftlint:(?:disable|enable)(?::(?:next|this|previous))?(?:\s+[a-z][a-z0-9_]*){0,5}$",
+    r"//\s*(?-i:MARK):[ \t]*(?:-[ \t]*)?(?:[^.]|\.(?=\S)){0,40}$",
+    r"//go:(?:build|generate|embed|linkname|noinline|nosplit|noescape|norace|nocheckptr|nowritebarrier|"
+    r"nowritebarrierrec|yeswritebarrierrec|uintptrescapes|systemstack|notinheap|debug|wasmimport|"
+    r"wasmexport|fix|cgo_[a-z_]+)(?=\s|$)",
+    r"//nolint(?::[\w-]+(?:,[\w-]+)*)?$",
+    r"//\s*eslint-(?:disable(?:-(?:next-)?line)?|enable)(?:\s+[\w@/-]+(?:\s*,\s*[\w@/-]+)*)?$",
+    r"//\s*prettier-ignore$",
+    r"///\s*<reference(?:\s+[\w-]+=(?:\"[^\"]*\"|'[^']*'|(?=\s)|(?=/>))){1,3}\s*/>$",
+)
 DIRECTIVE_COMMENT_RE = re.compile(
     r"^(?:#!|#\s*(?:(?:syntax|escape|check)=|noqa\b|type:|pragma\b|ruff:|fmt:|"
-    r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+)",
+    r"eslint-disable(?:-\w+)*\b|(?:>>>|<<<)\s*agent-discipline-watcher)|//\s*@ts-[\w-]+|"
+    + "|".join(_TOOL_DIRECTIVE_PATTERNS) + ")",
     re.IGNORECASE,
 )
 TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)
@@ -113,8 +130,11 @@ def _legacy_finding(family: str, values: tuple[object, ...], match: str | None =
     ).to_dict()
 
 
+DEFERRED_WORK_TAGS = "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK"))
+# Tag lines skip two rules because one finding is enough.
+DEFERRED_TAG_RE = re.compile(r"^(?:" + DEFERRED_WORK_TAGS + r")\b:?[ \t]*", re.IGNORECASE)
 CLEAN_CODE_LINE_RULES = (
-    (re.compile(r"(?://|#|/\*)\s*(?:TO" + "DO|FIX" + "ME|X" + "XX|HA" + "CK)\\b", re.IGNORECASE),
+    (re.compile(r"(?://|#|/\*)\s*(?:" + DEFERRED_WORK_TAGS + r")\b", re.IGNORECASE),
      "deferred_work_comment", "Deferred work marker in ", "Remove the marker or create tracked work.", "comment"),
     (re.compile(r"(?://|#|/\*)\s*(bug|case|fix|issue|step|note)\s+[A-Z0-9]\s*[:.\-]", re.IGNORECASE),
      "bug_label_comment", "Comment labels a case by letter or number in ", "Encode the case as a named test.", "comment"),
@@ -129,7 +149,7 @@ COMMENT_BODY_RULES = (
     (lambda text: bool(VC_COMMENT_RE.match(text)), "version_control_comment",
      "Comment narrates change history in ", "Delete it. Put change history in the commit message."),
     (lambda text: len(text) > COMMENT_CHAR_CAP, "long_comment",
-     "Long comment in ", "Cut it to one terse reason under 60 characters, or move it to the wiki."),
+     "Long comment in ", f"Cut it to one terse reason of at most {COMMENT_CHAR_CAP} characters, or move it to the wiki."),
     (lambda text: bool(re.match(r"^(?:now(?:\s+we)?|this\s+(?:function|method|class))\b", text, re.IGNORECASE)),
      "narration_comment", "Comment narrates code in ", "Delete it and let names and structure carry the intent."),
 )
@@ -232,7 +252,7 @@ def _has_strong_why_marker(text: str) -> bool:
 def _narrates_code(text: str) -> bool:
     if not text or not LETTER_RE.search(text):
         return False
-    return not TAG_LINE_RE.match(text)
+    return not (TAG_LINE_RE.match(text) or DEFERRED_TAG_RE.match(text))
 
 
 def _identifier_tokens(parts) -> frozenset[str]:

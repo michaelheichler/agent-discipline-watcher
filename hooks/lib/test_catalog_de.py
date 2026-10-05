@@ -13,7 +13,7 @@ def _english_only() -> set[str]:
         set(config.ALWAYS_BLOCKING_RULES)
         | set(config.FIXED_OBSERVE_RULES)
         | set(test_rules.default_gates(test_rules.RULE_SETS))
-        | {"function_too_long", "hollow_test"}
+        | {"function_too_long", "hollow_test", "deferred_work_comment"}
         | set(german_punctuation.ENGLISH_ONLY_RULES)
     )
 

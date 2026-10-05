@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.25.1**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -68,13 +68,19 @@ The scanner reads every prose extension it knows, not markdown alone. Before 0.1
 
 Comments run through the same scan, and they are the one surface where the watcher is stricter than it is on prose.
 
-Code comments and docstrings can contain one strict WHY line of at most 60 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Configuration, exemptions, and model output cannot release these rules.
+Code comments and docstrings can contain one strict WHY line of at most 80 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Configuration, exemptions, and model output cannot release these rules.
+
+A WHY line names its reason with `because`, `otherwise`, `so that`, or a consequence clause after a comma, such as `, so pages count as success`. The `what_comment` action lists these markers.
+
+Tool directives are not comments for these rules. In Swift, the scanner skips `// swift-tools-version`, `// swiftlint:`, and a `// MARK:` heading of up to 40 characters. In Go, it skips `//go:` directives and `//nolint`. In TypeScript and JavaScript, it skips `// eslint-disable`, `// eslint-enable`, `// prettier-ignore`, and `/// <reference />`. Each form matches an exact shape, so prose after a directive prefix still gets a finding. A `///` doc comment counts from its first word.
+
+A deferred-work marker such as `TODO` gives an observed `deferred_work_comment` warning and does not block. The marker line still answers to the length cap and to the block rule. A long marker line blocks. A marker followed by more comment lines blocks too.
 
 The Luna comment reviewer covers Python and supported comment-bearing source files. These include TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
 
 The opening clause decides it. When a comment opens on the code and its behaviour, it fails even with a `because` clause after it. This applies to the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
 
-These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent. The 60-character cap and the opening-clause test are therefore a judgement rather than a number.
+These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent. The 80-character cap and the opening-clause test are therefore a judgement rather than a number.
 
 ## Code Check and the test writer
 

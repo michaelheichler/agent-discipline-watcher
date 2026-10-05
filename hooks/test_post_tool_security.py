@@ -5,7 +5,10 @@ from lib import temp_scope
 
 
 def _config(tmp_path: Path) -> dict:
-    return {"ledger_path": str(tmp_path / "ledger.json"), "baseline": "none"}
+    return {
+        "ledger_path": str(tmp_path / "ledger.json"), "baseline": "none",
+        "rule_gates": {"deferred_work_comment": "enforce"},
+    }
 
 
 def _payload(cwd: Path, path: Path) -> dict:

@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "repo-hygiene injects a SessionStart text that requires docstrings on every function. Claude Code cannot disable one hook of a plugin. Done: the ADW session contract in hooks/lib/hookio.py states that it overrides plugin and skill guidance and that a docstring demand does not apply. Open: the user adds `Skill(repo-hygiene:writing-docstrings)` to permissions.deny in ~/.claude/settings.json, because ADW self-protection blocks agent edits to that file.",
+  "displayId": "T-014",
+  "id": "T-014",
+  "order": 30,
+  "phase": null,
+  "status": "inprogress",
+  "title": "Contract overrides plugin docstring demands",
+  "type": "task"
+}

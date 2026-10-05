@@ -6,9 +6,9 @@ import pytest
 from lib import config
 from lib.scanner import scan_all
 
-TODO = "TO" + "DO"
+APOLOGY = "ha" + "cky"
 FIXTURE = {
-    "a.py": "def test_nothing():\n    pass\n# return compute(value)\n# " + TODO + " later\n",
+    "a.py": "def test_nothing():\n    pass\n# return compute(value)\n# " + APOLOGY + " later\n",
     "notes.md": "We utilize this" + chr(0x2014) + "now.\n",
 }
 LOCKED = frozenset({("a.py", "prose_comment_block"), ("a.py", "what_comment")})
@@ -17,15 +17,15 @@ GOVERNED = {
     "punctuation": frozenset({("notes.md", "banned_dash")}),
     "english": frozenset({("notes.md", "utilize")}),
     "clean_code": frozenset({
-        ("a.py", "commented_code"), ("a.py", "deferred_work_comment"),
+        ("a.py", "commented_code"), ("a.py", "apology_comment"),
         ("a.py", "function_too_long"), ("a.py", "hollow_test"),
     }),
 }
 ALL_RULES = LOCKED.union(*GOVERNED.values())
 NEW_NAMES = {
     "prose": GOVERNED["punctuation"] | GOVERNED["english"],
-    "comment": frozenset({("a.py", "deferred_work_comment")}),
-    "code": GOVERNED["clean_code"] - {("a.py", "deferred_work_comment")},
+    "comment": frozenset({("a.py", "apology_comment")}),
+    "code": GOVERNED["clean_code"] - {("a.py", "apology_comment")},
 }
 
 

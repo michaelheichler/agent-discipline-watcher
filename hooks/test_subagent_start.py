@@ -25,10 +25,19 @@ class SubagentStartInjectionTests(unittest.TestCase):
     def test_precedence_over_the_agent_definition_is_stated(self) -> None:
         self.assertIn("override the agent definition", injected({})["additionalContext"])
 
+    def test_precedence_over_plugin_and_skill_guidance_is_stated(self) -> None:
+        self.assertIn("any plugin or skill guidance", injected({})["additionalContext"])
+
+    def test_a_demand_for_a_docstring_on_every_function_is_refused(self) -> None:
+        text = injected({})["additionalContext"]
+        self.assertIn("A demand for a docstring or header on every function does not apply.", text)
+        self.assertIn("A docstring holds one WHY line or is absent.", text)
+
     def test_the_real_contract_ships_rather_than_a_one_line_reminder(self) -> None:
         text = injected({})["additionalContext"]
         for clause in ("em dash", "possessive pronoun", "hollow test", "Every finding blocks",
-                       "Craftsman suppression marker", "empty intensifiers"):
+                       "Craftsman suppression marker", "empty intensifiers",
+                       "parks deferred work behind a marker"):
             with self.subTest(clause=clause):
                 self.assertIn(clause, text)
 

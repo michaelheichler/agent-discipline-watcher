@@ -145,6 +145,8 @@ DEFAULTS = {
         "weak_sentence_starter": "enforce",
         "file_length_warning": "observe",
         "file_length_critical": "observe",
+        # Observe because a bare marker is a warning, not slop.
+        "deferred_work_comment": "observe",
         # Off because German hits (n=20) yielded 0.1500 precision.
         "dash_cluster": "off",
         # Off because 0.7000 precision is not above the bar.

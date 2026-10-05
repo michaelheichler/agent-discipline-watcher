@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "COMMENT_CHAR_CAP moves from 60 to 80 (user decision 2026-10-05). `, so ` counts as a WHY marker. The what_comment action names the accepted markers. deferred_work_comment defaults to observe (user decision 2026-10-05), but a TODO line still answers to long_comment and prose_comment_block, so it cannot carry multi-line slop.",
+  "displayId": "T-013",
+  "id": "T-013",
+  "order": 20,
+  "phase": null,
+  "status": "complete",
+  "title": "WHY detection, 80-character comment cap, TODO as warning",
+  "type": "task"
+}

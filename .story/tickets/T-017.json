@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Craftsman DDD review, 2026-10-05. hooks/lib/python_shell.py:53 builds the text \"Run Python reads as python3 -I -S.\" inside a utility function. That text is a security rule about isolated interpreter startup. Move it into a dedicated factory that owns the startup recommendation. Pairs with the Finding value object ticket. User approved the idea on 2026-10-05. Not started.",
+  "id": "T-017",
+  "order": 60,
+  "phase": null,
+  "status": "open",
+  "title": "Startup recommendation moves into a Finding factory",
+  "type": "chore"
+}

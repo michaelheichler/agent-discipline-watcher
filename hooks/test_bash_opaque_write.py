@@ -202,11 +202,12 @@ def test_a_literal_shell_payload_oversize_write_blocks():
     "cat notes.py | python3",
     "python3.12 <<EOF\nimport os\nos.remove('x')\nEOF",
     "sudo -u root python3 <<EOF\nimport os\nos.remove('x')\nEOF",
+    "python3 - <<'EOF'\nfrom lib import config\nprint(config)\nEOF",
 ])
 def test_interpreter_heredoc_write_blocks(command):
     reason = blocked(command)
     assert "interpreter_heredoc_write" in reason
-    assert "Write or Edit" in reason
+    assert "Save the script with Write or Edit, then run the file." in reason
 
 
 def test_a_heredoc_into_a_shell_consumer_reenters_the_full_gate():
@@ -224,7 +225,7 @@ def test_a_heredoc_into_a_shell_consumer_catches_an_inplace_edit():
 def test_a_dynamic_heredoc_into_a_shell_consumer_still_blocks():
     reason = blocked("sh <<EOF\n$CMD\nEOF")
     assert "interpreter_heredoc_write" in reason
-    assert "Write or Edit" in reason
+    assert "Save the script with Write or Edit, then run the file." in reason
 
 
 def test_a_pipe_into_a_shell_consumer_reenters_the_full_gate():

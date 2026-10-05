@@ -83,6 +83,7 @@ class BatchTestCase(unittest.TestCase):
         self.cfg = {
             "ledger_root": str(self.ledger_root),
             "state_root": str(self.state_root),
+            "rule_gates": {"deferred_work_comment": "enforce"},
         }
         session_state.write_state("s1", {"turn_id": "turn-4"}, self.state_root)
 

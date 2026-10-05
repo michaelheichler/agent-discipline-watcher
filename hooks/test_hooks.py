@@ -5,8 +5,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lib import catalog, protected
+import pytest
+
+from lib import catalog, comment_rules, protected
 from lib.config import CONFIG_NAME
+from lib.scanner import scan_all
 import pre_commit
 import pre_write
 import record
@@ -226,6 +229,22 @@ def test_pre_write_enforces_vue_comment_contract():
     assert pre_write.run(one_comment, config) == {}
 
 
+TOOL_DIRECTIVE_CASES = (
+    ("Package.swift", "// swift-tools-version:6.0\nimport PackageDescription\n"),
+    ("Package.swift", "// swift-tools-version: 6.0\nimport PackageDescription\n"),
+    ("Runner.swift", "// MARK: - Lifecycle\n// swiftlint:disable:next force_unwrapping\nlet a = b!\n"),
+    ("Runner.swift", "// swiftlint:disable force_cast type_name\nlet a = b as! C\n// swiftlint:enable force_cast type_name\n"),
+    ("script.ts", "// eslint-disable-next-line no-console, no-alert\nrun()\n"),
+    ("script.ts", "// eslint-enable\nrun()\n"),
+    ("script.ts", "// prettier-ignore\nconst grid = [1, 0, 0]\n"),
+    ("script.ts", '/// <reference types="node" />\nrun()\n'),
+    ("main.go", "//go:build darwin\n\npackage main\n"),
+    ("main.go", "package main\n\n//go:generate stringer -type=Kind\ntype Kind int\n"),
+    ("main.go", "package main\n\n//nolint:errcheck\nvar a = 1\n"),
+    ("main.go", "package main\n\n//nolint:errcheck,gosec\nvar a = 1\n"),
+)
+
+
 def test_pre_write_allows_comment_exemptions_and_css_selectors():
     cases = [
         ("script.py", "#!/usr/bin/env python3\nprint(1)\n"),
@@ -241,13 +260,46 @@ def test_pre_write_allows_comment_exemptions_and_css_selectors():
         ("script.py", "# pragma: no cover\nprint(1)\n"),
         ("script.py", "# ruff: noqa\nprint(1)\n"),
         ("script.py", "# fmt: off\nprint(1)\n"),
-        ("script.js", "# eslint-disable-next-line\nrun()\n"),
+        ("script.js", "// eslint-disable-next-line\nrun()\n"),
         ("script.ts", "// @ts-expect-error\nrun()\n"),
         ("component.vue", "<style>\n#app { color: #222; }\n.widget { color: red; }\n</style>\n"),
     ]
-    for path, content in cases:
+    for path, content in [*cases, *TOOL_DIRECTIVE_CASES]:
         payload = {"tool_input": {"file_path": path, "content": content}}
         assert pre_write.run(payload, {"ledger_path": _ledger_path()}) == {}, (path, content)
+
+
+PROSE_BEHIND_DIRECTIVE_CASES = (
+    ("Runner.swift", "// MARK: this loops over the pages and returns the count of scanned files.\nlet a = 1\n"),
+    ("Package.swift", "// swift-tools-version: this loops over the pages\nimport PackageDescription\n"),
+    ("Runner.swift", "// swiftlint:disable:next this loops over the pages and counts\nlet a = 1\n"),
+    ("script.ts", "// eslint-disable-next-line no-console -- the logger is not ready\nrun()\n"),
+    ("script.ts", "// prettier-ignore this loops over the pages\nrun()\n"),
+    ("script.ts", '/// <reference types="node" /> this loops over the pages\nrun()\n'),
+    ("main.go", "//go:note this loops over the pages\npackage main\n"),
+)
+
+
+@pytest.mark.parametrize("path, content", PROSE_BEHIND_DIRECTIVE_CASES)
+def test_pre_write_still_flags_prose_hidden_behind_a_directive_prefix(path, content):
+    payload = {"tool_input": {"file_path": path, "content": content}}
+    response = pre_write.run(payload, {"ledger_path": _ledger_path()})
+    assert f"{path}:1 " in _style_advice(response)
+
+
+def _rules_for(path: str, text: str) -> set[str]:
+    return {row["rule"] for row in scan_all(path, text, {"punctuation": False, "english": False})}
+
+
+def test_triple_slash_doc_comment_is_measured_from_its_first_word():
+    cap = comment_rules.COMMENT_CHAR_CAP
+    assert "long_comment" not in _rules_for("Runner.swift", "/// " + "a" * cap + "\nlet a = 1\n")
+    assert "long_comment" in _rules_for("Runner.swift", "/// " + "a" * (cap + 1) + "\nlet a = 1\n")
+
+
+def test_triple_slash_doc_comment_that_narrates_what_still_flags():
+    text = "/// Runs scanimage and returns the page files.\nlet a = 1\n"
+    assert "what_comment" in _rules_for("Runner.swift", text)
 
 
 def test_pre_commit_allows_non_commit_bash():
@@ -415,7 +467,10 @@ def test_pre_commit_scans_from_repo_subdirectory(tmp_path):
 def test_record_blocks_forced_post_write_without_mutating_file(tmp_path):
     target = tmp_path / "a.py"
     target.write_text("# " + ("TO" + "DO") + " later\n", encoding="utf-8")
-    post_response = record.run({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}})
+    post_response = record.run(
+        {"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}},
+        {"rule_gates": {"deferred_work_comment": "enforce"}},
+    )
     _assert_style_row(post_response, target, 1, "deferred_work_comment")
     assert post_response["decision"] == "block"
     assert target.read_text(encoding="utf-8") == "# " + ("TO" + "DO") + " later\n"

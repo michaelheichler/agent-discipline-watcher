@@ -31,6 +31,8 @@ ATTACK = json.dumps({
 })
 # Deferred because the discipline scanner would otherwise flag this test file.
 MARKER = "# " + ("TO" + "DO") + " later\nx = 1\n"
+# Split because the scanner flags the whole word here.
+BLOCKING_MARKER = "# " + ("ha" + "cky") + " later\nx = 1\n"
 ENTRY_POINTS = ("pre_write.py", "pre_bash.py", "pre_mcp.py", "record.py", "pre_commit.py", "batch.py")
 MALFORMED = (
     {"gates": ["off"]},
@@ -274,7 +276,7 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
         self.root = Path(self._tmp.name)
         subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
         self.target = self.root / "legacy.py"
-        self.target.write_text(MARKER, encoding="utf-8")
+        self.target.write_text(BLOCKING_MARKER, encoding="utf-8")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -283,7 +285,7 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
         return json.dumps({
             "session_id": "s1", "cwd": str(self.root), "tool_name": "Write",
             "tool_input": {
-                "file_path": str(self.target), "content": MARKER, "command": "git commit -m msg",
+                "file_path": str(self.target), "content": BLOCKING_MARKER, "command": "git commit -m msg",
             },
             "tool_calls": [{"tool_name": "Write", "tool_input": {"file_path": str(self.target)}}],
         })
@@ -294,11 +296,11 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
             capture_output=True, check=False, cwd=str(self.root),
         )
 
-    def _assert_deferred_work_block(self, result: subprocess.CompletedProcess) -> None:
+    def _assert_blocking_marker_reported(self, result: subprocess.CompletedProcess) -> None:
         self.assertEqual(result.returncode, 0, result.stderr)
         response = json.loads(result.stdout)
         self.assertNotIn("decision", response)
-        self.assertIn("Deferred work comment", response["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Apology comment", response["hookSpecificOutput"]["additionalContext"])
 
     def test_no_entry_point_dies_on_a_malformed_gate_map(self):
         for malformed in MALFORMED:
@@ -314,13 +316,13 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
     def test_a_malformed_gate_map_does_not_release_the_finding(self):
         for malformed in MALFORMED:
             (self.root / CONFIG_NAME).write_text(json.dumps(malformed), encoding="utf-8")
-            self.target.write_text(MARKER, encoding="utf-8")
+            self.target.write_text(BLOCKING_MARKER, encoding="utf-8")
             with self.subTest(config=malformed):
-                self._assert_deferred_work_block(self._run("record.py"))
+                self._assert_blocking_marker_reported(self._run("record.py"))
 
     def test_unparseable_config_text_falls_back_to_the_enforcing_defaults(self):
         (self.root / CONFIG_NAME).write_text("{not json", encoding="utf-8")
-        self._assert_deferred_work_block(self._run("record.py"))
+        self._assert_blocking_marker_reported(self._run("record.py"))
 
 
 class ExemptionDegradeTests(unittest.TestCase):

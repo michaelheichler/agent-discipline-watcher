@@ -20,6 +20,7 @@ class EditJournalTests(unittest.TestCase):
         self.cfg = {
             "ledger_root": str(self.ledger_root),
             "state_root": str(self.state_root),
+            "rule_gates": {"deferred_work_comment": "enforce"},
         }
 
     def tearDown(self):

@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "hooks/lib/corpus_what_comments.jsonl has 49 rows and none with a subject opener (\"The reader votes a sentence, so ...\"). T-013 measured variants (a) and (b) at the same precision 0.6944, because the corpus cannot tell them apart. Variant (a) blocks 8/8 subject-opener narrations, but it also blocks 6/8 genuine WHY lines with a subject opener. Add labelled subject-opener rows for both classes. Then look for a rule that separates narration from a genuine reason with a subject, without reopening the escape. Report precision and recall before and after. Found by the T-013 agent on 2026-10-05.",
+  "id": "T-020",
+  "order": 90,
+  "phase": null,
+  "status": "open",
+  "title": "Measure the subject-opener rule with corpus rows",
+  "type": "task"
+}

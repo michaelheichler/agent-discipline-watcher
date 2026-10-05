@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Craftsman DDD review, 2026-10-05. hooks/lib/python_shell.py:52 `rejection_finding` and :62 `startup_finding` return `{**finding, \"detail\": ..., \"action\": ...}`, so the Finding shape stays implicit. The same dict pattern runs through the hook boundary repo-wide (`Finding(...).to_dict()` in comment_rules.py and others). Introduce explicit factory methods on `Finding` and pass the value object until the hook output boundary. User approved the idea on 2026-10-05. Not started.",
+  "id": "T-016",
+  "order": 50,
+  "phase": null,
+  "status": "open",
+  "title": "Findings travel as Finding value objects, not bare dicts",
+  "type": "chore"
+}

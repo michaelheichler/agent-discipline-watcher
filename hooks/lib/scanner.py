@@ -11,6 +11,7 @@ try:
     from . import scan_input
     from .comment_rules import (
         COMMENT_RE,
+        DEFERRED_TAG_RE,
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
@@ -52,6 +53,7 @@ except ImportError:
     import scan_input
     from comment_rules import (
         COMMENT_RE,
+        DEFERRED_TAG_RE,
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
@@ -636,4 +638,4 @@ def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:
     body = leading.group(1)
     if DIRECTIVE_COMMENT_RE.match(line.strip()) or HEADER_COMMENT_RE.search(body):
         return ""
-    return body
+    return DEFERRED_TAG_RE.sub("", body, count=1)

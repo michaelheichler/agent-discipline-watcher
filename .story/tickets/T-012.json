@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-05",
+  "createdDate": "2026-10-05",
+  "description": "`// swift-tools-version`, Go `//go:` and `//nolint`, `// swiftlint:`, `// eslint-disable` and `// eslint-enable`, `// prettier-ignore`, `/// <reference`, and a short `// MARK:` label count as directives. Today they trigger what_comment, prose_colon, and prose_comment_block, so Package.swift cannot be written. The `///` doc prefix is stripped fully. The JS test at hooks/test_hooks.py:244 uses `#` and moves to `//`.",
+  "displayId": "T-012",
+  "id": "T-012",
+  "order": 10,
+  "phase": null,
+  "status": "complete",
+  "title": "Tool directive comments pass the comment rules",
+  "type": "task"
+}
