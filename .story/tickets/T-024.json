@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "The Sonnet document reviewer flagged on 2026-10-05: README.md:9 says the deterministic regex layer is \"the one that decides the gate\", but measured judge-backed rules and the comment rules also block. README.md:126 says \"Two measured rules block German lines today\", while the same section names four more family-default blocking rules (banned_dash, dash_break, pronoun_apostrophe, decade_apostrophe). Rewrite both to name each blocking layer and its condition. Also review the old CHANGELOG sections the reviewer flagged (0.25.0 German SEMANTIC bullet, 0.24.1 section shape). User decision 2026-10-05: CHANGELOG stays as is for now.",
+  "id": "T-024",
+  "order": 130,
+  "phase": null,
+  "status": "open",
+  "title": "README consistency pass on the gate and German blocking claims",
+  "type": "chore"
+}

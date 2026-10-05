@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-05",
+  "description": "Observed 2026-10-05 on 0.25.2 and 0.25.3. `adw update --claude` removes the `adw-managed-hook-v1` block from ~/.claude/settings.json and writes no new one. `/reload-plugins` does not run SessionStart, so the block stays missing until a new session starts or the user runs `adw-judge mixed`. Until then no model reviewer runs. `adw-judge mixed` writes the block against the stable path ~/.adw/install/agent-discipline-watcher/hooks/claude_sonnet.sh, which survives updates. Fix: the updater rewrites the block for the stored preset after it installs, using the stable install path.",
+  "id": "T-023",
+  "order": 120,
+  "phase": null,
+  "status": "open",
+  "title": "adw update keeps the Claude reviewer block",
+  "type": "task"
+}

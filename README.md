@@ -26,7 +26,7 @@ A prose rule speaks only where a measurement covers it, and blocks only where th
 
 22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
 
-The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews whole documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. The precision numbers above came from a Sonnet reader, so they stay current.
+The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews whole documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. A Sonnet reader measured the precision numbers above, the same model family as the default judge. If the default judge changes, the numbers need a new run against it.
 
 ## What the rules were measured against
 
@@ -36,7 +36,7 @@ The rules used to have no false-positive denominator. They have one now.
 
 Among the AI-tell rules, the raw regex candidate rate is at most 1 in 20000 human sentences. Structural rules such as `three_item_list` are outside that rate. Its raw regex fires on 278 of 60000 human sentences before the judge decides which candidates count. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
 
-**88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. Rules that name an AI tell fire on at most 1 in 20000 human sentences. Without this side, they have no violating class and no measurement can reach them.
+**88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. An AI-tell rule rarely fires on human prose. Without these assistant sentences, such a rule has no violating class, and no measurement can reach it.
 
 **9256 documents that still carry their paragraph breaks**, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, 4256 assistant from the same two chat sets. Both sentence corpora flatten a document to one line, so no paragraph-shaped rule had anything to stand on until this one existed. It is what `uniform_paragraph_endings` measures against, and it is also why that rule stays at observe. The shape it names runs commoner in human literature than in model prose.
 
