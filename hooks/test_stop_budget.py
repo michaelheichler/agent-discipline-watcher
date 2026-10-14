@@ -75,3 +75,34 @@ def test_a_baseline_is_scanned_once_per_content(tmp_path: Path, monkeypatch) -> 
 
     assert first == second
     assert scanned == [str(target)]
+
+
+def test_an_edit_to_an_unscanned_file_blocks_again_after_a_release(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "a.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    blocker_state.touch_paths("s1", "", [str(target)], _config(tmp_path)["state_root"])
+    monkeypatch.setattr(stop_scan, "STOP_SCAN_SECONDS", -1.0)
+    assert "decision" not in [_stop(tmp_path) for _ in range(3)][2]
+
+    target.write_text("x = 2\ny = 3\n", encoding="utf-8")
+
+    assert _stop(tmp_path)["decision"] == "block"
+
+
+def test_a_duplicate_check_cut_off_by_the_deadline_keeps_the_batch_block(tmp_path: Path, monkeypatch) -> None:
+    root = _config(tmp_path)["state_root"]
+    paths = []
+    for name in ("a.py", "b.py"):
+        (tmp_path / name).write_text("x = 1\n", encoding="utf-8")
+        paths.append(str(tmp_path / name))
+    blocker_state.touch_paths("s1", "", paths, root)
+    blocker_state.set_pending("s1", "", "<batch>", "Duplicate content", root)
+    full = stop_scan.rescan
+    monkeypatch.setattr(stop_scan, "rescan", lambda found, cwd, cfg, _until: full(found, cwd, cfg, float("inf")))
+    monkeypatch.setattr(stop_scan, "deadline", lambda: 0.0)
+
+    response = _stop(tmp_path)
+
+    assert response["decision"] == "block"
+    assert "before the duplicate content check" in response["reason"]
+    assert "<batch>" in blocker_state.details("s1", "", root)[0]

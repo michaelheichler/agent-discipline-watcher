@@ -31,8 +31,11 @@ class StopCall:
 
 @dataclass(frozen=True, slots=True)
 class BlockingSet:
+    """`stamps` mark unscanned files, because an edit to a file Stop could not read must still reset the breaker."""
+
     findings: list[dict]
     residual: list[str]
+    stamps: tuple[str, ...] = ()
 
 
 ReasonBuilder = Callable[[str | None], tuple[str, str]]
@@ -49,7 +52,8 @@ def fingerprint(blocking: BlockingSet) -> str:
          str(row.get("snippet", "")), str(row.get("content_hash", ""))]
         for row in blocking.findings
     )
-    return sha256(json.dumps([rows, sorted(blocking.residual)]).encode("utf-8")).hexdigest()
+    payload = [rows, sorted(blocking.residual), sorted(blocking.stamps)]
+    return sha256(json.dumps(payload).encode("utf-8")).hexdigest()
 
 
 def _files(findings: list[dict]) -> str:

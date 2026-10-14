@@ -48,7 +48,7 @@ def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
     result = Rescan()
     for index, raw_path in enumerate(paths):
         if time.monotonic() > until:
-            result.skipped = paths[index:]
+            result.skipped = [str(_resolved(raw, cwd)) for raw in paths[index:]]
             break
         path = _resolved(raw_path, cwd)
         if not path.is_file() or outside_project_temp(path, cwd):
@@ -56,6 +56,19 @@ def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
         result.existing.append(str(path))
         result.findings.extend(_path_rows(path, cfg))
     return result
+
+
+def stamps(paths: list[str]) -> tuple[str, ...]:
+    """Size and mtime, because the file was not read and an edit must still change the Stop fingerprint."""
+    marks = []
+    for path in paths:
+        try:
+            stat = Path(path).stat()
+        except OSError:
+            marks.append(f"{path}:missing")
+            continue
+        marks.append(f"{path}:{stat.st_size}:{stat.st_mtime_ns}")
+    return tuple(marks)
 
 
 def skipped_reason(skipped: list[str]) -> str:

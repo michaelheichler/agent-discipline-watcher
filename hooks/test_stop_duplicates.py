@@ -40,3 +40,14 @@ def test_stop_keeps_a_duplicate_the_batch_gate_blocked(tmp_path: Path) -> None:
 
     assert response["decision"] == "block"
     assert "duplicate_file_content" in response["reason"]
+
+
+def test_an_edit_that_keeps_the_copies_equal_blocks_again_after_a_release(tmp_path: Path) -> None:
+    _twins(tmp_path)
+    blocker_state.set_pending("s1", "", "<batch>", "Duplicate content", _config(tmp_path)["state_root"])
+    assert "decision" not in [_stop(tmp_path) for _ in range(3)][2]
+
+    for name in ("a", "b"):
+        (tmp_path / name / "settings.py").write_text(BODY + "extra = 1\n", encoding="utf-8")
+
+    assert _stop(tmp_path)["decision"] == "block"

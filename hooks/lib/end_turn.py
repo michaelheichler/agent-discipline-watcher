@@ -12,6 +12,10 @@ from .stop_stall import BlockingSet, ReasonBuilder, StopCall, StopOutcome, guard
 NOTICE_LEAD = "agent-discipline-watcher: subagents ended with findings you did not write."
 NOTICE_MAX_SCOPES = 5
 NOTICE_MAX_FILES = 3
+DUPLICATES_UNCHECKED = (
+    "agent-discipline-watcher: Stop ran out of time before the duplicate content check. "
+    "The batch block stays for the next Stop."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,10 +37,12 @@ def _agent_written(paths: tuple[str, ...], cfg: dict) -> list[str]:
     return kept
 
 
-def _batch_findings(request: BatchScanRequest, pending: dict[str, str]) -> list[dict]:
-    """Only while the batch gate holds a block, because Stop must not find duplicates across batches that the batch gate never judged."""
-    if "<batch>" not in pending or len(request.paths) < 2 or time.monotonic() > request.deadline:
+def _batch_findings(request: BatchScanRequest, pending: dict[str, str]) -> list[dict] | None:
+    """None past the deadline, because a held batch block must not clear when its check never ran."""
+    if blocker_state.BATCH_KEY not in pending or len(request.paths) < 2:
         return []
+    if time.monotonic() > request.deadline:
+        return None
     import batch
     rows = batch.duplicate_findings_for_paths(request.cwd, _agent_written(request.paths, request.config), request.config)
     return [row for row in rows if resolve_outcome(row, request.config) == "block"]
@@ -48,7 +54,7 @@ def _remaining_reason(session_id: str, agent_id: str, root) -> str:
 
 
 def _residual_reasons(pending: dict[str, str], paths: list[str]) -> list[str]:
-    resolved = set(paths) | {"<batch>"}
+    resolved = set(paths) | {blocker_state.BATCH_KEY}
     return [value for key, value in pending.items() if key not in resolved]
 
 
@@ -62,6 +68,19 @@ def _finding_reason(blocking: BlockingSet, cfg: dict) -> ReasonBuilder:
     return build
 
 
+def _blocking_set(scanned: stop_scan.Rescan, duplicates: list[dict] | None, residual: list[str]) -> BlockingSet | None:
+    """Unread files are stamped, because an edit to them must reset the breaker like a changed finding does."""
+    findings = scanned.findings + (duplicates or [])
+    unchecked = [*scanned.skipped, *(scanned.existing if duplicates is None else [])]
+    if not findings and not unchecked:
+        return None
+    if scanned.skipped:
+        residual.append(stop_scan.skipped_reason(scanned.skipped))
+    if duplicates is None:
+        residual.append(DUPLICATES_UNCHECKED)
+    return BlockingSet(findings, residual, stop_scan.stamps(unchecked))
+
+
 def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
     scope, cfg = call.scope, call.cfg
     pending, paths, revision = blocker_state.details(scope.session_id, scope.agent_id, scope.root)
@@ -69,17 +88,13 @@ def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
     until = stop_scan.deadline()
     scanned = stop_scan.rescan(paths, Path(cwd or "."), cfg, until)
     request = BatchScanRequest(scope.session_id, cwd, tuple(scanned.existing), cfg, until)
-    findings = scanned.findings + _batch_findings(request, pending)
-    if findings or scanned.skipped:
-        residual = _residual_reasons(pending, paths)
-        if scanned.skipped:
-            residual.append(stop_scan.skipped_reason(scanned.skipped))
-        blocking = BlockingSet(findings, residual)
+    blocking = _blocking_set(scanned, _batch_findings(request, pending), _residual_reasons(pending, paths))
+    if blocking is not None:
         return guarded(call, blocking, _finding_reason(blocking, cfg))
     path_keys = set(paths)
     cleared = [key for key in pending if key in path_keys]
     if paths:
-        cleared.extend(["<batch>", *blocker_state.RESCAN_RELEASED_KEYS])
+        cleared.extend([blocker_state.BATCH_KEY, *blocker_state.RESCAN_RELEASED_KEYS])
     blocker_state.reconcile(scope.session_id, scope.agent_id, revision, cleared, paths, scope.root)
     remaining = _remaining_reason(scope.session_id, scope.agent_id, scope.root)
     if not remaining:
