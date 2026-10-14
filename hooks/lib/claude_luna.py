@@ -377,9 +377,9 @@ def bounded_feedback(texts: list[str]) -> str:
     joined = "\n\n".join(texts)
     lines = joined.splitlines()
     rows = sum(1 for line in lines if _ROW_RE.match(line))
-    if len(joined) <= MAX_FEEDBACK_CHARS and rows <= MAX_LISTED_ROWS:
-        return joined
     report = reporting.write_full_report([{"message": text} for text in texts])
+    if len(joined) + len(f"\nFull report: {report}") <= MAX_FEEDBACK_CHARS and rows <= MAX_LISTED_ROWS:
+        return f"{joined}\nFull report: {report}"
     kept = _listed_lines(lines, MAX_FEEDBACK_CHARS - len(f"{rows} more findings: {report}") - 1)
     hidden = rows - sum(1 for line in kept if _ROW_RE.match(line))
     tail = f"{hidden} more findings: {report}" if hidden else f"Full report: {report}"
