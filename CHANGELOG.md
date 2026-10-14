@@ -41,7 +41,7 @@
 
 ### Known limits
 
-- ADW does not scan a file that a saved script writes at the time the script writes it. A later edit snapshots that file as first seen, so its older findings count as inherited. ADW trusts saved scripts and is not a runtime sandbox.
+- ADW does not scan a file that a saved script writes at the time the script writes it. A later edit snapshots that file as first seen, so its older findings count as inherited. This part is new. Before this release, the first edit owned and blocked on those findings. The old rule also blocked on files the user made, so it broke the rule that only the agent's own work blocks. ADW trusts saved scripts and is not a runtime sandbox.
 
 ## 0.25.4 (2026-10-05)
 
