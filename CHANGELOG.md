@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The gate reads inline payloads the way bash decodes them (security fix).** A spliced word such as `''open\(chr\(116\),chr\(119\)\)''` used to parse as one harmless string. A plain single-quoted word keeps its exact text. Any other word must decode to one word with no `$` or backtick, else the gate blocks.
+- **`timeout` and `nice` count as wrappers (security fix).** Before, `timeout 5 python3 -c '<write>'` and `timeout 5 sed -i ...` ran unchecked. Wrapper option clusters now follow getopt, so `sudo -uroot` and `nice -n5` no longer hide the interpreter word.
+- **An unsafe assignment makes isolated Python untrusted (security fix).** `-I -S` does not stop a preload library or a changed `PATH` or `HOME`. An assignment to `PYTHON*`, `LD_*`, `DYLD_*`, `PATH`, `HOME` or a similar name, or any value with `$` or a backtick, now makes `python3 -I -S` untrusted.
+- **Node reflection blocks (security fix).** `module.constructor._load('fs')` and `process.getBuiltinModule('fs')` used to pass `node -e`. Reflective names such as `getBuiltinModule`, `_load`, `binding`, `constructor`, `import` and `Reflect` now block. So does a bracket key that is not one plain literal, or a string joined with `+` inside brackets. The node check stays a heuristic, not a sandbox.
+
+### Changed
+
+- **Inline Python accepts more read-only analysis.** Text methods on JSON values, pure members of `re`, `math`, `collections`, `hashlib`, `os.path` and similar modules, and `json.dumps` without `default=` pass. Every write route stays rejected.
+- **Python startup accepts harmless prefixes.** `env` with plain assignments, `env -i`, `time -p`, `timeout` and `nice` no longer make startup untrusted.
+- **`node -p "require('./package.json').version"` passes.** The whole payload must be a relative or absolute `.json` require with literal member access, optionally wrapped in `console.log`, `JSON.stringify` or `Object.keys`.
+- **Scratch temp writes run.** A redirect, `tee`, `sed -i` or `perl -pi` whose every target is scratch temp no longer blocks or hits the 100-character cap. A relative target after a leading `cd DIR &&` or `cd DIR ;` counts under DIR. `sed` scripts with `w`, `W`, `e` or `-f`, and `perl` or `ruby` without one `-e` script, keep blocking. PostToolUse records the edited files as agent writes.
+
 ## 0.25.4 (2026-10-05)
 
 ### Fixed
