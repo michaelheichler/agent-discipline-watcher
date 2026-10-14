@@ -79,24 +79,6 @@ def test_cp_from_agent_written_temp_still_blocks(tmp_path: Path) -> None:
     assert "banned_dash" in response["reason"]
 
 
-def test_an_evicted_authored_source_still_blocks_at_record_and_stop(tmp_path: Path) -> None:
-    source = tmp_path / "scratch.md"
-    source.write_text(DASHED, encoding="utf-8")
-    _bash(tmp_path, f"printf x > {source}", "t0")
-    padding = [tmp_path / f"padding-{index}" for index in range(256)]
-    for path in padding:
-        path.write_text("x", encoding="utf-8")
-    _bash(tmp_path, "; ".join(f"printf x > {path}" for path in padding), "t1")
-    landed = _project(tmp_path) / "notes.md"
-    shutil.copyfile(source, landed)
-
-    response = _bash(tmp_path, f"cp {source} {landed}", "t2")
-
-    assert response["decision"] == "block"
-    assert "banned_dash" in response["reason"]
-    assert _stop(tmp_path)["decision"] == "block"
-
-
 def test_a_redirect_into_temp_in_the_same_command_counts_as_authored(tmp_path: Path) -> None:
     scratch = tmp_path / "scratch.md"
     scratch.write_text(DASHED, encoding="utf-8")

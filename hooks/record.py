@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from failure import normalize_payload, record_success
-from lib import blocker_state, imported_baseline, journal, payloads, scan_input, temp_copies
+from lib import blocker_state, imported_baseline, journal, payloads, scan_input, temp_authorship
 from lib.mcp_health import config_roots
 from lib.config import effective_config
 from lib.embedding_session import lease_root_for, renew_turn
@@ -91,7 +91,7 @@ def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
         sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
 
 
-def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
+def _journal_edits(edits: _EditJournal, turn_id: str = "") -> str:
     template = _edit_row_template(edits, turn_id)
     session_id = edits.payload["session_id"]
     cwd = edits.payload["cwd"] or None
@@ -104,7 +104,7 @@ def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
             scratch.append(path)
         else:
             _journal_candidate(edits, path, turn_id)
-    temp_copies.note_authored_temp(session_id, scratch, cwd, edits.state_root)
+    return temp_authorship.note_authored_temp(session_id, scratch, cwd, edits.state_root)
 
 
 def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) -> list[dict]:
@@ -287,14 +287,14 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
         projected = context.journal.payload
-        if projected["session_id"]:
-            _journal_edits(context.journal, turn_id)
+        capped = _journal_edits(context.journal, turn_id) if projected["session_id"] else ""
         owned, inherited = _scan_paths(context.scan_paths, context.cwd, context.config)
         decisions = _ledger_decisions(context, owned, turn_id, started)
         report_cfg = {**context.config, "session_id": projected["session_id"], "turn_id": turn_id}
         kind, reason = verdict_message(decisions, report_cfg)
         verdict = _RecordVerdict(VerdictKind(kind), reason)
-        response = _response(verdict, inherited, report_cfg, _imported_notice(context, report_cfg))
+        notices = "\n".join(part for part in (capped, _imported_notice(context, report_cfg)) if part)
+        response = _response(verdict, inherited, report_cfg, notices)
         if projected["session_id"]:
             _clear_blocker_state(context.blocker_scope, context.tracked_paths, verdict)
             project = [path for path in context.tracked_paths if not outside_project_temp(path, context.cwd)]
@@ -347,7 +347,7 @@ def _gate_context_for(
     if not projected["cwd"]:
         raise ValueError("PostToolUse payload requires a trusted cwd")
     cwd = Path(projected["cwd"])
-    authored = temp_copies.authored_temp(projected["session_id"], state_root)
+    authored = temp_authorship.authored_temp(projected["session_id"], state_root)
     written, imported = payloads.split_edited_paths(payload, authored)
     paths = list(written)
     removed = _missing_removed_paths(payload, cwd)
