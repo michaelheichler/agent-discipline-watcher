@@ -4,16 +4,24 @@
 
 ### Fixed
 
-- **A user prompt no longer asks the agent to fix the user's text.** UserPromptSubmit ignored rule gates, so `de_long_compound`, set to `off`, injected "Correct this discipline violation" on German prompts. Only rules that enforce on prose now count. A hit becomes one line per family, "The user prompt uses english patterns (ai_tell). Do not copy that style into your output." ADW notes each rule once per session. Block mode no longer blocks on a style hit. The prompt firewall phrases and the data boundary keep their wording.
+- **The gate reads inline payloads the way bash decodes them (security fix).** A spliced word such as `''open\(chr\(116\),chr\(119\)\)''` used to parse as one harmless string. A plain single-quoted word keeps its exact text. Any other word must decode to one word with no `$` or backtick, else the gate blocks.
+- **`timeout` and `nice` count as wrappers (security fix).** Before, `timeout 5 python3 -c '<write>'` and `timeout 5 sed -i ...` ran unchecked. Wrapper option clusters now follow getopt, so `sudo -uroot` and `nice -n5` no longer hide the interpreter word.
+- **An unsafe assignment makes isolated Python untrusted (security fix).** `-I -S` does not stop a preload library or a changed `PATH` or `HOME`. An assignment to `PYTHON*`, `LD_*`, `DYLD_*`, `PATH` or `HOME` now makes `python3 -I -S` untrusted. A value with `$` or a backtick does the same.
+- **Node reflection blocks (security fix).** `module.constructor._load('fs')` and `process.getBuiltinModule('fs')` used to pass `node -e`. Reflective names such as `getBuiltinModule`, `_load`, `binding`, `constructor`, `import` and `Reflect` now block. So does a bracket key that is not one plain literal, or a string joined with `+` inside brackets. The node check stays a heuristic, not a sandbox.
+- **A user prompt no longer asks the agent to fix the user's text.** UserPromptSubmit ignored rule gates. So `de_long_compound` injected "Correct this discipline violation" on German prompts, although its gate is `off`. Only rules that enforce on prose now count. A hit becomes one line per family, "The user prompt uses english patterns (ai_tell). Do not copy that style into your output." ADW notes each rule once per session. Block mode no longer blocks on a style hit. The prompt firewall phrases and the data boundary keep their wording.
 - **A failing Sonnet CLI no longer runs on every Stop.** A timeout or CLI error starts a 300 second cooldown. Each queued row gets two attempts, then ADW drops it with a notice. A candidate the model skipped counts as clean, and a repeated one keeps its first answer.
-- **The Luna and Sonnet Stop blocks keep every finding.** Both list at most 5 rows in 900 characters and end with the path of a full report. Luna used to cut the text at 900 characters and lose the later sections.
-- **The merge gate no longer trusts a branch the agent made.** Inside a session, an incoming commit must sit on a remote-tracking ref or a tag, or predate the session start. A session that began before this change keeps the old rule.
+- **The Luna and Sonnet Stop blocks keep every finding.** Both list at most 5 rows in 900 characters. Both end with the path of a full report. Luna used to cut the text at 900 characters and lose the later sections.
+- **The merge gate no longer trusts a branch the agent made.** An incoming commit must sit on a remote-tracking ref or a tag. A commit older than the session start also counts. A session that began before this change keeps the old rule.
 - **Document review rounds count per turn.** A document edited in a third turn gets a review again.
 - **A long single-line hunk splits between sentences.** A sentence longer than the budget ends with "[line truncated]".
 
 ### Changed
 
 - **The Sonnet review costs half the fixed tokens.** `claude -p` now runs with `--setting-sources ""` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. A one-candidate call dropped from 3,552 to 1,754 input tokens. The system prompt states the rubric once instead of once per section. A deletion-only edit makes no model call.
+- **Inline Python accepts more read-only analysis.** Text methods on JSON values now pass. Pure members of `re`, `math`, `collections`, `hashlib` and `os.path` pass. `json.dumps` without `default=` passes. Every write route stays rejected.
+- **Python startup accepts harmless prefixes.** `env` with plain assignments, `env -i`, `time -p`, `timeout` and `nice` no longer make startup untrusted.
+- **`node -p "require('./package.json').version"` passes.** The whole payload must be a `.json` require with literal member access. A wrapper of `console.log`, `JSON.stringify` or `Object.keys` is allowed.
+- **Scratch temp writes run.** A redirect, `tee`, `sed -i` or `perl -pi` whose every target is scratch temp no longer blocks or hits the 100-character cap. A relative target after a leading `cd DIR &&` or `cd DIR ;` counts under DIR. `sed` scripts with `w`, `W`, `e` or `-f`, and `perl` or `ruby` without one `-e` script, keep blocking. PostToolUse records the edited files as agent writes.
 
 ## 0.25.4 (2026-10-05)
 

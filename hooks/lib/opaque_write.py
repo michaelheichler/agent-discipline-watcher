@@ -11,6 +11,8 @@ from lib.shell_parse import (
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
+from lib.inplace_targets import inplace_edit, scratch_inplace_edit
+from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import python_rejection
 from lib.python_shell import isolated_python, rejection_finding, startup_finding, trusted_python_startup
@@ -104,13 +106,17 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
     )
 
 
-def _payload_is_write_capable(payload: str) -> bool:
+def _payload_is_write_capable(name: str, payload: str) -> bool:
+    if name in NODE_INTERPRETERS and node_reflection(payload):
+        return True
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
 
 def _run_findings(run: InterpreterRun, make_finding: FindingFactory, rule: str) -> list[dict]:
     if not PYTHON_INTERPRETER_RE.fullmatch(run.name):
-        return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.payload) else []
+        if run.payload is not None and node_json_read(run.name, run.payload):
+            return []
+        return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.name, run.payload) else []
     rejection = "" if run.payload is None else python_rejection(run.payload, isolated=True)
     if rejection:
         return [rejection_finding(make_finding, rule, rejection, run.trusted_startup)]
@@ -409,8 +415,16 @@ def _has_inplace_flag(segment: list[str]) -> bool:
     return False
 
 
-def inplace_edit_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    return [make_finding("inplace_edit_write") for segment in _segments(command) if _has_inplace_flag(segment)]
+def inplace_edit_findings(command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
+    return [
+        make_finding("inplace_edit_write") for segment in _segments(command)
+        if _has_inplace_flag(segment) and not scratch_inplace_edit(segment, command, cwd)
+    ]
+
+
+def inplace_edit_paths(command: str) -> list[str]:
+    edits = (inplace_edit(segment) for line, _, _ in _logical_lines(command) for segment in _segments(line) if _has_inplace_flag(segment))
+    return [target for edit in edits if edit is not None for target in edit.targets]
 
 
 def _dd_file_output(segment: list[str]) -> bool:

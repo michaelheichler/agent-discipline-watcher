@@ -13,9 +13,13 @@ from .shell_operators import (
 DYNAMIC_RE = re.compile(r"[$`]")
 INTERPRETERS = frozenset({
     "python", "python3", "sh", "bash", "zsh", "dash", "command", "env", "exec", "sudo", "time", "nohup",
+    "nice", "timeout",
 })
-WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec"})
+WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec", "nice", "timeout"})
+WRAPPER_OPERANDS = {"timeout": 1}
 WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
+    "nice": frozenset({"-n", "--adjustment"}),
+    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
     "env": frozenset({"-u", "--unset", "-C", "--chdir", "-a", "--argv0"}),
     "sudo": frozenset({
         "-u", "--user", "-g", "--group", "-h",
@@ -101,20 +105,22 @@ def _skip_leading_redirect(segment: list[str], index: int) -> int | None:
 
 def _skip_wrapper_options(segment: list[str], index: int) -> int:
     """Consume the wrapper word and the flags it owns, because env -i and sudo -u are options, not the child command."""
-    value_flags = WRAPPER_VALUE_FLAGS.get(_basename(segment[index]), frozenset())
+    wrapper = _basename(segment[index])
+    value_flags = WRAPPER_VALUE_FLAGS.get(wrapper, frozenset())
+    operands = WRAPPER_OPERANDS.get(wrapper, 0)
     index += 1
     while index < len(segment):
         token = segment[index]
         bare = _bare(token)
         if bare == "--":
-            return index + 1
+            return index + 1 + operands
         if not _is_quoted(token):
             name, separator, _ = token.partition("=")
             if separator and name and not bare.startswith("-"):
                 index += 1
                 continue
         if not bare.startswith("-"):
-            return index
+            return index + operands
         if "=" in bare or not _wrapper_consumes_value(bare, value_flags):
             index += 1
             continue
@@ -123,13 +129,14 @@ def _skip_wrapper_options(segment: list[str], index: int) -> int:
 
 
 def _wrapper_consumes_value(bare: str, value_flags: frozenset[str]) -> bool:
-    """Treat a short cluster as value-taking when any letter matches, because sudo -un still consumes the user name."""
+    """Follows getopt, because the first value letter takes the rest of its cluster and takes the next word only at the end."""
     if bare in value_flags:
         return True
     if bare.startswith("--") or len(bare) < 2:
         return False
     value_letters = {flag[1] for flag in value_flags if len(flag) == 2}
-    return any(letter in value_letters for letter in bare[1:])
+    positions = [position for position, letter in enumerate(bare[1:], 1) if letter in value_letters]
+    return bool(positions) and positions[0] == len(bare) - 1
 
 
 def _interpreter_code_flags(name: str) -> frozenset[str] | None:
@@ -158,8 +165,20 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
     flag, payload_token = matched
     if payload_token is None:
         return None
-    payload = _bare(payload_token) if _is_literal_token(payload_token) else None
-    return InterpreterInvocation(name, flag, payload)
+    return InterpreterInvocation(name, flag, _decoded_payload(payload_token))
+
+
+def _decoded_payload(token: str) -> str | None:
+    """Decoded as bash hands it over, because a checker that reads the raw spliced quoting judges a different program."""
+    if len(token) >= 2 and token[0] == token[-1] == "'" and "'" not in token[1:-1]:
+        return token[1:-1]
+    if DYNAMIC_RE.search(token):
+        return None
+    try:
+        words = shlex.split(token)
+    except ValueError:
+        return None
+    return words[0] if len(words) == 1 else None
 
 
 def _flag_payload_token(

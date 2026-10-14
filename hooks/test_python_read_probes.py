@@ -141,6 +141,45 @@ def test_loop_bindings_preserve_alias_and_scope_guards(source):
     assert not is_known_read_only_python(source, isolated=True)
 
 
+STDLIB_PROBES = [
+    "import json, re, sys, html; d = json.load(open('.codex/hooks.json')); print(html.escape(json.dumps(d, indent=2)))",
+    "import json; d = json.load(open('.adw/install/plugin.json')); print(d[max(d, key=lambda k: len(d[k]))])",
+    "import re, os.path; print(re.findall(r'adw', open('.codex/config.toml').read()), os.path.isfile('.agent-discipline.json'))",
+    "import tomllib, hashlib; print(list(tomllib.load(open('.codex/config.toml', 'rb'))), hashlib.sha256(b'adw').hexdigest())",
+    "counts = {}\nfor word in open('.codex/config.toml').read().split():\n    counts[word] = counts.get(word, 0) + 1\nprint('adw', sorted(counts))",
+]
+
+
+@pytest.mark.parametrize("source", STDLIB_PROBES)
+def test_stdlib_read_probe_runs_without_writing_and_passes_the_gate(source, read_tree) -> None:
+    before = {path.relative_to(read_tree): path.read_bytes() for path in read_tree.rglob("*") if path.is_file()}
+    executed = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", source], cwd=read_tree, text=True, capture_output=True, check=False,
+    )
+
+    assert executed.returncode == 0, executed.stderr
+    assert "adw" in executed.stdout
+    assert {path.relative_to(read_tree): path.read_bytes() for path in read_tree.rglob("*") if path.is_file()} == before
+    response = pre_tool.run({
+        "tool_name": "Bash", "cwd": str(read_tree), "tool_input": {"command": f"python3 <<'PY'\n{source}\nPY"},
+    }, {"ledger_root": str(read_tree / "ledger"), "state_root": str(read_tree / "state")})
+    assert response == {}
+
+
+@pytest.mark.parametrize("source", [
+    "import fontTools, brotli",
+    "import json; d = json.load(open(p)); print(d)",
+    "import os.path; os.remove('target.txt')",
+])
+def test_unprovable_python_reads_still_block(source, read_tree) -> None:
+    response = pre_tool.run({
+        "tool_name": "Bash", "cwd": str(read_tree), "tool_input": {"command": f"python3 -c \"{source}\""},
+    }, {"ledger_root": str(read_tree / "ledger"), "state_root": str(read_tree / "state")})
+
+    assert response.get("decision") == "block"
+    assert "inline_interpreter_write" in response["reason"]
+
+
 @pytest.mark.parametrize("command", [
     "printf 'print(1)' | python3",
     "python3 -c 'value = 1\nprint(value)'",

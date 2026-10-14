@@ -8,7 +8,7 @@ from lib.findings import Finding
 from lib.scan_input import file_length_policy, file_line_count, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
-from lib.temp_scope import outside_project_temp
+from lib.temp_scope import command_target, leading_directory, scratch_target
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,9 +25,9 @@ def shaped_write_findings(
     owned: list[dict] = []
     inherited: list[dict] = []
     lengths: dict[Path, FileLength] = {}
-    for write in literal_writes(command):
+    for write in _project_writes(command, resolved_cwd):
         body = scannable_text(write.text, config or {})
-        if body is None or outside_project_temp(write.path, resolved_cwd):
+        if body is None:
             continue
         shape = ShapedWrite(write, body, resolved_cwd, config)
         path = _resolved_path(write.path, resolved_cwd).resolve()
@@ -41,6 +41,15 @@ def shaped_write_findings(
             owned.extend(shape_owned)
             inherited.extend(shape_inherited)
     return owned, inherited
+
+
+def _project_writes(command: str, cwd: Path) -> list[LiteralWrite]:
+    """Because the shell resolves a relative target under the leading cd, each kept write carries that joined path."""
+    directory = leading_directory(command)
+    return [
+        write._replace(path=command_target(write.path, directory))
+        for write in literal_writes(command) if not scratch_target(write.path, command, cwd)
+    ]
 
 
 @dataclass(frozen=True, slots=True)
