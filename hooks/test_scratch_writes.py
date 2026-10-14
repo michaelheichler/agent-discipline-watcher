@@ -124,6 +124,22 @@ def test_a_scratch_in_place_edit_after_a_leading_cd_is_recorded_as_an_agent_writ
     assert payloads.edited_paths(payload) == (f"{scratch}/f.txt",)
 
 
+@pytest.mark.parametrize("edit", [
+    "sed -i'{project}/docs/*' 's/a/b/'",
+    "sed -i.bak 's/a/b/'",
+    "sed --in-place=.bak 's/a/b/'",
+    "perl -pi'{project}/docs/*' -e 's/a/b/'",
+    "perl -pi.bak -e 's/a/b/'",
+])
+def test_a_scratch_in_place_edit_that_writes_a_backup_blocks(tmp_path: Path, edit: str) -> None:
+    project, scratch = _dirs(tmp_path)
+
+    result = _gate(tmp_path, project, f"{edit.format(project=project)} {scratch}/f.txt")
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
 def _unsearchable(scratch: Path) -> Path:
     locked = scratch / "locked"
     locked.mkdir()
