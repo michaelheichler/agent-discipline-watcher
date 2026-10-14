@@ -22,8 +22,10 @@ except ImportError:
 FAMILY = "english"
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ])")
 WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)*")
-# Because ordinals, initials, and abbreviations put a period mid-sentence.
-NOT_AN_END_RE = re.compile(r"(?:^|\s)(?:\d+|[A-ZÄÖÜ]|[A-Za-zäöü]{1,5})\.$")
+OPENING_MARKS = "([{\"'" + chr(0x201E) + chr(0x201C) + chr(0xBB)
+MAX_INITIAL_LETTERS = 2
+# Because das alte System opens on an article, while das misst opens on a pronoun.
+ADJECTIVE_ENDINGS = ("e", "en", "em", "er", "es")
 # Code points, because the source may not hold these dashes and quotes.
 QUOTE_AND_DASH = "".join(chr(code) for code in (0x201E, 0x201C, 0x201D, 0x201A, 0xAB, 0xBB, 0x2013, 0x2014, 0x2026))
 # Because these marks already join clauses, quote speech, or open an aside.
@@ -59,13 +61,22 @@ def _words_of(sentence: str) -> list[str]:
     return WORD_RE.findall(sentence)
 
 
+def _pronoun_after_article(rest: list[str]) -> bool:
+    """Skip inflected adjectives, because a capital after them marks a noun and so an article."""
+    if not rest or rest[0][:1].isupper():
+        return False
+    adjectives = 0
+    while adjectives < len(rest) and rest[adjectives][:1].islower() and rest[adjectives].endswith(ADJECTIVE_ENDINGS):
+        adjectives += 1
+    return not (adjectives and adjectives < len(rest) and rest[adjectives][:1].isupper())
+
+
 def opens_with_back_reference(sentence: str, lexicon: Lexicon) -> bool:
-    """Read the next word too, because a capital after der, die, or das marks an article before a noun."""
     words = _words_of(sentence)
     if not words or words[0].lower() not in lexicon.back_references:
         return False
     if words[0].lower() in lexicon.articles:
-        return len(words) > 1 and words[1][:1].islower()
+        return _pronoun_after_article(words[1:])
     return True
 
 
@@ -90,8 +101,6 @@ def bare_main_clause(sentence: str, lexicon: Lexicon, limits: Thresholds) -> boo
         return False
     words = _words_of(text)
     if not limits.min_words <= len(words) <= limits.max_words or not reads_as_prose(words, lexicon):
-        return False
-    if lexicon.finite_re is not None and not lexicon.finite_re.search(text):
         return False
     if lexicon.joining_re is not None and lexicon.joining_re.search(text):
         return False
@@ -122,19 +131,27 @@ def bare_runs(sentences: list[Sentence], lexicon: Lexicon, limits: Thresholds) -
     return runs
 
 
-def _ends_sentence(before: str) -> bool:
-    shortened = NOT_AN_END_RE.search(before)
-    if shortened is None:
+def _initials(token: str) -> bool:
+    """Count z. B., d. h., e.g., and J. as initials, because none of them closes a sentence."""
+    parts = token.split(".")
+    return all(part.isalpha() and len(part) <= MAX_INITIAL_LETTERS for part in parts) and (len(parts) > 1 or len(token) == 1)
+
+
+def ends_sentence(before: str, lexicon: Lexicon) -> bool:
+    if not before.endswith("."):
         return True
-    token = shortened.group(0).strip().rstrip(".")
-    return not (token.isdigit() or len(token) == 1 or token.lower() in ABBREVIATIONS)
+    words = before[:-1].split()
+    token = words[-1].lstrip(OPENING_MARKS) if words else ""
+    if token.isdigit():
+        return len(token) > lexicon.max_ordinal_digits
+    return not (_initials(token) or token.lower() in ABBREVIATIONS)
 
 
 def _code_as_word(match: re.Match[str]) -> str:
     return CODE_LETTER * len(match.group(0))
 
 
-def paragraph_sentences(paragraph: Paragraph) -> list[Sentence]:
+def paragraph_sentences(paragraph: Paragraph, lexicon: Lexicon) -> list[Sentence]:
     offsets, size = [], 0
     for number, line in paragraph:
         offsets.append((size, number))
@@ -143,7 +160,7 @@ def paragraph_sentences(paragraph: Paragraph) -> list[Sentence]:
     prose = INLINE_CODE_RE.sub(_code_as_word, original)
     found, start = [], 0
     for boundary in SENTENCE_BREAK_RE.finditer(prose):
-        if _ends_sentence(prose[start:boundary.start()]):
+        if ends_sentence(prose[start:boundary.start()], lexicon):
             found.append(Sentence(_source_line(offsets, start), prose[start:boundary.start()], original[start:boundary.start()]))
             start = boundary.end()
     if prose[start:].strip():
@@ -184,20 +201,34 @@ def _lexicon_for(paragraph: Paragraph, languages: list[str]) -> Lexicon:
     return GERMAN_LEXICON if language == GERMAN else ENGLISH
 
 
-def _run_finding(path: str, run: list[Sentence], lexicon: Lexicon) -> dict:
+class Run(NamedTuple):
+    lexicon: Lexicon
+    sentences: list[Sentence]
+    paragraph: list[Sentence]
+
+
+def shown(sentences: list[Sentence]) -> str:
+    return " ".join(sentence.shown.strip() for sentence in sentences)
+
+
+def runs_in(path: str, masked: str, languages: list[str]) -> Iterator[Run]:
+    """Carry the paragraph along, because a reviewer must see what surrounds the run."""
+    for paragraph in blocks(path, list(_markdown_prose_lines(masked))):
+        lexicon = _lexicon_for(paragraph, languages)
+        sentences = paragraph_sentences(paragraph, lexicon)
+        for run in bare_runs(sentences, lexicon, Thresholds()):
+            yield Run(lexicon, run, sentences)
+
+
+def _run_finding(path: str, run: Run) -> dict:
     return _finding(
-        FAMILY, lexicon.rule, run[0].line,
-        f"{len(run)} short main clauses in a row with nothing joining them in {path}",
-        " ".join(sentence.shown.strip() for sentence in run),
+        FAMILY, run.lexicon.rule, run.sentences[0].line,
+        f"{len(run.sentences)} short main clauses in a row with nothing joining them in {path}",
+        shown(run.sentences),
         ACTION,
     )
 
 
 def scan_parataxis(path: str, masked: str, languages: list[str]) -> list[dict]:
     """One row per run, because the fix joins the run as a whole."""
-    rows = []
-    for paragraph in blocks(path, list(_markdown_prose_lines(masked))):
-        lexicon = _lexicon_for(paragraph, languages)
-        found = bare_runs(paragraph_sentences(paragraph), lexicon, Thresholds())
-        rows.extend(_run_finding(path, run, lexicon) for run in found)
-    return rows
+    return [_run_finding(path, run) for run in runs_in(path, masked, languages)]

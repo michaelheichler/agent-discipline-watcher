@@ -16,7 +16,7 @@ class Lexicon(NamedTuple):
     articles: frozenset[str]
     fronted: frozenset[str]
     min_lowercase_share: float
-    finite_re: re.Pattern[str] | None
+    max_ordinal_digits: int
 
 
 def _words(text: str) -> frozenset[str]:
@@ -39,11 +39,7 @@ ENGLISH = Lexicon(
         "maybe only even again never always"
     ),
     0.5,
-    # Because a title or a caption carries no finite verb.
-    re.compile(
-        r"\b(?:is|are|was|were|be|been|has|have|had|do|does|did|can|could|will|would|shall|should|may|might|must)\b"
-        r"|\b[a-z]+(?:ed|[^s\W]s)\b|\b[a-z]+n't\b|['’](?:s|re|ll|ve|d|m)\b"
-    ),
+    0,
 )
 # Narrow, because a preposition like seit or bis joins no clause.
 GERMAN = Lexicon(
@@ -66,10 +62,10 @@ GERMAN = Lexicon(
         "immer oft manchmal möglicherweise vielleicht lediglich nur erst ebenso stattdessen"
     ),
     0.0,
-    None,
+    # Because am 3. Oktober is an ordinal, while a year closes a sentence.
+    2,
 )
-# Because a period after these shortens a word and never ends the sentence.
+# Without usw and etc, because those often close a sentence.
 ABBREVIATIONS = _words(
-    "st dr mr mrs ms prof nr no vol abb fig jr sr ca bzw vgl usw etc evtl ggf inkl bspw sog vs geh bd hrsg "
-    "jh jhd chr bzgl ff"
+    "st dr mr mrs ms prof nr no vol abb fig jr sr ca bzw vgl evtl ggf inkl bspw sog vs geh bd hrsg bzgl"
 )

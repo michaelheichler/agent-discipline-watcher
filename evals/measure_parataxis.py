@@ -63,6 +63,7 @@ def load_paragraphs(corpus: Corpus, corpus_dir: Path) -> list[Paragraph]:
     """Route through the scanner's own block split, because a list item or heading must drop out here too."""
     parataxis = hook_module("parataxis")
     prose_lines = hook_module("prose_structure")._markdown_prose_lines  # pylint: disable=protected-access
+    lexicon = _lexicon(corpus)
     paragraphs = []
     with (corpus_dir / corpus.file_name).open(encoding="utf-8") as stream:
         for number, line in enumerate(stream, 1):
@@ -70,7 +71,7 @@ def load_paragraphs(corpus: Corpus, corpus_dir: Path) -> list[Paragraph]:
             side = "human" if row["origin"] == "human" else "ai"
             blocks = parataxis.blocks(SAMPLE_NAME, list(prose_lines("\n\n".join(row["paragraphs"]))))
             paragraphs.extend(
-                Paragraph(number, index, side, row.get("genre", "assistant"), tuple(parataxis.paragraph_sentences(block)))
+                Paragraph(number, index, side, row.get("genre", "assistant"), tuple(parataxis.paragraph_sentences(block, lexicon)))
                 for index, block in enumerate(blocks)
             )
     return paragraphs
