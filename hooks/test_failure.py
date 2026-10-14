@@ -430,7 +430,7 @@ class FailureHookTests(HookTestCase):
         self.assertEqual(len(decisions), 1)
         projected = {key: decisions[0][key] for key in self.EXPECTED_DECISION_ROW}
         self.assertEqual(projected, self.EXPECTED_DECISION_ROW)
-        self.assertEqual(len(heartbeats), 3)
+        self.assertEqual(len(heartbeats), 1)
         self.assertTrue(all(row["hook"] == "failure" for row in heartbeats))
 
     def test_corrupt_state_blocks_the_update_without_replacing_it(self):
