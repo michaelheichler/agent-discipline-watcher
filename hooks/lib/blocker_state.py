@@ -134,6 +134,26 @@ def touch_paths(scope: BlockerScope | str, *values: object) -> None:
     _update(scope, mutate)
 
 
+def apply_paths(scope: BlockerScope, paths: list[str], pending: dict[str, str | None]) -> None:
+    """One state write for the whole call, because a copied tree used to cost one locked rewrite per file."""
+
+    def mutate(bucket: dict) -> dict:
+        current, existing, _revision = _normalized_bucket(bucket)
+        known = set(existing)
+        for path in paths:
+            if path and path not in known:
+                known.add(path)
+                existing.append(path)
+        for key, reason in pending.items():
+            if reason is None:
+                current.pop(key or "<turn>", None)
+            else:
+                current[key or "<turn>"] = REPORT_LINE_RE.sub("", reason)
+        return {**bucket, "pending": current, "paths": existing}
+
+    _update(scope, mutate)
+
+
 def _unscanned_paths(payload: dict) -> list[str]:
     cwd = Path(payloads.cwd(payload) or ".")
     return [str(payloads.resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]

@@ -62,6 +62,10 @@ def _session_directory(
     return candidate
 
 
+def session_directory(session_id: str, root: str | os.PathLike[str] | None = None) -> Path:
+    return _session_directory(session_id, root)
+
+
 def read_state(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> dict:

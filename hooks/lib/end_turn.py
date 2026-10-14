@@ -5,7 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from . import blocker_state, payloads, scan_input
-from .baseline import strip_committed
+from .baseline import split_fallback, strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
 from .scanner import read_scannable, scan_all
@@ -36,9 +36,9 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
         existing.append(str(path))
         text = read_scannable(path, cfg)
         if text is None:
-            rows = scan_input.fallback_findings(path)
+            rows = split_fallback(path, scan_input.fallback_findings(path), cfg)[0]
         else:
-            rows = strip_committed(path, scan_all(str(path), text, cfg), cfg)
+            rows = strip_committed(path, scan_all(str(path), text, cfg), cfg, text)
             digest = sha256(text.encode("utf-8")).hexdigest()
             rows = [{**row, "content_hash": digest} for row in rows]
         findings.extend({**row, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block")
@@ -73,6 +73,7 @@ def _residual_reasons(pending: dict[str, str], paths: list[str]) -> list[str]:
 def _scope_reason(payload: dict, cfg: dict, agent_id: str) -> str:
     session_id = payloads.session_id(payload)
     root = cfg.get("state_root")
+    cfg = {**cfg, "session_id": session_id}
     pending, paths, revision = blocker_state.details(session_id, agent_id, root)
     cwd = payloads.cwd(payload)
     findings, existing = _blocking_rows(paths, Path(cwd or "."), cfg)

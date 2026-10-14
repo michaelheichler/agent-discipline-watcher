@@ -8,13 +8,18 @@ from collections.abc import Sequence
 from pathlib import Path
 
 try:
+    from . import imported_baseline
     from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
+    from .imported_baseline import Snapshot, text_digest
     from .scanner import scan_all
 except ImportError:
+    import imported_baseline
     from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
+    from imported_baseline import Snapshot, text_digest
     from scanner import scan_all
 
 
+LENGTH_RULES = frozenset({"file_too_long", "unscannable_file"})
 BASELINE_MODES = ("git", "report", "none")
 DEFAULT_BASELINE_MODE = "report"
 GIT_TIMEOUT_SECONDS = 10
@@ -124,14 +129,50 @@ def _halves(findings: list[dict], baseline: list[dict], cfg: dict) -> tuple[list
     return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
-def split_committed(path: Path, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+def _line_count(text: str) -> int:
+    return len(text.splitlines()) or 1
+
+
+def _length_relief(halves: tuple[list[dict], list[dict]], before: str, after: str | None) -> tuple[list[dict], list[dict]]:
+    """Kept owned only for a longer file, because an inherited long file is not the agent's to split."""
+    owned, inherited = halves
+    if after is None or _line_count(after) > _line_count(before):
+        return owned, inherited
+    moved = [row for row in owned if row.get("rule") in LENGTH_RULES]
+    return [row for row in owned if row.get("rule") not in LENGTH_RULES], inherited + moved
+
+
+def _split_snapshot(path: Path, findings: list[dict], cfg: dict, snapshot: Snapshot, text: str | None) -> tuple[list[dict], list[dict]] | None:
+    if text is not None and text_digest(text) == snapshot.digest:
+        return [], findings if baseline_mode(cfg) == "report" else []
+    if snapshot.text is None:
+        return None
+    halves = _length_relief(partition(findings, scan_all(str(path), snapshot.text, cfg)), snapshot.text, text)
+    return halves[0], halves[1] if baseline_mode(cfg) == "report" else []
+
+
+def split_committed(path: Path, findings: list[dict], cfg: dict, text: str | None = None) -> tuple[list[dict], list[dict]]:
     """Compare against HEAD because blocking on findings that predate an edit would prevent incremental cleanup."""
     if not findings or baseline_mode(cfg) == "none":
         return findings, []
-    text = committed_text(path)
-    if text is None:
+    snapshot = imported_baseline.lookup(cfg, path)
+    split = None if snapshot is None else _split_snapshot(path, findings, cfg, snapshot, text)
+    if split is not None:
+        return split
+    before = committed_text(path)
+    if before is None:
         return findings, []
-    return _halves(findings, scan_all(str(path), text, cfg), cfg)
+    return _halves(findings, scan_all(str(path), before, cfg), cfg)
+
+
+def split_fallback(path: Path, rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Unscannable rows of an unchanged imported file stay advice, because the agent never wrote that file."""
+    if not rows or baseline_mode(cfg) == "none":
+        return rows, []
+    snapshot = imported_baseline.lookup(cfg, path)
+    if snapshot is None or imported_baseline.file_digest(path) != snapshot.digest:
+        return rows, []
+    return [], rows if baseline_mode(cfg) == "report" else []
 
 
 def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
@@ -143,8 +184,8 @@ def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> t
     return _halves(findings, pooled, cfg)
 
 
-def strip_committed(path: Path, findings: list[dict], cfg: dict) -> list[dict]:
-    return split_committed(path, findings, cfg)[0]
+def strip_committed(path: Path, findings: list[dict], cfg: dict, text: str | None = None) -> list[dict]:
+    return split_committed(path, findings, cfg, text)[0]
 
 
 def strip_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> list[dict]:

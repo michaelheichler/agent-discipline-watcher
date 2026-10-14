@@ -275,7 +275,7 @@ def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue
-        owned, inherited = split_committed(resolved_path, scanned, cfg)
+        owned, inherited = split_committed(resolved_path, scanned, cfg, text)
         owned_rows.extend(owned)
         inherited_rows.extend(inherited)
     return owned_rows, inherited_rows

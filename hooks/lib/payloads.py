@@ -228,24 +228,34 @@ def patch_file_paths(text: str) -> tuple[str, ...]:
     return (*headers, *moves)
 
 
-def edited_paths(payload: object) -> tuple[str, ...]:
+def edited_paths(payload: object, authored: frozenset[str] | None = None) -> tuple[str, ...]:
     """One implementation because batch and record used to diverge here, which silently broke the ledger dedup key."""
+    return split_edited_paths(payload, authored)[0]
+
+
+def split_edited_paths(payload: object, authored: frozenset[str] | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Without provenance every copy counts as written, because a caller that cannot tell must fail closed."""
     fields = exact_string_dict(payload)
     tool_input = _tool_input_from(fields)
     path = _file_path_from(tool_input)
     if path:
-        return (path,)
+        return (path,), ()
     text = _edit_text_from(tool_input)
     found = patch_file_paths(text)
-    if _exact_string(fields, "tool_name").lower() == "bash":
-        try:
-            from . import pre_bash
-        except ImportError:
-            import pre_bash
-        from lib.temp_scope import temp_copy_destinations
-        copies = temp_copy_destinations(text, _exact_string(fields, "cwd") or None)
-        found = (*found, *pre_bash.write_paths(text), *copies)
-    return found
+    if _exact_string(fields, "tool_name").lower() != "bash":
+        return found, ()
+    try:
+        from . import pre_bash
+    except ImportError:
+        import pre_bash
+    from lib import temp_copies
+    cwd = _exact_string(fields, "cwd") or None
+    writes = tuple(pre_bash.write_paths(text))
+    if authored is None:
+        return (*found, *writes, *temp_copies.temp_copy_destinations(text, cwd)), ()
+    own = authored | {temp_copies.source_key(write, cwd) for write in writes}
+    copies, imported = temp_copies.copy_landings(text, cwd, frozenset(own))
+    return (*found, *writes, *copies), tuple(imported)
 
 
 def removed_paths(payload: object) -> tuple[str, ...]:

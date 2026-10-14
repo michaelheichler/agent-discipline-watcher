@@ -296,7 +296,7 @@ def _scan_path(path: Path, cfg: dict) -> list[dict]:
     if text is None:
         return []
     digest = sha256(text.encode("utf-8")).hexdigest()
-    findings = strip_committed(path, scan_all(str(path), text, cfg), cfg)
+    findings = strip_committed(path, scan_all(str(path), text, cfg), cfg, text)
     return [
         Finding.from_dict(finding).with_path(str(path)).with_content_hash(digest).to_dict()
         for finding in findings
@@ -438,12 +438,8 @@ def _update_blocker_state(
     scope: blocker_state.BlockerScope, verdict: _BatchVerdict
 ) -> None:
     paths = [str(path) for _call, _raw, path in verdict.entries]
-    blocker_state.touch_paths(scope, paths)
-    if verdict.kind == "block":
-        blocker_state.set_pending(scope, "<batch>", verdict.reason)
-    else:
-        blocker_state.clear_pending(scope, "<batch>")
-    blocker_state.clear_pending(scope, UNDECIDABLE_KEY)
+    reason = verdict.reason if verdict.kind == "block" else None
+    blocker_state.apply_paths(scope, paths, {"<batch>": reason, UNDECIDABLE_KEY: None})
 
 
 def _batch_gate(payload: dict, cfg: dict, session_id: str) -> Callable[[str], dict[str, object]]:

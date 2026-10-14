@@ -54,7 +54,7 @@ class ShapedWrite:
 def _overwrite_shape_findings(shape: ShapedWrite) -> tuple[list[dict], list[dict]]:
     findings = _stamped_findings(shape.write.path, shape.body, shape.config)
     return split_committed(
-        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}
+        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}, shape.body
     )
 
 
