@@ -20,7 +20,6 @@ from .temp_scope import outside_project_temp
 
 STOP_SCAN_SECONDS = 7.0
 MAX_NAMED_SKIPPED = 3
-MIN_TIMER_SECONDS = 0.001
 
 
 @dataclass(slots=True)
@@ -72,21 +71,20 @@ def _expire(_signum: int, _frame: object) -> None:
     raise OutOfTime
 
 
-def _rearm(outer: tuple[float, float], started: float) -> None:
-    if outer[0] > 0:
-        left = max(outer[0] - (time.monotonic() - started), MIN_TIMER_SECONDS)
-        signal.setitimer(signal.ITIMER_REAL, left, outer[1])
+def _alarm_free() -> bool:
+    """Because replacing an armed outer timer would postpone its earlier deadline, the size check alone bounds the scan then."""
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+        return False
+    return signal.getitimer(signal.ITIMER_REAL)[0] == 0
 
 
 @contextmanager
 def _alarm(until: float) -> Iterator[None]:
     """Because scan_all has no checkpoint, only a timer can stop it at the deadline, and SIGALRM reaches the main thread alone."""
     left = remaining(until)
-    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread() or math.isinf(left):
+    if math.isinf(left) or not _alarm_free():
         yield
         return
-    started = time.monotonic()
-    outer = signal.getitimer(signal.ITIMER_REAL)
     previous = signal.signal(signal.SIGALRM, _expire)
     try:
         signal.setitimer(signal.ITIMER_REAL, left)
@@ -94,7 +92,6 @@ def _alarm(until: float) -> Iterator[None]:
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
-        _rearm(outer, started)
 
 
 def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:

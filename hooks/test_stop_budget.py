@@ -19,6 +19,9 @@ OVERSIZED_CURRENT_BYTES = 9_900_000
 RAISED_SCAN_BYTES = 20_000_000
 BUSY_SCAN_SECONDS = 3.0
 SLOW_RECOVERY_SECONDS = 0.5
+BUSY_CURRENT_SCAN_SECONDS = 0.2
+OUTER_ALARM_SECONDS = 0.05
+OUTER_ALARM_SLACK_SECONDS = 0.05
 LARGE_PROSE = "The hook reads the file. It scans each line and records what it finds for the agent.\n\n"
 DASHED_LINE = "The scan ends here — and the agent sees it.\n"
 
@@ -251,6 +254,32 @@ def test_a_deadline_during_a_slow_state_recovery_lets_the_restore_finish(tmp_pat
     stop_scan.rescan([str(target)], tmp_path, {"session_id": "s1", "state_root": root}, time.monotonic() + BUDGET_SECONDS)
 
     assert "Fix module.py" in state_file.read_text(encoding="utf-8")
+
+
+def test_an_earlier_outer_alarm_fires_on_time_during_a_rescan(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    original = stop_scan.scan_all
+
+    def busy(path: str, text: str, config: dict) -> list[dict]:
+        ends = time.monotonic() + BUSY_CURRENT_SCAN_SECONDS
+        while time.monotonic() < ends:
+            pass
+        return original(path, text, config)
+
+    monkeypatch.setattr(stop_scan, "scan_all", busy)
+    fired: list[float] = []
+    previous = signal.signal(signal.SIGALRM, lambda _signum, _frame: fired.append(time.monotonic()))
+    started = time.monotonic()
+    signal.setitimer(signal.ITIMER_REAL, OUTER_ALARM_SECONDS)
+    try:
+        scanned = stop_scan.rescan([str(target)], tmp_path, {}, started + BUDGET_SECONDS)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+    assert scanned.skipped == []
+    assert fired[0] - started < OUTER_ALARM_SECONDS + OUTER_ALARM_SLACK_SECONDS
 
 
 def test_a_finished_rescan_leaves_no_alarm_armed(tmp_path: Path) -> None:
