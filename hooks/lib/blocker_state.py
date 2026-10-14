@@ -184,7 +184,8 @@ def hold_undecidable(payload: object, config: object, key: str, reason: str) -> 
     try:
         paths = _unscanned_paths(fields)
         if paths:
-            apply_paths(target, paths, {key: reason})
+            set_pending(target, key, reason)
+            touch_paths(target, paths)
     except Exception as state_exc:
         sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
 

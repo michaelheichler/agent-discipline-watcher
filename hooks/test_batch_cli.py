@@ -96,7 +96,7 @@ class BatchBlockTests(unittest.TestCase):
     def test_an_undecidable_batch_still_blocks_when_state_write_fails(self) -> None:
         payload = {"session_id": "s1"}
         with mock.patch.object(batch, "_run", side_effect=RuntimeError("broken gate")):
-            with mock.patch.object(blocker_state, "apply_paths", side_effect=OSError("read only")):
+            with mock.patch.object(blocker_state, "set_pending", side_effect=OSError("read only")):
                 response = batch.run(payload, {})
         self.assertEqual(response["decision"], "block")
         self.assertIn("broken gate", response["reason"])
