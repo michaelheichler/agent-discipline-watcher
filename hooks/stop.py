@@ -29,11 +29,13 @@ class _StopTurn(NamedTuple):
 
 def _verdict(payload: dict, cfg: dict, turn_id: str = "") -> dict:
     outcome = stop_outcome(payload, cfg, hook="stop", turn_id=turn_id)
+    recovered = session_state.take_recovery_notice(payloads.session_id(payload), cfg.get("state_root"))
     if outcome.reason:
-        return stop_block(outcome.reason)
+        return {**stop_block(outcome.reason), **(system_message(recovered) if recovered else {})}
     if host.is_codex_host():
         return {}
-    notice = "\n".join(part for part in (outcome.notice, foreign_scope_notice(payload, cfg)) if part)
+    parts = (recovered, outcome.notice, foreign_scope_notice(payload, cfg))
+    notice = "\n".join(part for part in parts if part)
     return system_message(notice) if notice else {}
 
 

@@ -9,6 +9,11 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
+
 STATE_FILENAME = "state.json"
 LOCK_FILENAME = ".lock"
 DATA_DIRNAME = ".adw"
@@ -69,16 +74,10 @@ def session_directory(session_id: str, root: str | os.PathLike[str] | None = Non
 def read_state(
     session_id: str, root: str | os.PathLike[str] | None = None
 ) -> dict:
-    path = _session_directory(session_id, root) / STATE_FILENAME
     try:
-        text = path.read_text(encoding="utf-8")
-    except (FileNotFoundError, IsADirectoryError):
+        return read_state_strict(session_id, root)
+    except (IsADirectoryError, ValueError, UnicodeDecodeError):
         return {}
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def read_state_strict(
@@ -86,13 +85,14 @@ def read_state_strict(
 ) -> dict:
     path = _session_directory(session_id, root) / STATE_FILENAME
     try:
-        text = path.read_text(encoding="utf-8")
+        return state_recovery.parsed(path)
     except FileNotFoundError:
         return {}
-    data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError(f"invalid session state object: {path}")
-    return data
+    except (ValueError, UnicodeDecodeError):
+        recovered = state_recovery.restored(path)
+        if recovered is None:
+            raise
+        return recovered
 
 
 def write_state(
@@ -100,24 +100,29 @@ def write_state(
     data: dict,
     root: str | os.PathLike[str] | None = None,
 ) -> None:
-    """Replace the file atomically because separate hook processes must never observe partial JSON."""
+    """Write the backup second, so it always holds the last state that was written whole."""
     directory = _session_directory(session_id, root)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / STATE_FILENAME
     payload = json.dumps(data, ensure_ascii=True)
-    descriptor, tmp_name = tempfile.mkstemp(
-        dir=directory, prefix=".state.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    state_recovery.atomic_write(path, payload)
+    state_recovery.atomic_write(state_recovery.backup_path(path), payload)
+
+
+def take_recovery_notice(session_id: str, root: str | os.PathLike[str] | None = None) -> str:
+    """Claimed under the lock, so Stop and SubagentStop at once still show it a single time."""
+    if state_recovery.RECOVERY_KEY not in read_state(session_id, root):
+        return ""
+    claimed: list[str] = []
+
+    def mutate(state: dict) -> dict:
+        notice = state.get(state_recovery.RECOVERY_KEY)
+        if isinstance(notice, str):
+            claimed.append(notice)
+        return {key: value for key, value in state.items() if key != state_recovery.RECOVERY_KEY}
+
+    update_state(session_id, mutate, root)
+    return claimed[0] if claimed else ""
 
 
 def _update_state_with_lock(
