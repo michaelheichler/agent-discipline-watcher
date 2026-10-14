@@ -26,6 +26,24 @@ def test_sentences_below_the_word_floor_are_not_scored() -> None:
     assert prose_sentences(text) == ((3, "This sentence carries enough words to be scored at all."),)
 
 
+def test_each_sentence_reports_the_line_it_starts_on() -> None:
+    text = (
+        "Intro\n\n"
+        "The first sentence sits here. The second sentence starts here and\n"
+        "spans onto the next line.\n"
+        "The third sentence opens a line. The fourth sentence starts mid line.\n"
+    )
+
+    assert [number for number, _sentence in prose_sentences(text)] == [3, 3, 5, 5]
+
+
+def test_a_long_paragraph_keeps_every_sentence_on_its_own_line() -> None:
+    lines = range(1, slop_semantic.MAX_SENTENCES + 1)
+    text = "\n".join(f"Line {number} ends right here." for number in lines)
+
+    assert [number for number, _sentence in prose_sentences(text)] == list(lines)
+
+
 def test_a_match_needs_the_threshold() -> None:
     sentences = ((1, "aligned"), (2, "orthogonal"))
     vectors = ((1.0, 0.0), (0.0, 1.0))

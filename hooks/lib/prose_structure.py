@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from collections.abc import Iterator
 from pathlib import PurePath
 from statistics import fmean, pstdev
@@ -124,13 +125,10 @@ def _sentences(paragraph) -> Iterator[tuple[int, str]]:
         yield _source_line(offsets, start), prose[start:]
 
 
-def _source_line(offsets, start: int) -> int:
-    line_number = offsets[0][1]
-    for offset, number in offsets:
-        if offset > start:
-            break
-        line_number = number
-    return line_number
+def _source_line(offsets: list[tuple[int, int]], start: int) -> int:
+    """Bisected, because a scan from the first line for every sentence made a long paragraph quadratic."""
+    index = bisect_right(offsets, (start, float("inf"))) - 1
+    return offsets[max(index, 0)][1]
 
 
 def _sentence_word_counts(paragraph: Paragraph) -> list[int]:
