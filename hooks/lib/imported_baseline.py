@@ -5,6 +5,7 @@ import hashlib
 import os
 import tempfile
 from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO
 
@@ -16,8 +17,9 @@ except ImportError:
 STATE_KEY = "imported_baseline"
 STORE_DIRNAME = "imported"
 MAX_SNAPSHOT_BYTES = 1_000_000
-MAX_SNAPSHOTS = 400
+MAX_SNAPSHOTS = 1000
 GIT_BASELINE = ""
+NEW_FILE = "new"
 _STATE_CACHE: dict[tuple[str, str], tuple[tuple[int, int], dict[str, str]]] = {}
 
 
@@ -148,12 +150,34 @@ def snapshot_many(session_id: str, paths: list[str], root: str | os.PathLike[str
     return _mark(session_id, marks, root)
 
 
-def mark_git_baseline(session_id: str, path: str, root: str | os.PathLike[str] | None) -> None:
-    _mark(session_id, {path_key(path): GIT_BASELINE}, root)
+def _first_mark(path: Path, store: Path, has_git: Callable[[Path], bool]) -> str | None:
+    if not path.is_file():
+        return NEW_FILE
+    if has_git(path):
+        return GIT_BASELINE
+    return _captured(path, store)
 
 
-def known(session_id: str, path: str, root: str | os.PathLike[str] | None) -> bool:
-    return path_key(path) in entries(session_id, root)
+def note_first_seen(session_id: str, paths: list[str], root: str | os.PathLike[str] | None, has_git: Callable[[Path], bool]) -> None:
+    """Taken before the first edit, because an untracked file has no other record of the text the agent found."""
+    if not session_id:
+        return
+    seen = entries(session_id, root)
+    store = _store(session_id, root)
+    marks: dict[str, str] = {}
+    for key in dict.fromkeys(path_key(raw) for raw in paths):
+        mark = None if key in seen else _first_mark(Path(key), store, has_git)
+        if mark is not None:
+            marks[key] = mark
+    _mark(session_id, marks, root)
+
+
+def note_written(session_id: str, paths: list[str], root: str | os.PathLike[str] | None) -> None:
+    """Claimed after a write nobody saw first, because a later first sight must not baseline the agent's own text."""
+    if not session_id:
+        return
+    seen = entries(session_id, root)
+    _mark(session_id, {key: NEW_FILE for key in map(path_key, paths) if key not in seen}, root)
 
 
 def lookup(cfg: dict, path: str | os.PathLike[str]) -> Snapshot | None:
@@ -165,7 +189,7 @@ def lookup(cfg: dict, path: str | os.PathLike[str]) -> Snapshot | None:
         digest = entries(session_id, root).get(path_key(path))
     except (OSError, ValueError):
         return None
-    if not digest:
+    if not digest or digest == NEW_FILE:
         return None
     try:
         text = (_store(session_id, root) / digest).read_bytes().decode("utf-8", errors="replace")

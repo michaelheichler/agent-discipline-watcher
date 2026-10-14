@@ -295,6 +295,8 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
         response = _response(verdict, inherited, report_cfg, _imported_notice(context, report_cfg))
         if projected["session_id"]:
             _clear_blocker_state(context.blocker_scope, context.tracked_paths, verdict)
+            project = [path for path in context.tracked_paths if not outside_project_temp(path, context.cwd)]
+            imported_baseline.note_written(projected["session_id"], project, context.journal.state_root)
         return response
 
     return gate
