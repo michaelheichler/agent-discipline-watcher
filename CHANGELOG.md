@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.27.0 (2026-10-15)
+
+### Security
+
+- **A failed `cd` no longer turns a project edit into a scratch edit (security fix).** `cd /tmp/locked; sed -i ... notes.md` passed as scratch when the directory existed but the shell could not enter it, so the shell stayed in the project and edited `notes.md` unchecked. A leading `cd` now counts only when `&&` follows it and the directory grants search permission. If either condition fails, the gate checks a relative target in both directories.
+- **An in-place edit that leaves a backup loses the scratch exemption (security fix).** `sed -i.bak`, `--in-place=.bak`, `perl -pi.bak`, and the BSD form with the suffix as a separate word all write a backup file that the gate never checked. Any non-empty suffix now blocks the edit as `inplace_edit_write`, while `sed -i ''` still runs.
+- **A quoted environment assignment no longer hides the interpreter (security fix).** `env 'LD_PRELOAD=x.so' python3 -I -S -c ...` read the quoted word as the command and never reached Python. The gate now decodes the word first, so the startup checks apply, and a write behind `env 'FOO=1'` blocks.
+- **A Unicode escape in `node -e` blocks (security fix).** A reflective name such as `constructor` written with `\u` escapes slipped past the name check, so any `\u` escape in a node payload now blocks.
+
+### Fixed in session state and merges
+
+- **Session state recovery runs under the session lock.** A recovery that ran from an unlocked read could replace a newer state, written by another hook in the meantime, with an older backup and drop its blockers.
+- **A merge commit stamped in the session's start second is not trusted.** Git timestamps have whole seconds, so a commit made later in that second looked older than the session.
+- **A session that began before 0.26.0 keeps the old merge rule.** The next prompt used to stamp a start time into any old session, which switched it to the new rule.
+
+### Fixed in baselines and ownership
+
+- **Edit and `apply_patch` get the same inherited long-file relief as Write.** A no-growth edit of an inherited generated long file used to block.
+- **A Bash write takes a first-seen snapshot.** Appending clean text to an untracked file made its old findings the agent's own.
+- **A first-seen snapshot keeps its full text at any size and for any number of files.** Snapshots above 1 MB kept only a hash, and new snapshots stopped after 1,000 files, so later edits could not tell old findings from new ones. Both limits are gone. ADW gives a hash-only snapshot from 0.26.0 its text before the first edit, as long as the file still matches the hash.
+- **The record cap refuses only a new scratch path.** At 200,000 recorded paths, the gate also refused a rewrite of a path the record already held.
+- **Batch tracking skips imported copies.** Copied third-party files could use up the 500-path allowance and push the agent's own files out.
+
+### Fixed in review output and speed
+
+- **Every Luna and Sonnet block ends with its report path.** A short block used to omit it.
+- **Finding the source line of a sentence no longer slows quadratically.** 8,000 lines take 0.004 seconds instead of 0.25.
 
 ### Changed
 
