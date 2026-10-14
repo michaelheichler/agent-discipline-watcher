@@ -5,7 +5,7 @@ import re
 
 from .python_imports import imports_are_trusted
 from .shell_syntax import (
-    DYNAMIC_RE, _bare, _is_quoted, _is_unquoted_assignment, _payload_command_index, _skip_leading_redirect,
+    DYNAMIC_RE, _assignment_word, _bare, _is_quoted, _payload_command_index, _skip_leading_redirect,
 )
 
 NO_VALUE_OPTIONS = frozenset("bBdEhIOPqRsSuvVx")
@@ -32,12 +32,13 @@ def isolated_python(segment: list[str] | tuple[str, ...]) -> bool:
     if options is None or not {"I", "S"} <= options:
         return False
     prefix = list(segment[:_payload_command_index(list(segment))])
-    return all(_harmless_assignment(token) for token in prefix if _is_unquoted_assignment(token))
+    assignments = (_assignment_word(token) for token in prefix)
+    return all(_harmless_assignment(word) for word in assignments if word is not None)
 
 
-def _harmless_assignment(token: str) -> bool:
-    name, _, value = token.partition("=")
-    return not STARTUP_VARIABLE_RE.match(name) and not DYNAMIC_RE.search(value)
+def _harmless_assignment(word: str) -> bool:
+    name, _, _ = word.partition("=")
+    return not STARTUP_VARIABLE_RE.match(name) and not DYNAMIC_RE.search(word)
 
 
 def trusted_python_startup(segment: list[str] | tuple[str, ...], cwd: str | None = None) -> bool:
@@ -70,8 +71,9 @@ def _startup_step(wrapper: str, token: str) -> tuple[str, int] | None:
         return _startup_option(wrapper, token)
     if wrapper == "timeout":
         return ("", 1) if DURATION_RE.fullmatch(token) else None
-    if _is_unquoted_assignment(token):
-        return (wrapper, 1) if _harmless_assignment(token) else None
+    assignment = _assignment_word(token)
+    if assignment is not None:
+        return (wrapper, 1) if _harmless_assignment(assignment) else None
     return (token, 1) if token in STARTUP_FLAGS else None
 
 

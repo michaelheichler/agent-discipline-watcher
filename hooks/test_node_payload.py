@@ -99,6 +99,18 @@ def test_a_reflective_node_route_to_a_module_blocks(command: str) -> None:
 
 
 @pytest.mark.parametrize("command", [
+    """node -e '[].map.\\u0063onstructor("return 1")()'""",
+    """node -e '[].map.\\u{63}onstructor("return 1")()'""",
+    """node -p "Math.\\u0063onstructor.name\"""",
+])
+def test_a_reflective_name_spelled_with_a_unicode_escape_blocks(command: str) -> None:
+    result = verdict(command)
+
+    assert result.get("decision") == "block"
+    assert "inline_interpreter_write" in result["reason"]
+
+
+@pytest.mark.parametrize("command", [
     "node -e 'console.log(1+2)'",
     """node -p 'JSON.parse("{\\"a\\": [1]}").a[0]'""",
     "node -p process.version",

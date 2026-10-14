@@ -50,10 +50,17 @@ def _plain_json_file(path: str) -> bool:
 
 def node_reflection(payload: str) -> bool:
     """Literal keys read as dot access first, because process['binding'] reaches the same module as process.binding."""
+    if _has_unicode_escape(payload):
+        return True
     dotted = LITERAL_KEY_RE.sub(lambda match: "." + match.group(2), payload)
     return NODE_REFLECTION_RE.search(dotted) is not None or any(
         _bracket_hides_name(payload, match.start()) for match in re.finditer(r"\[", payload)
     )
+
+
+def _has_unicode_escape(payload: str) -> bool:
+    """Because JavaScript reads \\u0063onstructor as constructor, a name check on the raw spelling cannot see it."""
+    return "\\u" in payload
 
 
 def _bracket_hides_name(payload: str, start: int) -> bool:
