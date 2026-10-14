@@ -88,6 +88,12 @@ Decided accuracy clears 0.98 for both languages at every tested N, down to N = 2
 
 `three_item_list` fires on 278 of 60000 human sentences, which is ordinary writing rather than slop, so the regex alone cannot speak. Behind the sonnet reader it clears 121 held-out candidates at 1.0000 precision, 0 false positives and 0.5422 recall. That reader runs on the async route, so it never delays a write and never decides a block.
 
+## Parataxis
+
+`measure_parataxis.py` runs `choppy_sentences` and `de_parataxis` over both paragraph corpora through the scanner's own block split, so list items and headings drop out as they do in a real scan. It writes the hit rate per 1000 paragraphs to `parataxis_hit_rate.json` and draws 40 hits per language under a fixed seed into `parataxis_sample.jsonl`. `--sweep` prints the rate for each threshold combination, and `--corpus-dir` points at a checkout that holds the gitignored corpora. The shipped thresholds fire on 1.25 English and 2.68 German human paragraphs per 1000, and on 0.24 and 0.17 assistant paragraphs.
+
+`parataxis_precision.py export` writes the blind items with hashed ids. Sonnet and GPT-6 Luna label each hit by whether a careful editor would join the flagged sentences, and Opus decides the 20 rows where they split. `parataxis_precision.py score` writes `parataxis_precision.json`. English holds 7 of 40, a precision of 0.175, with 7 of 10 on encyclopedia prose and 0 of 26 on literature. German holds 22 of 40, a precision of 0.55, with 22 of 36 on encyclopedia prose. Both fall under the 0.70 bar, so both rules ship off. A four-sentence run without a pronoun pointing back held 2 of 17, so the pronoun chain carries what precision the rule has.
+
 ## Response quality
 
 The harness compares response quality, not just length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.

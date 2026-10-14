@@ -35,19 +35,18 @@ def test_the_same_dash_still_reports_in_english() -> None:
     assert _rules(f"We build the house – and it takes time, {ENGLISH_TAIL}") == ["banned_dash"]
 
 
-def test_a_long_german_sentence_reaches_the_document_rules_through_the_scanner() -> None:
-    german = " ".join([GERMAN_FILLER.rstrip(".")] * 3) + "."
-    english = " ".join([ENGLISH_TAIL.rstrip(".")] * 3) + "."
+def test_a_german_run_reaches_the_german_parataxis_rule_and_not_the_english_one() -> None:
+    rules = _rules("Wir haben eine Pumpe entwickelt. Sie misst den Druck. Sie speichert jeden Wert.")
 
-    assert "de_sentence_length" in _rules(german)
-    assert "de_sentence_length" not in _rules(english)
+    assert "de_parataxis" in rules
+    assert "choppy_sentences" not in rules
 
 
-def test_the_english_rules_leave_german_paragraphs_alone() -> None:
-    german = " ".join([GERMAN_FILLER.rstrip(".")] * 3) + "."
+def test_an_english_run_reaches_the_english_parataxis_rule_and_not_the_german_one() -> None:
+    rules = _rules("The hook reads the file. It checks every rule. It writes a report.")
 
-    assert "long_sentence" not in _rules(german, {"sentence_word_cap": 20})
-    assert "long_sentence" in _rules(" ".join([ENGLISH_TAIL.rstrip(".")] * 3) + ".", {"sentence_word_cap": 20})
+    assert "choppy_sentences" in rules
+    assert "de_parataxis" not in rules
 
 
 @pytest.mark.parametrize("route", ["Puttgarden–Rødbyhavn", "63 v.–23 n. Chr."])

@@ -29,7 +29,8 @@ GERMAN_PATTERN_RUBRIC = (
 PATTERN_RUBRIC_VERSIONS = {"en": RUBRIC_VERSION, "de": GERMAN_RUBRIC_VERSION}
 DOCUMENT_RUBRIC = (
     "Coherence: hidden argument order, missing paragraph bridges, unintroduced referents, and contradictions. "
-    "Style: repeated paragraph shapes, register shifts, buried subjects, and stock openers or closers. "
+    "Style: repeated paragraph shapes, register shifts, buried subjects, rows of short telegram-style main clauses "
+    "that one joined sentence would carry, and stock openers or closers. Never ask to split a clear sentence. "
     "Quote the sentence you mean exactly."
 )
 LANGUAGE_RUBRIC = "Name the language of each paragraph. Answer de for German and en for English."

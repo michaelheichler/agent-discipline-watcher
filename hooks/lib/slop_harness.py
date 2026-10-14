@@ -124,7 +124,7 @@ _SURFACE_REASONS = {
     ),
 }
 _PROSE_RULE_SCOPES = {
-    "long_sentence": RuleScope.LINE,
+    "choppy_sentences": RuleScope.DOCUMENT,
     "oversized_list": RuleScope.DOCUMENT,
     "low_sentence_variance": RuleScope.DOCUMENT,
     "uniform_paragraph_endings": RuleScope.DOCUMENT,

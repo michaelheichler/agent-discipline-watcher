@@ -20,7 +20,7 @@ GERMAN = "de"
 PER = 1000
 PUNCTUATION_RULES = ("quote_marks", "genitive_apostrophe", "typed_ellipsis", "banned_dash", "spaced_hyphen")
 DOCUMENT_RULES = (
-    "de_sentence_length", "de_uniform_rhythm", "de_uniform_paragraphs",
+    "de_parataxis", "de_uniform_rhythm", "de_uniform_paragraphs",
     "de_repeated_connector", "de_long_compound", "dash_cluster",
 )
 

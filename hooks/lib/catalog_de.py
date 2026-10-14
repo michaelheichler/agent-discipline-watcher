@@ -80,10 +80,14 @@ RULES: dict[str, GermanEntry] = {
         "Meldet deutschen Text, der den Gedankenstrich über die Dichtegrenze hinaus nutzt",
         "Ersetz einige Gedankenstriche durch Komma, Punkt oder Doppelpunkt.",
     ),
-    "de_sentence_length": GermanEntry(
-        "Deutscher Satz zu lang",
-        "Meldet einen deutschen Satz mit mehr als zwanzig Wörtern",
-        "Teil den Satz an einer Nebensatzgrenze.",
+    "de_parataxis": GermanEntry(
+        "Telegrammstil",
+        "Meldet eine Reihe kurzer Hauptsätze ohne Verbindung, die ein Komma, weil, die oder und verbinden würde",
+        "Verbinde die Sätze, die zusammengehören: mit einem Nebensatz (weil, wenn, sodass, nachdem), "
+        "einem Relativsatz (der, die, das), einer Apposition, einer Partizip- oder Infinitivgruppe "
+        "oder mit und und aber. Geviertstrich, Halbgeviertstrich und Semikolon bleiben verboten, "
+        "also verbindet ein Komma oder eine Konjunktion. Beispiel: „Wir haben eine Pumpe entwickelt. "
+        "Sie misst den Druck.“ wird zu „Wir haben eine Pumpe entwickelt, die den Druck misst.“",
     ),
     "de_uniform_rhythm": GermanEntry(
         "Gleichförmiger Satzrhythmus",
@@ -235,10 +239,11 @@ RULES: dict[str, GermanEntry] = {
         "Streicht every, always, never und nothing, wo die Aussage nicht absolut gilt",
         "Nenn den tatsächlichen Umfang oder die Zahl.",
     ),
-    "long_sentence": GermanEntry(
-        "Satz über der Wortgrenze",
-        "Meldet einen Satz über der Wortgrenze, die standardmäßig bei 40 Wörtern liegt",
-        "Teil den Satz in zwei Sätze.",
+    "choppy_sentences": GermanEntry(
+        "Abgehackte Sätze",
+        "Meldet eine Reihe kurzer Hauptsätze ohne Verbindung im englischen Text",
+        "Verbinde die Sätze, die zusammengehören, mit einem Nebensatz, einem Relativsatz oder und. "
+        "Geviertstrich, Halbgeviertstrich und Semikolon bleiben verboten.",
     ),
     "low_sentence_variance": GermanEntry(
         "Gleich lange Sätze",

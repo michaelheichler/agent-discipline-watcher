@@ -1,0 +1,70 @@
+{
+  "question": "Would a careful editor of reader-facing prose join at least two of the flagged sentences into one, with a subordinate clause, a relative clause, an apposition, a participle or infinitive group, or and or but, because the split reads as choppy telegram style? Answer violating if yes. Answer clean if the split reads well as it stands, or the text is not running prose.",
+  "raters": [
+    "sonnet",
+    "luna",
+    "opus"
+  ],
+  "rules": {
+    "choppy_sentences": {
+      "bar": 0.85,
+      "by_genre": {
+        "ai/arena": {
+          "n": 3,
+          "violating": 0
+        },
+        "ai/wildchat": {
+          "n": 1,
+          "violating": 0
+        },
+        "human/encyclopedia": {
+          "n": 10,
+          "violating": 7
+        },
+        "human/literature": {
+          "n": 26,
+          "violating": 0
+        }
+      },
+      "human_per_1000_paragraphs": 1.25,
+      "kappa": 0.7541,
+      "n": 40,
+      "precision": 0.175,
+      "reason": "lower bound 0.09 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "violating": 7,
+      "wilson_95": [
+        0.0875,
+        0.3195
+      ]
+    },
+    "de_parataxis": {
+      "bar": 0.85,
+      "by_genre": {
+        "ai/wildchat": {
+          "n": 1,
+          "violating": 0
+        },
+        "human/encyclopedia": {
+          "n": 36,
+          "violating": 22
+        },
+        "human/literature": {
+          "n": 3,
+          "violating": 0
+        }
+      },
+      "human_per_1000_paragraphs": 2.679,
+      "kappa": 0.2056,
+      "n": 40,
+      "precision": 0.55,
+      "reason": "lower bound 0.40 sits under the 0.85 bar",
+      "recommendation": "observe",
+      "violating": 22,
+      "wilson_95": [
+        0.3983,
+        0.6929
+      ]
+    }
+  }
+}

@@ -48,7 +48,8 @@ SYSTEM_PROMPT = (
     "Coherence: an order that hides the argument, a missing bridge between paragraphs, "
     "a referent used before it is introduced, a claim the document later contradicts.\n"
     "Style: a paragraph shape repeated until it reads as a tic, a register that shifts without reason, "
-    "a sentence whose subordination buries its subject, a stock opener or closer.\n"
+    "a sentence whose subordination buries its subject, a row of short telegram-style main clauses "
+    "that one joined sentence would carry, a stock opener or closer. Never ask to split a clear sentence.\n"
     "Quote the sentence you mean, exactly as it appears.\n"
     "Reply with a JSON array and nothing else, at most six objects, most serious first: "
     '[{"quote": "<exact sentence>", "problem": "<at most 20 words>", "fix": "<at most 20 words>"}].\n'

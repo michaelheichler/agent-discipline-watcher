@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from lib import catalog, config, families
+from lib import catalog, config, configure_policy, families
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -37,7 +37,7 @@ def test_the_catalog_names_no_rule_the_config_dropped() -> None:
 def test_every_family_and_threshold_carries_an_entry() -> None:
     """Cover the other two screens because they render raw keys today."""
     assert sorted(catalog.FAMILIES) == sorted(families.FAMILIES)
-    assert sorted(catalog.THRESHOLDS) == ["list_item_cap", "max_rows", "sentence_word_cap"]
+    assert sorted(catalog.THRESHOLDS) == sorted(configure_policy.THRESHOLD_KEYS)
 
 
 def test_every_state_reads_as_a_consequence() -> None:

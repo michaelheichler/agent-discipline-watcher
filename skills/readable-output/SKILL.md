@@ -23,7 +23,7 @@ Five ADHD facts drive the action-focused rules below:
 
 Autistic readers should not have to infer hidden subtext. The double empathy problem favors literal language without idiom.
 
-Dyslexic readers and readers who use English as an additional language benefit from short sentences and plain words.
+Dyslexic readers and readers who use English as an additional language benefit from plain words and sentences that carry one clear thought each. A clear thought often needs a joined sentence, so link related clauses with because, which, or and instead of chopping them into a row of telegram-style fragments.
 
 ## Rules
 

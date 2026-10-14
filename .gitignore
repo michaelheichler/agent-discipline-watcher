@@ -38,6 +38,11 @@ evals/corpus_paragraphs_de.jsonl
 evals/german_static_hits.jsonl
 evals/german_static_items/
 
+# The parataxis rater inputs quote the paragraph corpora.
+# Rebuild with: python3 evals/parataxis_precision.py export
+evals/parataxis_items.jsonl
+evals/parataxis_disputes.jsonl
+
 # Third-party sentences again, rebuilt byte for byte from the corpus above.
 # Rebuild with: python3 evals/build_pattern_benchmark.py
 evals/benchmark_patterns.jsonl

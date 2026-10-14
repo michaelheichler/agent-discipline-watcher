@@ -23,7 +23,6 @@ const CONFIG_VALUE_KEYS = [
   "english",
   "clean_code",
   "max_rows",
-  "sentence_word_cap",
   "list_item_cap",
   "adw_model",
   "exempt_paths",
@@ -222,7 +221,7 @@ function copyKnownValues(
       if (typeof value === "boolean") output[key] = value;
       continue;
     }
-    if (["max_rows", "sentence_word_cap", "list_item_cap"].includes(key)) {
+    if (["max_rows", "list_item_cap"].includes(key)) {
       if (typeof value === "number" && Number.isSafeInteger(value)) output[key] = value;
       continue;
     }

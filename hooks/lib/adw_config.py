@@ -20,7 +20,7 @@ _DURATION_RE = re.compile(r"^([1-9][0-9]*)([mh])$")
 
 def _rule_names(settings: dict) -> list[str]:
     listed = set(config.DEFAULTS["rule_gates"]) | set(config.gate_map(settings, "rule_gates"))
-    return sorted(listed)
+    return sorted(listed - config.RETIRED_RULES)
 
 
 def _changed_rules(settings: dict) -> list[str]:

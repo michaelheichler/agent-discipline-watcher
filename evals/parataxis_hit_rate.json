@@ -1,0 +1,77 @@
+{
+  "rules": {
+    "choppy_sentences": {
+      "corpus": "corpus_paragraphs.jsonl",
+      "rates": {
+        "ai": {
+          "hits": 6,
+          "paragraphs": 24813,
+          "per_1000": 0.242
+        },
+        "ai/arena": {
+          "hits": 4,
+          "paragraphs": 14239,
+          "per_1000": 0.281
+        },
+        "ai/wildchat": {
+          "hits": 2,
+          "paragraphs": 10574,
+          "per_1000": 0.189
+        },
+        "human": {
+          "hits": 49,
+          "paragraphs": 39215,
+          "per_1000": 1.25
+        },
+        "human/encyclopedia": {
+          "hits": 11,
+          "paragraphs": 18014,
+          "per_1000": 0.611
+        },
+        "human/literature": {
+          "hits": 38,
+          "paragraphs": 21201,
+          "per_1000": 1.792
+        }
+      }
+    },
+    "de_parataxis": {
+      "corpus": "corpus_paragraphs_de.jsonl",
+      "rates": {
+        "ai": {
+          "hits": 3,
+          "paragraphs": 17952,
+          "per_1000": 0.167
+        },
+        "ai/wildchat": {
+          "hits": 3,
+          "paragraphs": 17952,
+          "per_1000": 0.167
+        },
+        "human": {
+          "hits": 61,
+          "paragraphs": 22773,
+          "per_1000": 2.679
+        },
+        "human/encyclopedia": {
+          "hits": 53,
+          "paragraphs": 19401,
+          "per_1000": 2.732
+        },
+        "human/literature": {
+          "hits": 8,
+          "paragraphs": 3372,
+          "per_1000": 2.372
+        }
+      }
+    }
+  },
+  "seed": 20261014,
+  "thresholds": {
+    "linked_min_run": 3,
+    "max_fronted": 1,
+    "max_words": 12,
+    "min_run": 4,
+    "min_words": 3
+  }
+}

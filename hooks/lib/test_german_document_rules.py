@@ -32,14 +32,8 @@ def _rule_ids(paragraphs: list[ParagraphLanguage]) -> list[str]:
     return [row["rule"] for row in _scan(paragraphs)]
 
 
-def test_an_over_long_sentence_is_reported_with_its_line_and_text() -> None:
-    rows = _scan([_paragraph(3, 21)])
-
-    assert [(row["rule"], row["line"], row["snippet"]) for row in rows] == [("de_sentence_length", 3, _sentence(21))]
-
-
-def test_each_over_long_sentence_gets_its_own_row() -> None:
-    assert _rule_ids([_paragraph(1, 21, 4, 25)]) == ["de_sentence_length", "de_sentence_length"]
+def test_a_long_sentence_raises_no_row_because_the_length_cap_is_retired() -> None:
+    assert _rule_ids([_paragraph(3, 21), _paragraph(5, 4, 25)]) == []
 
 
 def test_short_sentences_raise_nothing() -> None:
@@ -107,4 +101,4 @@ def test_one_document_can_raise_several_german_rules_at_once() -> None:
         _text_paragraph(3, LONG_REAL_SENTENCE),
     ]
 
-    assert sorted(_rule_ids(paragraphs)) == ["de_long_compound", "de_repeated_connector", "de_sentence_length"]
+    assert sorted(_rule_ids(paragraphs)) == ["de_long_compound", "de_repeated_connector"]

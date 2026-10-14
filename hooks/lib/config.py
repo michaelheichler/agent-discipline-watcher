@@ -72,6 +72,9 @@ RULE_GATE_STATES = (*GATE_STATES, JUDGED_STATE)
 
 # Old names stay valid so that old configs keep working.
 GATE_FAMILIES = families.NAMES
+# Accepted and ignored, so that an old config still loads.
+RETIRED_RULES = frozenset({"long_sentence", "de_sentence_length"})
+RETIRED_SETTINGS = frozenset({"sentence_word_cap"})
 
 MAX_LISTED_ROWS = 5
 
@@ -83,7 +86,6 @@ DEFAULTS = {
     "english": True,
     "clean_code": True,
     "max_rows": MAX_LISTED_ROWS,
-    "sentence_word_cap": 40,
     "list_item_cap": 8,
     "adw_model": "",
     "exempt_paths": [],
@@ -99,7 +101,6 @@ DEFAULTS = {
         "greeting_opener": "observe",
         "hedge_stack": "observe",
         "corporate_idiom": "observe",
-        "long_sentence": "observe",
         "oversized_list": "observe",
         # Observe because 2 held-out true positives in AI Generated Essays Dataset.csv (n=40) yielded 1.0000 precision.
         "weighted_slop_marker": "observe",
@@ -111,8 +112,6 @@ DEFAULTS = {
         "low_sentence_variance": "observe",
         # Observe because the pattern is commoner in human literature (4.92 percent) than in assistant replies (0.55).
         "uniform_paragraph_endings": "observe",
-        # Observe because German hits (n=40) yielded 0.9500 precision.
-        "de_sentence_length": "observe",
         # Off because German hits (n=20) yielded 0.6000 precision.
         "de_uniform_rhythm": "off",
         # Off because German hits (n=20) yielded 0.4500 precision.
@@ -123,6 +122,10 @@ DEFAULTS = {
         "de_long_compound": "off",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
+        # Off because 7 of 40 labeled hits held, 0.1750 precision.
+        "choppy_sentences": "off",
+        # Off because 22 of 40 labeled German hits held, 0.5500 precision.
+        "de_parataxis": "off",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
         "throat_clearing_opener": "enforce",
         "emphasis_crutch": "enforce",
