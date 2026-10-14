@@ -1,16 +1,13 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 
-from . import blocker_state, imported_baseline, payloads, scan_input
-from .baseline import split_fallback, strip_committed
+from . import blocker_state, imported_baseline, payloads, stop_scan
 from .config import resolve_outcome
 from .reporting import compact_block
-from .scanner import read_scannable, scan_all
 from .stop_stall import BlockingSet, ReasonBuilder, StopCall, StopOutcome, guarded
-from .temp_scope import outside_project_temp
 
 NOTICE_LEAD = "agent-discipline-watcher: subagents ended with findings you did not write."
 NOTICE_MAX_SCOPES = 5
@@ -23,29 +20,7 @@ class BatchScanRequest:
     cwd: str
     paths: tuple[str, ...]
     config: dict
-
-
-def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[str]]:
-    findings = []
-    existing = []
-    for raw_path in paths:
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = cwd / path
-        if not path.is_file() or outside_project_temp(path, cwd):
-            continue
-        existing.append(str(path))
-        text = read_scannable(path, cfg)
-        if text is None:
-            stamp = path.stat()
-            rows = split_fallback(path, scan_input.fallback_findings(path), cfg)[0]
-            rows = [{**row, "content_hash": f"{stamp.st_size}:{stamp.st_mtime_ns}"} for row in rows]
-        else:
-            rows = strip_committed(path, scan_all(str(path), text, cfg), cfg, text)
-            digest = sha256(text.encode("utf-8")).hexdigest()
-            rows = [{**row, "content_hash": digest} for row in rows]
-        findings.extend({**row, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block")
-    return findings, existing
+    deadline: float = float("inf")
 
 
 def _agent_written(paths: tuple[str, ...], cfg: dict) -> list[str]:
@@ -60,7 +35,7 @@ def _agent_written(paths: tuple[str, ...], cfg: dict) -> list[str]:
 
 def _batch_findings(request: BatchScanRequest, pending: dict[str, str]) -> list[dict]:
     """Only while the batch gate holds a block, because Stop must not find duplicates across batches that the batch gate never judged."""
-    if "<batch>" not in pending or len(request.paths) < 2:
+    if "<batch>" not in pending or len(request.paths) < 2 or time.monotonic() > request.deadline:
         return []
     import batch
     rows = batch.duplicate_findings_for_paths(request.cwd, _agent_written(request.paths, request.config), request.config)
@@ -79,6 +54,8 @@ def _residual_reasons(pending: dict[str, str], paths: list[str]) -> list[str]:
 
 def _finding_reason(blocking: BlockingSet, cfg: dict) -> ReasonBuilder:
     def build(report: str | None) -> tuple[str, str]:
+        if not blocking.findings:
+            return "\n".join(dict.fromkeys(blocking.residual)), ""
         reason, written = compact_block(blocking.findings, cfg, report_path=report)
         return "\n".join(dict.fromkeys([reason, *blocking.residual])), written
 
@@ -89,10 +66,15 @@ def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
     scope, cfg = call.scope, call.cfg
     pending, paths, revision = blocker_state.details(scope.session_id, scope.agent_id, scope.root)
     cwd = payloads.cwd(payload)
-    findings, existing = _blocking_rows(paths, Path(cwd or "."), cfg)
-    findings.extend(_batch_findings(BatchScanRequest(scope.session_id, cwd, tuple(existing), cfg), pending))
-    if findings:
-        blocking = BlockingSet(findings, _residual_reasons(pending, paths))
+    until = stop_scan.deadline()
+    scanned = stop_scan.rescan(paths, Path(cwd or "."), cfg, until)
+    request = BatchScanRequest(scope.session_id, cwd, tuple(scanned.existing), cfg, until)
+    findings = scanned.findings + _batch_findings(request, pending)
+    if findings or scanned.skipped:
+        residual = _residual_reasons(pending, paths)
+        if scanned.skipped:
+            residual.append(stop_scan.skipped_reason(scanned.skipped))
+        blocking = BlockingSet(findings, residual)
         return guarded(call, blocking, _finding_reason(blocking, cfg))
     path_keys = set(paths)
     cleared = [key for key in pending if key in path_keys]
@@ -113,7 +95,15 @@ def stop_outcome(payload: dict, cfg: dict, *, hook: str = "stop", turn_id: str =
     scope = blocker_state.BlockerScope(session_id, payloads.agent_id(payload), cfg.get("state_root"))
     event = "SubagentStop" if scope.agent_id else "Stop"
     call = StopCall(scope, {**cfg, "session_id": session_id}, hook, event, turn_id)
-    return _scope_outcome(payload, call)
+    outcome = _scope_outcome(payload, call)
+    dropped = blocker_state.take_dropped(scope)
+    if not dropped:
+        return outcome
+    capped = (
+        f"agent-discipline-watcher: {dropped} older edited files left the Stop rescan, "
+        f"because one scope tracks at most {blocker_state.MAX_SCOPE_PATHS} files."
+    )
+    return StopOutcome(outcome.reason, "\n".join(part for part in (outcome.notice, capped) if part))
 
 
 def unresolved_reason(payload: dict, cfg: dict) -> str:

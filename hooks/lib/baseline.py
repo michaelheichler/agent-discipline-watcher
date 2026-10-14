@@ -24,7 +24,9 @@ except ImportError:
 LENGTH_RULES = frozenset({"file_too_long", "unscannable_file"})
 BASELINE_MODES = ("git", "report", "none")
 DEFAULT_BASELINE_MODE = "report"
-GIT_TIMEOUT_SECONDS = 10
+GIT_TIMEOUT_SECONDS = 2
+MAX_BASELINE_CACHE = 256
+_BASELINE_CACHE: dict[tuple[str, str, int], tuple[dict, list[dict]]] = {}
 Texts = Sequence[str | None]
 
 
@@ -153,8 +155,21 @@ def _length_relief(halves: tuple[list[dict], list[dict]], before: str, after: st
     return [row for row in owned if row.get("rule") not in LENGTH_RULES], inherited + moved
 
 
+def _baseline_rows(path: Path, before: str, cfg: dict) -> list[dict]:
+    """Memoized per path and baseline hash, because a batch that edits one file twice scanned its baseline twice."""
+    key = (str(path), text_digest(before), id(cfg))
+    cached = _BASELINE_CACHE.get(key)
+    if cached is not None and cached[0] is cfg:
+        return cached[1]
+    rows = scan_all(str(path), before, cfg)
+    if len(_BASELINE_CACHE) >= MAX_BASELINE_CACHE:
+        _BASELINE_CACHE.clear()
+    _BASELINE_CACHE[key] = (cfg, rows)
+    return rows
+
+
 def _against(path: Path, findings: list[dict], cfg: dict, before: str, text: str | None) -> tuple[list[dict], list[dict]]:
-    owned, inherited = _length_relief(partition(findings, scan_all(str(path), before, cfg)), before, text)
+    owned, inherited = _length_relief(partition(findings, _baseline_rows(path, before, cfg)), before, text)
     return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
