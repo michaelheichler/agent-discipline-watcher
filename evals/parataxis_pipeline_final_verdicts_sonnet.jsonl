@@ -1,0 +1,55 @@
+{"answer": "en-f01-chopped", "index": 0, "reason": "A sequence of separate events in a crash narrative; each step is a distinct beat.", "verdict": "clean"}
+{"answer": "en-f01-chopped", "index": 1, "reason": "Imperative sequence of separate steps.", "verdict": "clean"}
+{"answer": "en-f02-chopped", "index": 0, "reason": "Short clauses chain a causal explanation (emulation is slow, runners are x86, nobody noticed) that would read better joined with because/so.", "verdict": "violating"}
+{"answer": "en-f02-chopped", "index": 1, "reason": "'It matters much less' points back to the cache mount; 'The pip cache mount helps too. It matters...' should be joined with but.", "verdict": "violating"}
+{"answer": "en-f03-chopped", "index": 0, "reason": "A causal chain (window too small, rate returns nothing, Grafana draws a hole) in telegram fragments that should be joined.", "verdict": "violating"}
+{"answer": "en-f04-chopped", "index": 0, "reason": "Long run of short clauses with It/Both pointing back; one causal explanation that should be joined.", "verdict": "violating"}
+{"answer": "en-f04-chopped", "index": 1, "reason": "Each instruction is followed by a 'That avoids/cuts' pointer back; should be joined with so that or which.", "verdict": "violating"}
+{"answer": "en-f05-chopped", "index": 0, "reason": "Causal chain about paging shifts with They/It pointers; fragments should be joined.", "verdict": "violating"}
+{"answer": "en-f05-chopped", "index": 1, "reason": "The offset-paging reason and the cap with its trailing 'then' consequence form one line of thought and could be joined.", "verdict": "violating"}
+{"answer": "en-f06-chopped", "index": 0, "reason": "A causal chain of very short clauses reads as telegram fragments and could be joined.", "verdict": "violating"}
+{"answer": "en-f07-chopped", "index": 0, "reason": "Memory filled, hit the limit, Redis evicted: one causal line cut into fragments with It pointers.", "verdict": "violating"}
+{"answer": "en-f07-chopped", "index": 1, "reason": "Oldest entries, so they went first, so users were logged out: a causal chain with They and Those pointing back.", "verdict": "violating"}
+{"answer": "en-f07-chopped", "index": 2, "reason": "A conditional fragment, an instruction, and a separate fact; not one thought to join.", "verdict": "clean"}
+{"answer": "en-f08-chopped", "index": 0, "reason": "A string of It-led fragments describing one CI job that should be joined.", "verdict": "violating"}
+{"answer": "en-f08-chopped", "index": 1, "reason": "Separate recommendations and consequences that read acceptably apart.", "verdict": "clean"}
+{"answer": "en-f09-chopped", "index": 0, "reason": "Short causal clauses about memory and the kill belong in one or two joined sentences.", "verdict": "violating"}
+{"answer": "en-f09-chopped", "index": 1, "reason": "Instructions plus a result that points back to them; could be joined.", "verdict": "violating"}
+{"answer": "en-f09-chopped", "index": 2, "reason": "'Aggregate as you go. Peak memory stays flat.' is one cause-effect thought and reads better joined.", "verdict": "violating"}
+{"answer": "en-f10-chopped", "index": 0, "reason": "Chain of short clauses with It pointing back; joinable into one or two sentences.", "verdict": "violating"}
+{"answer": "en-f10-chopped", "index": 1, "reason": "Short related clauses explaining one failure; could be joined with because/and.", "verdict": "violating"}
+{"answer": "en-f10-chopped", "index": 2, "reason": "Separate action steps with a consequence; a sequence of steps.", "verdict": "clean"}
+{"answer": "en-f11-chopped", "index": 0, "reason": "Run of short clauses all explaining one cause of the slow restore; joinable.", "verdict": "violating"}
+{"answer": "en-f11-chopped", "index": 1, "reason": "Separate outcomes and follow-ups; independent facts.", "verdict": "clean"}
+{"answer": "en-f12-chopped", "index": 0, "reason": "Sequence of rollout steps with deliberate rhythm.", "verdict": "clean"}
+{"answer": "en-f12-chopped", "index": 1, "reason": "One line of thought about the flag as kill switch; the flip sentence and 'No deploy is needed' could be joined with a clause.", "verdict": "violating"}
+{"answer": "en-fc04", "index": 0, "reason": "List of unrelated release-note facts.", "verdict": "clean"}
+{"answer": "en-fc05", "index": 0, "reason": "Separate status facts in a report; not one line of thought.", "verdict": "clean"}
+{"answer": "en-fc06", "index": 0, "reason": "Parallel retention facts, a list of unrelated items.", "verdict": "clean"}
+{"answer": "en-fc07", "index": 0, "reason": "Independent metrics in a summary; no pointing back.", "verdict": "clean"}
+{"answer": "de-f01-chopped", "index": 0, "reason": "Reihe kurzer Hauptsätze mit Rückverweisen (Sie, Darin) zerhackt einen Gedanken; verbindbar mit weil/die.", "verdict": "violating"}
+{"answer": "de-f01-chopped", "index": 1, "reason": "Kurze Sätze mit getrennten Aussagen und bewusstem Rhythmus; nicht klar zerhackt.", "verdict": "clean"}
+{"answer": "de-f02-chopped", "index": 0, "reason": "Technische Erklärung in kurzen Sätzen mit Sie/Darin-Rückverweisen, gut verbindbar mit Relativsatz und weil.", "verdict": "violating"}
+{"answer": "de-f02-chopped", "index": 1, "reason": "Kurze Hauptsätze mit Dort/Er-Rückverweisen, ein Gedanke ließe sich verbinden.", "verdict": "violating"}
+{"answer": "de-f03-chopped", "index": 0, "reason": "Diagnose im Telegrammstil mit Es-Rückverweisen; Ursachen ließen sich mit und/weil verbinden.", "verdict": "violating"}
+{"answer": "de-f03-chopped", "index": 1, "reason": "Anweisungsfolge getrennter Schritte.", "verdict": "clean"}
+{"answer": "de-f04-chopped", "index": 0, "reason": "Kurze Hauptsätze mit Sie/Dort-Rückverweisen zerhacken die Ergebnisbeschreibung; verbindbar.", "verdict": "violating"}
+{"answer": "de-f04-chopped", "index": 1, "reason": "Folge getrennter Handlungsschritte, nicht klar zerhackt.", "verdict": "clean"}
+{"answer": "de-f05-chopped", "index": 0, "reason": "Zurückverweisende Kurzsätze (Er stand, sie nicht zusammengeführt) zerhacken einen Gedanken.", "verdict": "violating"}
+{"answer": "de-f05-chopped", "index": 1, "reason": "'Das dauert' verweist zurück; die Reihe ließe sich verbinden.", "verdict": "violating"}
+{"answer": "de-f06-chopped", "index": 0, "reason": "Ihn/Er verweisen zurück, telegrammartige Reihe.", "verdict": "violating"}
+{"answer": "de-f06-chopped", "index": 1, "reason": "Getrennte Mitteilungen mit verschiedenen Subjekten, Frage als Betonung.", "verdict": "clean"}
+{"answer": "de-f07-chopped", "index": 0, "reason": "Sie/es/die Lücke verweisen zurück, ein technischer Gedanke zerhackt.", "verdict": "violating"}
+{"answer": "de-f07-chopped", "index": 1, "reason": "Folge getrennter Schritte.", "verdict": "clean"}
+{"answer": "de-f08-chopped", "index": 0, "reason": "'Das braucht' verweist zurück; Zeitplan-Gedanke zerhackt.", "verdict": "violating"}
+{"answer": "de-f08-chopped", "index": 1, "reason": "'Ihre Mandate' verweist zurück auf Lastschriften, verbindbar per Relativsatz.", "verdict": "violating"}
+{"answer": "de-f09-chopped", "index": 0, "reason": "Kette kurzer Hauptsätze mit Sie-Rückverweisen, die einen technischen Ablauf zerhackt; verbindbar.", "verdict": "violating"}
+{"answer": "de-f10-chopped", "index": 0, "reason": "Technische Erklärung in Telegrammstil, kausal zusammengehörig, 'Sie' verweist zurück.", "verdict": "violating"}
+{"answer": "de-f10-chopped", "index": 1, "reason": "Folge getrennter Aussagen zur Änderung, kein zerhackter Gedanke.", "verdict": "clean"}
+{"answer": "de-f11-chopped", "index": 0, "reason": "Chronologische berichtende Ereignisfolge.", "verdict": "clean"}
+{"answer": "de-f11-chopped", "index": 1, "reason": "Er-Kette zur Beschreibung des Backoffs, gut verbindbar.", "verdict": "violating"}
+{"answer": "de-f12-chopped", "index": 0, "reason": "Kausal zusammenhängende Ursachen in kurzen Hauptsätzen, verbindbar.", "verdict": "violating"}
+{"answer": "de-fc04", "index": 0, "reason": "Liste voneinander unabhängiger Neuerungen.", "verdict": "clean"}
+{"answer": "de-fc05", "index": 0, "reason": "Statusliste unabhängiger Fakten.", "verdict": "clean"}
+{"answer": "de-fc06", "index": 0, "reason": "Liste voneinander unabhängiger Fakten (Flag-Status), keine Rückverweise.", "verdict": "clean"}
+{"answer": "de-fc07", "index": 0, "reason": "Statusmeldung mit unabhängigen Einzelfakten; kein zerhackter Gedanke mit Rückverweis.", "verdict": "clean"}

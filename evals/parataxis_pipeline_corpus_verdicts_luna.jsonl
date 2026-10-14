@@ -1,0 +1,80 @@
+{"answer": "af4bdf818ec7", "index": 0, "reason": "These are separate descriptive facts about study location, breeding season, and nest sites, not telegram fragments.", "verdict": "clean"}
+{"answer": "52fb7d70d8a0", "index": 0, "reason": "The location, highway, and elevation are separate geography facts.", "verdict": "clean"}
+{"answer": "b1d172abc2e6", "index": 0, "reason": "The first two sentences restate one thought: she daydreams because she is always thinking about something.", "verdict": "violating"}
+{"answer": "f23007865746", "index": 0, "reason": "All three sentences develop the same thought about his focus on women's appearance and would read better joined.", "verdict": "violating"}
+{"answer": "16f547cfda40", "index": 0, "reason": "These are distinct family and relationship facts in a character profile, not fragments of one line of thought.", "verdict": "clean"}
+{"answer": "f2680f9bc1cb", "index": 0, "reason": "The garden creation is explicitly linked to the restoration by “at the same time,” so the sentences belong together.", "verdict": "violating"}
+{"answer": "7a9fc6be7aa2", "index": 0, "reason": "“This development” and “It” point back to the same technical development, making the separated sentences choppy.", "verdict": "violating"}
+{"answer": "a812d12311a0", "index": 0, "reason": "The population decline and lack of regrowth form connected evidence for the concluding assessment, and the sentences should be joined.", "verdict": "violating"}
+{"answer": "b724523940ff", "index": 0, "reason": "These are separate dam specifications presented as a list of facts, not telegram-style fragments of one thought.", "verdict": "clean"}
+{"answer": "fd7f748b9307", "index": 0, "reason": "“This is around the 19th to 21st day” points back to the preceding sentence and can be joined to it as a clarifying clause.", "verdict": "violating"}
+{"answer": "f053df5113ac", "index": 0, "reason": "The prose presents separate emphatic statements in a reflective, literary voice.", "verdict": "clean"}
+{"answer": "b9eab3adc4f1", "index": 0, "reason": "These are short narrative statements with a deliberate, emphatic rhythm.", "verdict": "clean"}
+{"answer": "be62daac7138", "index": 0, "reason": "The repeated phrasing is deliberate rhetorical emphasis, not choppy exposition.", "verdict": "clean"}
+{"answer": "6e1a4c844082", "index": 0, "reason": "The short fragments are spoken dialogue with a deliberate conversational rhythm.", "verdict": "clean"}
+{"answer": "ea6d2f94bd05", "index": 0, "reason": "The short statements are dialogue and preserve its clipped, conversational cadence.", "verdict": "clean"}
+{"answer": "1385e7e600f0", "index": 0, "reason": "These are stage directions and scene-setting descriptions, for which the short sentences are appropriate.", "verdict": "clean"}
+{"answer": "a8b01346fb21", "index": 0, "reason": "Dialogue and narrative beats; the short sentences do not read as telegram-style fragments.", "verdict": "clean"}
+{"answer": "b98ebf8aa0fe", "index": 0, "reason": "The three sentences develop one thought about the doctrine’s importance and could be joined to avoid choppy exposition.", "verdict": "violating"}
+{"answer": "4951e17967eb", "index": 0, "reason": "These are sequential observations in literary narrative, not fragments of a technical explanation.", "verdict": "clean"}
+{"answer": "07c3a01ccdb2", "index": 0, "reason": "This is dialogue, where the short sentences serve the speaker’s voice and rhythm.", "verdict": "clean"}
+{"answer": "7d667b96cad0", "index": 0, "reason": "These are separate stage directions describing distinct actions.", "verdict": "clean"}
+{"answer": "5b5118c55375", "index": 0, "reason": "The short statements create deliberate rhetorical rhythm in dramatic dialogue.", "verdict": "clean"}
+{"answer": "69de6bac36d5", "index": 0, "reason": "The sentences inventory separate people and objects in a stage description.", "verdict": "clean"}
+{"answer": "f7e949e306ca", "index": 0, "reason": "These are separate example sentences illustrating usage, not one thought split into fragments.", "verdict": "clean"}
+{"answer": "d5d7501ee558", "index": 0, "reason": "The statements are not one thought split into telegram-style fragments; the second comments on the preceding claims, while the surrounding text is a sequence of unrelated statements.", "verdict": "clean"}
+{"answer": "11e1a47f106a", "index": 0, "reason": "“Now it is established” directly revises the preceding “We did not know” claim; these sentences belong together and read better joined.", "verdict": "violating"}
+{"answer": "806877e59977", "index": 0, "reason": "The short sentences form deliberate, parallel literary aphorisms; their rhythm is not choppiness.", "verdict": "clean"}
+{"answer": "ef24b3f59a05", "index": 0, "reason": "This is a list of separate facts, not clauses that belong together.", "verdict": "clean"}
+{"answer": "5f7e393c5cad", "index": 0, "reason": "These are terse narrative or contents-style headings, not a line of thought split into fragments.", "verdict": "clean"}
+{"answer": "f72c411936fa", "index": 0, "reason": "The sentences list separate sequential actions; the short rhythm is appropriate.", "verdict": "clean"}
+{"answer": "c81b44161322", "index": 0, "reason": "This is an inventory list of unrelated items.", "verdict": "clean"}
+{"answer": "6e4e78d97409", "index": 0, "reason": "This is a list of separate provisions and quantities.", "verdict": "clean"}
+{"answer": "f50913f4d635", "index": 0, "reason": "The repeated parallel statements read as deliberate list-like prose, not fragments of one thought.", "verdict": "clean"}
+{"answer": "847a8535835e", "index": 0, "reason": "These are separate territorial facts, and the paragraph adds a distinct treaty detail.", "verdict": "clean"}
+{"answer": "3eefb9b23e47", "index": 0, "reason": "The second sentence explains the first, but this reads as connected literary exposition rather than telegram-style fragments; the third adds a separate point.", "verdict": "clean"}
+{"answer": "b7a08c448c65", "index": 0, "reason": "These are separate descriptive attributes in an encyclopedia-style list.", "verdict": "clean"}
+{"answer": "97861ae99ed5", "index": 0, "reason": "The deal and predicted stock rise form one causal thought that reads better joined; the final short sentence is a distinct emphatic conclusion.", "verdict": "violating"}
+{"answer": "7110d07224e2", "index": 0, "reason": "The parallel motivational statements and imperatives use deliberate short rhythm.", "verdict": "clean"}
+{"answer": "b1dd9933b1f6", "index": 0, "reason": "The sentences are separate vocabulary-exercise prompts, not a continuous line of thought.", "verdict": "clean"}
+{"answer": "df842ff6dd6c", "index": 0, "reason": "The sentences are separate vocabulary-exercise prompts, not a continuous line of thought.", "verdict": "clean"}
+{"answer": "d3787d589219", "index": 0, "reason": "Biografische Fakten in erzählender Folge, keine zerhackte technische Erklärung.", "verdict": "clean"}
+{"answer": "4acfef4f1a5d", "index": 0, "reason": "Die zusammenhängende Entwicklung lässt sich flüssiger verbinden: steigende Studentenzahlen führten zur Entstehung praxisorientierter Hochschulen und zur Frage des Promotionsrechts.", "verdict": "violating"}
+{"answer": "f19c1713c16e", "index": 0, "reason": "„Dies“ und „In diesem Fall“ verweisen direkt aufeinander; die Aushandlung und ihre Folge lassen sich als zusammenhängende technische Erklärung verbinden.", "verdict": "violating"}
+{"answer": "6ff5a3e92061", "index": 0, "reason": "Die Sätze beschreiben eigenständige geografische und historische Fakten; „daher“ stellt den Zusammenhang bereits her.", "verdict": "clean"}
+{"answer": "0eefb127f46f", "index": 0, "reason": "Knapp erzählende historische Abfolge; die Sätze sind auch getrennt gut lesbar.", "verdict": "clean"}
+{"answer": "261e8fd47276", "index": 0, "reason": "Die Sätze geben einzelne Fakten zu Wurf, Aufzucht und Entwicklung in zeitlicher Folge wieder.", "verdict": "clean"}
+{"answer": "06cb86fd1b2f", "index": 0, "reason": "Die Sätze nennen getrennte Zeiträume und Statusänderungen des Unterscheidungszeichens.", "verdict": "clean"}
+{"answer": "d74c79c7b293", "index": 0, "reason": "Die Sätze beschreiben verschiedene Aspekte der Verbindung und bilden keine zerhackte Erklärung.", "verdict": "clean"}
+{"answer": "d865ec67d525", "index": 0, "reason": "„Sie sind … betraut“ verweist unmittelbar auf die Niederlassung und die Magdalenerinnen; die Information gehört in einen verbundenen Satz.", "verdict": "violating"}
+{"answer": "60ebb7bca8ee", "index": 0, "reason": "„Er befindet sich“ erläutert die Lage des Olympiasees und lässt sich als Relativsatz natürlich an den vorherigen Satz anschließen.", "verdict": "violating"}
+{"answer": "5a30c6f4ee66", "index": 0, "reason": "„Es entstand das Album“ schließt direkt an die Zusammenarbeit an und zerhackt diesen Zusammenhang in kurze Hauptsätze.", "verdict": "violating"}
+{"answer": "4411b0ce3e15", "index": 0, "reason": "Der überlieferte Wortlaut ist unvollständig und zeigt keine Reihe klar abgegrenzter kurzer Hauptsätze, die einen Gedanken zerhackt.", "verdict": "clean"}
+{"answer": "77766cb91809", "index": 0, "reason": "Die Sätze nennen unterschiedliche bauliche Merkmale und Veränderungen; die Folge wirkt wie eine sachliche Beschreibung, nicht wie zerhackter Telegrammstil.", "verdict": "clean"}
+{"answer": "47e965edc264", "index": 0, "reason": "Die Sätze nennen verschiedene Fakten zu Bühl und Notburga; „Sie gilt“ führt eine eigenständige Information ein.", "verdict": "clean"}
+{"answer": "d2d6f6bcae7c", "index": 0, "reason": "„Dieses“ nimmt das Feldsteinmauerwerk wieder auf; die Beschreibung liest sich verbunden flüssiger als in zwei Hauptsätzen.", "verdict": "violating"}
+{"answer": "b9af1a15bd5b", "index": 0, "reason": "Der Niedergang wird ausdrücklich als Folge der Schlachten dargestellt und sollte mit dem Satz über den Bürgerkrieg verbunden werden.", "verdict": "violating"}
+{"answer": "e3cf5d6f6ca1", "index": 0, "reason": "Die Aussage zu den Auflagen und der Folgesatz über ihre Unterschiede bilden einen zusammengehörigen Gedanken.", "verdict": "violating"}
+{"answer": "4baf7eec3699", "index": 0, "reason": "Die Sätze schildern getrennte historische Ereignisse und Entwicklungen.", "verdict": "clean"}
+{"answer": "72b27231582c", "index": 0, "reason": "Die Sätze nennen voneinander unabhängige Fakten.", "verdict": "clean"}
+{"answer": "4a7ad465cd26", "index": 0, "reason": "Die Sätze nennen mehrere eigenständige Angaben zur Fortpflanzung.", "verdict": "clean"}
+{"answer": "4d53a0163fa5", "index": 0, "reason": "Die Angabe zum gegenwärtigen Umfang knüpft direkt an den Auflagenrückgang an; „Das entspricht“ verweist darauf zurück.", "verdict": "violating"}
+{"answer": "9a13714efe4d", "index": 0, "reason": "Die Aussagen über Bettenstation und Aufsichtsbehörde beschreiben dieselben Tageskliniken und ließen sich natürlich verbinden.", "verdict": "violating"}
+{"answer": "b29126de1552", "index": 0, "reason": "Die Sätze erzählen eine zeitliche Entwicklung; die getrennte Chronologie wirkt nicht telegrammartig.", "verdict": "clean"}
+{"answer": "eca146981c66", "index": 0, "reason": "Die Sätze nennen voneinander unabhängige Fakten über die Partei.", "verdict": "clean"}
+{"answer": "5523432abac5", "index": 0, "reason": "Biografische Angaben und Grabinformationen stehen als eigenständige Fakten; sie zerhacken keinen Gedanken.", "verdict": "clean"}
+{"answer": "74893660229c", "index": 0, "reason": "Die Sätze zu Augusts Wunsch, Brühl auf Reisen um sich zu haben, und seiner Beanspruchung von Brühls Diensten bilden einen zusammenhängenden Gedanken; „Er“ verweist direkt auf August.", "verdict": "violating"}
+{"answer": "161e08c00470", "index": 0, "reason": "Die Verarbeitung für die menschliche Ernährung und die Wirkung des Kochens sind eigenständige Sachinformationen, keine zerhackte Gedankenkette.", "verdict": "clean"}
+{"answer": "ce27749a1a03", "index": 0, "reason": "Mausergewicht und Lebenserwartung sind getrennte Fakten; die kurzen Sätze zerhacken keinen Gedanken.", "verdict": "clean"}
+{"answer": "11bcce6e9421", "index": 0, "reason": "Die Sätze führen mehrere Folgen derselben Datenredundanz auf und ließen sich als zusammenhängende Erklärung verbinden.", "verdict": "violating"}
+{"answer": "3eabe5b3e7b5", "index": 0, "reason": "Die Sätze beschreiben zusammenhängend, wie Mausbewegung und Laufbalken funktionieren; „Das“ verweist auf das zuvor beschriebene Verhalten.", "verdict": "violating"}
+{"answer": "b15561f78d44", "index": 0, "reason": "Der Widerspruch zur Todesdarstellung und die Vermögensmeldung sind eigenständige Informationen in einem berichtenden Text.", "verdict": "clean"}
+{"answer": "519de65bf6ed", "index": 0, "reason": "Spielklasse, Aufstieg, Relegation und Rekordmeister sind voneinander unabhängige Fakten.", "verdict": "clean"}
+{"answer": "143c6bc64146", "index": 0, "reason": "Die Sätze beschreiben einzelne, aufeinanderfolgende Fakten zur Ligastruktur; die Reihe wirkt nicht telegrammartig zerhackt.", "verdict": "clean"}
+{"answer": "63834f66dd49", "index": 0, "reason": "Der zweite Satz greift die Schwefelquellen aus dem ersten direkt wieder auf und ließe sich natürlich als Relativsatz anschließen.", "verdict": "violating"}
+{"answer": "f4f10081746d", "index": 0, "reason": "„Sie“ verweist unmittelbar auf die Samen; die beiden Sätze lassen sich ohne Verlust zu einer flüssigeren Aussage verbinden.", "verdict": "violating"}
+{"answer": "f1c423c7efd9", "index": 0, "reason": "Die Sätze beschreiben gemeinsam den Anpassungsprozess; der zweite erläutert, was mit der Produktion geschieht, und der dritte führt den Mechanismus fort.", "verdict": "violating"}
+{"answer": "59b72feb76a8", "index": 0, "reason": "Die Zeilen gehören zu einem Gedicht und nutzen bewusst einen kurzen, rhythmischen Sprechfluss.", "verdict": "clean"}
+{"answer": "83d0a13af5f6", "index": 0, "reason": "Die kurzen Sätze stehen in literarischer Prosa und erzeugen einen bewusst gesetzten Rhythmus.", "verdict": "clean"}
+{"answer": "ad2b5c01b1f3", "index": 0, "reason": "Die kurzen Sätze sind Teil eines Gedichts; ihr Rhythmus ist bewusst gestaltet.", "verdict": "clean"}
+{"answer": "0ad9405987a2", "index": 0, "reason": "Der dritte Satz erläutert den unmittelbar vorausgehenden Kritikpunkt zur Privatsphäre und ließe sich als Begründung daran anschließen.", "verdict": "violating"}

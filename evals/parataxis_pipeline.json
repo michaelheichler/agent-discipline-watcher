@@ -1,0 +1,784 @@
+{
+  "luna": {
+    "corpus": {
+      "answers": "parataxis_sample.jsonl",
+      "rules": {
+        "choppy_sentences": {
+          "combined_precision": {
+            "hits": 5,
+            "rate": 0.5556,
+            "total": 9,
+            "wilson_95": [
+              0.2666,
+              0.8112
+            ]
+          },
+          "reviewer_recall": {
+            "hits": 5,
+            "rate": 0.7143,
+            "total": 7,
+            "wilson_95": [
+              0.3589,
+              0.9178
+            ]
+          },
+          "static_precision": {
+            "hits": 7,
+            "rate": 0.175,
+            "total": 40,
+            "wilson_95": [
+              0.0875,
+              0.3195
+            ]
+          }
+        },
+        "de_parataxis": {
+          "combined_precision": {
+            "hits": 12,
+            "rate": 0.7059,
+            "total": 17,
+            "wilson_95": [
+              0.4687,
+              0.8672
+            ]
+          },
+          "reviewer_recall": {
+            "hits": 12,
+            "rate": 0.5455,
+            "total": 22,
+            "wilson_95": [
+              0.3466,
+              0.7308
+            ]
+          },
+          "static_precision": {
+            "hits": 22,
+            "rate": 0.55,
+            "total": 40,
+            "wilson_95": [
+              0.3983,
+              0.6929
+            ]
+          }
+        }
+      },
+      "unit": "static hit on a human paragraph"
+    },
+    "dev": {
+      "answers": "parataxis_answers.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 15,
+            "control": 10,
+            "joined": 15
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 13,
+              "rate": 1.0,
+              "total": 13,
+              "wilson_95": [
+                0.7719,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 13,
+              "rate": 0.8667,
+              "total": 15,
+              "wilson_95": [
+                0.6212,
+                0.9626
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 2
+            },
+            "precision": {
+              "hits": 14,
+              "rate": 0.875,
+              "total": 16,
+              "wilson_95": [
+                0.6398,
+                0.965
+              ]
+            },
+            "recall": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 15,
+            "control": 10,
+            "joined": 15
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 13,
+              "rate": 1.0,
+              "total": 13,
+              "wilson_95": [
+                0.7719,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 13,
+              "rate": 0.8667,
+              "total": 15,
+              "wilson_95": [
+                0.6212,
+                0.9626
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 1
+            },
+            "precision": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            },
+            "recall": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    },
+    "final": {
+      "answers": "parataxis_answers_final.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {
+              "facts": 1
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.9231,
+              "total": 13,
+              "wilson_95": [
+                0.6669,
+                0.9863
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    },
+    "test": {
+      "answers": "parataxis_answers_test.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 10,
+              "rate": 1.0,
+              "total": 10,
+              "wilson_95": [
+                0.7225,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 10,
+              "rate": 0.8333,
+              "total": 12,
+              "wilson_95": [
+                0.552,
+                0.953
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 2
+            },
+            "precision": {
+              "hits": 10,
+              "rate": 0.8333,
+              "total": 12,
+              "wilson_95": [
+                0.552,
+                0.953
+              ]
+            },
+            "recall": {
+              "hits": 10,
+              "rate": 0.8333,
+              "total": 12,
+              "wilson_95": [
+                0.552,
+                0.953
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    }
+  },
+  "sonnet": {
+    "corpus": {
+      "answers": "parataxis_sample.jsonl",
+      "rules": {
+        "choppy_sentences": {
+          "combined_precision": {
+            "hits": 5,
+            "rate": 0.5,
+            "total": 10,
+            "wilson_95": [
+              0.2366,
+              0.7634
+            ]
+          },
+          "reviewer_recall": {
+            "hits": 5,
+            "rate": 0.7143,
+            "total": 7,
+            "wilson_95": [
+              0.3589,
+              0.9178
+            ]
+          },
+          "static_precision": {
+            "hits": 7,
+            "rate": 0.175,
+            "total": 40,
+            "wilson_95": [
+              0.0875,
+              0.3195
+            ]
+          }
+        },
+        "de_parataxis": {
+          "combined_precision": {
+            "hits": 5,
+            "rate": 0.625,
+            "total": 8,
+            "wilson_95": [
+              0.3057,
+              0.8632
+            ]
+          },
+          "reviewer_recall": {
+            "hits": 5,
+            "rate": 0.2273,
+            "total": 22,
+            "wilson_95": [
+              0.1012,
+              0.4344
+            ]
+          },
+          "static_precision": {
+            "hits": 22,
+            "rate": 0.55,
+            "total": 40,
+            "wilson_95": [
+              0.3983,
+              0.6929
+            ]
+          }
+        }
+      },
+      "unit": "static hit on a human paragraph"
+    },
+    "dev": {
+      "answers": "parataxis_answers.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 15,
+            "control": 10,
+            "joined": 15
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 13,
+              "rate": 1.0,
+              "total": 13,
+              "wilson_95": [
+                0.7719,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 13,
+              "rate": 0.8667,
+              "total": 15,
+              "wilson_95": [
+                0.6212,
+                0.9626
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 2
+            },
+            "precision": {
+              "hits": 14,
+              "rate": 0.875,
+              "total": 16,
+              "wilson_95": [
+                0.6398,
+                0.965
+              ]
+            },
+            "recall": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 15,
+            "control": 10,
+            "joined": 15
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 0.8,
+              "total": 15,
+              "wilson_95": [
+                0.5481,
+                0.9295
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 1
+            },
+            "precision": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            },
+            "recall": {
+              "hits": 14,
+              "rate": 0.9333,
+              "total": 15,
+              "wilson_95": [
+                0.7018,
+                0.9881
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    },
+    "final": {
+      "answers": "parataxis_answers_final.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 11,
+              "rate": 1.0,
+              "total": 11,
+              "wilson_95": [
+                0.7412,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 11,
+              "rate": 0.9167,
+              "total": 12,
+              "wilson_95": [
+                0.6461,
+                0.9851
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    },
+    "test": {
+      "answers": "parataxis_answers_test.jsonl",
+      "languages": {
+        "de": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 8,
+              "rate": 1.0,
+              "total": 8,
+              "wilson_95": [
+                0.6756,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 8,
+              "rate": 0.6667,
+              "total": 12,
+              "wilson_95": [
+                0.3906,
+                0.8619
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 2
+            },
+            "precision": {
+              "hits": 10,
+              "rate": 0.8333,
+              "total": 12,
+              "wilson_95": [
+                0.552,
+                0.953
+              ]
+            },
+            "recall": {
+              "hits": 10,
+              "rate": 0.8333,
+              "total": 12,
+              "wilson_95": [
+                0.552,
+                0.953
+              ]
+            }
+          }
+        },
+        "en": {
+          "answers": {
+            "chopped": 12,
+            "control": 12,
+            "joined": 12
+          },
+          "combined": {
+            "false_positives": {},
+            "precision": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          },
+          "static": {
+            "false_positives": {
+              "facts": 4
+            },
+            "precision": {
+              "hits": 12,
+              "rate": 0.75,
+              "total": 16,
+              "wilson_95": [
+                0.505,
+                0.8982
+              ]
+            },
+            "recall": {
+              "hits": 12,
+              "rate": 1.0,
+              "total": 12,
+              "wilson_95": [
+                0.7575,
+                1.0
+              ]
+            }
+          }
+        }
+      },
+      "unit": "answer"
+    }
+  }
+}

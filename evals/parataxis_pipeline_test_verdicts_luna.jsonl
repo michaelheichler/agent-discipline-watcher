@@ -1,0 +1,44 @@
+{"answer": "en-t01-chopped", "index": 0, "reason": "The short sentences form one causal explanation: the early click hits the overlay while the animation runs, which makes the failure look random.", "verdict": "violating"}
+{"answer": "en-t01-chopped", "index": 1, "reason": "The retry recommendation and the need to observe a full failure-free week are one thought and read better joined.", "verdict": "violating"}
+{"answer": "en-t02-chopped", "index": 0, "reason": "The handler change, its removal during destruction, and the added test are one compact implementation sequence split into fragments.", "verdict": "violating"}
+{"answer": "en-t02-chopped", "index": 1, "reason": "The listener-count check and its result belong together; the following memory comparison continues the same results summary.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 0, "reason": "The three short feature statements are supporting reasons for choosing SQLite and read better joined as one explanation.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 1, "reason": "The client-write scenario explains what makes Postgres a different fit, and the final sentence clarifies that it does not apply here.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 2, "reason": "The short statements form a connected technical argument about SQLite's write limit and the proposed client/server split.", "verdict": "violating"}
+{"answer": "en-t04-chopped", "index": 0, "reason": "The certificate, timer, OS upgrade, and resulting browser and test failures form one causal chain split into short fragments.", "verdict": "violating"}
+{"answer": "en-t04-chopped", "index": 1, "reason": "The monitoring sentence and “It alerts” sentence describe one feature; joining them makes the reference clearer and avoids fragmenting the thought.", "verdict": "violating"}
+{"answer": "en-t05-chopped", "index": 0, "reason": "The short clauses form one technical explanation of why 02:30 ran twice, and read more coherently joined.", "verdict": "violating"}
+{"answer": "en-t05-chopped", "index": 1, "reason": "These are concise status and implementation updates; the sentences do not clearly fragment one line of thought.", "verdict": "clean"}
+{"answer": "en-t05-chopped", "index": 2, "reason": "The marked status, possible cleanup, and expectation about the second file are distinct points.", "verdict": "clean"}
+{"answer": "en-t06-chopped", "index": 0, "reason": "The short clauses form a connected explanation of what the rebase did and why the commit is still recoverable.", "verdict": "violating"}
+{"answer": "en-t06-chopped", "index": 1, "reason": "This is a sequence of separate instructions followed by a warning and migration detail.", "verdict": "clean"}
+{"answer": "en-t07-chopped", "index": 0, "reason": "The config, exit, log evidence, missing variable, renamed secret, and stale deployment reference form one tightly linked diagnosis.", "verdict": "violating"}
+{"answer": "en-t08-chopped", "index": 0, "reason": "The short clauses build one technical explanation of the query cost and its cause.", "verdict": "violating"}
+{"answer": "en-t08-chopped", "index": 1, "reason": "The batching, single-query behavior, and request-scoped cache are one implementation explanation split into fragments.", "verdict": "violating"}
+{"answer": "en-t09-chopped", "index": 0, "reason": "“It retried without backoff” elaborates directly on the provider’s retries and reads better joined to that sentence.", "verdict": "violating"}
+{"answer": "en-t09-chopped", "index": 1, "reason": "These are linked effects of the same retry-driven incident; the clauses read better joined to show the connection.", "verdict": "violating"}
+{"answer": "en-t10-chopped", "index": 0, "reason": "The lock’s origin, cancellation, and unreleased database entry form one technical explanation split into fragments.", "verdict": "violating"}
+{"answer": "en-t11-chopped", "index": 0, "reason": "The URL mismatch, exact comparison, rejection, and router change form a single causal explanation that is fragmented across short sentences.", "verdict": "violating"}
+{"answer": "en-t12-chopped", "index": 0, "reason": "The configuration error and resulting outage are one causal account, with details split into telegram-style sentences.", "verdict": "violating"}
+{"answer": "en-tc04", "index": 0, "reason": "These are separate release-note facts, not fragments of one thought.", "verdict": "clean"}
+{"answer": "en-tc05", "index": 0, "reason": "These are separate operational status facts rather than one thought split across sentences.", "verdict": "clean"}
+{"answer": "en-tc06", "index": 0, "reason": "These are separate runner, shard, cache, access, and schedule facts, not fragments of one line of thought.", "verdict": "clean"}
+{"answer": "en-tc07", "index": 0, "reason": "These are distinct account-security settings; no sentence depends on another as a telegram-style fragment.", "verdict": "clean"}
+{"answer": "de-t01-chopped", "index": 0, "reason": "Die Umbenennung, der neue Pfad und die Dateigröße bilden eine zusammenhängende Erklärung, die durch die kurzen Sätze zerhackt wird.", "verdict": "violating"}
+{"answer": "de-t02-chopped", "index": 0, "reason": "Die Folge aus Exportformat, Excel-Verhalten und fehlerhafter Darstellung ist ein zusammenhängender technischer Gedankengang.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 0, "reason": "Die Sätze erklären in einer zusammenhängenden Kette, warum die Datumformatierung beim Hydrieren abweicht.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 1, "reason": "Browserzeitzone, abweichende Uhrzeiten und Reacts Warnung gehören in eine verbundene Erklärung.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 2, "reason": "Lösung, erwartete Wirkung und Einschränkung von suppressHydrationWarning hängen eng zusammen und werden unnötig in kurze Sätze zerlegt.", "verdict": "violating"}
+{"answer": "de-t05-chopped", "index": 0, "reason": "Die monatlichen manuellen Downloads und die Support-Anfragen bilden eine zusammenhängende Begründung, deren Bezüge in kurzen Sätzen abgehackt wirken.", "verdict": "violating"}
+{"answer": "de-t05-chopped", "index": 1, "reason": "Das zusätzliche Feld und dessen Nutzung durch den Versanddienst beschreiben zusammen die technische Lösung und ließen sich besser verbinden.", "verdict": "violating"}
+{"answer": "de-t06-chopped", "index": 0, "reason": "Die zwei Ziele sind bewusst als getrennte Aufgaben formuliert; der kurze Schlusssatz fasst ihren Zweck zusammen.", "verdict": "clean"}
+{"answer": "de-t06-chopped", "index": 1, "reason": "Die Beschreibung des Tickets zerhackt einen zusammenhängenden Gedanken: Es geht um einen Tooltip, das Ticket berührt nur eine Datei und eignet sich deshalb gut.", "verdict": "violating"}
+{"answer": "de-t07-chopped", "index": 0, "reason": "Die Fehlerbehandlung und ihre Folgen gehören zusammen: Der Block fängt den Fehler ab, gibt None zurück, und der Aufrufer erwartet stattdessen eine leere Liste.", "verdict": "violating"}
+{"answer": "de-t09-chopped", "index": 0, "reason": "Die beiden Sätze zum Playbook lassen sich sinnvoll verbinden: Es lief zuletzt im Juli, seitdem hat niemand es angestoßen.", "verdict": "violating"}
+{"answer": "de-t10-chopped", "index": 0, "reason": "Die Sätze schildern eine zusammenhängende Ursache-Wirkungs-Kette vom Zurückstellen der Uhr bis zum doppelten Versand; die Wiederholung von 02:15 erklärt, warum der Job zweimal lief.", "verdict": "violating"}
+{"answer": "de-t10-chopped", "index": 1, "reason": "Die Prüfung und ihr Ablauf gehören zusammen: Sie sucht nach einem Versand am selben Tag und beendet den Job, wenn sie einen findet.", "verdict": "violating"}
+{"answer": "de-t11-chopped", "index": 0, "reason": "Die kurzen Sätze bilden eine zusammenhängende Erklärung dafür, warum der Lock geblieben ist: Martin startete Apply, der Laptop ging in den Ruhezustand und der Prozess endete.", "verdict": "violating"}
+{"answer": "de-t12-chopped", "index": 0, "reason": "Die Sätze zerlegen die technische Ursache und Folge des Speicherwachstums: Der Listener wird bei jedem Render registriert, nie entfernt und hält alte Komponenten fest.", "verdict": "violating"}
+{"answer": "de-t12-chopped", "index": 1, "reason": "Die Sätze beschreiben zusammenhängend die Wirkung der Änderung: Die Cleanup-Funktion entfernt Listener, der Speicher bleibt stabil und die Warnungen bleiben aus.", "verdict": "violating"}
+{"answer": "de-tc04", "index": 0, "reason": "Eine Liste voneinander unabhängiger Änderungen und Eigenschaften.", "verdict": "clean"}
+{"answer": "de-tc06", "index": 0, "reason": "Eine Liste getrennter Repository-Regeln; die Sätze zerhacken keinen zusammengehörigen Gedanken.", "verdict": "clean"}

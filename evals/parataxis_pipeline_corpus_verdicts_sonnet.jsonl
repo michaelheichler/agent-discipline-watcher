@@ -1,0 +1,80 @@
+{"answer": "af4bdf818ec7", "index": 0, "reason": "Three short clauses about the study, season and nests could be joined.", "verdict": "violating"}
+{"answer": "52fb7d70d8a0", "index": 0, "reason": "Separate facts about the city; a list of unrelated facts.", "verdict": "clean"}
+{"answer": "b1d172abc2e6", "index": 0, "reason": "'She loves daydreaming. She is always thinking about something.' is one thought and should be joined.", "verdict": "violating"}
+{"answer": "f23007865746", "index": 0, "reason": "Appearance, popularity and categorizing women form one line of thought, with 'them' pointing back; join.", "verdict": "violating"}
+{"answer": "16f547cfda40", "index": 0, "reason": "Separate biographical facts.", "verdict": "clean"}
+{"answer": "f2680f9bc1cb", "index": 0, "reason": "Separate facts about listing, restoration and vegetable garden.", "verdict": "clean"}
+{"answer": "7a9fc6be7aa2", "index": 0, "reason": "Chain of This/This/It sentences pointing back reads better joined.", "verdict": "violating"}
+{"answer": "a812d12311a0", "index": 0, "reason": "Decline, lack of regrowth and possible critical status are one line of reasoning, with 'It' pointing back.", "verdict": "violating"}
+{"answer": "b724523940ff", "index": 0, "reason": "Three short telegram-style facts about the dam could be joined into one sentence with commas and 'and'.", "verdict": "violating"}
+{"answer": "fd7f748b9307", "index": 0, "reason": "Short sentences with 'This is' pointing back could be joined: these defects develop early, around the 19th to 21st day.", "verdict": "violating"}
+{"answer": "f053df5113ac", "index": 0, "reason": "Distinct authorial statements in a personal literary voice; deliberate rhythm.", "verdict": "clean"}
+{"answer": "b9eab3adc4f1", "index": 0, "reason": "Narrative memoir voice with short rhythmic sentences.", "verdict": "clean"}
+{"answer": "be62daac7138", "index": 0, "reason": "Deliberate anaphoric repetition for emphasis in literary prose.", "verdict": "clean"}
+{"answer": "6e1a4c844082", "index": 0, "reason": "Dialect dialogue with fragments; speech.", "verdict": "clean"}
+{"answer": "ea6d2f94bd05", "index": 0, "reason": "Dialogue in dialect, narrating a sequence of events.", "verdict": "clean"}
+{"answer": "1385e7e600f0", "index": 0, "reason": "Stage directions.", "verdict": "clean"}
+{"answer": "a8b01346fb21", "index": 0, "reason": "Dialogue in a play; short spoken lines.", "verdict": "clean"}
+{"answer": "b98ebf8aa0fe", "index": 0, "reason": "Deliberate rhetorical repetition in literary prose for emphasis.", "verdict": "clean"}
+{"answer": "4951e17967eb", "index": 0, "reason": "Narrative prose with a sequence of observations.", "verdict": "clean"}
+{"answer": "07c3a01ccdb2", "index": 0, "reason": "Dialogue; deliberate short rhythm in character speech.", "verdict": "clean"}
+{"answer": "7d667b96cad0", "index": 0, "reason": "Stage directions.", "verdict": "clean"}
+{"answer": "5b5118c55375", "index": 0, "reason": "Deliberate wry rhythm in essay prose; sentences are separate points.", "verdict": "clean"}
+{"answer": "69de6bac36d5", "index": 0, "reason": "Stage directions describing a scene.", "verdict": "clean"}
+{"answer": "f7e949e306ca", "index": 0, "reason": "List of contrasting grammar examples, unrelated sentences.", "verdict": "clean"}
+{"answer": "d5d7501ee558", "index": 0, "reason": "Unrelated example sentences for grammar; a list of separate facts.", "verdict": "clean"}
+{"answer": "11e1a47f106a", "index": 0, "reason": "Short clauses about the enemy's behavior form one line of thought; 'They attack... They are specially careful' could be joined.", "verdict": "violating"}
+{"answer": "806877e59977", "index": 0, "reason": "Deliberate aphoristic rhythm for emphasis in a literary passage.", "verdict": "clean"}
+{"answer": "ef24b3f59a05", "index": 0, "reason": "Table-like data list, not prose.", "verdict": "clean"}
+{"answer": "5f7e393c5cad", "index": 0, "reason": "Chapter-summary fragments, a list of separate events.", "verdict": "clean"}
+{"answer": "f72c411936fa", "index": 0, "reason": "List of separate action fragments.", "verdict": "clean"}
+{"answer": "c81b44161322", "index": 0, "reason": "Inventory list of separate items.", "verdict": "clean"}
+{"answer": "6e4e78d97409", "index": 0, "reason": "Inventory list of unrelated items.", "verdict": "clean"}
+{"answer": "f50913f4d635", "index": 0, "reason": "Run of 'They should...' clauses that one sentence with commas and 'and' could carry.", "verdict": "violating"}
+{"answer": "847a8535835e", "index": 0, "reason": "Deliberate parallel rhythm listing separate facts.", "verdict": "clean"}
+{"answer": "3eefb9b23e47", "index": 0, "reason": "Mixed sentence lengths covering distinct points.", "verdict": "clean"}
+{"answer": "b7a08c448c65", "index": 0, "reason": "Terse field-guide notation, a list of separate facts.", "verdict": "clean"}
+{"answer": "97861ae99ed5", "index": 0, "reason": "Short claims form one line of reasoning (deal, stock rises, buy) that could be joined.", "verdict": "violating"}
+{"answer": "7110d07224e2", "index": 0, "reason": "Deliberate rhythmic emphasis in rhetorical prose.", "verdict": "clean"}
+{"answer": "b1dd9933b1f6", "index": 0, "reason": "Exercise items, unrelated sentences.", "verdict": "clean"}
+{"answer": "df842ff6dd6c", "index": 0, "reason": "Exercise items, unrelated sentences.", "verdict": "clean"}
+{"answer": "d3787d589219", "index": 0, "reason": "Zwei aufeinanderfolgende Sätze mit 'Er' zerhacken die Biografie; sie ließen sich mit Relativsatz verbinden.", "verdict": "violating"}
+{"answer": "4acfef4f1a5d", "index": 0, "reason": "Sachliche Aufzählung getrennter Entwicklungen, kein Rückverweis-Telegrammstil.", "verdict": "clean"}
+{"answer": "f19c1713c16e", "index": 0, "reason": "Sätze sind unterschiedlich lang und tragen jeweils eigene Information.", "verdict": "clean"}
+{"answer": "6ff5a3e92061", "index": 0, "reason": "Folge unabhängiger Fakten mit unterschiedlicher Länge.", "verdict": "clean"}
+{"answer": "0eefb127f46f", "index": 0, "reason": "Chronologische Sachfolge, getrennte Fakten.", "verdict": "clean"}
+{"answer": "261e8fd47276", "index": 0, "reason": "Folge getrennter Fakten zum Lebenszyklus, kein zerhackter Gedanke.", "verdict": "clean"}
+{"answer": "06cb86fd1b2f", "index": 0, "reason": "Zweimal 'Es' verweist zurück auf das Unterscheidungszeichen; die Sätze lassen sich zu einem verbinden.", "verdict": "violating"}
+{"answer": "d74c79c7b293", "index": 0, "reason": "Getrennte Beschreibungen verschiedener Funktionen, keine Rückverweise.", "verdict": "clean"}
+{"answer": "d865ec67d525", "index": 0, "reason": "Encyclopedic facts, only a short pair; Sie refers back but the sentences are longer and fine.", "verdict": "clean"}
+{"answer": "60ebb7bca8ee", "index": 0, "reason": "Series of short sentences about the lake and stadium location with Er referring back; could be joined.", "verdict": "violating"}
+{"answer": "5a30c6f4ee66", "index": 0, "reason": "Biographical list of separate facts, not a choppy single thought.", "verdict": "clean"}
+{"answer": "4411b0ce3e15", "index": 0, "reason": "Short sentences with Sie and Das referring back to the circulation drop; telegram style, joinable.", "verdict": "violating"}
+{"answer": "77766cb91809", "index": 0, "reason": "Independent descriptive facts about different building parts.", "verdict": "clean"}
+{"answer": "47e965edc264", "index": 0, "reason": "Independent facts about the town; Sie refers back once but reads fine.", "verdict": "clean"}
+{"answer": "d2d6f6bcae7c", "index": 0, "reason": "Descriptive architectural details with moderate length; acceptable.", "verdict": "clean"}
+{"answer": "b9af1a15bd5b", "index": 0, "reason": "Separate facts; the last sentence's Dies is a reasonable causal link, not a chopped thought.", "verdict": "clean"}
+{"answer": "e3cf5d6f6ca1", "index": 0, "reason": "Encyclopedic sentences of varied length, with a contrast marker; not a telegram-style chain.", "verdict": "clean"}
+{"answer": "4baf7eec3699", "index": 0, "reason": "'Sie läuteten...' refers back to the Trommelfeuer; the first two sentences could be joined with a relative clause.", "verdict": "violating"}
+{"answer": "72b27231582c", "index": 0, "reason": "Separate definitional facts, each with its own content.", "verdict": "clean"}
+{"answer": "4a7ad465cd26", "index": 0, "reason": "A list of independent facts about calves.", "verdict": "clean"}
+{"answer": "4d53a0163fa5", "index": 0, "reason": "Template text with missing values; not a parataxis issue.", "verdict": "clean"}
+{"answer": "9a13714efe4d", "index": 0, "reason": "Short sentences chained by 'Diese' and 'diese Einrichtungen' referring back; they could be joined with relative clauses.", "verdict": "violating"}
+{"answer": "b29126de1552", "index": 0, "reason": "A chronological sequence of facts in encyclopedic prose; not choppy enough to need joining.", "verdict": "clean"}
+{"answer": "eca146981c66", "index": 0, "reason": "Independent facts about the party's strengths, and the sentences are of moderate length.", "verdict": "clean"}
+{"answer": "5523432abac5", "index": 0, "reason": "Unabhängige biografische Fakten in Folge, keine Zurückverweis-Kette, die Verbindung verlangt.", "verdict": "clean"}
+{"answer": "74893660229c", "index": 0, "reason": "Erzählende Sachprosa mit wechselnder Satzlänge; die Sätze tragen eigene Aussagen.", "verdict": "clean"}
+{"answer": "161e08c00470", "index": 0, "reason": "Sachtext mit getrennten Aussagen, neben längeren Sätzen; kein Telegrammstil.", "verdict": "clean"}
+{"answer": "ce27749a1a03", "index": 0, "reason": "Liste voneinander unabhängiger Fakten über die Tiere.", "verdict": "clean"}
+{"answer": "11bcce6e9421", "index": 0, "reason": "Technische Erklärung: Folgen derselben Ursache in kurzen Hauptsätzen, mit Dies-Rückverweis; ließe sich verbinden.", "verdict": "violating"}
+{"answer": "3eabe5b3e7b5", "index": 0, "reason": "Drei getrennte Aussagen zur Bedienung, kein zerhackter einzelner Gedanke.", "verdict": "clean"}
+{"answer": "b15561f78d44", "index": 0, "reason": "Getrennte Aussagen, Satz abgebrochen; keine klare Telegrammkette.", "verdict": "clean"}
+{"answer": "519de65bf6ed", "index": 0, "reason": "Liste unabhängiger Fakten zur Ligastruktur.", "verdict": "clean"}
+{"answer": "143c6bc64146", "index": 0, "reason": "Folge unabhängiger Fakten zur Ligastruktur, sachlich aufgezählt.", "verdict": "clean"}
+{"answer": "63834f66dd49", "index": 0, "reason": "Enzyklopädische Faktenfolge mit normaler Satzlänge, kein Telegrammstil.", "verdict": "clean"}
+{"answer": "f4f10081746d", "index": 0, "reason": "Kurze Hauptsätze zur Frucht, 'Sie sitzen...' verweist zurück; Fruchtwand/Fruchtfleisch/Fruchtfächer ließen sich verbinden.", "verdict": "violating"}
+{"answer": "f1c423c7efd9", "index": 0, "reason": "Schritte eines Anpassungsprozesses, Sätze von normaler Länge; Verbinden nicht zwingend.", "verdict": "clean"}
+{"answer": "59b72feb76a8", "index": 0, "reason": "Dichterischer Chortext, bewusster Rhythmus.", "verdict": "clean"}
+{"answer": "83d0a13af5f6", "index": 0, "reason": "Literarische erzählende Prosa mit bewusst kurzem Rhythmus.", "verdict": "clean"}
+{"answer": "ad2b5c01b1f3", "index": 0, "reason": "Lyrik/literarischer Text.", "verdict": "clean"}
+{"answer": "0ad9405987a2", "index": 0, "reason": "Argumentation mit ausreichend langen Sätzen, kein zerhackter Telegrammstil.", "verdict": "clean"}

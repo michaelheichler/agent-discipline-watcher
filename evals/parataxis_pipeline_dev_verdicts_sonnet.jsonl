@@ -1,0 +1,44 @@
+{"answer": "en-01-chopped", "index": 0, "reason": "Chain of short clauses explaining one cause (local vs UTC) that reads better joined.", "verdict": "violating"}
+{"answer": "en-02-chopped", "index": 0, "reason": "Three consecutive 'It' sentences describing one cache; could be joined.", "verdict": "violating"}
+{"answer": "en-03-chopped", "index": 0, "reason": "Telegram-style run describing one migration; column, nullable, backfill could be joined.", "verdict": "violating"}
+{"answer": "en-03-chopped", "index": 1, "reason": "Fragments like 'So the table lock stays short' point back and should be joined to the preceding clause.", "verdict": "violating"}
+{"answer": "en-04-chopped", "index": 0, "reason": "Separate facts about the release; short sentences stand fine.", "verdict": "clean"}
+{"answer": "en-05-chopped", "index": 0, "reason": "Short clauses build one argument about pool size and would read better joined.", "verdict": "violating"}
+{"answer": "en-05-chopped", "index": 1, "reason": "Run of short dependent clauses that could be joined with because/so.", "verdict": "violating"}
+{"answer": "en-06-chopped", "index": 0, "reason": "'It hides 401 errors. Those should stop the job.' points back and should be joined.", "verdict": "violating"}
+{"answer": "en-07-chopped", "index": 0, "reason": "Run of short clauses explaining one causal chain; could be joined with because/which.", "verdict": "violating"}
+{"answer": "en-07-chopped", "index": 1, "reason": "Test description split into fragments that read better joined.", "verdict": "violating"}
+{"answer": "en-08-chopped", "index": 0, "reason": "A sequence of separate procedural steps in order.", "verdict": "clean"}
+{"answer": "en-10-chopped", "index": 0, "reason": "Telegram-style diagnosis with It pointing back; should be joined.", "verdict": "violating"}
+{"answer": "en-10-chopped", "index": 1, "reason": "Short clauses about the index and its effect with It pointing back; join.", "verdict": "violating"}
+{"answer": "en-11-chopped", "index": 0, "reason": "One causal explanation chopped into short clauses with It referring back.", "verdict": "violating"}
+{"answer": "en-12-chopped", "index": 0, "reason": "Chain of short clauses with They/Each/That pointing back; join.", "verdict": "violating"}
+{"answer": "en-12-chopped", "index": 1, "reason": "Short clauses about the bucket and retries belong together, with They pointing back.", "verdict": "violating"}
+{"answer": "en-13-chopped", "index": 0, "reason": "Run of short clauses with 'We keep them' and 'That protects them' pointing back; joinable with because/which.", "verdict": "violating"}
+{"answer": "en-14-chopped", "index": 0, "reason": "Telegram-style chain with 'It cannot' and 'So' pointing back; one line of thought about permissions that reads better joined.", "verdict": "violating"}
+{"answer": "en-14-chopped", "index": 1, "reason": "'The init container does this' and 'Then...' are fragments of one thought; join into one sentence.", "verdict": "violating"}
+{"answer": "en-15-chopped", "index": 0, "reason": "Short clauses with 'It' and 'That rules out' referring back; a diagnosis that joins naturally.", "verdict": "violating"}
+{"answer": "en-c05", "index": 0, "reason": "List of unrelated facts about the server.", "verdict": "clean"}
+{"answer": "de-01-chopped", "index": 0, "reason": "Technische Erklärung in Telegrammstil; „Er“ verweist zurück, Sätze ließen sich mit weil/der verbinden.", "verdict": "violating"}
+{"answer": "de-01-chopped", "index": 1, "reason": "Kurze Hauptsätze zu einem Gedanken (Suite lief grün, auch in der Pipeline) ließen sich verbinden.", "verdict": "violating"}
+{"answer": "de-02-chopped", "index": 0, "reason": "Technische Reihe mit Rückverweisen (Sie, Das, Ihre) zerhackt einen Gedankengang.", "verdict": "violating"}
+{"answer": "de-03-chopped", "index": 0, "reason": "Zahlreiche kurze Sätze mit Rückverweisen (Die View, Er, Das) in technischer Erklärung.", "verdict": "violating"}
+{"answer": "de-03-chopped", "index": 1, "reason": "Drei kurze Sätze, der letzte mit „Sie“ als Rückverweis, ließen sich mit Nebensatz verbinden.", "verdict": "violating"}
+{"answer": "de-04-chopped", "index": 0, "reason": "Rückverweise Sie, Er, Das in kurzer Satzreihe zu einem Gedanken.", "verdict": "violating"}
+{"answer": "de-05-chopped", "index": 0, "reason": "Zwei kurze Sätze mit „Es“-Rückverweis neben einem langen; die kurzen ließen sich verbinden.", "verdict": "violating"}
+{"answer": "de-06-chopped", "index": 0, "reason": "Kausale Kette in kurzen Hauptsätzen, mit Das-Rückverweis, besser verbunden.", "verdict": "violating"}
+{"answer": "de-06-chopped", "index": 1, "reason": "Sie-Rückverweise in kurzen Hauptsätzen zur Route ließen sich gut verbinden.", "verdict": "violating"}
+{"answer": "de-07-chopped", "index": 0, "reason": "Technische Erklärung in zerhackten Sätzen; Ursache und Folge lassen sich mit weil/sodass verbinden.", "verdict": "violating"}
+{"answer": "de-08-chopped", "index": 0, "reason": "Telegrammstil mit Er-Rückverweisen auf den Lauf; gehört verbunden.", "verdict": "violating"}
+{"answer": "de-10-chopped", "index": 0, "reason": "Lange Reihe kurzer Sätze mit Er/Es-Rückverweisen, ideal für Relativsätze.", "verdict": "violating"}
+{"answer": "de-10-chopped", "index": 1, "reason": "Getrennte Fakten und Schritte, keine starke Zerhackung.", "verdict": "clean"}
+{"answer": "de-11-chopped", "index": 0, "reason": "Folge getrennter Schritte mit unterschiedlich langen Sätzen.", "verdict": "clean"}
+{"answer": "de-12-chopped", "index": 0, "reason": "Drei Sätze mit Es-Rückverweis beschreiben eine Regel und lassen sich in einem Satz verbinden.", "verdict": "violating"}
+{"answer": "de-12-chopped", "index": 1, "reason": "Kausalkette in Kurzsätzen würde mit weil/sodass besser lesen.", "verdict": "violating"}
+{"answer": "de-13-chopped", "index": 0, "reason": "Kurze Hauptsätze mit zurückverweisendem 'Sie' zerhacken einen technischen Gedanken; mehrere Sätze ließen sich verbinden.", "verdict": "violating"}
+{"answer": "de-13-chopped", "index": 1, "reason": "Kurze Folge von Fakten, ohne Zwang zum Verbinden.", "verdict": "clean"}
+{"answer": "de-14-chopped", "index": 0, "reason": "Reihe kurzer Hauptsätze mit 'Das überschreitet' als Rückverweis; Upload und Speicherlimit gehören verbunden.", "verdict": "violating"}
+{"answer": "de-15-chopped", "index": 0, "reason": "Technische Erklärung in Telegrammstil, 'Sie fragen...' verweist zurück; Ursache und Wirkung besser verbunden.", "verdict": "violating"}
+{"answer": "de-15-chopped", "index": 1, "reason": "Kurze Hauptsätze, die Folgen eines Gedankens aufzählen und verbunden besser lesen.", "verdict": "violating"}
+{"answer": "de-c05", "index": 0, "reason": "Liste voneinander unabhängiger Fakten.", "verdict": "clean"}
+{"answer": "de-c06", "index": 0, "reason": "Release-Notes: unabhängige Einzelpunkte.", "verdict": "clean"}

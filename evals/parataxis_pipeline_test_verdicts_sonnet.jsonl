@@ -1,0 +1,44 @@
+{"answer": "en-t01-chopped", "index": 0, "reason": "Chain of short clauses explaining one cause, ending in 'That is why'; should be joined.", "verdict": "violating"}
+{"answer": "en-t01-chopped", "index": 1, "reason": "Separate steps and observations; not a telegram chain.", "verdict": "clean"}
+{"answer": "en-t02-chopped", "index": 0, "reason": "Sequence of separate steps.", "verdict": "clean"}
+{"answer": "en-t02-chopped", "index": 1, "reason": "Short clauses with 'It' pointing back and results that could be joined.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 0, "reason": "Three 'It' clauses about SQLite's properties could be joined.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 1, "reason": "'That' points back; could be joined into one sentence with a relative clause.", "verdict": "violating"}
+{"answer": "en-t03-chopped", "index": 2, "reason": "Run of short clauses in one line of reasoning; 'So the limit should not matter' should be joined.", "verdict": "violating"}
+{"answer": "en-t04-chopped", "index": 0, "reason": "Short causal chain with 'Its' and 'That' pointing back; should be joined.", "verdict": "violating"}
+{"answer": "en-t04-chopped", "index": 1, "reason": "'It alerts' points back to the check; the monitoring sentences join naturally with 'which'.", "verdict": "violating"}
+{"answer": "en-t05-chopped", "index": 0, "reason": "Chain of short clauses about one cause (clock change, cron firing twice) that reads better joined with because/when.", "verdict": "violating"}
+{"answer": "en-t05-chopped", "index": 1, "reason": "Separate change steps reported; list of distinct actions.", "verdict": "clean"}
+{"answer": "en-t05-chopped", "index": 2, "reason": "Separate follow-up facts about cleanup; not one telegram chain.", "verdict": "clean"}
+{"answer": "en-t06-chopped", "index": 0, "reason": "Short clauses explaining one reasoning chain (reflog, retention, drop) that should be joined with because/so.", "verdict": "violating"}
+{"answer": "en-t06-chopped", "index": 1, "reason": "Sequence of separate steps in a procedure.", "verdict": "clean"}
+{"answer": "en-t07-chopped", "index": 0, "reason": "Run of short clauses about one failure cause; 'It' chains and the secret rename could be joined.", "verdict": "violating"}
+{"answer": "en-t08-chopped", "index": 0, "reason": "Short sentences with 'That adds' pointing back; one explanation of N+1 that joins naturally.", "verdict": "violating"}
+{"answer": "en-t08-chopped", "index": 1, "reason": "Run of 'It' sentences describing the same loader; joinable with a relative clause or 'and'.", "verdict": "violating"}
+{"answer": "en-t09-chopped", "index": 0, "reason": "'It retried without backoff' points back and could be joined to the previous sentence.", "verdict": "violating"}
+{"answer": "en-t09-chopped", "index": 1, "reason": "Short clauses about one failure cascade; could be joined with 'because' or 'and'.", "verdict": "violating"}
+{"answer": "en-t10-chopped", "index": 0, "reason": "Chain of short sentences with It/That/Its pointing back; a careful editor would join them.", "verdict": "violating"}
+{"answer": "en-t11-chopped", "index": 0, "reason": "Technical explanation in telegram fragments with 'It appends' pointing back; several could be joined.", "verdict": "violating"}
+{"answer": "en-t12-chopped", "index": 0, "reason": "Causal chain of short clauses that reads better joined.", "verdict": "violating"}
+{"answer": "en-tc04", "index": 0, "reason": "Separate unrelated changelog facts.", "verdict": "clean"}
+{"answer": "en-tc05", "index": 0, "reason": "List of unrelated status facts.", "verdict": "clean"}
+{"answer": "en-tc06", "index": 0, "reason": "A list of unrelated configuration facts; each stands alone.", "verdict": "clean"}
+{"answer": "en-tc07", "index": 0, "reason": "Independent facts about account settings; joining would not improve them.", "verdict": "clean"}
+{"answer": "de-t01-chopped", "index": 0, "reason": "Rows of short clauses with Sie/Ihr referring back chop one thought; joinable.", "verdict": "violating"}
+{"answer": "de-t02-chopped", "index": 0, "reason": "Excel/Es chain about encoding is one explanation in telegram style; joinable.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 0, "reason": "Sie/Sie chain describing one component's behavior; joinable.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 1, "reason": "Causal chain with Sie/Dort back-references; joinable with sodass/und.", "verdict": "violating"}
+{"answer": "de-t04-chopped", "index": 2, "reason": "Varied lengths, distinct advice points; not telegram style.", "verdict": "clean"}
+{"answer": "de-t05-chopped", "index": 0, "reason": "Short sentences with Das/Seine back-references fragment one thought; joinable.", "verdict": "violating"}
+{"answer": "de-t05-chopped", "index": 1, "reason": "Mixed lengths, separate points, question and answer.", "verdict": "clean"}
+{"answer": "de-t06-chopped", "index": 0, "reason": "Goals as parallel items with a differing closing sentence; deliberate rhythm.", "verdict": "clean"}
+{"answer": "de-t06-chopped", "index": 1, "reason": "Onboarding-Hinweise, überwiegend unabhängige Fakten und Schritte; gemischte Satzlängen.", "verdict": "clean"}
+{"answer": "de-t07-chopped", "index": 0, "reason": "Kette kurzer Sätze mit Er/Er/Er und Sie-Rückbezug, ein technischer Gedankengang, der sich verbinden ließe.", "verdict": "violating"}
+{"answer": "de-t09-chopped", "index": 0, "reason": "Nur wenige Sätze, ausreichend variiert; Verbindung nicht zwingend.", "verdict": "clean"}
+{"answer": "de-t10-chopped", "index": 0, "reason": "Ursachenkette in Telegrammstil mit deshalb und Rückverweis, besser verbunden.", "verdict": "violating"}
+{"answer": "de-t10-chopped", "index": 1, "reason": "Folge getrennter Schritte, mit Sie-Satz und Findet-Satz; akzeptabel.", "verdict": "clean"}
+{"answer": "de-t11-chopped", "index": 0, "reason": "Kurze Sätze mit Er/Sein/Der Prozess, ein Gedanke zur Ursache, der sich mit danach/weil verbinden ließe.", "verdict": "violating"}
+{"answer": "de-t12-chopped", "index": 0, "reason": "Sie/Sie-Rückverweise und Er-Reihe zerhacken einen technischen Gedanken.", "verdict": "violating"}
+{"answer": "de-t12-chopped", "index": 1, "reason": "Getrennte Fix-Schritte und Ergebnis, mittlere Länge.", "verdict": "clean"}
+{"answer": "de-tc04", "index": 0, "reason": "Liste voneinander unabhängiger Änderungen/Fakten, kein zusammenhängender Gedanke.", "verdict": "clean"}
+{"answer": "de-tc06", "index": 0, "reason": "Liste unabhängiger Regeln des Repositories, keine Rückverweise; Fakten stehen nebeneinander.", "verdict": "clean"}
