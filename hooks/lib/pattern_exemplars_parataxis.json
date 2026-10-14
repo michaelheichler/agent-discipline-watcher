@@ -1,0 +1,20 @@
+{
+  "exemplars": "pattern_exemplars_parataxis.jsonl",
+  "measurement": "evals/parataxis_pipeline.json",
+  "rules": {
+    "choppy_sentences": {
+      "action": "Join the sentences that belong together with a comma, a subordinate clause (because, when, so that, after), a relative clause (which, that, who), or and or but. Em dashes, en dashes, and semicolons stay banned. Example: 'We built a pump. It measures pressure.' becomes 'We built a pump that measures pressure.'",
+      "candidates": "static",
+      "definition": "Each candidate is a run of short main clauses, followed by its surrounding sentences after 'Paragraph:'. Answer violating only when a careful editor would join at least two of the sentences, because the split cuts one line of thought into telegram-style fragments that read worse apart than joined, as in a technical answer where a later sentence points back with It, This, or They. That two sentences could be joined is not enough. Answer clean for narrative or literary prose, dialogue, stage directions, deliberate short rhythm used for emphasis, a list of unrelated facts, a sequence of separate steps, or a short sentence that stands beside longer joined ones. Never ask for a split.",
+      "judge_precision": 1.0,
+      "language": "en"
+    },
+    "de_parataxis": {
+      "action": "Verbinde die Sätze, die zusammengehören, mit einem Komma, einem Nebensatz (weil, wenn, sodass, nachdem), einem Relativsatz (der, die, das) oder mit und oder aber. Geviertstrich, Halbgeviertstrich und Semikolon bleiben verboten. Beispiel: „Wir haben eine Pumpe entwickelt. Sie misst den Druck.“ wird zu „Wir haben eine Pumpe entwickelt, die den Druck misst.“",
+      "candidates": "static",
+      "definition": "Jeder Kandidat ist eine Reihe kurzer Hauptsätze, nach „Paragraph:“ folgen die Sätze drumherum. Antworte violating nur, wenn eine sorgfältige Lektorin mindestens zwei der Sätze verbinden würde, weil die Reihe einen Gedanken in Telegrammstil zerhackt und getrennt schlechter liest als verbunden, etwa in einer technischen Antwort, in der ein späterer Satz mit Sie, Er, Es oder Das zurückverweist. Dass zwei Sätze sich verbinden ließen, reicht nicht. Antworte clean bei erzählender oder literarischer Prosa, Dialog, Regieanweisungen, bewusst kurzem Rhythmus zur Betonung, bei einer Liste voneinander unabhängiger Fakten, bei einer Folge getrennter Schritte oder bei einem kurzen Satz neben längeren verbundenen Sätzen. Verlange nie, einen Satz zu teilen.",
+      "judge_precision": 0.9231,
+      "language": "de"
+    }
+  }
+}

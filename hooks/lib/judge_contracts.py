@@ -189,8 +189,9 @@ def _pattern_prompt(request: JudgeRequest) -> str:
     violating = "\n".join(f"violating: {text}" for text in request.violating_examples)
     clean = "\n".join(f"clean: {text}" for text in request.clean_examples)
     items = "\n".join(f"{index}. {text.strip()}" for index, text in enumerate(request.candidates))
+    definition = f"Definition: {request.rule_definition}\n" if request.rule_definition else ""
     return (
-        f"{PATTERN_RUBRIC}\nPattern: {request.rule_name}\nFix it asks for: {request.rule_action}\n"
+        f"{PATTERN_RUBRIC}\nPattern: {request.rule_name}\n{definition}Fix it asks for: {request.rule_action}\n"
         f"Real examples:\n  {violating.replace(chr(10), chr(10) + '  ')}\n"
         f"  {clean.replace(chr(10), chr(10) + '  ')}\n\nJudge each sentence.\n{items}"
     )

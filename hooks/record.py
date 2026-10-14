@@ -4,13 +4,13 @@ import os
 import stat
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
 from failure import normalize_payload, record_success
-from lib import blocker_state, imported_baseline, journal, payloads, scan_input, temp_authorship
+from lib import blocker_state, imported_baseline, journal, parataxis_review, payloads, scan_input, temp_authorship
 from lib.mcp_health import config_roots
 from lib.config import effective_config
 from lib.embedding_session import lease_root_for, renew_turn
@@ -46,6 +46,7 @@ class _EditJournal:
     paths: list[str]
     root: str | Path | None
     state_root: str | Path | None
+    config: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,15 +81,14 @@ def _edit_row_template(edits: _EditJournal, turn_id: str) -> dict:
 
 
 def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
+    session_id = edits.payload["session_id"]
     try:
-        journal.record_edit(
-            edits.payload["session_id"], turn_id,
-            edits.payload["tool_use_id"],
-            payloads.resolved_path(path, Path(edits.payload["cwd"] or ".")),
-            state_root=edits.state_root,
-        )
+        target = payloads.resolved_path(path, Path(edits.payload["cwd"] or "."))
+        journal.record_edit(session_id, turn_id, edits.payload["tool_use_id"], target, state_root=edits.state_root)
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
+        return
+    parataxis_review.record(parataxis_review.EditTurn(session_id, turn_id, edits.config, edits.state_root), target)
 
 
 def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
@@ -354,7 +354,7 @@ def _gate_context_for(
     paths = list(written)
     removed = _missing_removed_paths(payload, cwd)
     return _RecordGateContext(
-        journal=_EditJournal(projected, paths, ledger_root, state_root),
+        journal=_EditJournal(projected, paths, ledger_root, state_root, cfg),
         tracked_paths=[str(payloads.resolved_path(raw, cwd)) for raw in paths],
         scan_paths=[raw for raw in paths if raw not in removed],
         imported_paths=list(imported),

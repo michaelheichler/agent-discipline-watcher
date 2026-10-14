@@ -16,6 +16,15 @@ except ImportError:
 
 GERMAN_EXEMPLAR_PATH = Path(__file__).with_name("pattern_exemplars_de.jsonl")
 GERMAN_MANIFEST_PATH = Path(__file__).with_name("pattern_exemplars_de.json")
+# Kept apart, because a rebuild from sentence corpora would drop paragraph rows.
+STATIC_EXEMPLAR_PATH = Path(__file__).with_name("pattern_exemplars_parataxis.jsonl")
+STATIC_MANIFEST_PATH = Path(__file__).with_name("pattern_exemplars_parataxis.json")
+STATIC_CANDIDATES = "static"
+
+
+def static_candidates(manifest: dict, rule: str) -> bool:
+    """True when the scanner finds the candidates, because a sentence vote cannot see a run."""
+    return manifest["rules"][rule].get("candidates") == STATIC_CANDIDATES
 
 
 def rule_language(manifest: dict, rule: str) -> str:

@@ -20,6 +20,7 @@ from .judge_contracts import (
 )
 from .judge_provider import RECURSION_GUARD
 from .luna_feedback import bounded
+from .parataxis_lexicon import RULES as PARATAXIS_RULES
 
 REVIEWER = "Sonnet"
 CLI_TIMEOUT_SECONDS = 90
@@ -150,6 +151,8 @@ def _pattern_result(request: Any, items: list[dict[str, Any]]) -> JudgeResult:
         if type(index) is not int or not 0 <= index < count:
             raise ReviewUnavailable("the verdict named a candidate that does not exist")
         chosen.setdefault(index, {key: item[key] for key in _VERDICT["required"]})
+    if request.rule_name in PARATAXIS_RULES and len(chosen) < count:
+        raise ReviewUnavailable("the verdict skipped a parataxis run, which needs its own answer")
     clean = {"verdict": "clean", "reason": MISSING_VERDICT_REASON}
     return _result({"items": [chosen.get(index, {"index": index, **clean}) for index in range(count)]})
 

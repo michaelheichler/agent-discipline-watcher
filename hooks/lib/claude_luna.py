@@ -257,7 +257,7 @@ def stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str, 
 
 def _pattern_candidate(row: dict[str, Any]) -> PatternCandidate:
     line = row.get("line") if isinstance(row.get("line"), int) else 1
-    return PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
+    return PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:journal.MAX_PATTERN_CHARS])
 
 
 def _pattern_work(rows: list[dict[str, Any]], config: dict | None) -> list[Work]:

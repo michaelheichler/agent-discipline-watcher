@@ -122,10 +122,10 @@ DEFAULTS = {
         "de_long_compound": "off",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
-        # Off because 7 of 40 labeled hits held, 0.1750 precision.
-        "choppy_sentences": "off",
-        # Off because 22 of 40 labeled German hits held, 0.5500 precision.
-        "de_parataxis": "off",
+        # Judged because reviewed runs held 11 of 11 (Sonnet), 12 of 12 (Luna).
+        "choppy_sentences": "judged",
+        # Judged because reviewed runs held 12 of 12 (Sonnet), 12 of 13 (Luna).
+        "de_parataxis": "judged",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
         "throat_clearing_opener": "enforce",
         "emphasis_crutch": "enforce",
@@ -187,6 +187,9 @@ RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
     "formulaic_filler": RuleCalibration("AI Generated Essays Dataset.csv", 40, 1, 1.0000, "held-out"),
     "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
     "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, None, JUDGED_STATE),
+    # The weaker reviewer, because Sonnet and Luna both may judge a turn.
+    "choppy_sentences": RuleCalibration("parataxis_answers_final.jsonl", 36, 11, 1.0, JUDGED_STATE),
+    "de_parataxis": RuleCalibration("parataxis_answers_final.jsonl", 36, 12, 0.9231, JUDGED_STATE),
 }
 
 

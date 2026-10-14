@@ -260,7 +260,7 @@ def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[A
     for row in rows:
         if row.get("role") == "pattern":
             line = row.get("line") if isinstance(row.get("line"), int) else 1
-            candidate = PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:320])
+            candidate = PatternCandidate(str(row.get("path", ""))[:512], line, str(row.get("text", ""))[:journal.MAX_PATTERN_CHARS])
             grouped.setdefault(str(row.get("rule")), []).append(candidate)
     if not grouped:
         return []

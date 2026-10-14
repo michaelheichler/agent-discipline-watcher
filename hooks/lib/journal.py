@@ -28,6 +28,8 @@ REVIEWED_KEY = "claude_candidate_journal_reviewed"
 REVIEW_TURNS_KEY = "claude_candidate_journal_review_turns"
 MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
+# Wider, because a parataxis row carries its run and the sentences around it.
+MAX_PATTERN_CHARS = 1600
 MAX_PATTERN_ROWS_PER_FILE = 40
 MAX_FILE_BYTES = 128 * 1024
 MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
@@ -478,8 +480,8 @@ def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, 
         "path": str(target),
         "path_identity": str(target),
         "line": int(row["line"]),
-        "text": str(row["text"])[:MAX_CANDIDATE_CHARS],
-        "text_truncated": len(str(row["text"])) > MAX_CANDIDATE_CHARS,
+        "text": str(row["text"])[:MAX_PATTERN_CHARS],
+        "text_truncated": len(str(row["text"])) > MAX_PATTERN_CHARS,
         "content_hash": digest,
         "turn_id": turn_id,
     } for row in rows[:MAX_PATTERN_ROWS_PER_FILE]]
@@ -539,7 +541,7 @@ def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
             "content_hash": str(row.get("content_hash", ""))[:64],
             "rule": str(row.get("rule", ""))[:64],
             "line": line if isinstance(line, int) and not isinstance(line, bool) else 1,
-            "text": str(row.get("text", ""))[:MAX_CANDIDATE_CHARS],
+            "text": str(row.get("text", ""))[:MAX_PATTERN_CHARS],
         }
     before = row.get("before_context")
     return {

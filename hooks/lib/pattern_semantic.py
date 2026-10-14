@@ -18,7 +18,8 @@ try:
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from .pattern_language import (
-        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language, rule_trigger,
+        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, STATIC_EXEMPLAR_PATH, STATIC_MANIFEST_PATH, german_manifest_rules,
+        line_languages, rule_language, rule_trigger, static_candidates,
     )
     from .prose_language import GERMAN
     from .prose_structure import _markdown_prose_lines, _paragraphs, _sentences
@@ -30,7 +31,8 @@ except ImportError:
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from pattern_language import (
-        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, german_manifest_rules, line_languages, rule_language, rule_trigger,
+        GERMAN_EXEMPLAR_PATH, GERMAN_MANIFEST_PATH, STATIC_EXEMPLAR_PATH, STATIC_MANIFEST_PATH, german_manifest_rules,
+        line_languages, rule_language, rule_trigger, static_candidates,
     )
     from prose_language import GERMAN
     from prose_structure import _markdown_prose_lines, _paragraphs, _sentences
@@ -78,13 +80,14 @@ def _read_exemplars(path: Path) -> tuple[Exemplar, ...]:
 
 def load_exemplars() -> tuple[Exemplar, ...]:
     """One pool, because every judge path looks a rule up by name and each name belongs to one language."""
-    return _read_exemplars(EXEMPLAR_PATH) + _read_exemplars(GERMAN_EXEMPLAR_PATH)
+    return _read_exemplars(EXEMPLAR_PATH) + _read_exemplars(GERMAN_EXEMPLAR_PATH) + _read_exemplars(STATIC_EXEMPLAR_PATH)
 
 
 def load_manifest() -> dict:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     german = german_manifest_rules(json.loads(GERMAN_MANIFEST_PATH.read_text(encoding="utf-8")))
-    return {**manifest, "rules": {**manifest["rules"], **german}}
+    static = json.loads(STATIC_MANIFEST_PATH.read_text(encoding="utf-8"))["rules"]
+    return {**manifest, "rules": {**manifest["rules"], **german, **static}}
 
 
 def measured_rules(manifest: dict) -> tuple[str, ...]:
@@ -241,7 +244,10 @@ def candidates(path: str, text: str, config: dict | None = None, *, layer: Layer
     if not sentences or not enabled():
         return {}
     manifest = layer.manifest()
-    rules = tuple(rule for rule in measured_rules(manifest) if rule_state(rule, config) != "off")
+    rules = tuple(
+        rule for rule in measured_rules(manifest)
+        if rule_state(rule, config) != "off" and not static_candidates(manifest, rule)
+    )
     german = tuple(rule for rule in rules if rule_language(manifest, rule) == GERMAN)
     exemplars = tuple(row for row in layer.exemplars() if row.rule in rules)
     draft = Draft(path, sentences_by_language(prose_source(path, text), sentences, config), exemplars, manifest, config)
