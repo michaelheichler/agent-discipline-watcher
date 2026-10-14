@@ -143,20 +143,22 @@ def take_malformed_notice(session_id: str, root: Cwd) -> str:
     return MALFORMED_NOTICE.format(count=malformed)
 
 
-def _full(directory: Path) -> bool:
+def _keys_at_cap(directory: Path) -> frozenset[str]:
+    """Empty below the cap, because the size check skips reading a store that cannot hold MAX_LINES entries."""
     store = directory / AUTHORED_FILENAME
     try:
         size = store.stat().st_size
     except FileNotFoundError:
-        return False
+        return frozenset()
     if size < MAX_LINES * MIN_LINE_BYTES:
-        return False
-    return len(_read(store).keys) >= MAX_LINES
+        return frozenset()
+    keys = _read(store).keys
+    return frozenset(keys) if len(keys) >= MAX_LINES else frozenset()
 
 
 def scratch_refusal(session_id: str, paths: list[str], cwd: Cwd, root: Cwd) -> str:
-    """Refused before the write, because past the cap a new scratch file must not lose its provenance."""
-    if not any(outside_project_temp(path, cwd) for path in paths):
-        return ""
-    directory = _directory(session_id, root)
-    return FULL_REASON if directory is not None and _full(directory) else ""
+    """Refused before the write, because past the cap a new scratch path must not lose its provenance."""
+    keys = {source_key(path, cwd) for path in paths if outside_project_temp(path, cwd)}
+    directory = _directory(session_id, root) if keys else None
+    recorded = _keys_at_cap(directory) if directory is not None else frozenset()
+    return FULL_REASON if recorded and not keys <= recorded else ""
