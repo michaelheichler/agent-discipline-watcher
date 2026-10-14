@@ -398,6 +398,12 @@ def _findings_for_path_scan(scan: PathBatchScan) -> list[dict]:
     return findings
 
 
+def duplicate_findings_for_paths(cwd: str, paths: list[str], cfg: dict) -> list[dict]:
+    base = Path(cwd or ".")
+    entries = [("<end-turn>", raw_path, payloads.resolved_path(raw_path, base)) for raw_path in paths]
+    return _duplicate_file_findings(_project_entries(entries, base), cfg)
+
+
 def _record_batch_row(
     turn: _BatchTurnContext, duration_ms: int, **fields: object
 ) -> None:

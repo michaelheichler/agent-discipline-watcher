@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from . import blocker_state, payloads, scan_input
+from . import blocker_state, imported_baseline, payloads, scan_input
 from .baseline import split_fallback, strip_committed
 from .config import resolve_outcome
 from .reporting import compact_block
@@ -48,18 +48,22 @@ def _blocking_rows(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], 
     return findings, existing
 
 
-def _batch_findings(request: BatchScanRequest) -> list[dict]:
-    """Call batch directly here because a fabricated multi-call payload never correlated with a real journal row, so its ledger dedup was always inert."""
-    if len(request.paths) < 2:
+def _agent_written(paths: tuple[str, ...], cfg: dict) -> list[str]:
+    """Kept out while unchanged since import, because the agent wrote neither copy."""
+    kept = []
+    for path in paths:
+        snapshot = imported_baseline.lookup(cfg, path)
+        if snapshot is None or imported_baseline.file_digest(path) != snapshot.digest:
+            kept.append(path)
+    return kept
+
+
+def _batch_findings(request: BatchScanRequest, pending: dict[str, str]) -> list[dict]:
+    """Only while the batch gate holds a block, because Stop must not find duplicates across batches that the batch gate never judged."""
+    if "<batch>" not in pending or len(request.paths) < 2:
         return []
     import batch
-    rows = batch.findings_for_paths(
-        request.session_id,
-        request.cwd,
-        list(request.paths),
-        request.config,
-        "<end-turn>",
-    )
+    rows = batch.duplicate_findings_for_paths(request.cwd, _agent_written(request.paths, request.config), request.config)
     return [row for row in rows if resolve_outcome(row, request.config) == "block"]
 
 
@@ -86,7 +90,7 @@ def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
     pending, paths, revision = blocker_state.details(scope.session_id, scope.agent_id, scope.root)
     cwd = payloads.cwd(payload)
     findings, existing = _blocking_rows(paths, Path(cwd or "."), cfg)
-    findings.extend(_batch_findings(BatchScanRequest(scope.session_id, cwd, tuple(existing), cfg)))
+    findings.extend(_batch_findings(BatchScanRequest(scope.session_id, cwd, tuple(existing), cfg), pending))
     if findings:
         blocking = BlockingSet(findings, _residual_reasons(pending, paths))
         return guarded(call, blocking, _finding_reason(blocking, cfg))
