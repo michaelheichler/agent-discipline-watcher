@@ -114,11 +114,9 @@ def _skip_wrapper_options(segment: list[str], index: int) -> int:
         bare = _bare(token)
         if bare == "--":
             return index + 1 + operands
-        if not _is_quoted(token):
-            name, separator, _ = token.partition("=")
-            if separator and name and not bare.startswith("-"):
-                index += 1
-                continue
+        if _assignment_word(token) is not None:
+            index += 1
+            continue
         if not bare.startswith("-"):
             return index + operands
         if "=" in bare or not _wrapper_consumes_value(bare, value_flags):
@@ -126,6 +124,14 @@ def _skip_wrapper_options(segment: list[str], index: int) -> int:
             continue
         index += 2
     return index
+
+
+def _assignment_word(token: str) -> str | None:
+    """Because bash strips the quotes before env reads its arguments, 'LD_PRELOAD=x.so' still sets the variable."""
+    decoded = _decoded_payload(token)
+    word = token if decoded is None else decoded
+    name, separator, _ = word.partition("=")
+    return word if separator and name and not word.startswith("-") else None
 
 
 def _wrapper_consumes_value(bare: str, value_flags: frozenset[str]) -> bool:
@@ -339,7 +345,7 @@ def _expand_env_flags(tokens: list[str], index: int, result: list[str]) -> int:
         if bare == "--":
             result.append(token)
             return index + 1
-        if _is_unquoted_assignment(token) and not bare.startswith("-"):
+        if _assignment_word(token) is not None:
             result.append(token)
             index += 1
             continue

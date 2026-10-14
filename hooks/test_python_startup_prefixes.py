@@ -40,12 +40,23 @@ def test_isolation_flags_do_not_trust_a_prefix_that_swaps_the_interpreter(tmp_pa
     assert "inline_interpreter_write" in result["reason"]
 
 
-@pytest.mark.parametrize("prefix", ["", "env FOO=1", "LC_ALL=C", "env -C modules", "sudo"])
+@pytest.mark.parametrize("prefix", [
+    "env 'LD_PRELOAD=x.so'", "env \"DYLD_INSERT_LIBRARIES=x.dylib\"", "env 'PYTHONPATH=modules'",
+    "env \"PATH=modules\"", "env 'HOME=modules'", "env L'D_PRELOAD=x.so'", "sudo 'PYTHONSTARTUP=x.py'",
+])
+def test_isolation_flags_do_not_trust_a_quoted_assignment_that_swaps_the_interpreter(tmp_path, prefix: str) -> None:
+    result = bash(f"{prefix} python3 -I -S -c 'print(1)'", str(tmp_path))
+
+    assert result.get("decision") == "block"
+    assert "inline_interpreter_write" in result["reason"]
+
+
+@pytest.mark.parametrize("prefix", ["", "env FOO=1", "env 'FOO=1'", "LC_ALL=C", "env -C modules", "sudo"])
 def test_isolation_flags_keep_harmless_prefixes_trusted(tmp_path, prefix: str) -> None:
     assert bash(f"{prefix} python3 -I -S -c 'print(1)'", str(tmp_path)) == {}
 
 
-@pytest.mark.parametrize("prefix", ["env FOO=1", "time", "timeout 5", "nice -n 5"])
+@pytest.mark.parametrize("prefix", ["env FOO=1", "env 'FOO=1'", "time", "timeout 5", "nice -n 5"])
 def test_a_harmless_prefix_does_not_clear_a_python_write(tmp_path, prefix: str) -> None:
     result = bash(f"""{prefix} python3 -c 'open("x.txt", "w").write("y")'""", str(tmp_path))
 
