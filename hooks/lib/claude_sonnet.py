@@ -13,7 +13,7 @@ from typing import Any, NamedTuple
 from . import claude_luna, journal, payloads, turn_retry
 from .claude_presets import CLAUDE_SONNET_MODEL
 from .document_review import HUNK_NOTICE
-from .hookio import read_payload, stop_block, system_message, write_payload
+from .hookio import read_payload, system_message, write_payload
 from .judge_contracts import (
     DOCUMENT_RUBRIC, DOCUMENT_SCHEMA, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC, PATTERN_SCHEMA,
     JudgeResult, ReviewKind, build_prompt, validate_payload,
@@ -157,7 +157,7 @@ def _pattern_result(request: Any, items: list[dict[str, Any]]) -> JudgeResult:
     return _result({"items": [chosen.get(index, {"index": index, **clean}) for index in range(count)]})
 
 
-def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> list[str]:
+def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> list[claude_luna.Answer]:
     """Slice the batch per request, because the Luna wording code reads one request at a time."""
     answered: dict[int, list[dict[str, Any]]] = {}
     for item in payload["items"]:
@@ -166,15 +166,16 @@ def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> list
     if set(answered) - pattern_sections:
         raise ReviewUnavailable("the verdict named a section that holds no pattern")
     texts = [
-        claude_luna.feedback(request, _pattern_result(request, answered.get(number, [])), sources, REVIEWER)
+        (request, claude_luna.feedback(request, _pattern_result(request, answered.get(number, [])), sources, REVIEWER))
         for number, (request, sources) in enumerate(work)
         if number in pattern_sections
     ]
     documents = [(request, sources) for request, sources in work if request.review_kind is ReviewKind.DOCUMENT]
     if documents:
         rows = [row for _request, sources in documents for row in sources]
-        texts.append(claude_luna.feedback(documents[0][0], _result({"notes": payload["notes"]}), rows, REVIEWER))
-    return [text for text in texts if text]
+        note = claude_luna.feedback(documents[0][0], _result({"notes": payload["notes"]}), rows, REVIEWER)
+        texts.append((documents[0][0], note))
+    return [(request, text) for request, text in texts if text]
 
 
 def _unavailable(reason: str, dropped: int, queued: int) -> dict:
@@ -232,7 +233,7 @@ def run(payload: object, *, state_root: str | Path | None = None, judge: Judge =
     except ReviewUnavailable as exc:
         return _failed(stop, rows, exc)
     claude_luna.mark_reviewed(payload, rows, stop.root)
-    return stop_block(claude_luna.bounded_feedback(texts)) if texts else {}
+    return claude_luna.stop_verdict(texts, config)
 
 
 def main() -> int:

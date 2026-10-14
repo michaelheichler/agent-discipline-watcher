@@ -113,6 +113,11 @@ def rule_blocks(manifest: dict, rule: str, config: dict | None) -> bool:
     return rule in blocking_rules(manifest)
 
 
+def rule_reports(manifest: dict, rule: str, config: dict | None) -> bool:
+    """Measured and not gated quiet, because a verdict below the block bar must still reach the agent as advice."""
+    return rule_state(rule, config) not in {"observe", "off"} and rule in measured_rules(manifest)
+
+
 def prose_source(path: str, text: str) -> str:
     """Every style attribute became a candidate because markup reached the embedder unmasked."""
     regions = extract_regions(path, text)

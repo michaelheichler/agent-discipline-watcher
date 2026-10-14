@@ -10,7 +10,7 @@ from typing import Any
 from . import journal, claude_native, payloads, reporting
 from .config import effective_hook_config
 from .document_review import changed_document_work
-from .hookio import context, read_payload, stop_block, write_payload
+from .hookio import advise, context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_feedback import LUNA, MAX_LISTED_ROWS
@@ -21,7 +21,7 @@ from .luna_feedback import pattern_feedback as _pattern_feedback
 from .luna_storage import LunaProviderFailure
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
-from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
+from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt, rule_reports
 
 
 EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "Bash"})
@@ -35,6 +35,8 @@ MAX_LIVE_SCAN_BYTES = 512 * 1024
 MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
 STOP_LABEL = "ADW current-session journal"
 Work = tuple[JudgeRequest, Any]
+Answer = tuple[JudgeRequest, str]
+ADVICE_LEAD = "Advice, not a block."
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 _ROW_RE = re.compile(r"\d+\. ")
 
@@ -272,7 +274,7 @@ def _pattern_work(rows: list[dict[str, Any]], config: dict | None) -> list[Work]
     return [
         (pattern_request(rule_prompt(rule, exemplars, manifest), tuple(map(_pattern_candidate, found))), found)
         for rule, found in sorted(grouped.items())
-        if rule in manifest["rules"] and rule_blocks(manifest, rule, config)
+        if rule in manifest["rules"] and rule_reports(manifest, rule, config)
     ]
 
 
@@ -346,18 +348,32 @@ def feedback(request: JudgeRequest, result: JudgeResult, sources: Any, reviewer:
     return _document_feedback(result, sources, reviewer)
 
 
-def _judge_all(operation: Any, provider: object | None, work: list[Work]) -> list[str] | None:
+def _judge_all(operation: Any, provider: object | None, work: list[Work]) -> list[Answer] | None:
     """None when Luna is no longer selected, because another preset owns the turn."""
     results = []
     for request, sources in work:
         result = _invoke(operation, provider, request)
         if result is None:
             return None
-        results.append(feedback(request, result, sources))
-    return [text for text in results if text]
+        results.append((request, feedback(request, result, sources)))
+    return [(request, text) for request, text in results if text]
 
 
-def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[str] | dict:
+def _advisory(request: JudgeRequest, manifest: dict, config: dict | None) -> bool:
+    return request.review_kind is ReviewKind.PATTERN and not rule_blocks(manifest, request.rule_name, config)
+
+
+def stop_verdict(answered: list[Answer], config: dict | None) -> dict:
+    """A rule below the block bar advises in model context, because its reviewer precision has not earned a block."""
+    manifest = load_manifest()
+    advice = [f"{ADVICE_LEAD} {text}" for request, text in answered if _advisory(request, manifest, config)]
+    blocking = [text for request, text in answered if not _advisory(request, manifest, config)]
+    if blocking:
+        return stop_block(bounded_feedback(blocking + advice))
+    return advise(bounded_feedback(advice), "Stop") if advice else {}
+
+
+def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[Answer] | dict:
     role = "comment" if event == "PostToolUse" else "document"
     try:
         with claude_native.luna_operation(**paths) as operation:
@@ -427,9 +443,9 @@ def run(
     if isinstance(outcome, dict):
         return outcome
     if event == "PostToolUse":
-        return context(bounded_feedback(outcome), event) if outcome else {}
+        return context(bounded_feedback([text for _request, text in outcome]), event) if outcome else {}
     mark_reviewed(payload, [row for _request, sources in work for row in sources], root)
-    return stop_block(bounded_feedback(outcome)) if outcome else {}
+    return stop_verdict(outcome, cfg)
 
 
 def main() -> int:

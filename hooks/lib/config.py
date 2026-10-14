@@ -122,9 +122,9 @@ DEFAULTS = {
         "de_long_compound": "off",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
-        # Judged because reviewed runs held 11 of 11 (Sonnet), 12 of 12 (Luna).
+        # Advisory because reviewed human runs held 5/10 (Sonnet), 5/9 (Luna).
         "choppy_sentences": "judged",
-        # Judged because reviewed runs held 12 of 12 (Sonnet), 12 of 13 (Luna).
+        # Advisory because reviewed human runs held 5/8 (Sonnet), 12/17 (Luna).
         "de_parataxis": "judged",
         # Enforce because an agent writing these must rewrite them, and baseline reporting keeps inherited debt from blocking.
         "throat_clearing_opener": "enforce",
@@ -188,8 +188,9 @@ RULE_CALIBRATIONS: dict[str, RuleCalibration] = {
     "low_sentence_variance": RuleCalibration("~/dev markdown p05 of 709 paragraphs", 709, 0, 0.0, "unmeasurable"),
     "three_item_list": RuleCalibration("benchmark_patterns.jsonl", 121, 90, None, JUDGED_STATE),
     # The weaker reviewer, because Sonnet and Luna both may judge a turn.
-    "choppy_sentences": RuleCalibration("parataxis_answers_final.jsonl", 36, 11, 1.0, JUDGED_STATE),
-    "de_parataxis": RuleCalibration("parataxis_answers_final.jsonl", 36, 12, 0.9231, JUDGED_STATE),
+    "choppy_sentences": RuleCalibration("parataxis_sample.jsonl", 10, 5, 0.5, JUDGED_STATE),
+    # No block below a held-out Wilson bound of 0.85, because EN 11/11 gives 0.74.
+    "de_parataxis": RuleCalibration("parataxis_sample.jsonl", 8, 5, 0.625, JUDGED_STATE),
 }
 
 

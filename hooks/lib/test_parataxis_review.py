@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 import record
-from lib import claude_luna, claude_sonnet, config, journal, parataxis_review, pattern_semantic, session_state
-from lib.judge_contracts import ReviewKind, build_prompt
+from lib import claude_luna, claude_native, claude_sonnet, config, journal, parataxis_review, pattern_semantic, session_state
+from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind, build_prompt
 from lib.omp_review_findings import validated_findings
 from lib.omp_review_requests import build_work
 from lib.pattern_semantic import Exemplar, Layer
@@ -135,6 +135,16 @@ class Judge:  # pylint: disable=too-few-public-methods
         return json.dumps({"type": "result", "is_error": False, "structured_output": {"items": items, "notes": []}})
 
 
+class LunaVerdicts:  # pylint: disable=too-few-public-methods
+    """Because only the pattern verdict is under test, the document gets no note."""
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        clean = {"notes": []}
+        confirmed = {"items": [{"index": index, "verdict": "violating", "reason": "r"} for index in range(len(request.candidates))]}
+        payload = confirmed if request.review_kind is ReviewKind.PATTERN else clean
+        return JudgeResult(payload, "openai-codex", "gpt-5.6-luna", "high", request.rubric_version, {})
+
+
 def _stop(tmp_path: Path, judge: Judge) -> dict:
     record._journal_edits(_edits(tmp_path, ENGLISH_CHAIN), "turn-1")
     state_root = tmp_path / "state"
@@ -143,13 +153,31 @@ def _stop(tmp_path: Path, judge: Judge) -> dict:
     return claude_sonnet.run(stop, state_root=state_root, judge=judge)
 
 
-def test_a_confirmed_run_blocks_and_asks_for_a_join_without_dashes(tmp_path: Path) -> None:
-    response = _stop(tmp_path, Judge("violating"))
+def _assert_join_advice(response: dict) -> None:
+    advice = response["hookSpecificOutput"]["additionalContext"]
+    assert "decision" not in response
+    assert "not a block" in advice
+    assert ENGLISH_CHAIN in advice
+    assert "(choppy_sentences)" in advice
+    assert "a relative clause" in advice
+    assert "semicolons stay banned" in advice
 
-    assert response["decision"] == "block"
-    assert "(choppy_sentences)" in response["reason"]
-    assert "a relative clause" in response["reason"]
-    assert "semicolons stay banned" in response["reason"]
+
+def test_a_confirmed_run_tells_the_agent_to_join_without_blocking(tmp_path: Path) -> None:
+    _assert_join_advice(_stop(tmp_path, Judge("violating")))
+
+
+def test_a_run_luna_confirms_tells_the_agent_to_join_without_blocking(tmp_path: Path) -> None:
+    record._journal_edits(_edits(tmp_path, ENGLISH_CHAIN), "turn-1")
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    stop = {"hook_event_name": "Stop", "session_id": SESSION, "stop_hook_active": False, "cwd": str(tmp_path)}
+
+    response = claude_luna.run(
+        stop, provider=LunaVerdicts(), state_root=tmp_path / "state", settings_path=settings, preset_path=preset,
+    )
+
+    _assert_join_advice(response)
 
 
 def test_a_run_the_reviewer_clears_does_not_block(tmp_path: Path) -> None:
@@ -209,3 +237,8 @@ def test_the_shipped_gate_is_judged_and_its_calibration_matches_the_manifest(rul
 
     assert config.rule_state(rule) == config.JUDGED_STATE
     assert config.RULE_CALIBRATIONS[rule].precision == manifest["rules"][rule]["judge_precision"]
+
+
+@pytest.mark.parametrize("rule", sorted(parataxis_review.RULES))
+def test_a_reviewer_precision_below_the_bar_never_blocks(rule: str) -> None:
+    assert not pattern_semantic.rule_blocks(pattern_semantic.load_manifest(), rule, {})
