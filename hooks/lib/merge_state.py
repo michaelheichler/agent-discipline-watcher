@@ -96,9 +96,9 @@ def session_started(session_id: str, state_root: str | Path | None) -> float | N
 
 
 def mark_session_start(session_id: str, state_root: str | Path | None) -> None:
-    """Set once at the first prompt, because the agent writes nothing in a session before its first prompt."""
-    if session_started(session_id, state_root) is not None:
+    """Seeded only into empty state, because a session with older state must keep the old merge rule."""
+    if session_state.read_state(session_id, state_root):
         return
     session_state.update_state(
-        session_id, lambda state: {SESSION_STARTED_KEY: time.time(), **state}, state_root,
+        session_id, lambda state: state or {SESSION_STARTED_KEY: time.time()}, state_root,
     )

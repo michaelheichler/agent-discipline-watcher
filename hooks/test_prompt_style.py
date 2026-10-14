@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 import prompt_submit
-from lib import merge_state
+import session_start
+from lib import merge_state, session_state
 
 GERMAN_PROMPT = (
     "Bitte prüfe die Datenschutzgrundverordnungsumsetzung in diesem Modul. "
@@ -121,6 +122,24 @@ def test_the_first_prompt_records_the_session_start_once(tmp_path: Path) -> None
 
     assert first is not None
     assert merge_state.session_started("s1", tmp_path / "state") == first
+
+
+def test_a_new_session_records_its_start_after_session_start_ran(tmp_path: Path) -> None:
+    config = {**_session(tmp_path), "english": False, "punctuation": False}
+    session_start.run({"session_id": "s1", "source": "startup"}, config)
+
+    _run("First request.", config, "s1")
+
+    assert merge_state.session_started("s1", tmp_path / "state") is not None
+
+
+def test_a_session_with_state_from_before_the_start_key_keeps_the_old_rule(tmp_path: Path) -> None:
+    config = {**_session(tmp_path), "english": False, "punctuation": False}
+    session_state.write_state("s1", {"turn_count": 3, "turn_id": "turn-3"}, tmp_path / "state")
+
+    _run("Next request.", config, "s1")
+
+    assert merge_state.session_started("s1", tmp_path / "state") is None
 
 
 def test_a_style_note_never_quotes_the_prompt() -> None:
