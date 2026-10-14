@@ -48,7 +48,7 @@ def outside_project_temp(path: str | os.PathLike[str], cwd: str | os.PathLike[st
 
 
 def leading_directory(command: str) -> str | None:
-    """Because only a lone cd DIR && or cd DIR ; at the start puts every relative target under DIR, any other directory change yields None."""
+    """Because only a lone cd DIR && or cd DIR ; at the start can put every relative target under DIR, any other directory change yields None."""
     lines = command.splitlines()
     tokens = _tokens(lines[0]) if lines else []
     if len(tokens) < 3 or tokens[0] != "cd" or tokens[2] not in LEADING_CD_SEPARATORS or not _plain_path(tokens[1]):
@@ -57,23 +57,31 @@ def leading_directory(command: str) -> str | None:
     return _bare(tokens[1]) if len(changes) == 1 else None
 
 
-def command_target(path: str, directory: str | None) -> str:
-    """Because the shell resolves a relative target under the leading cd, the session cwd would name the wrong file."""
+def trusted_directory(command: str, cwd: str | os.PathLike[str] | None) -> str | None:
+    """Because a failed cd leaves the shell in the session cwd, only a cd joined by && into a searchable directory is sure to move it."""
+    directory = leading_directory(command)
+    if directory is None or _tokens(command.splitlines()[0])[2] != "&&":
+        return None
+    absolute = _absolute(directory, cwd)
+    return directory if absolute.is_dir() and os.access(absolute, os.X_OK) else None
+
+
+def command_targets(path: str, command: str, cwd: str | os.PathLike[str] | None) -> list[str]:
+    """Because the cd may fail, an untrusted leading cd leaves a relative target in either directory."""
+    directory = leading_directory(command)
     if directory is None or path.startswith("~") or Path(path).is_absolute():
-        return path
-    return os.path.join(directory, path)
+        return [path]
+    joined = os.path.join(directory, path)
+    return [joined] if trusted_directory(command, cwd) else [joined, path]
 
 
 def scratch_target(path: str, command: str, cwd: str | os.PathLike[str] | None) -> bool:
-    """Because a failed cd leaves a relative target in the session cwd, it counts only under a leading cd directory that exists."""
     if not _plain_path(path) or path.startswith("~"):
         return False
     if Path(path).is_absolute():
         return outside_project_temp(path, cwd)
-    directory = leading_directory(command)
-    if directory is None or not _absolute(directory, cwd).is_dir():
-        return False
-    return outside_project_temp(_absolute(directory, cwd) / path, cwd)
+    directory = trusted_directory(command, cwd)
+    return directory is not None and outside_project_temp(_absolute(directory, cwd) / path, cwd)
 
 
 def _plain_path(token: str) -> bool:

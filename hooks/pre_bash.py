@@ -27,7 +27,7 @@ from lib.shell_parse import (
     _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_targets,
 )
 from lib.shell_parse import write_paths as shell_write_paths
-from lib.temp_scope import command_target, leading_directory, scratch_target
+from lib.temp_scope import command_targets, scratch_target
 from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
 from lib.update_policy import _segment_contexts, untrusted_update
@@ -147,7 +147,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if not command:
         return allow()
     cwd = payload.get("cwd") or "."
-    refusal = temp_authorship.scratch_refusal(payloads.session_id(payload), write_paths(command), cwd, cfg.get("state_root"))
+    refusal = temp_authorship.scratch_refusal(payloads.session_id(payload), write_paths(command, cwd), cwd, cfg.get("state_root"))
     if refusal:
         return deny(refusal)
     findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
@@ -393,10 +393,10 @@ def oversize_write(command: str, cwd: str | os.PathLike[str] | None = None) -> i
     return max(oversized) if oversized else None
 
 
-def write_paths(command: str) -> list[str]:
+def write_paths(command: str, cwd: str | os.PathLike[str] | None = None) -> list[str]:
     """Because PostToolUse journals these paths as the agent's writes, in-place edit files count and a leading cd prefixes relative ones."""
-    directory = leading_directory(command)
-    return [command_target(path, directory) for path in (*shell_write_paths(command), *inplace_edit_paths(command))]
+    raw = (*shell_write_paths(command), *inplace_edit_paths(command))
+    return [target for path in raw for target in command_targets(path, command, cwd)]
 
 
 def _mutation_paths(command: str) -> list[str]:
