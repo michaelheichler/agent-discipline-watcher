@@ -1,0 +1,80 @@
+{"id":"af4bdf818ec7","label":"clean","reason":"The brief statements present separate factual details without sounding fragmented."}
+{"id":"52fb7d70d8a0","label":"clean","reason":"The location, road, and elevation facts read naturally as separate entries in prose."}
+{"id":"b1d172abc2e6","label":"violating","reason":"The first two sentences repeat one idea and would flow better joined."}
+{"id":"f23007865746","label":"violating","reason":"The popularity and categorization details about women would read more smoothly together."}
+{"id":"16f547cfda40","label":"violating","reason":"The family details form a choppy sequence that would work better in a connected sentence."}
+{"id":"f2680f9bc1cb","label":"violating","reason":"The two restoration projects occurred at the same time and belong naturally in one sentence."}
+{"id":"7a9fc6be7aa2","label":"violating","reason":"The development and its stimulation of experiments can be expressed as one connected thought."}
+{"id":"a812d12311a0","label":"clean","reason":"The conservation statements give distinct facts and the shifts between them are clear."}
+{"id":"b724523940ff","label":"clean","reason":"The missing values make this garbled extraction rather than running prose."}
+{"id":"fd7f748b9307","label":"violating","reason":"The timing sentence interrupts a description that would read smoothly with the date included."}
+{"id":"f053df5113ac","label":"violating","reason":"The first two sentences express one thought and can be joined without losing emphasis."}
+{"id":"b9eab3adc4f1","label":"clean","reason":"The short statements create a deliberate personal and emphatic cadence."}
+{"id":"be62daac7138","label":"clean","reason":"The repeated structure is a deliberate rhetorical emphasis."}
+{"id":"6e1a4c844082","label":"clean","reason":"These are distinct lines of colloquial dialogue with deliberate repetition."}
+{"id":"ea6d2f94bd05","label":"clean","reason":"The short sentences preserve the rhythm of colloquial dialogue."}
+{"id":"1385e7e600f0","label":"clean","reason":"The sentences separately establish the scene and its time."}
+{"id":"a8b01346fb21","label":"clean","reason":"The short sentences create natural pacing for the unfolding scene."}
+{"id":"b98ebf8aa0fe","label":"clean","reason":"The parallel sentences deliberately emphasize the doctrine's importance."}
+{"id":"4951e17967eb","label":"clean","reason":"The short observations build a natural sequence of discovery."}
+{"id":"07c3a01ccdb2","label":"clean","reason":"The repeated phrasing is part of the speaker's emphatic dialogue."}
+{"id":"7d667b96cad0","label":"clean","reason":"The stage directions describe successive actions clearly and naturally."}
+{"id":"5b5118c55375","label":"clean","reason":"The final sentence lands as a deliberate dry punchline."}
+{"id":"69de6bac36d5","label":"clean","reason":"The sentences describe separate people and objects in a list-like scene."}
+{"id":"f7e949e306ca","label":"clean","reason":"The repeated clauses are parallel examples rather than choppy prose."}
+{"id":"d5d7501ee558","label":"clean","reason":"The text consists of disconnected grammar examples rather than continuous prose."}
+{"id":"11e1a47f106a","label":"clean","reason":"The statements report separate observations in a direct descriptive style."}
+{"id":"806877e59977","label":"clean","reason":"The parallel aphoristic sentences are deliberately kept separate."}
+{"id":"ef24b3f59a05","label":"clean","reason":"This is a table-like list of heart rates rather than running prose."}
+{"id":"5f7e393c5cad","label":"clean","reason":"These are headings or index entries rather than sentences in prose."}
+{"id":"f72c411936fa","label":"clean","reason":"These are a list of brief action fragments rather than running prose."}
+{"id":"c81b44161322","label":"clean","reason":"This is an inventory of clothing rather than running prose."}
+{"id":"6e4e78d97409","label":"clean","reason":"This is a list of supplies rather than running prose."}
+{"id":"f50913f4d635","label":"clean","reason":"The repeated sentence pattern is deliberate and gives the statements emphasis."}
+{"id":"847a8535835e","label":"clean","reason":"The repeated pattern presents contrasting fictional facts with deliberate rhythm."}
+{"id":"3eefb9b23e47","label":"violating","reason":"The explanation beginning with why directly depends on the preceding claim and should be joined to it."}
+{"id":"b7a08c448c65","label":"clean","reason":"The entries give separate descriptive features in a list-like format."}
+{"id":"97861ae99ed5","label":"clean","reason":"The brief claims make a deliberate persuasive pitch with punchy pacing."}
+{"id":"7110d07224e2","label":"clean","reason":"The repeated affirmations are an intentional motivational cadence."}
+{"id":"b1dd9933b1f6","label":"clean","reason":"The text is a vocabulary exercise and not continuous prose."}
+{"id":"df842ff6dd6c","label":"clean","reason":"The text is a vocabulary exercise and not continuous prose."}
+{"id":"d3787d589219","label":"violating","reason":"The biographical facts form a choppy sequence that would flow better with the first details joined."}
+{"id":"4acfef4f1a5d","label":"violating","reason":"The rise in student numbers and the resulting schools belong together as one connected development."}
+{"id":"f19c1713c16e","label":"clean","reason":"The sentences explain successive technical details clearly without a choppy effect."}
+{"id":"6ff5a3e92061","label":"violating","reason":"The sandy soils are directly explained by the preceding location and would read better in the same sentence."}
+{"id":"0eefb127f46f","label":"violating","reason":"The historical change and present affiliation form a closely linked sequence that reads choppily split apart."}
+{"id":"261e8fd47276","label":"clean","reason":"The text is an extraction placeholder rather than readable prose."}
+{"id":"06cb86fd1b2f","label":"violating","reason":"The first two sentences describe the same designation and can be joined naturally."}
+{"id":"d74c79c7b293","label":"clean","reason":"The sentences explain distinct features of the communication interface in a natural sequence."}
+{"id":"d865ec67d525","label":"clean","reason":"The opening is a sentence fragment, so the passage is garbled extraction."}
+{"id":"60ebb7bca8ee","label":"clean","reason":"The short sentences state separate location facts without a telegram-like effect."}
+{"id":"5a30c6f4ee66","label":"violating","reason":"The album's emergence directly follows the collaboration and would fit naturally in the same sentence."}
+{"id":"4411b0ce3e15","label":"clean","reason":"The missing figures make this garbled extraction rather than readable prose."}
+{"id":"77766cb91809","label":"clean","reason":"The sentences list separate architectural details in a clear descriptive style."}
+{"id":"47e965edc264","label":"clean","reason":"The facts about the festival, pilgrimage, and saint read naturally as separate details."}
+{"id":"d2d6f6bcae7c","label":"clean","reason":"The sentences describe distinct surviving wall features without choppy phrasing."}
+{"id":"b9af1a15bd5b","label":"violating","reason":"The battles and the resulting decline are directly connected and should be stated together."}
+{"id":"e3cf5d6f6ca1","label":"violating","reason":"The editions and their differences are one closely linked point that reads awkwardly split."}
+{"id":"4baf7eec3699","label":"clean","reason":"The sentences summarize separate historical periods in a clear sequence."}
+{"id":"72b27231582c","label":"clean","reason":"The sentences distinguish related legal terms without a choppy effect."}
+{"id":"4a7ad465cd26","label":"clean","reason":"The statements give separate facts about calf development and care."}
+{"id":"4d53a0163fa5","label":"clean","reason":"The text is an extraction placeholder rather than readable prose."}
+{"id":"9a13714efe4d","label":"clean","reason":"The sentences give distinct regulatory facts in a clear explanatory style."}
+{"id":"b29126de1552","label":"clean","reason":"The chronological facts are distinct and the short sentences remain readable."}
+{"id":"eca146981c66","label":"violating","reason":"The three claims form a connected explanation of the party's campaign strength and feel choppy apart."}
+{"id":"5523432abac5","label":"clean","reason":"The sentences give a natural sequence of biographical and burial details."}
+{"id":"74893660229c","label":"violating","reason":"The monarch's desire to keep Brühl close and his demands on him belong together."}
+{"id":"161e08c00470","label":"clean","reason":"The sentences explain distinct uses and safety information without sounding fragmented."}
+{"id":"ce27749a1a03","label":"violating","reason":"The contrasting weights before and after molting read more smoothly as one sentence."}
+{"id":"11bcce6e9421","label":"violating","reason":"The consecutive statements describe closely connected data integrity problems and feel choppy split apart."}
+{"id":"3eabe5b3e7b5","label":"clean","reason":"The sentences describe successive mouse behavior details in a natural sequence."}
+{"id":"b15561f78d44","label":"clean","reason":"The final fragment shows that this passage is garbled extraction."}
+{"id":"519de65bf6ed","label":"clean","reason":"The text is an extraction placeholder rather than readable prose."}
+{"id":"143c6bc64146","label":"clean","reason":"The sentences outline a league hierarchy as clear successive facts."}
+{"id":"63834f66dd49","label":"violating","reason":"The springs' long history belongs in the explanation of why Baden is a spa town."}
+{"id":"f4f10081746d","label":"clean","reason":"The text is an extraction placeholder rather than readable prose."}
+{"id":"f1c423c7efd9","label":"clean","reason":"The sentences explain related parts of an economic adjustment process clearly."}
+{"id":"59b72feb76a8","label":"clean","reason":"The short lines have a deliberate poetic cadence."}
+{"id":"83d0a13af5f6","label":"clean","reason":"The unusual imagery and rhythm mark this as literary prose, not choppy exposition."}
+{"id":"ad2b5c01b1f3","label":"clean","reason":"The lines use poetic repetition and rhythm rather than running prose."}
+{"id":"0ad9405987a2","label":"clean","reason":"The text is an extraction placeholder rather than readable prose."}
