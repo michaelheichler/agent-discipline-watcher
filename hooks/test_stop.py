@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import stop
-from lib import blocker_state, embedding_lease, embedding_server, embedding_session, reporting, session_state
+from lib import blocker_state, embedding_lease, embedding_server, embedding_session, reporting, session_state, state_recovery
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -176,6 +176,28 @@ def test_stop_restores_corrupt_state_from_the_last_good_write(tmp_path: Path) ->
     assert response["reason"] == "Repair batch evaluation"
     assert "unreadable" in response["systemMessage"]
     assert [path.read_text(encoding="utf-8") for path in state_file.parent.glob("state.json.corrupt-*")] == ["not-json"]
+
+
+class _CutOff(Exception):
+    pass
+
+
+def _cut_off(_path: Path, _payload: str) -> None:
+    raise _CutOff
+
+
+def test_a_recovery_cut_off_before_the_restore_keeps_the_blockers(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    blocker_state.set_pending("s1", "", "<batch-error>", "Repair batch evaluation", config["state_root"])
+    (Path(config["state_root"]) / "s1" / "state.json").write_text("not-json", encoding="utf-8")
+    monkeypatch.setattr(state_recovery, "atomic_write", _cut_off)
+    with pytest.raises(_CutOff):
+        session_state.read_state("s1", config["state_root"])
+    monkeypatch.undo()
+
+    response = stop.run(_payload(), config)
+
+    assert response["reason"] == "Repair batch evaluation"
 
 
 def test_the_recovery_notice_is_sent_once(tmp_path: Path) -> None:

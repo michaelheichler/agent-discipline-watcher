@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -43,7 +44,7 @@ def _backup(path: Path) -> dict | None:
 
 
 def restored(path: Path) -> dict | None:
-    """None without a backup, so the strict caller still fails closed."""
+    """Copied aside, not moved, so a recovery cut off before the restore leaves the damaged file for the next read to recover."""
     backup = _backup(path)
     if backup is None:
         return None
@@ -52,7 +53,7 @@ def restored(path: Path) -> dict | None:
     except (OSError, ValueError, UnicodeDecodeError):
         pass
     aside = path.with_name(f"{path.name}{CORRUPT_SUFFIX}{time.time_ns()}")
-    os.replace(path, aside)
+    shutil.copyfile(path, aside)
     notice = (
         f"agent-discipline-watcher: the session state file was unreadable. It was moved to {aside} "
         "and the last good copy was restored. Changes after that copy are lost."

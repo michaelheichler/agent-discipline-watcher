@@ -224,8 +224,17 @@ def split_committed(
     """Compare against HEAD because blocking on findings that predate an edit would prevent incremental cleanup."""
     if not findings or baseline_mode(cfg) == "none":
         return findings, []
+    return split_with_snapshot(path, findings, cfg, imported_baseline.lookup(cfg, path), text, until=until)
+
+
+def split_with_snapshot(
+    path: Path, findings: list[dict], cfg: dict, snapshot: Snapshot | None, text: str | None = None, *,
+    until: float | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Because the snapshot lookup can write session state, the Stop rescan runs it before it arms the alarm."""
+    if not findings or baseline_mode(cfg) == "none":
+        return findings, []
     check = _deadline_check(until)
-    snapshot = imported_baseline.lookup(cfg, path)
     split = None if snapshot is None else _split_snapshot(path, findings, cfg, snapshot, text, check)
     if split is not None:
         return split
@@ -243,9 +252,8 @@ def _head(path: Path) -> str:
         return ""
 
 
-def _inherited_fallback(path: Path, cfg: dict, until: float | None) -> bool:
+def _inherited_fallback(path: Path, snapshot: Snapshot | None, until: float | None) -> bool:
     check = _deadline_check(until)
-    snapshot = imported_baseline.lookup(cfg, path)
     if snapshot is not None and imported_baseline.file_digest(path, check) == snapshot.digest:
         return True
     if not has_generated_marker(_head(path)):
@@ -258,7 +266,15 @@ def _inherited_fallback(path: Path, cfg: dict, until: float | None) -> bool:
 
 def split_fallback(path: Path, rows: list[dict], cfg: dict, *, until: float | None = None) -> tuple[list[dict], list[dict]]:
     """Unscannable rows stay advice for an unchanged import or an inherited generated file, because the agent wrote neither."""
-    if not rows or baseline_mode(cfg) == "none" or not _inherited_fallback(path, cfg, until):
+    if not rows or baseline_mode(cfg) == "none":
+        return rows, []
+    return split_fallback_with_snapshot(path, rows, cfg, imported_baseline.lookup(cfg, path), until=until)
+
+
+def split_fallback_with_snapshot(
+    path: Path, rows: list[dict], cfg: dict, snapshot: Snapshot | None, *, until: float | None = None,
+) -> tuple[list[dict], list[dict]]:
+    if not rows or baseline_mode(cfg) == "none" or not _inherited_fallback(path, snapshot, until):
         return rows, []
     return [], rows if baseline_mode(cfg) == "report" else []
 

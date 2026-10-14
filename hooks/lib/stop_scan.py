@@ -11,9 +11,10 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
-from . import scan_input
-from .baseline import OutOfTime, fits_deadline, remaining, split_fallback, strip_committed
+from . import imported_baseline, scan_input
+from .baseline import OutOfTime, fits_deadline, remaining, split_fallback_with_snapshot, split_with_snapshot
 from .config import resolve_outcome
+from .imported_baseline import Snapshot
 from .scanner import read_scannable, scan_all
 from .temp_scope import outside_project_temp
 
@@ -38,21 +39,21 @@ def _resolved(raw_path: str, cwd: Path) -> Path:
     return path if path.is_absolute() else cwd / path
 
 
-def _path_rows(path: Path, cfg: dict, until: float) -> list[dict]:
-    """OutOfTime between steps, because one slow file must not carry Stop past the host limit."""
+def _path_rows(path: Path, cfg: dict, snapshot: Snapshot | None, until: float) -> list[dict]:
+    """Reads and scans only, because the alarm can stop it at any line and a cut state write would lose blockers."""
     text = read_scannable(path, cfg)
     remaining(until)
     if text is None:
         stamp = path.stat()
         found = scan_input.fallback_findings(path)
         remaining(until)
-        rows = split_fallback(path, found, cfg, until=until)[0]
+        rows = split_fallback_with_snapshot(path, found, cfg, snapshot, until=until)[0]
         digest = f"{stamp.st_size}:{stamp.st_mtime_ns}"
     else:
         fits_deadline(text, lambda: remaining(until))
         found = scan_all(str(path), text, cfg)
         remaining(until)
-        rows = strip_committed(path, found, cfg, text, until=until)
+        rows = split_with_snapshot(path, found, cfg, snapshot, text, until=until)[0]
         digest = sha256(text.encode("utf-8")).hexdigest()
     return [{**row, "content_hash": digest, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block"]
 
@@ -62,8 +63,9 @@ def _owned_rows(path: Path, cwd: Path, cfg: dict, until: float) -> list[dict] | 
     remaining(until)
     if not path.is_file() or outside_project_temp(path, cwd):
         return None
+    snapshot = imported_baseline.lookup(cfg, path)
     with _alarm(until):
-        return _path_rows(path, cfg, until)
+        return _path_rows(path, cfg, snapshot, until)
 
 
 def _expire(_signum: int, _frame: object) -> None:

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 import stop
-from lib import baseline, blocker_state, imported_baseline, scanner, stop_scan
+from lib import baseline, blocker_state, imported_baseline, scanner, state_recovery, stop_scan
 from testing import make_repo, run_git
 
 NARRATION = "# Increment the counter.\nx = 1\n"
@@ -18,6 +18,7 @@ LARGE_BASELINE_BYTES = 3_000_000
 OVERSIZED_CURRENT_BYTES = 9_900_000
 RAISED_SCAN_BYTES = 20_000_000
 BUSY_SCAN_SECONDS = 3.0
+SLOW_RECOVERY_SECONDS = 0.5
 LARGE_PROSE = "The hook reads the file. It scans each line and records what it finds for the agent.\n\n"
 DASHED_LINE = "The scan ends here — and the agent sees it.\n"
 
@@ -230,6 +231,26 @@ def test_a_busy_scan_of_a_small_baseline_ends_at_the_deadline_as_unscanned(tmp_p
 
     assert scanned.skipped == [str(target)]
     assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
+
+
+def test_a_deadline_during_a_slow_state_recovery_lets_the_restore_finish(tmp_path: Path, monkeypatch) -> None:
+    root = _config(tmp_path)["state_root"]
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    blocker_state.set_pending("s1", "", str(target), "Fix module.py", root)
+    state_file = Path(root) / "s1" / "state.json"
+    state_file.write_text("{", encoding="utf-8")
+    write = state_recovery.atomic_write
+
+    def slow_write(path: Path, payload: str) -> None:
+        time.sleep(SLOW_RECOVERY_SECONDS)
+        write(path, payload)
+
+    monkeypatch.setattr(state_recovery, "atomic_write", slow_write)
+
+    stop_scan.rescan([str(target)], tmp_path, {"session_id": "s1", "state_root": root}, time.monotonic() + BUDGET_SECONDS)
+
+    assert "Fix module.py" in state_file.read_text(encoding="utf-8")
 
 
 def test_a_finished_rescan_leaves_no_alarm_armed(tmp_path: Path) -> None:
