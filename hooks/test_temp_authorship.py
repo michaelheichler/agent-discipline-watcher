@@ -4,9 +4,11 @@ import json
 import shutil
 from pathlib import Path
 
+import pre_bash
+import pre_write
 import record
 import stop
-from lib import session_state, temp_authorship, temp_copies
+from lib import blocker_state, session_state, temp_authorship, temp_copies
 
 DASHED = "The scan ran " + chr(0x2014) + " then it stopped.\n"
 IMPORTED_LEAD = "imported content, not yours"
@@ -77,17 +79,98 @@ def test_an_external_source_stays_imported_after_300_scratch_writes(tmp_path: Pa
     assert _stop(tmp_path) == {}
 
 
-def test_past_the_hard_cap_every_temp_copy_blocks_with_one_notice(tmp_path: Path, monkeypatch) -> None:
+def _at_cap(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(temp_authorship, "MAX_LINES", 3)
-    first = _scratch_writes(tmp_path, 4, "t0")
-    later = _scratch_writes(tmp_path, 5, "t1")
-    source = _dashed(tmp_path, "downloaded.md")
+    _scratch_writes(tmp_path, 4, "t0")
 
-    response = _copy_in(tmp_path, source)
 
-    assert temp_authorship.OVERFLOW_NOTICE in json.dumps(first)
-    assert temp_authorship.OVERFLOW_NOTICE not in json.dumps(later)
+def _pre(tmp_path: Path, hook, tool: str, tool_input: dict) -> dict:
+    payload = {
+        "cwd": str(_project(tmp_path)), "session_id": "s1", "tool_name": tool,
+        "tool_use_id": "p1", "tool_input": tool_input,
+    }
+    return hook.run(payload, _config(tmp_path))
+
+
+def test_one_call_past_the_cap_still_records_every_path(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+
+    assert len(temp_authorship.authored_temp("s1", _config(tmp_path)["state_root"])) == 4
+
+
+def test_at_the_cap_a_scratch_write_is_refused(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+
+    response = _pre(tmp_path, pre_write, "Write", {"file_path": str(tmp_path / "more.md"), "content": "x\n"})
+
     assert response["decision"] == "block"
+    assert response["reason"] == temp_authorship.FULL_REASON
+
+
+def test_at_the_cap_a_scratch_redirect_is_refused(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+
+    response = _pre(tmp_path, pre_bash, "Bash", {"command": f"printf x > {tmp_path / 'more.txt'}"})
+
+    assert response["decision"] == "block"
+    assert response["reason"] == temp_authorship.FULL_REASON
+
+
+def test_at_the_cap_a_project_write_still_passes(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+
+    response = _pre(tmp_path, pre_write, "Write", {"file_path": str(_project(tmp_path) / "ok.py"), "content": "x = 1\n"})
+
+    assert response.get("decision") != "block"
+
+
+def test_at_the_cap_an_external_copy_stays_imported(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+
+    response = _copy_in(tmp_path, _dashed(tmp_path, "downloaded.md"))
+
+    assert response.get("decision") != "block"
+    assert IMPORTED_LEAD in json.dumps(response)
+    assert _stop(tmp_path) == {}
+
+
+def test_past_200001_seeded_paths_an_external_copy_stays_imported(tmp_path: Path) -> None:
+    root = _config(tmp_path)["state_root"]
+    seeded = [str(tmp_path / f"authored-{index}") for index in range(temp_authorship.MAX_LINES + 1)]
+    temp_authorship.note_authored_temp("s1", seeded, str(_project(tmp_path)), root)
+
+    response = _copy_in(tmp_path, _dashed(tmp_path, "third-party.md"))
+
+    assert len(temp_authorship.authored_temp("s1", root)) == temp_authorship.MAX_LINES + 1
+    assert response.get("decision") != "block"
+    assert IMPORTED_LEAD in json.dumps(response)
+
+
+def test_a_torn_last_line_cannot_swallow_the_next_entry_and_is_noticed_once(tmp_path: Path) -> None:
+    root = _config(tmp_path)["state_root"]
+    directory = session_state.session_directory("s1", root)
+    directory.mkdir(parents=True)
+    (directory / temp_authorship.AUTHORED_FILENAME).write_text('"/tmp/half', encoding="utf-8")
+    scratch = str(tmp_path / "next.md")
+
+    temp_authorship.note_authored_temp("s1", [scratch], None, root)
+
+    assert temp_authorship.authored_temp("s1", root) == frozenset({temp_copies.source_key(scratch)})
+    assert "1 damaged lines" in temp_authorship.take_malformed_notice("s1", root)
+    assert temp_authorship.take_malformed_notice("s1", root) == ""
+
+
+def test_a_failing_append_holds_the_turn(tmp_path: Path) -> None:
+    directory = session_state.session_directory("s1", _config(tmp_path)["state_root"])
+    directory.mkdir(parents=True)
+    store = directory / temp_authorship.AUTHORED_FILENAME
+    store.write_text('"/tmp/earlier"\n', encoding="utf-8")
+    store.chmod(0o400)
+
+    response = _scratch_writes(tmp_path, 1)
+
+    assert response["decision"] == "block"
+    assert record.UNDECIDABLE_KEY in blocker_state.details("s1", "", _config(tmp_path)["state_root"])[0]
 
 
 def test_a_legacy_state_list_moves_into_the_store_on_read(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from lib import payloads, reporting, tests_policy
+from lib import payloads, reporting, temp_authorship, tests_policy
 from lib.config import payload_hook_config
 from lib.findings import Finding, Rule
 from lib.hookio import (
@@ -147,6 +147,9 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if not command:
         return allow()
     cwd = payload.get("cwd") or "."
+    refusal = temp_authorship.scratch_refusal(payloads.session_id(payload), write_paths(command), cwd, cfg.get("state_root"))
+    if refusal:
+        return deny(refusal)
     findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
     findings += _test_findings(payload, cfg)
     if findings:

@@ -91,7 +91,7 @@ def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
         sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
 
 
-def _journal_edits(edits: _EditJournal, turn_id: str = "") -> str:
+def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
     template = _edit_row_template(edits, turn_id)
     session_id = edits.payload["session_id"]
     cwd = edits.payload["cwd"] or None
@@ -104,7 +104,7 @@ def _journal_edits(edits: _EditJournal, turn_id: str = "") -> str:
             scratch.append(path)
         else:
             _journal_candidate(edits, path, turn_id)
-    return temp_authorship.note_authored_temp(session_id, scratch, cwd, edits.state_root)
+    temp_authorship.note_authored_temp(session_id, scratch, cwd, edits.state_root)
 
 
 def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) -> list[dict]:
@@ -287,13 +287,15 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
         projected = context.journal.payload
-        capped = _journal_edits(context.journal, turn_id) if projected["session_id"] else ""
+        if projected["session_id"]:
+            _journal_edits(context.journal, turn_id)
         owned, inherited = _scan_paths(context.scan_paths, context.cwd, context.config)
         decisions = _ledger_decisions(context, owned, turn_id, started)
         report_cfg = {**context.config, "session_id": projected["session_id"], "turn_id": turn_id}
         kind, reason = verdict_message(decisions, report_cfg)
         verdict = _RecordVerdict(VerdictKind(kind), reason)
-        notices = "\n".join(part for part in (capped, _imported_notice(context, report_cfg)) if part)
+        damaged = temp_authorship.take_malformed_notice(projected["session_id"], context.journal.state_root)
+        notices = "\n".join(part for part in (damaged, _imported_notice(context, report_cfg)) if part)
         response = _response(verdict, inherited, report_cfg, notices)
         if projected["session_id"]:
             _clear_blocker_state(context.blocker_scope, context.tracked_paths, verdict)

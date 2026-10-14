@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from lib import imported_baseline, payloads, tests_policy
+from lib import imported_baseline, payloads, temp_authorship, tests_policy
 from lib.baseline import changed_lines, committed_text, partition, split_committed
 from lib.config import payload_hook_config
 from lib.hookio import (
@@ -144,10 +144,18 @@ def _note_first_seen(payload: dict, cwd: Path, cfg: dict) -> None:
     )
 
 
+def _scratch_refusal(payload: dict, cwd: Path, cfg: dict) -> str:
+    paths = [str(_resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]
+    return temp_authorship.scratch_refusal(payloads.session_id(payload), paths, cwd, cfg.get("state_root"))
+
+
 def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     started = time.monotonic()
     decoded = _decode(_tool_input(payload))
     cwd = Path(payload.get("cwd") or ".")
+    refusal = _scratch_refusal(payload, cwd, cfg)
+    if refusal:
+        return deny(refusal)
     _note_first_seen(payload, cwd, cfg)
     findings, inherited = _pending_findings(decoded, cwd, cfg)
     gate = tests_policy.Gate(payload, cfg, time.time())
