@@ -347,13 +347,13 @@ class BatchValidationTests(BatchTestCase):
         payload = self._payload(raw_calls)
         original_normalized_calls = batch._normalized_calls
 
-        def mutate_source(inner_payload: dict) -> tuple[list, bool]:
+        def mutate_source(inner_payload: dict, authored: frozenset[str] | None) -> tuple[list, bool]:
             payload["session_id"] = "mutant"
             payload["cwd"] = str(mutant_root)
             raw_calls.clear()
             raw_calls.append(self._call(clean, "appended-tool"))
             raw_calls[0] = self._call(clean, "replacement-tool")
-            return original_normalized_calls(inner_payload)
+            return original_normalized_calls(inner_payload, authored)
 
         with patch.object(batch, "_normalized_calls", side_effect=mutate_source):
             response = batch.run(payload, self.cfg)

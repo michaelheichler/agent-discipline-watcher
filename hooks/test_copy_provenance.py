@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import batch
 import record
 import stop
 from lib import blocker_state, journal, payloads, temp_copies
@@ -191,3 +192,27 @@ def test_many_paths_cost_one_state_update(tmp_path: Path) -> None:
     assert revision == before + 1
     assert landed <= set(paths)
     assert landed <= set(pending)
+
+
+def test_a_batch_does_not_track_imported_copies(tmp_path: Path) -> None:
+    source = _download(tmp_path, {"SKILL.md": DASHED})
+
+    _batch_copy(tmp_path, source)
+
+    assert _scope(tmp_path)[1] == []
+
+
+def test_a_batch_still_tracks_a_copy_of_an_agent_written_temp_file(tmp_path: Path) -> None:
+    source = _download(tmp_path, {"SKILL.md": DASHED})
+    _run(tmp_path, "Write", {"file_path": str(source / "SKILL.md")}, "t0")
+
+    _batch_copy(tmp_path, source)
+
+    assert str(_project(tmp_path) / "skills" / "skill" / "SKILL.md") in _scope(tmp_path)[1]
+
+
+def _batch_copy(tmp_path: Path, source: Path) -> dict:
+    shutil.copytree(source, _project(tmp_path) / "skills" / source.name)
+    cwd = str(_project(tmp_path))
+    call = {"tool_use_id": "t1", "tool_name": "Bash", "cwd": cwd, "tool_input": {"command": f"cp -R {source} skills/"}}
+    return batch.run({"session_id": "s1", "cwd": cwd, "tool_calls": [call]}, _config(tmp_path))

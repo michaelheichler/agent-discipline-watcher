@@ -140,10 +140,16 @@ def _rows(text: str) -> list[str]:
     return [line for line in text.splitlines() if re.match(r"\d+\. ", line)]
 
 
-def test_a_short_review_is_shown_whole() -> None:
+def test_a_short_review_is_shown_whole_and_ends_with_a_report_path() -> None:
     sections = [_section("pattern", 1), _section("document", 1)]
 
-    assert claude_luna.bounded_feedback(sections) == "\n\n".join(sections)
+    text = claude_luna.bounded_feedback(sections)
+    shown, tail = text.rsplit("\n", 1)
+
+    assert shown == "\n\n".join(sections)
+    assert tail.startswith("Full report: ")
+    report = tail.removeprefix("Full report: ")
+    assert [row["message"] for row in json.loads(Path(report).read_text(encoding="utf-8"))] == sections
 
 
 def test_a_long_review_lists_five_rows_and_points_at_every_section() -> None:

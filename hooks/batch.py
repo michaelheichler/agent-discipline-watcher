@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from lib import blocker_state, payloads, reporting
+from lib import blocker_state, payloads, reporting, temp_authorship
 from lib.canonical import (
     _INVALID,
     Canonical,
@@ -101,7 +101,13 @@ def _normalized_path(raw_path: str, cwd: Path) -> str:
         return raw_path
 
 
-def _normalized_calls(payload: dict) -> _NormalizedCalls:
+def _authored(session_id: str, cfg: dict) -> frozenset[str] | None:
+    """None without a session, because a caller that cannot tell provenance must count every copy as written."""
+    return temp_authorship.authored_temp(session_id, cfg.get("state_root")) if session_id else None
+
+
+def _normalized_calls(payload: dict, authored: frozenset[str] | None) -> _NormalizedCalls:
+    """Imported copies drop out here, because the spec gives them no Stop tracking and record already reported them."""
     cwd = Path(payloads.cwd(payload) or ".")
     calls: list[NormalizedCall] = []
     seen: set[NormalizedSignature] = set()
@@ -110,7 +116,7 @@ def _normalized_calls(payload: dict) -> _NormalizedCalls:
         return _NormalizedCalls(calls, False)
     all_valid = True
     for call in raw_calls:
-        normalized = _normalized_call(call, cwd)
+        normalized = _normalized_call(call, cwd, authored)
         all_valid = all_valid and normalized.valid
         if normalized.signature not in seen:
             seen.add(normalized.signature)
@@ -118,7 +124,7 @@ def _normalized_calls(payload: dict) -> _NormalizedCalls:
     return _NormalizedCalls(calls, all_valid)
 
 
-def _normalized_call(call: dict, cwd: Path) -> _NormalizedCall:
+def _normalized_call(call: dict, cwd: Path, authored: frozenset[str] | None) -> _NormalizedCall:
     raw_call_id = call.get("tool_use_id", "")
     raw_tool_name = call.get("tool_name", "")
     tool_input = _selected_tool_input(call)
@@ -134,7 +140,7 @@ def _normalized_call(call: dict, cwd: Path) -> _NormalizedCall:
     )
     canonical = cast(Canonical, canonical_value) if valid else None
     writes = valid and _is_write_tool(tool_name)
-    raw_paths = payloads.edited_paths(call) if writes else ()
+    raw_paths = payloads.edited_paths(call, authored) if writes else ()
     signature = (
         call_id,
         tool_name,
@@ -352,7 +358,7 @@ def findings_for_batch(payload: dict, config: dict | None = None, turn_id: str =
     payload = _sanitized_payload(payload)
     cfg = effective_config(config, payloads.cwd(payload) or None)
     cwd = Path(payloads.cwd(payload) or ".")
-    normalized = _normalized_calls(payload)
+    normalized = _normalized_calls(payload, _authored(payloads.session_id(payload), cfg))
     entries = _project_entries(_entries_from_calls(normalized.calls, cwd), cwd)
     turn = _BatchTurnContext(payloads.session_id(payload), turn_id, cfg)
     return _findings_for_calls(normalized, entries, turn)
@@ -454,7 +460,7 @@ def _batch_gate(payload: dict, cfg: dict, session_id: str) -> Callable[[str], di
     def gate(turn_id: str) -> dict:
         started = time.monotonic()
         cwd = Path(payloads.cwd(payload) or ".")
-        normalized = _normalized_calls(payload)
+        normalized = _normalized_calls(payload, _authored(session_id, cfg))
         entries = _entries_from_calls(normalized.calls, cwd)
         turn = _BatchTurnContext(session_id, turn_id, cfg)
         findings = _findings_for_calls(normalized, entries, turn)

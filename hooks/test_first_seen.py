@@ -6,7 +6,7 @@ import pre_bash
 import pre_write
 import record
 import stop
-from lib import journal
+from lib import imported_baseline, journal, session_state
 
 DASHED = "Old text " + chr(0x2014) + " from before.\n"
 NEW_DASH = "New text " + chr(0x2014) + " by the agent.\n"
@@ -164,3 +164,45 @@ def test_a_shell_append_to_an_untracked_file_does_not_own_the_old_findings(tmp_p
     assert before.get("decision") != "block"
     assert after.get("decision") != "block"
     assert _stop(tmp_path) == {}
+
+
+def _never_in_git(_path: Path) -> bool:
+    return False
+
+
+def test_a_file_above_one_megabyte_keeps_its_first_seen_text(tmp_path: Path) -> None:
+    body = "Plain line.\n" * 100_000
+    target = _untracked(tmp_path, "big.md", body)
+    state_root = _config(tmp_path)["state_root"]
+
+    imported_baseline.note_first_seen("s1", [str(target)], state_root, _never_in_git)
+    target.write_text("Plain line.\n", encoding="utf-8")
+
+    snapshot = imported_baseline.lookup({"session_id": "s1", "state_root": state_root}, target)
+    assert snapshot is not None
+    assert snapshot.text == body
+
+
+def test_an_untracked_file_seen_after_a_thousand_others_does_not_own_the_old_findings(tmp_path: Path) -> None:
+    others = [_untracked(tmp_path, f"other{number}.md", "Plain.\n") for number in range(1000)]
+    imported_baseline.note_first_seen("s1", [str(path) for path in others], _config(tmp_path)["state_root"], _never_in_git)
+    target = _untracked(tmp_path, "NOTES.md", DASHED + "Plain line.\n")
+
+    _before, after = _edit(tmp_path, target, "Plain line.", "Plain line, edited.")
+
+    assert after.get("decision") != "block"
+
+
+def test_a_baseline_stored_by_the_previous_release_still_counts(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "NOTES.md", DASHED + "Plain line.\n")
+    state_root = _config(tmp_path)["state_root"]
+    digest = imported_baseline.text_digest(target.read_text(encoding="utf-8"))
+    store = session_state.session_directory("s1", state_root) / imported_baseline.STORE_DIRNAME
+    store.mkdir(parents=True)
+    (store / digest).write_bytes(target.read_bytes())
+    legacy = {imported_baseline.STATE_KEY: {imported_baseline.path_key(target): digest}}
+    session_state.update_state("s1", lambda state: {**state, **legacy}, state_root)
+
+    _before, after = _edit(tmp_path, target, "Plain line.", "Plain line, edited.")
+
+    assert after.get("decision") != "block"
