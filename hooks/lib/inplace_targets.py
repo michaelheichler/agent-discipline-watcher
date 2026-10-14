@@ -5,9 +5,11 @@ import os
 import re
 from typing import NamedTuple
 
+from lib.script_payload import perl_substitution
 from lib.shell_syntax import _bare, _basename, _command_word_index, interpreter_invocation
 from lib.temp_scope import scratch_target
 
+PERL_SWITCHES_RE = re.compile(r"-[pnlw]*(?:i[\w.~-]*)?")
 VALUE_LETTERS = {"sed": frozenset("ef"), "perl": frozenset("IeE"), "ruby": frozenset("IeE")}
 SCRIPT_LETTERS = {"sed": frozenset("e"), "perl": frozenset("eE"), "ruby": frozenset("e")}
 SED_LONG_VALUES = {"--expression": "e", "--file": "f"}
@@ -49,8 +51,17 @@ def scratch_inplace_edit(segment: list[str], command: str, cwd: str | os.PathLik
         return False
     if edit.verb == "sed":
         return all(_safe_sed_script(script) for script in edit.scripts)
+    if edit.verb != "perl" or len(edit.scripts) != 1 or not _plain_perl_options(segment):
+        return False
     invocation = interpreter_invocation(segment)
-    return len(edit.scripts) == 1 and invocation is not None and invocation.payload == edit.scripts[0]
+    return invocation is not None and invocation.payload == edit.scripts[0] and perl_substitution(edit.scripts[0])
+
+
+def _plain_perl_options(segment: list[str]) -> bool:
+    """Because -M, -I, -x and -s load or run code beyond the -e script, only line-loop and in-place switches may appear."""
+    words = [_bare(token) for token in segment[_command_word_index(segment) + 1:]]
+    options = [word for position, word in enumerate(words) if word.startswith("-") and (position == 0 or words[position - 1] != "-e")]
+    return all(word == "-e" or PERL_SWITCHES_RE.fullmatch(word) for word in options)
 
 
 def _values_and_operands(verb: str, words: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
