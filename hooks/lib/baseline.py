@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import difflib
 import subprocess
+import time
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -36,22 +37,40 @@ def baseline_mode(cfg: dict) -> str:
     return mode if mode in BASELINE_MODES else DEFAULT_BASELINE_MODE
 
 
-def _git(args: list[str], cwd: Path) -> str | None:
+class OutOfTime(Exception):
+    """Raised instead of returning None, because a baseline the deadline cut off is unknown, not absent."""
+
+
+def remaining(until: float | None) -> float | None:
+    if until is None:
+        return None
+    left = until - time.monotonic()
+    if left <= 0:
+        raise OutOfTime
+    return left
+
+
+def _git(args: list[str], cwd: Path, until: float | None = None) -> str | None:
+    left = remaining(until)
+    timeout = GIT_TIMEOUT_SECONDS if left is None else min(GIT_TIMEOUT_SECONDS, left)
     try:
         result = subprocess.run(
             ["git", *args], cwd=str(cwd), text=True, capture_output=True,
-            check=True, timeout=GIT_TIMEOUT_SECONDS, errors="replace",
+            check=True, timeout=timeout, errors="replace",
         )
+    except subprocess.TimeoutExpired:
+        remaining(until)
+        return None
     except (OSError, subprocess.SubprocessError):
         return None
     return result.stdout
 
 
-def _repo_relative(path: Path) -> tuple[Path, str] | None:
+def _repo_relative(path: Path, until: float | None) -> tuple[Path, str] | None:
     directory = path.parent
     if not directory.is_dir():
         return None
-    top = _git(["rev-parse", "--show-toplevel"], directory)
+    top = _git(["rev-parse", "--show-toplevel"], directory, until)
     if not top or not top.strip():
         return None
     try:
@@ -61,12 +80,13 @@ def _repo_relative(path: Path) -> tuple[Path, str] | None:
     return directory, relative.as_posix()
 
 
-def committed_text(path: Path) -> str | None:
-    located = _repo_relative(path)
+def committed_text(path: Path, until: float | None = None) -> str | None:
+    """OutOfTime past until, because the Stop rescan must not outlive the host's 10 second limit."""
+    located = _repo_relative(path, until)
     if located is None:
         return None
     directory, relative = located
-    return _git(["show", "HEAD:" + relative], directory)
+    return _git(["show", "HEAD:" + relative], directory, until)
 
 
 def changed_lines(before: str, after: str) -> set[int]:
@@ -181,7 +201,9 @@ def _split_snapshot(path: Path, findings: list[dict], cfg: dict, snapshot: Snaps
     return _against(path, findings, cfg, snapshot.text, text)
 
 
-def split_committed(path: Path, findings: list[dict], cfg: dict, text: str | None = None) -> tuple[list[dict], list[dict]]:
+def split_committed(
+    path: Path, findings: list[dict], cfg: dict, text: str | None = None, *, until: float | None = None,
+) -> tuple[list[dict], list[dict]]:
     """Compare against HEAD because blocking on findings that predate an edit would prevent incremental cleanup."""
     if not findings or baseline_mode(cfg) == "none":
         return findings, []
@@ -189,9 +211,10 @@ def split_committed(path: Path, findings: list[dict], cfg: dict, text: str | Non
     split = None if snapshot is None else _split_snapshot(path, findings, cfg, snapshot, text)
     if split is not None:
         return split
-    before = committed_text(path)
+    before = committed_text(path, until)
     if before is None:
         return findings, []
+    remaining(until)
     return _against(path, findings, cfg, before, text)
 
 
@@ -203,19 +226,19 @@ def _head(path: Path) -> str:
         return ""
 
 
-def _inherited_fallback(path: Path, cfg: dict) -> bool:
+def _inherited_fallback(path: Path, cfg: dict, until: float | None) -> bool:
     snapshot = imported_baseline.lookup(cfg, path)
     if snapshot is not None and imported_baseline.file_digest(path) == snapshot.digest:
         return True
     if not has_generated_marker(_head(path)):
         return False
-    before = snapshot.text if snapshot is not None and snapshot.text is not None else committed_text(path)
+    before = snapshot.text if snapshot is not None and snapshot.text is not None else committed_text(path, until)
     return before is not None and has_generated_marker(before)
 
 
-def split_fallback(path: Path, rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
+def split_fallback(path: Path, rows: list[dict], cfg: dict, *, until: float | None = None) -> tuple[list[dict], list[dict]]:
     """Unscannable rows stay advice for an unchanged import or an inherited generated file, because the agent wrote neither."""
-    if not rows or baseline_mode(cfg) == "none" or not _inherited_fallback(path, cfg):
+    if not rows or baseline_mode(cfg) == "none" or not _inherited_fallback(path, cfg, until):
         return rows, []
     return [], rows if baseline_mode(cfg) == "report" else []
 
@@ -229,8 +252,10 @@ def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> t
     return _halves(findings, pooled, cfg)
 
 
-def strip_committed(path: Path, findings: list[dict], cfg: dict, text: str | None = None) -> list[dict]:
-    return split_committed(path, findings, cfg, text)[0]
+def strip_committed(
+    path: Path, findings: list[dict], cfg: dict, text: str | None = None, *, until: float | None = None,
+) -> list[dict]:
+    return split_committed(path, findings, cfg, text, until=until)[0]
 
 
 def strip_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> list[dict]:

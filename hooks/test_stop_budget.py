@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import stop
@@ -30,6 +32,23 @@ def test_a_rescan_past_its_deadline_blocks_with_the_unscanned_count(tmp_path: Pa
     assert response["decision"] == "block"
     assert "2 files not scanned: a.py, b.py" in response["reason"]
     assert blocker_state.details("s1", "", _config(tmp_path)["state_root"])[1] == paths
+
+
+def test_a_slow_baseline_git_call_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    hanging = tmp_path / "bin" / "git"
+    hanging.parent.mkdir()
+    hanging.write_text("#!/bin/sh\nexec sleep 5\n", encoding="utf-8")
+    hanging.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{hanging.parent}{os.pathsep}{os.environ['PATH']}")
+    started = time.monotonic()
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, {}, started + 0.5)
+
+    assert scanned.skipped == [str(target)]
+    assert scanned.findings == []
+    assert time.monotonic() - started < 1.5
 
 
 def test_a_scope_keeps_its_newest_paths_and_counts_the_rest_once(tmp_path: Path) -> None:

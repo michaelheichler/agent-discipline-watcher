@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from . import scan_input
-from .baseline import split_fallback, strip_committed
+from .baseline import OutOfTime, remaining, split_fallback, strip_committed
 from .config import resolve_outcome
 from .scanner import read_scannable, scan_all
 from .temp_scope import outside_project_temp
@@ -32,29 +32,44 @@ def _resolved(raw_path: str, cwd: Path) -> Path:
     return path if path.is_absolute() else cwd / path
 
 
-def _path_rows(path: Path, cfg: dict) -> list[dict]:
+def _path_rows(path: Path, cfg: dict, until: float) -> list[dict]:
+    """OutOfTime between steps, because one slow file must not carry Stop past the host limit."""
     text = read_scannable(path, cfg)
+    remaining(until)
     if text is None:
         stamp = path.stat()
-        rows = split_fallback(path, scan_input.fallback_findings(path), cfg)[0]
+        found = scan_input.fallback_findings(path)
+        remaining(until)
+        rows = split_fallback(path, found, cfg, until=until)[0]
         digest = f"{stamp.st_size}:{stamp.st_mtime_ns}"
     else:
-        rows = strip_committed(path, scan_all(str(path), text, cfg), cfg, text)
+        found = scan_all(str(path), text, cfg)
+        remaining(until)
+        rows = strip_committed(path, found, cfg, text, until=until)
         digest = sha256(text.encode("utf-8")).hexdigest()
     return [{**row, "content_hash": digest, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block"]
+
+
+def _owned_rows(path: Path, cwd: Path, cfg: dict, until: float) -> list[dict] | None:
+    """None for a missing or temp path, because the rescan neither scans nor stamps it."""
+    remaining(until)
+    if not path.is_file() or outside_project_temp(path, cwd):
+        return None
+    return _path_rows(path, cfg, until)
 
 
 def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
     result = Rescan()
     for index, raw_path in enumerate(paths):
-        if time.monotonic() > until:
+        path = _resolved(raw_path, cwd)
+        try:
+            rows = _owned_rows(path, cwd, cfg, until)
+        except OutOfTime:
             result.skipped = [str(_resolved(raw, cwd)) for raw in paths[index:]]
             break
-        path = _resolved(raw_path, cwd)
-        if not path.is_file() or outside_project_temp(path, cwd):
-            continue
-        result.existing.append(str(path))
-        result.findings.extend(_path_rows(path, cfg))
+        if rows is not None:
+            result.existing.append(str(path))
+            result.findings.extend(rows)
     return result
 
 
