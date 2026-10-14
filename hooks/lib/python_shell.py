@@ -27,15 +27,24 @@ NICE_LEVEL_RE = re.compile(r"-\d+")
 
 
 def isolated_python(segment: list[str] | tuple[str, ...]) -> bool:
+    """Because -I -S cannot stop a preload library or a swapped interpreter path, the prefix counts too."""
     options = _python_options(segment)
-    return options is not None and {"I", "S"} <= options
+    if options is None or not {"I", "S"} <= options:
+        return False
+    prefix = list(segment[:_payload_command_index(list(segment))])
+    return all(_harmless_assignment(token) for token in prefix if _is_unquoted_assignment(token))
+
+
+def _harmless_assignment(token: str) -> bool:
+    name, _, value = token.partition("=")
+    return not STARTUP_VARIABLE_RE.match(name) and not DYNAMIC_RE.search(value)
 
 
 def trusted_python_startup(segment: list[str] | tuple[str, ...], cwd: str | None = None) -> bool:
     options = _python_options(segment)
     if options is None:
         return False
-    if {"I", "S"} <= options:
+    if isolated_python(segment):
         return True
     prefix = list(segment[:_payload_command_index(list(segment))])
     if not _plain_startup_prefix(prefix) or os.environ.get("PYTHONINSPECT"):
@@ -62,7 +71,7 @@ def _startup_step(wrapper: str, token: str) -> tuple[str, int] | None:
     if wrapper == "timeout":
         return ("", 1) if DURATION_RE.fullmatch(token) else None
     if _is_unquoted_assignment(token):
-        return (wrapper, 1) if not STARTUP_VARIABLE_RE.match(token.partition("=")[0]) else None
+        return (wrapper, 1) if _harmless_assignment(token) else None
     return (token, 1) if token in STARTUP_FLAGS else None
 
 
