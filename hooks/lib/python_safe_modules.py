@@ -54,7 +54,7 @@ HASH_FUNCTIONS = ("blake2b", "blake2s", "file_digest", "md5", "sha1", "sha224", 
 DATETIME_FACTORIES = ("fromisoformat", "fromtimestamp", "now", "strptime", "today", "utcnow")
 
 IMPORTABLE = frozenset({
-    "ast", "collections", "datetime", "functools", "hashlib", "html", "itertools", "math", "os.path", "re", "tomllib",
+    "ast", "collections", "datetime", "hashlib", "html", "itertools", "math", "os.path", "re", "tomllib",
 })
 NAMESPACES = IMPORTABLE | {"datetime.date", "datetime.datetime", "datetime.timezone"}
 FUNCTIONS: dict[str, Kind] = {
@@ -63,7 +63,6 @@ FUNCTIONS: dict[str, Kind] = {
     "html.escape": "text", "html.unescape": "text",
     **{f"math.{name}": "value" for name in MATH_FUNCTIONS},
     "collections.Counter": "counter", "collections.OrderedDict": "dict",
-    "functools.reduce": "value",
     **{f"hashlib.{name}": "hash" for name in HASH_FUNCTIONS},
     "tomllib.load": "json", "tomllib.loads": "json",
     "ast.parse": "ast_tree", "ast.dump": "text", "ast.literal_eval": "json",
