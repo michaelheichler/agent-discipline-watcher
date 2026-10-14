@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A user prompt no longer asks the agent to fix the user's text.** UserPromptSubmit ignored rule gates, so `de_long_compound`, set to `off`, injected "Correct this discipline violation" on German prompts. Only rules that enforce on prose now count. A hit becomes one line per family, "The user prompt uses english patterns (ai_tell). Do not copy that style into your output." ADW notes each rule once per session. Block mode no longer blocks on a style hit. The prompt firewall phrases and the data boundary keep their wording.
+- **A failing Sonnet CLI no longer runs on every Stop.** A timeout or CLI error starts a 300 second cooldown. Each queued row gets two attempts, then ADW drops it with a notice. A candidate the model skipped counts as clean, and a repeated one keeps its first answer.
+- **The Luna and Sonnet Stop blocks keep every finding.** Both list at most 5 rows in 900 characters and end with the path of a full report. Luna used to cut the text at 900 characters and lose the later sections.
+- **The merge gate no longer trusts a branch the agent made.** Inside a session, an incoming commit must sit on a remote-tracking ref or a tag, or predate the session start. A session that began before this change keeps the old rule.
+- **Document review rounds count per turn.** A document edited in a third turn gets a review again.
+- **A long single-line hunk splits between sentences.** A sentence longer than the budget ends with "[line truncated]".
+
+### Changed
+
+- **The Sonnet review costs half the fixed tokens.** `claude -p` now runs with `--setting-sources ""` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. A one-candidate call dropped from 3,552 to 1,754 input tokens. The system prompt states the rubric once instead of once per section. A deletion-only edit makes no model call.
+
 ## 0.25.4 (2026-10-05)
 
 ### Fixed

@@ -24,9 +24,9 @@ except ImportError:
     from reporting import _safe_text
 
 try:
-    from .document_hunks import hunk_text
+    from .document_hunks import hunk_header, hunk_text
 except ImportError:
-    from document_hunks import hunk_text
+    from document_hunks import hunk_header, hunk_text
 
 REVIEW_MODEL = JUDGE_MODEL
 MAX_REVIEW_CHARS = 24000
@@ -37,7 +37,9 @@ HUNK_NOTICE = (
     "Quote a sentence without its leading marker."
 )
 MAX_NOTES = 6
+TRUNCATED_MARKER = " [line truncated]"
 WHITESPACE_RE = re.compile(r"\s+")
+SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+")
 # Two named axes to prevent the model grading subject matter.
 SYSTEM_PROMPT = (
     "You review one finished document for coherence and style.\n"
@@ -164,9 +166,27 @@ def _halves(hunk: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
 def _fitted(path: str, hunk: dict[str, Any], limit: int) -> list[str]:
     """Split by lines, because a hunk cut mid-sentence reads as a finished one."""
     text = hunk_text(path, hunk)
-    if len(text) <= limit or len(hunk["lines"]) < 2:
-        return [text[:limit]]
+    if len(text) <= limit:
+        return [text]
+    if len(hunk["lines"]) < 2:
+        return _sentence_pieces(path, hunk, limit)
     return [piece for half in _halves(hunk) for piece in _fitted(path, half, limit)]
+
+
+def _sentence_pieces(path: str, hunk: dict[str, Any], limit: int) -> list[str]:
+    """Between sentences, because one long line has no line break to split at."""
+    prefix = f"{hunk_header(path, hunk)}\n{'+' if hunk['changed'] else ' '} "
+    room = limit - len(prefix)
+    if room <= len(TRUNCATED_MARKER):
+        return [(prefix + hunk["lines"][0])[:limit]]
+    pieces: list[str] = []
+    for sentence in SENTENCE_BREAK_RE.split(hunk["lines"][0]):
+        joined = f"{pieces[-1]} {sentence}" if pieces else sentence
+        if pieces and len(joined) <= room:
+            pieces[-1] = joined
+        else:
+            pieces.append(sentence if len(sentence) <= room else sentence[:room - len(TRUNCATED_MARKER)] + TRUNCATED_MARKER)
+    return [prefix + piece for piece in pieces]
 
 
 def _hunk_entries(rows: list[dict[str, Any]], limit: int) -> list[tuple[str, dict]]:

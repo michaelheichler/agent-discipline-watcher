@@ -137,6 +137,28 @@ def test_changed_work_splits_an_oversize_hunk_by_lines_and_labels_every_piece() 
     assert all("big.md lines " in request.source_context for request, _rows in work)
 
 
+def _one_line_work(line: str) -> str:
+    work = document_review.changed_document_work([_hunk_row("long.md", 7, [line], [7])], 1_500, "journal")
+    assert all(len(request.source_context) <= 1_500 for request, _rows in work)
+    return "\n".join(request.source_context for request, _rows in work)
+
+
+def test_a_long_single_line_splits_between_sentences() -> None:
+    sentences = [f"Sentence {number} of one long paragraph stays whole." for number in range(1, 61)]
+
+    joined = _one_line_work(" ".join(sentences))
+
+    assert all(sentence in joined for sentence in sentences)
+    assert "long.md lines 7-7, changed lines: 7" in joined
+    assert document_review.TRUNCATED_MARKER not in joined
+
+
+def test_a_sentence_longer_than_the_budget_says_it_was_cut() -> None:
+    joined = _one_line_work("word " * 600)
+
+    assert joined.rstrip().endswith(document_review.TRUNCATED_MARKER)
+
+
 def test_changed_work_packs_small_hunks_from_two_files_into_one_request() -> None:
     rows = [_hunk_row("a.md", 1, ["one"], [1]), _hunk_row("b.md", 4, ["two"], [4])]
 

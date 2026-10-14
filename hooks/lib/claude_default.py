@@ -44,7 +44,7 @@ def ensure_default_block(settings_path: str | Path | None = None, preset_path: s
     preset = claude_native.default_preset(preset_path=preset_path, settings_path=settings_path)
     return claude_native.ensure_managed_block(
         preset, _repointed, claude_presets.has_retired_agent_hook,
-        settings_path=settings_path, preset_path=preset_path,
+        settings_file=settings_path, preset_file=preset_path,
     )
 
 

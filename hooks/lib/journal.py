@@ -24,6 +24,7 @@ MAX_STOP_DOCUMENT_CHARS = 24_000
 MAX_STOP_TOTAL_CHARS = 48_000
 MAX_DOCUMENT_ROUNDS = 2
 REVIEWED_KEY = "claude_candidate_journal_reviewed"
+REVIEW_TURNS_KEY = "claude_candidate_journal_review_turns"
 MAX_REVIEWED_DIGESTS = 4 * MAX_ROWS
 MAX_CANDIDATE_CHARS = 320
 MAX_PATTERN_ROWS_PER_FILE = 40
@@ -541,6 +542,7 @@ def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
         "role": "document",
         "path": str(row.get("path", ""))[:512],
         "content_hash": str(row.get("content_hash", ""))[:64],
+        "turn_id": str(row.get("turn_id", ""))[:64],
         "hunks": changed_hunks(before if isinstance(before, str) else "", str(row.get("source_context", ""))),
     }
 
@@ -573,17 +575,27 @@ def _latest_documents(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(latest.values())
 
 
-def _rounds_left(row: dict[str, Any], reviewed: set[str]) -> bool:
-    """Two rounds, because a third rewrite rarely converges."""
+def _review_turns(state: dict) -> dict[str, str]:
+    stored = state.get(REVIEW_TURNS_KEY)
+    if not isinstance(stored, dict):
+        return {}
+    return {key: turn for key, turn in stored.items() if isinstance(key, str) and isinstance(turn, str)}
+
+
+def _rounds_left(row: dict[str, Any], reviewed: set[str], turns: dict[str, str]) -> bool:
+    """Two rounds per turn, because a third rewrite inside one turn rarely converges, while a later turn writes new text."""
     key = _reviewed_key(row)
     prefix = f"{row.get('path', '')}\n"
-    return key in reviewed or sum(1 for seen in reviewed if seen.startswith(prefix)) < MAX_DOCUMENT_ROUNDS
+    turn = str(row.get("turn_id", ""))
+    rounds = sum(1 for seen in reviewed if seen.startswith(prefix) and turns.get(seen) == turn)
+    return key in reviewed or rounds < MAX_DOCUMENT_ROUNDS
 
 
 def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None) -> list[dict[str, Any]]:
     """Current turn or unreviewed, because a failed Stop must not drop work."""
     state = session_state.read_state(session_id, state_root)
     reviewed = set(_reviewed(state))
+    turns = _review_turns(state)
     current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
     rows = read(session_id, state_root=state_root)
 
@@ -592,19 +604,29 @@ def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | 
 
     patterns = [_stop_row(row) for row in rows if row.get("role") == "pattern" and due(row)]
     documents = [
-        _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed)
+        _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed, turns)
     ]
-    changed = [row for row in documents if row["hunks"]]
+    changed = [row for row in documents if _adds_text(row)]
+    idle = [row for row in documents if not _adds_text(row)]
+    if idle:
+        mark_reviewed(session_id, idle, state_root=state_root)
     return _within_budget(patterns + changed[:MAX_STOP_ROWS])
+
+
+def _adds_text(row: dict[str, Any]) -> bool:
+    """Because a removal leaves no line to judge, sending it would only pay for the call."""
+    return any(hunk["changed"] for hunk in row["hunks"])
 
 
 def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:
     """Keyed by digest, because an edited document needs a new review."""
     keys = list(dict.fromkeys(_reviewed_key(row) for row in rows))
+    fresh = {_reviewed_key(row): str(row.get("turn_id", "")) for row in rows if row.get("role") == "document"}
 
     def update(state: dict) -> dict:
-        merged = [key for key in _reviewed(state) if key not in keys] + keys
-        return {**state, REVIEWED_KEY: merged[-MAX_REVIEWED_DIGESTS:]}
+        merged = ([key for key in _reviewed(state) if key not in keys] + keys)[-MAX_REVIEWED_DIGESTS:]
+        turns = {**_review_turns(state), **fresh}
+        return {**state, REVIEWED_KEY: merged, REVIEW_TURNS_KEY: {key: turns[key] for key in merged if key in turns}}
 
     session_state.update_state(session_id, update, state_root)
 

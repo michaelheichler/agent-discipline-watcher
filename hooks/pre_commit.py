@@ -14,7 +14,7 @@ from lib.config import SURFACE_COMMIT, StorageRoots, effective_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
-from lib.merge_state import incoming_commits, revision_text
+from lib.merge_state import incoming_commits, revision_text, session_started
 from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
@@ -82,7 +82,7 @@ def _gate(context: _CommitRunContext, turn_id: str) -> dict:
     commit_cwds = _commit_cwds(command, cwd)
     if not commit_cwds:
         return allow()
-    repo_rows = _repo_findings_by_repo(commit_cwds, context.config)
+    repo_rows = _repo_findings_by_repo(commit_cwds, context.config, _session_start(context))
     outer_cfg = effective_config(context.config, cwd)
     message_findings = _message_findings(command, outer_cfg)
     stamp = _RecordStamp(
@@ -151,7 +151,12 @@ def _record_all(
     return decisions
 
 
-def _repo_findings_by_repo(commit_cwds: list[Path], config: dict | None) -> list[_RepoScan]:
+def _session_start(context: _CommitRunContext) -> float | None:
+    session_id = str(context.payload.get("session_id") or "")
+    return session_started(session_id, context.roots.state) if session_id else None
+
+
+def _repo_findings_by_repo(commit_cwds: list[Path], config: dict | None, started_at: float | None) -> list[_RepoScan]:
     """Because two repos in one commit command can carry different gate configs, adjudicate each under its own, not the caller's cwd."""
     rows: list[_RepoScan] = []
     seen: set[Path] = set()
@@ -161,13 +166,13 @@ def _repo_findings_by_repo(commit_cwds: list[Path], config: dict | None) -> list
             continue
         seen.add(repo)
         cfg = effective_config(config, repo)
-        rows.append(_RepoScan(cfg, *_repo_findings(repo, cfg)))
+        rows.append(_RepoScan(cfg, *_repo_findings(repo, cfg, started_at)))
     return rows
 
 
-def _repo_findings(repo: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
+def _repo_findings(repo: Path, cfg: dict, started_at: float | None) -> tuple[list[dict], list[dict]]:
     """Split owned from inherited here, because a merge brings lines the agent did not write and must not own."""
-    incoming = incoming_commits(repo)
+    incoming = incoming_commits(repo, started_at)
     findings: list[dict] = []
     inherited: list[dict] = []
     for path in _staged(repo):

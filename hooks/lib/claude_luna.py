@@ -3,16 +3,17 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import stat
 from typing import Any
 
-from . import journal, claude_native, payloads
+from . import journal, claude_native, payloads, reporting
 from .config import effective_hook_config
 from .document_review import changed_document_work
 from .hookio import context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
-from .luna_feedback import LUNA
+from .luna_feedback import LUNA, MAX_LISTED_ROWS
 from .luna_feedback import bounded as _bounded
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
@@ -35,6 +36,7 @@ MAX_LIVE_RAW_EDIT_BYTES = 512 * 1024
 STOP_LABEL = "ADW current-session journal"
 Work = tuple[JudgeRequest, Any]
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_ROW_RE = re.compile(r"\d+\. ")
 
 
 def _descend(descriptor: int, part: str) -> int:
@@ -370,6 +372,33 @@ def _judged(event: str, work: list[Work], provider: object | None, paths: dict[s
         return _failure(event, role, exc, **paths)
 
 
+def bounded_feedback(texts: list[str]) -> str:
+    """Because the journal already marked every section reviewed, a plain cut would lose the later ones for good."""
+    joined = "\n\n".join(texts)
+    lines = joined.splitlines()
+    rows = sum(1 for line in lines if _ROW_RE.match(line))
+    if len(joined) <= MAX_FEEDBACK_CHARS and rows <= MAX_LISTED_ROWS:
+        return joined
+    report = reporting.write_full_report([{"message": text} for text in texts])
+    kept = _listed_lines(lines, MAX_FEEDBACK_CHARS - len(f"{rows} more findings: {report}") - 1)
+    hidden = rows - sum(1 for line in kept if _ROW_RE.match(line))
+    tail = f"{hidden} more findings: {report}" if hidden else f"Full report: {report}"
+    return "\n".join([*kept, tail])
+
+
+def _listed_lines(lines: list[str], budget: int) -> list[str]:
+    kept: list[str] = []
+    size = listed = 0
+    for line in lines:
+        is_row = bool(_ROW_RE.match(line))
+        if size + len(line) + 1 > budget or (is_row and listed >= MAX_LISTED_ROWS):
+            break
+        kept.append(line)
+        size += len(line) + 1
+        listed += is_row
+    return kept
+
+
 def mark_reviewed(payload: object, rows: list[dict[str, Any]], state_root: str | Path | None) -> None:
     """Best effort, because a lost mark only costs one more review."""
     try:
@@ -398,9 +427,9 @@ def run(
     if isinstance(outcome, dict):
         return outcome
     if event == "PostToolUse":
-        return context(_bounded("\n\n".join(outcome)), event) if outcome else {}
+        return context(bounded_feedback(outcome), event) if outcome else {}
     mark_reviewed(payload, [row for _request, sources in work for row in sources], root)
-    return stop_block(_bounded("\n\n".join(outcome))) if outcome else {}
+    return stop_block(bounded_feedback(outcome)) if outcome else {}
 
 
 def main() -> int:
