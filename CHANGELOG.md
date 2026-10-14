@@ -12,7 +12,8 @@
 
 ### Fixed
 
-- **A huge baseline no longer carries Stop past the host timeout.** A 9.9 MB first-seen `notes.md` took 12.5 seconds to scan, and the host kills Stop at 10. The scan cannot stop midway, so Stop now checks the baseline size against the time left at 250,000 bytes per second before it starts. A baseline too large for the time left counts as unscanned and blocks as before.
+- **A huge baseline no longer carries Stop past the host timeout.** A 9.9 MB first-seen `notes.md` took 12.5 seconds to scan, and the host kills Stop at 10. Stop now checks the baseline size against the time left at 250,000 bytes per second before it starts. A baseline too large for the time left counts as unscanned and blocks as before.
+- **No single file carries Stop past the host timeout.** The size check left two gaps. A 9.9 MB current `notes.md` under `max_scan_bytes` of 20,000,000 still ran 16.9 seconds against a 0.3 second budget, and a small baseline that scanned slowly ran to the end. Stop now arms a SIGALRM timer for the time left around each file's read, scan, and baseline comparison, and the current file gets the same size check. A file the timer cuts off counts as unscanned and blocks as before. Off the main thread, where no alarm fires, the size check alone applies.
 - **An edit after an inherited telegram-style run no longer journals the run.** A run counted the first line of the next sentence as its own, so rewriting only that sentence sent the unchanged run to the reviewer. A run now covers exactly the lines of its own sentences.
 - **An OMP pattern verdict asks for the pattern's own fix.** OMP gave every confirmed candidate the comment advice, so a telegram-style run read "Rewrite the comment to say why the code exists, or delete it." A pattern verdict now carries the action of its rule, and only a comment verdict keeps the comment advice.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import time
 from pathlib import Path
 
@@ -14,6 +15,9 @@ BASELINE_SCAN_SECONDS = 0.6
 BUDGET_SECONDS = 0.3
 DEADLINE_MARGIN_SECONDS = 0.5
 LARGE_BASELINE_BYTES = 3_000_000
+OVERSIZED_CURRENT_BYTES = 9_900_000
+RAISED_SCAN_BYTES = 20_000_000
+BUSY_SCAN_SECONDS = 3.0
 LARGE_PROSE = "The hook reads the file. It scans each line and records what it finds for the agent.\n\n"
 DASHED_LINE = "The scan ends here — and the agent sees it.\n"
 
@@ -187,3 +191,53 @@ def test_a_slow_scan_of_the_committed_baseline_ends_at_the_deadline_as_unscanned
 
     assert scanned.skipped == [str(target)]
     assert scanned.existing == []
+
+
+def test_an_oversized_current_file_ends_at_the_deadline_as_unscanned(tmp_path: Path) -> None:
+    target = tmp_path / "notes.md"
+    target.write_text(LARGE_PROSE * (OVERSIZED_CURRENT_BYTES // len(LARGE_PROSE)), encoding="utf-8")
+    started = time.monotonic()
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, {"max_scan_bytes": RAISED_SCAN_BYTES}, started + BUDGET_SECONDS)
+
+    assert scanned.skipped == [str(target)]
+    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
+
+
+def _busy_baseline_scan(monkeypatch) -> None:
+    original = baseline.scan_all
+
+    def busy(path: str, text: str, config: dict) -> list[dict]:
+        ends = time.monotonic() + BUSY_SCAN_SECONDS
+        while time.monotonic() < ends:
+            pass
+        return original(path, text, config)
+
+    monkeypatch.setattr(baseline, "scan_all", busy)
+
+
+def test_a_busy_scan_of_a_small_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
+    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
+    target.write_text(EDITED, encoding="utf-8")
+    scanner.scan_all(str(target), EDITED, cfg)
+    _busy_baseline_scan(monkeypatch)
+    started = time.monotonic()
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, started + BUDGET_SECONDS)
+
+    assert scanned.skipped == [str(target)]
+    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
+
+
+def test_a_finished_rescan_leaves_no_alarm_armed(tmp_path: Path) -> None:
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    handler = signal.getsignal(signal.SIGALRM)
+
+    stop_scan.rescan([str(target)], tmp_path, {}, time.monotonic() + BUDGET_SECONDS)
+
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+    assert signal.getsignal(signal.SIGALRM) is handler

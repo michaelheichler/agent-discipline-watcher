@@ -180,10 +180,10 @@ def _deadline_check(until: float | None) -> Check:
     return lambda: remaining(until)
 
 
-def _fits_deadline(before: str, check: Check) -> None:
-    """OutOfTime before the scan, because scan_all cannot stop midway and a 10 MB baseline outlasts the host Stop timeout."""
+def fits_deadline(text: str, check: Check) -> None:
+    """OutOfTime before the scan, because off the main thread no alarm can stop scan_all midway."""
     left = check()
-    if isinstance(left, float) and len(before) > left * BASELINE_SCAN_BYTES_PER_SECOND:
+    if isinstance(left, float) and len(text) > left * BASELINE_SCAN_BYTES_PER_SECOND:
         raise OutOfTime
 
 
@@ -193,7 +193,7 @@ def _baseline_rows(path: Path, before: str, cfg: dict, check: Check) -> list[dic
     cached = _BASELINE_CACHE.get(key)
     if cached is not None and cached[0] is cfg:
         return cached[1]
-    _fits_deadline(before, check)
+    fits_deadline(before, check)
     rows = scan_all(str(path), before, cfg)
     if len(_BASELINE_CACHE) >= MAX_BASELINE_CACHE:
         _BASELINE_CACHE.clear()

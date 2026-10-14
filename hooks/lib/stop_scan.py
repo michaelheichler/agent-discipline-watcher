@@ -1,19 +1,25 @@
 """The Stop rescan stops at a deadline, because a hook the host kills after 10 seconds releases the turn unchecked."""
 from __future__ import annotations
 
+import math
+import signal
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
 from . import scan_input
-from .baseline import OutOfTime, remaining, split_fallback, strip_committed
+from .baseline import OutOfTime, fits_deadline, remaining, split_fallback, strip_committed
 from .config import resolve_outcome
 from .scanner import read_scannable, scan_all
 from .temp_scope import outside_project_temp
 
 STOP_SCAN_SECONDS = 7.0
 MAX_NAMED_SKIPPED = 3
+MIN_TIMER_SECONDS = 0.001
 
 
 @dataclass(slots=True)
@@ -43,6 +49,7 @@ def _path_rows(path: Path, cfg: dict, until: float) -> list[dict]:
         rows = split_fallback(path, found, cfg, until=until)[0]
         digest = f"{stamp.st_size}:{stamp.st_mtime_ns}"
     else:
+        fits_deadline(text, lambda: remaining(until))
         found = scan_all(str(path), text, cfg)
         remaining(until)
         rows = strip_committed(path, found, cfg, text, until=until)
@@ -55,7 +62,37 @@ def _owned_rows(path: Path, cwd: Path, cfg: dict, until: float) -> list[dict] | 
     remaining(until)
     if not path.is_file() or outside_project_temp(path, cwd):
         return None
-    return _path_rows(path, cfg, until)
+    with _alarm(until):
+        return _path_rows(path, cfg, until)
+
+
+def _expire(_signum: int, _frame: object) -> None:
+    raise OutOfTime
+
+
+def _rearm(outer: tuple[float, float], started: float) -> None:
+    if outer[0] > 0:
+        left = max(outer[0] - (time.monotonic() - started), MIN_TIMER_SECONDS)
+        signal.setitimer(signal.ITIMER_REAL, left, outer[1])
+
+
+@contextmanager
+def _alarm(until: float) -> Iterator[None]:
+    """Because scan_all has no checkpoint, only a timer can stop it at the deadline, and SIGALRM reaches the main thread alone."""
+    left = remaining(until)
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread() or math.isinf(left):
+        yield
+        return
+    started = time.monotonic()
+    outer = signal.getitimer(signal.ITIMER_REAL)
+    previous = signal.signal(signal.SIGALRM, _expire)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, left)
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+        _rearm(outer, started)
 
 
 def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
