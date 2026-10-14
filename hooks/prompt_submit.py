@@ -399,11 +399,12 @@ def _with_advice(response: dict, session_id: str, cfg: dict[str, object]) -> dic
     """Held past a blocked prompt, because the agent never answers a prompt the hook blocked."""
     if response.get("decision") == "block":
         return response
-    advice = pending_advice.take(session_id, _config_root(cfg, "state_root"))
+    known = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+    budget = MAX_RESPONSE_CHARS - len(known) - (len(pending_advice.SEPARATOR) if known else 0)
+    advice = pending_advice.take(session_id, _config_root(cfg, "state_root"), budget)
     if not advice:
         return response
-    known = response.get("hookSpecificOutput", {}).get("additionalContext", "")
-    message = "\n\n".join(part for part in (known, advice) if part)[:MAX_RESPONSE_CHARS]
+    message = pending_advice.SEPARATOR.join(part for part in (known, advice) if part)
     return {**response, "hookSpecificOutput": {"hookEventName": PROMPT_EVENT, "additionalContext": message}}
 
 

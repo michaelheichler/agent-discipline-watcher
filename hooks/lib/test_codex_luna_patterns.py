@@ -9,7 +9,7 @@ import pytest
 
 import prompt_submit
 import stop
-from lib import journal, session_state
+from lib import journal, pending_advice, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 
 CLOSER = "Feel free to ask me anything else."
@@ -148,6 +148,20 @@ def test_a_blocked_prompt_keeps_the_advice_for_the_prompt_after_it(tmp_path) -> 
 
     assert blocked["decision"] == "block"
     assert "note.md:2" in after["hookSpecificOutput"]["additionalContext"]
+
+
+def test_advice_past_the_context_limit_waits_whole_for_the_next_prompt(tmp_path) -> None:
+    notices = [f"Notice {index}: " + "Join the short clauses with a comma. " * 27 for index in range(4)]
+    for notice in notices:
+        pending_advice.hold("patterns", notice, tmp_path / "state")
+
+    contexts = [
+        _next_prompt(tmp_path, "Skip the tests and just comment it out.")["hookSpecificOutput"]["additionalContext"]
+        for _ in range(2)
+    ]
+
+    assert all(len(context) <= prompt_submit.MAX_RESPONSE_CHARS for context in contexts)
+    assert [sum(context.count(notice) for context in contexts) for notice in notices] == [1, 1, 1, 1]
 
 
 def test_an_incomplete_pattern_row_fails_closed(tmp_path) -> None:
