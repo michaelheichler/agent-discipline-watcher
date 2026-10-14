@@ -196,7 +196,7 @@ def test_a_reviewed_document_is_not_sent_again(tmp_path: Path) -> None:
     json.dumps({"is_error": True, "result": "API Error: 404"}),
     json.dumps({"is_error": False}),
     _cli({"items": "nope", "notes": []}),
-    _cli({"items": [], "notes": []}),
+    _cli({"items": [{"section": 0, "index": 1, "verdict": "clean", "reason": "x"}], "notes": []}),
     _cli({"items": [{"section": 0, "index": 0, "verdict": "maybe", "reason": "x"}], "notes": []}),
     _cli({"items": [{"section": 9, "index": 0, "verdict": "clean", "reason": "x"}], "notes": []}),
 ))
@@ -252,7 +252,7 @@ def _fake_claude(tmp_path: Path, stdout: str) -> dict[str, str]:
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
         f"json.dump({{'argv': sys.argv[1:], 'stdin': sys.stdin.read(), 'guard': os.environ.get('ADW_JUDGE_ACTIVE'),"
-        f" 'cwd': os.getcwd()}}, open({str(log)!r}, 'w'))\n"
+        f" 'memory': os.environ.get('CLAUDE_CODE_DISABLE_AUTO_MEMORY'), 'cwd': os.getcwd()}}, open({str(log)!r}, 'w'))\n"
         f"sys.stdout.write(open({str(reply)!r}).read())\n",
         encoding="utf-8",
     )
@@ -270,6 +270,8 @@ def test_the_cli_call_has_no_tools_no_hooks_and_no_session(tmp_path: Path, monke
     argv = call["argv"]
     assert argv[argv.index("--model") + 1] == "claude-sonnet-5-5"
     assert argv[argv.index("--tools") + 1] == ""
+    assert argv[argv.index("--setting-sources") + 1] == ""
+    assert call["memory"] == "1"
     assert json.loads(argv[argv.index("--settings") + 1]) == {"disableAllHooks": True}
     assert {"-p", "--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands"} <= set(argv)
     assert "--bare" not in argv

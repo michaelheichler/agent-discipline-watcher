@@ -135,3 +135,24 @@ def test_a_document_gets_two_review_rounds_at_most(tmp_path: Path) -> None:
 
     assert served == ["first", "second"]
     assert len(served) == journal.MAX_DOCUMENT_ROUNDS
+
+
+def test_a_deletion_only_edit_is_not_served_and_counts_as_reviewed(tmp_path: Path) -> None:
+    doc = tmp_path / "a.md"
+    before = "\n".join(f"Line {number}." for number in range(1, 11))
+    after = "\n".join(f"Line {number}." for number in range(1, 11) if number not in (4, 5))
+    row = {**_document(doc, "cut", "turn-1"), "before_context": before, "source_context": after}
+    state_root = _store(tmp_path, [row])
+
+    assert journal.read_stop("session", state_root=state_root) == []
+    assert f"{doc}\ncut" in session_state.read_state("session", state_root)[journal.REVIEWED_KEY]
+
+
+def test_an_edit_that_adds_a_line_is_still_served(tmp_path: Path) -> None:
+    doc = tmp_path / "a.md"
+    row = {**_document(doc, "grown", "turn-1"), "before_context": "One.\nTwo.", "source_context": "One.\nNew.\nTwo."}
+    state_root = _store(tmp_path, [row])
+
+    rows = journal.read_stop("session", state_root=state_root)
+
+    assert [hunk["changed"] for hunk in rows[0]["hunks"]] == [[2]]

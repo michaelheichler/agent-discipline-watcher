@@ -15,6 +15,10 @@ RETRY_KEY = "codex_luna_retry_turn"
 FAILED_KEY = "codex_luna_failed_reviews"
 OUTAGE_KEY = "codex_luna_provider_outage"
 PROVIDER_COOLDOWN_SECONDS = 300
+CLI_OUTAGE_KEY = "claude_review_cli_outage"
+ATTEMPTS_KEY = "claude_review_attempts"
+MAX_REVIEW_ATTEMPTS = 2
+MAX_ATTEMPT_ROWS = 4 * journal.MAX_ROWS
 
 
 def failure_entry(session_id: str, turn_id: str, state_root: str | Path | None) -> dict | None:
@@ -42,10 +46,43 @@ def record_failure(
     session_state.update_state(session_id, update, state_root)
 
 
-def provider_cooling(session_id: str, state_root: str | Path | None) -> bool:
-    outage = session_state.read_state(session_id, state_root).get(OUTAGE_KEY)
+def provider_cooling(session_id: str, state_root: str | Path | None, key: str = OUTAGE_KEY) -> bool:
+    outage = session_state.read_state(session_id, state_root).get(key)
     retry_after = outage.get("retry_after") if isinstance(outage, dict) else None
     return type(retry_after) in (int, float) and retry_after > time.time()
+
+
+def record_cli_outage(session_id: str, reason: str, state_root: str | Path | None) -> None:
+    """Because a CLI that timed out once will likely time out again, the next Stops skip it for a while."""
+    outage = {"reason": reason[:900], "retry_after": time.time() + PROVIDER_COOLDOWN_SECONDS}
+    session_state.update_state(session_id, lambda state: {**state, CLI_OUTAGE_KEY: outage}, state_root)
+
+
+def exhausted_reviews(session_id: str, keys: list[str], state_root: str | Path | None) -> frozenset[str]:
+    """Counted per queued row, because a row that never gets a verdict would otherwise resend its text on every Stop."""
+    exhausted: set[str] = set()
+
+    def update(state: dict) -> dict:
+        counts = _counts(state)
+        for key in dict.fromkeys(keys):
+            counts[key] = counts.pop(key, 0) + 1
+            if counts[key] >= MAX_REVIEW_ATTEMPTS:
+                exhausted.add(key)
+        return {**state, ATTEMPTS_KEY: dict(list(counts.items())[-MAX_ATTEMPT_ROWS:])}
+
+    session_state.update_state(session_id, update, state_root)
+    return frozenset(exhausted)
+
+
+def attempts(session_id: str, state_root: str | Path | None) -> dict[str, int]:
+    return _counts(session_state.read_state(session_id, state_root))
+
+
+def _counts(state: dict) -> dict[str, int]:
+    stored = state.get(ATTEMPTS_KEY)
+    if not isinstance(stored, dict):
+        return {}
+    return {key: value for key, value in stored.items() if type(value) is int}
 
 
 def _source_retains_feedback(source: dict) -> bool:

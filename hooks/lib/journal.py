@@ -594,8 +594,16 @@ def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | 
     documents = [
         _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed)
     ]
-    changed = [row for row in documents if row["hunks"]]
+    changed = [row for row in documents if _adds_text(row)]
+    idle = [row for row in documents if not _adds_text(row)]
+    if idle:
+        mark_reviewed(session_id, idle, state_root=state_root)
     return _within_budget(patterns + changed[:MAX_STOP_ROWS])
+
+
+def _adds_text(row: dict[str, Any]) -> bool:
+    """Because a removal leaves no line to judge, sending it would only pay for the call."""
+    return any(hunk["changed"] for hunk in row["hunks"])
 
 
 def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:
