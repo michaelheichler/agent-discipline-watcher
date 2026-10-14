@@ -40,6 +40,17 @@ WRITE_CAPABLE_TOKEN_RE = re.compile(
     r"\bfs\.\w|\bFile\.\w|\bIO\.\w|decode\(|`|"
     r"\brequire\(|\bfile_put_contents\(|\bfopen\(|\bfwrite\("
 )
+NODE_INTERPRETERS = frozenset({"node", "nodejs"})
+NODE_JSON_PATH = r"(?:\.{1,2}/|/)[^'\"\\\n]*\.json"
+NODE_JSON_READ = (
+    rf"require\(\s*(?:'{NODE_JSON_PATH}'|\"{NODE_JSON_PATH}\")\s*\)"
+    r"""(?:\.[A-Za-z_$][\w$]*|\[\s*(?:\d+|'[^'\\\n]*'|"[^"\\\n]*")\s*\])*"""
+)
+NODE_JSON_WRAPPED = rf"(?:console\.log|JSON\.stringify|Object\.keys)\(\s*(?:{{inner}})(?:\s*,\s*null\s*,\s*\d+)?\s*\)"
+NODE_JSON_ONCE = NODE_JSON_WRAPPED.format(inner=NODE_JSON_READ)
+NODE_JSON_READ_RE = re.compile(
+    rf"\s*(?:{NODE_JSON_READ}|{NODE_JSON_ONCE}|{NODE_JSON_WRAPPED.format(inner=NODE_JSON_ONCE)})\s*;?\s*"
+)
 OPEN_CALL_RE = re.compile(r"\bopen\(")
 READ_ONLY_MODE_CHARS = frozenset("rbtU")
 ARG_TOKEN_RE = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|[()]|,|[^()',\"]+")
@@ -108,8 +119,15 @@ def _payload_is_write_capable(payload: str) -> bool:
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
 
+def _node_json_read(name: str, payload: str) -> bool:
+    """Whole payload only, because a JSON require in a shape with no other code adds no trust to the token list."""
+    return name in NODE_INTERPRETERS and NODE_JSON_READ_RE.fullmatch(payload) is not None
+
+
 def _run_findings(run: InterpreterRun, make_finding: FindingFactory, rule: str) -> list[dict]:
     if not PYTHON_INTERPRETER_RE.fullmatch(run.name):
+        if run.payload is not None and _node_json_read(run.name, run.payload):
+            return []
         return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.payload) else []
     rejection = "" if run.payload is None else python_rejection(run.payload, isolated=True)
     if rejection:
