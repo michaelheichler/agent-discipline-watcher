@@ -40,6 +40,10 @@ def changed_hunks(before: str, after: str) -> list[dict[str, Any]]:
     ]
 
 
+def changed_lines(before: str, after: str) -> frozenset[int]:
+    return frozenset(number for hunk in changed_hunks(before, after) for number in hunk["changed"])
+
+
 def hunk_chars(hunks: list[dict[str, Any]]) -> int:
     return sum(len(line) for hunk in hunks for line in hunk["lines"])
 

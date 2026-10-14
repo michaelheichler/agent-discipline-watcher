@@ -212,6 +212,13 @@ class Run(NamedTuple):
     lexicon: Lexicon
     sentences: list[Sentence]
     paragraph: list[Sentence]
+    last_line: int
+
+    def lines(self) -> range:
+        """Up to the next sentence, because the last one may wrap onto later lines."""
+        after = self.paragraph.index(self.sentences[-1]) + 1
+        end = self.paragraph[after].line if after < len(self.paragraph) else self.last_line
+        return range(self.sentences[0].line, end + 1)
 
 
 def shown(sentences: list[Sentence]) -> str:
@@ -224,7 +231,7 @@ def runs_in(path: str, masked: str, languages: list[str]) -> Iterator[Run]:
         lexicon = _lexicon_for(paragraph, languages)
         sentences = paragraph_sentences(paragraph, lexicon)
         for run in bare_runs(sentences, lexicon, Thresholds()):
-            yield Run(lexicon, run, sentences)
+            yield Run(lexicon, run, sentences, paragraph[-1][0])
 
 
 def _run_finding(path: str, run: Run) -> dict:

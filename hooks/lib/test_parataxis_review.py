@@ -82,6 +82,37 @@ def test_a_joined_rewrite_drops_the_pattern_row(tmp_path: Path) -> None:
     assert _pattern_rows(tmp_path) == []
 
 
+JOINED_A = "The installer copies the hooks into place, and the runtime starts when a hook first needs it."
+REWRITTEN_A = "The installer copies the hooks into place, so the runtime starts only when a hook first needs it."
+
+
+def _second_turn(tmp_path: Path, first: str, second: str) -> list[dict]:
+    """A prior turn wrote the first text, because that is how prose becomes inherited for this edit."""
+    record._journal_edits(_edits(tmp_path, first), "turn-0")
+    record._journal_edits(_edits(tmp_path, second), "turn-1")
+    return _pattern_rows(tmp_path)
+
+
+def test_an_edit_elsewhere_leaves_an_inherited_run_alone(tmp_path: Path) -> None:
+    rows = _second_turn(tmp_path, f"{JOINED_A}\n\n{ENGLISH_CHAIN}", f"{REWRITTEN_A}\n\n{ENGLISH_CHAIN}")
+
+    assert rows == []
+
+
+def test_a_run_written_into_the_edited_paragraph_still_reaches_the_reviewer(tmp_path: Path) -> None:
+    rows = _second_turn(tmp_path, f"{JOINED_A}\n\n{ENGLISH_CHAIN}", f"{ENGLISH_CHAIN}\n\n{ENGLISH_CHAIN}")
+
+    assert [(row["line"], row["text"]) for row in rows] == [(1, ENGLISH_CHAIN)]
+
+
+def test_a_run_over_one_changed_and_one_unchanged_sentence_reaches_the_reviewer(tmp_path: Path) -> None:
+    joined = "The hook reads the file.\nIt checks every rule.\nIt writes a report, which the agent reads."
+
+    rows = _second_turn(tmp_path, joined, ENGLISH_CHAIN.replace(". ", ".\n"))
+
+    assert [row["line"] for row in rows] == [1]
+
+
 class Judge:  # pylint: disable=too-few-public-methods
     """Because only the pattern verdict is under test, the document section gets no answer."""
 

@@ -504,6 +504,15 @@ def record_patterns(
     return added
 
 
+def turn_before(session_id: str, path: str | Path, content_hash: str, state_root: str | Path | None = None) -> str | None:
+    """None when unknown, because a missing base must not hide a run the agent may have written."""
+    prior = _prior_document(session_state.read_state(session_id, state_root), str(_canonical_path(path)))
+    if prior is None or prior.get("content_hash") != content_hash:
+        return None
+    before = prior.get("before_context")
+    return before if isinstance(before, str) else None
+
+
 def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
     state = session_state.read_state(session_id, state_root)
     rows = state.get(STATE_KEY)
