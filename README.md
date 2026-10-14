@@ -69,7 +69,7 @@ The scanner reads every prose extension it knows, not markdown alone. Before 0.1
 A gate blocks only on text the agent wrote. If the agent changed nothing, Stop does not repeat an identical block.
 
 1. **Copies.** A copy from temp lands the files its source holds, under the names the copy gives them. Files that were already in the destination are not part of it.
-2. **Authored or imported.** ADW checks who wrote the temp source. If the agent wrote it in this session, the copy counts as the agent's own. Write, Edit, and a redirect count as writes. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row. The record of authored temp paths keeps every path up to 200,000. Past that cap, every copy from temp counts as the agent's own.
+2. **Authored or imported.** ADW checks who wrote the temp source. If the agent wrote it in this session, the copy counts as the agent's own. Write, Edit, and a redirect count as writes. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row. The record of authored temp paths never drops a path. At 200,000 paths, ADW refuses a new scratch write and asks for a project path or a new session.
 3. **Baselines.** An unchanged imported file never blocks, including `file_too_long` and `unscannable_file`. After an edit, only findings the snapshot did not have block. Before the first edit of an untracked or non-git file, ADW takes the same kind of snapshot. Git HEAD stays the baseline for tracked files.
 4. **Long and large files.** Data files give no `file_too_long`. The list is `.json .jsonl .csv .tsv .lock .map .svg .xml .sql *.min.*` plus lockfiles such as `uv.lock`. Over the byte limit they give no `unscannable_file` while they are valid UTF-8. If an edit makes any other file longer than its baseline, `file_too_long` blocks over the length limit. An edit that does not add lines leaves it alone. The baseline is git HEAD, the import snapshot, or the first-seen snapshot. If the baseline had a generated marker such as `DO NOT EDIT`, the marker relieves growth.
 5. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. The same fingerprint blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. Stop then stays silent until a file or a finding changes.
@@ -77,6 +77,10 @@ A gate blocks only on text the agent wrote. If the agent changed nothing, Stop d
 7. **Damaged state.** Every state write also writes `state.json.bak`. If `state.json` cannot be read, ADW moves it aside, restores the backup, and says so once. Without a backup, Stop still blocks.
 
 A temp file that a subprocess wrote, without a redirect the hook can see, counts as imported. Its copy gets the notice, not a block.
+
+### Known limits
+
+ADW does not scan a file that a saved script writes at the time the script writes it. A later edit snapshots that file as first seen, so its older findings count as inherited. ADW trusts saved scripts and is not a runtime sandbox.
 
 ## Comment policy
 
