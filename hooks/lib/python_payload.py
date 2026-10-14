@@ -4,75 +4,31 @@ import ast
 import re
 
 from .python_imports import imports_are_trusted
+from .python_safe_modules import (
+    BYTES_METHODS, FILE_METHODS, IMPORTABLE, ITEMS, JSON_ELEMENT_METHODS, JSON_METHODS, OBJECT_KINDS,
+    PATH_CLASS_METHODS, PATH_METHODS, TEXT_METHODS, Kind, callable_result, from_import_kind, import_binding,
+    member_kind, text_method_result,
+)
 
-Kind = str | tuple[str, tuple["Kind", ...]]
 READ_ONLY_OPEN_MODE_CHARS = frozenset("rbtU")
 OPEN_KEYWORDS = frozenset({"buffering", "encoding", "errors", "newline", "closefd"})
 SAFE_IMPORTS = {"json": "json_module", "sys": "sys_module"}
-SYS_ATTRIBUTES: dict[str, Kind] = {"stdin": "file", "argv": ("sequence", ("text",))}
-PATH_IMPORT = ("pathlib", "Path")
+SYS_ATTRIBUTES: dict[str, Kind] = {
+    "stdin": "file", "argv": ("sequence", ("text",)), "executable": "text", "maxsize": "value",
+    "platform": "text", "version": "text", "version_info": "value",
+}
+JSON_FUNCTIONS = frozenset({"dumps", "load", "loads"})
+DUMPS_KEYWORDS = frozenset({"allow_nan", "ensure_ascii", "indent", "separators", "skipkeys", "sort_keys"})
+PATH_CLASSES = frozenset({"Path", "PurePath"})
+SORT_HELPERS = frozenset({"max", "min", "sorted"})
+CONTAINER_LITERALS = (ast.Dict, ast.DictComp, ast.List, ast.ListComp)
+UNASSIGNED_HINT = ", which is never assigned in this payload. Define it or inline the value"
 SAFE_BUILTINS = frozenset({
     "all", "any", "bool", "bytes", "dict", "enumerate", "float", "int", "len", "list", "max", "min",
     "print", "range", "repr", "set", "sorted", "str", "sum", "tuple", "zip",
 })
-PATH_METHODS = {
-    "absolute": "path",
-    "as_posix": "text",
-    "as_uri": "text",
-    "exists": "value",
-    "expanduser": "path",
-    "glob": ("sequence", ("path",)),
-    "is_block_device": "value",
-    "is_char_device": "value",
-    "is_dir": "value",
-    "is_fifo": "value",
-    "is_file": "value",
-    "is_mount": "value",
-    "is_relative_to": "value",
-    "is_socket": "value",
-    "is_symlink": "value",
-    "iterdir": ("sequence", ("path",)),
-    "lstat": "value",
-    "match": "value",
-    "read_bytes": "bytes",
-    "read_text": "text",
-    "relative_to": "path",
-    "resolve": "path",
-    "rglob": ("sequence", ("path",)),
-    "samefile": "value",
-    "stat": "value",
-    "with_name": "path",
-    "with_suffix": "path",
-}
-PATH_CLASS_METHODS = {"cwd": "path", "home": "path"}
-FILE_METHODS = {
-    "isatty": "value",
-    "read": "value",
-    "readable": "value",
-    "readline": "text",
-    "readlines": ("sequence", ("text",)),
-    "seekable": "value",
-    "tell": "value",
-}
-JSON_METHODS: dict[str, Kind] = {
-    "get": "json",
-    "keys": ("sequence", ("json",)),
-    "items": ("sequence", (("tuple", ("json", "json")),)),
-    "values": ("sequence", ("json",)),
-}
-TEXT_METHODS = frozenset({
-    "casefold", "capitalize", "count", "encode", "endswith", "find", "format", "index", "isalpha", "isdigit",
-    "islower", "isspace", "istitle", "isupper", "join", "lower", "lstrip", "partition", "removeprefix",
-    "removesuffix", "replace", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split",
-    "splitlines", "startswith", "strip", "swapcase", "title", "upper", "zfill",
-})
-BYTES_METHODS = frozenset({
-    "decode", "endswith", "find", "index", "lower", "lstrip", "partition", "removeprefix", "removesuffix",
-    "replace", "rfind", "rindex", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith",
-    "strip", "upper",
-})
 SAFE_LITERAL_TYPES = (str, bytes, int, float, complex, bool, type(None))
-ASSIGNABLE_KINDS = frozenset({"bytes", "file", "json", "path", "text", "value"})
+ASSIGNABLE_KINDS = frozenset({"bytes", "file", "json", "path", "text", "value"}) | OBJECT_KINDS
 
 SUSPICIOUS_BARE_LITERAL_RE = re.compile(r"(?:\b(?:write|exec|eval)\s*\(|__)")
 
@@ -86,25 +42,13 @@ def common_kind(kinds: list[Kind] | tuple[Kind, ...]) -> Kind:
 def item_kind(kind: Kind | None) -> Kind | None:
     if isinstance(kind, tuple):
         return kind[1][0] if kind[0] == "sequence" else common_kind(kind[1])
-    return {"text": "text", "bytes": "value", "file": "text", "json": "json"}.get(kind)
+    return {"text": "text", "bytes": "value", "file": "text", "json": "json", **ITEMS}.get(kind)
 
 
 def assignable_kind(kind: Kind | None) -> bool:
     if isinstance(kind, tuple):
         return all(assignable_kind(item) for item in kind[1])
     return kind in ASSIGNABLE_KINDS
-
-
-def text_method_result(base: str, method: str) -> Kind:
-    if method in {"split", "splitlines", "rsplit"}:
-        return ("sequence", (base,))
-    if method in {"partition", "rpartition"}:
-        return ("tuple", (base, base, base))
-    if method in {"decode", "encode"}:
-        return "text" if method == "decode" else "bytes"
-    if method.startswith("is") or method in {"count", "find", "index", "rfind", "rindex", "startswith", "endswith"}:
-        return "value"
-    return base
 
 
 def is_known_read_only_python(source: str, *, cwd: str | None = None, isolated: bool = False) -> bool:
@@ -118,7 +62,7 @@ def python_rejection(source: str, *, cwd: str | None = None, isolated: bool = Fa
         return "code that does not parse"
     checker = _ReadOnlyChecker()
     if not checker.statements(tree.body):
-        return describe_node(checker.rejected) if checker.rejected else "an unsupported construct"
+        return describe_rejection(checker) if checker.rejected else "an unsupported construct"
     if not (isolated or imports_are_trusted(cwd)):
         return "a project module that shadows a standard library import"
     return ""
@@ -132,13 +76,21 @@ def describe_node(node: ast.AST) -> str:
     return f"{type(node).__name__} \"{text[:80]}\" on line {getattr(node, 'lineno', '?')}"
 
 
+def describe_rejection(checker: _ExpressionKinds) -> str:
+    node = checker.rejected
+    unassigned = isinstance(node, ast.Name) and node.id not in checker.bindings
+    return describe_node(node) + (UNASSIGNED_HINT if unassigned else "")
+
+
 class _ExpressionKinds:
     def __init__(self) -> None:
         self.bindings: dict[str, Kind] = {
             name: "builtin" for name in SAFE_BUILTINS
         }
         self.bindings["open"] = "open"
-        self.protected_names = set(self.bindings) | set(SAFE_IMPORTS) | {"Path"}
+        module_roots = {name.partition(".")[0] for name in IMPORTABLE}
+        self.protected_names = set(self.bindings) | set(SAFE_IMPORTS) | module_roots | PATH_CLASSES
+        self.containers: set[str] = set()
         self.rejected: ast.AST | None = None
 
     def noted(self, node: ast.AST, result: Kind | bool | None) -> Kind | bool | None:
@@ -151,6 +103,7 @@ class _ExpressionKinds:
             return False
         if isinstance(node, ast.Name) and node.id not in self.protected_names:
             self.bindings[node.id] = kind
+            self.containers.discard(node.id)
             return True
         if isinstance(node, (ast.Tuple, ast.List)) and isinstance(kind, tuple) and kind[0] == "tuple":
             return len(node.elts) == len(kind[1]) and all(
@@ -196,7 +149,7 @@ class _ExpressionKinds:
         return ("sequence", (common_kind(kinds),))
 
     def dictionary(self, node: ast.Dict) -> str | None:
-        return "value" if all(
+        return "dict" if all(
             key is not None and self.expression(key) is not None and self.expression(value) is not None
             for key, value in zip(node.keys, node.values)
         ) else None
@@ -251,12 +204,13 @@ class _ExpressionKinds:
     def comprehension_result(self, node: Comprehension) -> Kind | None:
         if isinstance(node, ast.DictComp):
             kinds = (self.expression(node.key), self.expression(node.value))
-            return "value" if all(assignable_kind(kind) for kind in kinds) else None
+            return "dict" if all(assignable_kind(kind) for kind in kinds) else None
         kind = self.expression(node.elt)
         return ("sequence", (kind,)) if assignable_kind(kind) else None
 
     def call(self, node: ast.Call) -> Kind | None:
-        if not self.arguments(node.args, node.keywords):
+        keywords = [keyword for keyword in node.keywords if not self.sort_key(node, keyword)]
+        if not self.arguments(node.args, keywords):
             return None
         if isinstance(node.func, ast.Name):
             return self.named_call(node)
@@ -273,9 +227,32 @@ class _ExpressionKinds:
             return "path"
         if kind == "open":
             return "file" if self.read_open(node.args, node.keywords) else None
-        if kind in {"json_load", "json_loads"}:
+        if kind in {"json_dumps", "json_load", "json_loads"}:
             return self.json_call(kind, node)
-        return self.builtin_call(func.id, node) if kind == "builtin" else None
+        if kind == "builtin":
+            return self.builtin_call(func.id, node)
+        return callable_result(kind, self.item_kinds(node.args))
+
+    def sort_key(self, node: ast.Call, keyword: ast.keyword) -> bool:
+        func = node.func
+        if keyword.arg != "key" or not isinstance(keyword.value, ast.Lambda) or not node.args:
+            return False
+        if not isinstance(func, ast.Name) or func.id not in SORT_HELPERS or self.bindings.get(func.id) != "builtin":
+            return False
+        return self.lambda_body(keyword.value, item_kind(self.expression(node.args[0])) or "value")
+
+    def lambda_body(self, node: ast.Lambda, kind: Kind) -> bool:
+        args = node.args
+        if args.posonlyargs or args.kwonlyargs or args.vararg or args.kwarg or args.defaults or len(args.args) != 1:
+            return False
+        previous, containers = self.bindings.copy(), self.containers.copy()
+        try:
+            return self.bind_target(ast.Name(args.args[0].arg), kind) and self.expression(node.body) is not None
+        finally:
+            self.bindings, self.containers = previous, containers
+
+    def item_kinds(self, args: list[ast.expr]) -> list[Kind | None]:
+        return [item_kind(self.expression(arg)) for arg in args]
 
     def builtin_call(self, name: str, node: ast.Call) -> Kind | None:
         if name in {"str", "repr", "bytes"}:
@@ -295,6 +272,9 @@ class _ExpressionKinds:
         return "value"
 
     def json_call(self, kind: str, node: ast.Call) -> str | None:
+        if kind == "json_dumps":
+            plain = len(node.args) == 1 and all(keyword.arg in DUMPS_KEYWORDS for keyword in node.keywords)
+            return "text" if plain else None
         if len(node.args) != 1 or node.keywords:
             return None
         source_kind = self.expression(node.args[0])
@@ -308,27 +288,32 @@ class _ExpressionKinds:
         method = self.attribute(node.func)
         if not isinstance(method, str):
             return None
-        if method in {"json_load", "json_loads"}:
+        if method in {"json_dumps", "json_load", "json_loads"}:
             return self.json_call(method, node)
+        if method.startswith(("fn:", "ns:", "method:")):
+            return callable_result(method, self.item_kinds(node.args))
         if method.startswith("path_"):
             return self.method_result(method[5:], node)
         base, _, name = method.partition("_")
-        if base in {"text", "bytes"}:
-            return text_method_result(base, name)
+        if base in {"text", "bytes"} or (base == "json" and name not in JSON_METHODS):
+            return text_method_result("text" if base == "json" else base, name)
         return {"json": JSON_METHODS, "file": FILE_METHODS}.get(base, {}).get(name)
 
     def attribute(self, node: ast.Attribute) -> Kind | None:
         base = self.expression(node.value)
-        if base == "json_module" and node.attr in {"load", "loads"}:
+        if base == "json_module" and node.attr in JSON_FUNCTIONS:
             return f"json_{node.attr}"
         if base == "sys_module":
             return SYS_ATTRIBUTES.get(node.attr)
         if base == "path_ctor" and node.attr in PATH_CLASS_METHODS:
             return f"path_{node.attr}"
+        member = member_kind(base, node.attr)
+        if member is not None:
+            return member
         methods = {
             "path": PATH_METHODS,
             "file": FILE_METHODS,
-            "json": JSON_METHODS,
+            "json": JSON_ELEMENT_METHODS,
             "text": {name: "value" for name in TEXT_METHODS},
             "bytes": {name: "value" for name in BYTES_METHODS},
         }.get(base)
@@ -346,9 +331,13 @@ class _ExpressionKinds:
         return PATH_METHODS.get(method) or PATH_CLASS_METHODS.get(method)
 
     def arguments(self, args: list[ast.expr], keywords: list[ast.keyword]) -> bool:
-        return all(self.expression(arg) is not None for arg in args) and all(
-            keyword.arg is not None and self.expression(keyword.value) is not None for keyword in keywords
-        )
+        """Refuses open as an argument value, because reduce(open, [path, "w"]) would call it with a write mode."""
+        values = [*args, *(keyword.value for keyword in keywords)]
+        return all(keyword.arg is not None for keyword in keywords) and all(self.argument(value) for value in values)
+
+    def argument(self, node: ast.expr) -> bool:
+        kind = self.expression(node)
+        return kind is not None and self.noted(node, kind != "open") is True
 
     def read_open(self, args: list[ast.expr], keywords: list[ast.keyword]) -> bool:
         if not args or any(isinstance(arg, ast.Starred) for arg in args) or not self.expression(args[0]):
@@ -393,6 +382,7 @@ class _ReadOnlyChecker(_ExpressionKinds):
             (ast.ImportFrom, self.import_from),
             (ast.Pass, self.pass_statement),
             (ast.Assign, self.assignment),
+            (ast.AugAssign, self.augmented_assignment),
             (ast.If, self.if_statement),
             (ast.With, self.with_statement),
             (ast.For, self.for_statement),
@@ -429,28 +419,62 @@ class _ReadOnlyChecker(_ExpressionKinds):
     def assignment(self, node: ast.Assign) -> bool:
         if len(node.targets) != 1:
             return False
-        return self.bind_target(node.targets[0], self.expression(node.value))
+        target = node.targets[0]
+        if isinstance(target, ast.Subscript):
+            return self.container_item(target) and self.expression(node.value) is not None
+        bound = self.bind_target(target, self.expression(node.value))
+        if bound and isinstance(target, ast.Name) and isinstance(node.value, CONTAINER_LITERALS):
+            self.containers.add(target.id)
+        return bound
+
+    def augmented_assignment(self, node: ast.AugAssign) -> bool:
+        if isinstance(node.target, ast.Subscript):
+            return self.container_item(node.target) and self.expression(node.value) is not None
+        if not isinstance(node.target, ast.Name) or node.target.id not in self.bindings:
+            return False
+        current = ast.BinOp(ast.Name(node.target.id, ast.Load()), node.op, node.value)
+        return self.bind_target(node.target, self.expression(ast.copy_location(current, node)))
+
+    def container_item(self, node: ast.Subscript) -> bool:
+        """Only a dict or list this payload built, because an item store elsewhere can reach an object that writes."""
+        owned = isinstance(node.value, ast.Name) and node.value.id in self.containers
+        return owned and self.slice(node.slice)
 
     def imports(self, node: ast.Import) -> bool:
-        if any(alias.name not in SAFE_IMPORTS or alias.asname is not None for alias in node.names):
+        bindings = [self.import_name(alias) for alias in node.names]
+        if None in bindings:
             return False
-        for alias in node.names:
-            self.bindings[alias.name] = SAFE_IMPORTS[alias.name]
+        for name, kind in (binding for binding in bindings if binding is not None):
+            self.bindings[name] = kind
+            self.protected_names.add(name)
         return True
 
+    def import_name(self, alias: ast.alias) -> tuple[str, Kind] | None:
+        if alias.asname is not None:
+            return None
+        if alias.name in SAFE_IMPORTS:
+            return alias.name, SAFE_IMPORTS[alias.name]
+        return import_binding(alias.name)
+
     def import_from(self, node: ast.ImportFrom) -> bool:
-        if node.level or len(node.names) != 1:
+        if node.level or node.module is None:
             return False
-        alias = node.names[0]
-        if (node.module, alias.name) == PATH_IMPORT and alias.asname is None:
-            self.bindings[alias.name] = "path_ctor"
+        kinds = [self.from_kind(node.module, alias) for alias in node.names]
+        if None in kinds:
+            return False
+        for alias, kind in zip(node.names, kinds):
+            self.bindings[alias.name] = kind
             self.protected_names.add(alias.name)
-            return True
-        if node.module == "json" and alias.name in {"load", "loads"} and alias.asname is None:
-            self.bindings[alias.name] = f"json_{alias.name}"
-            self.protected_names.add(alias.name)
-            return True
-        return False
+        return True
+
+    def from_kind(self, module: str, alias: ast.alias) -> Kind | None:
+        if alias.asname is not None:
+            return None
+        if module == "pathlib":
+            return "path_ctor" if alias.name in PATH_CLASSES else None
+        if module == "json":
+            return f"json_{alias.name}" if alias.name in JSON_FUNCTIONS else None
+        return from_import_kind(module, alias.name)
 
     def with_statement(self, node: ast.With) -> bool:
         if len(node.items) != 1:
