@@ -100,6 +100,24 @@ def test_spliced_shell_quoting_is_judged_as_the_decoded_payload(command) -> None
 
 
 @pytest.mark.parametrize("command", [
+    """timeout 5 python3 -c 'open("x.txt","w").write("y")'""",
+    """timeout -k 2 5 python3 -I -S -c 'open("x.txt","w").write("y")'""",
+    """timeout -- 5 python3 -I -S -c 'open("x.txt","w").write("y")'""",
+    """nice python3 -c 'open("x.txt","w").write("y")'""",
+    """nice -n5 python3 -I -S -c 'open("x.txt","w").write("y")'""",
+    """nice -n 5 timeout 5 node -e 'require("fs").writeFileSync("a.txt","body")'""",
+    """sudo -uroot python3 -I -S -c 'open("x.txt","w").write("y")'""",
+])
+def test_timeout_and_nice_do_not_hide_an_inline_write(command) -> None:
+    assert "inline_interpreter_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", ["timeout 5 sed -i s/a/b/ f.txt", "nice perl -pi -e 's/a/b/' f.txt"])
+def test_timeout_and_nice_do_not_hide_an_inplace_edit(command) -> None:
+    assert "inplace_edit_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
     """python3 -I -S -c 'print("x")'""",
     """python3 -I -S -c "print('x')\"""",
     """python3 -I -S -c 'print('"'"'adw'"'"')'""",
