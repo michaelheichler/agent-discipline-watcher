@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,22 @@ def test_a_perl_or_ruby_scratch_edit_with_any_other_script_blocks(tmp_path: Path
     project, scratch = _dirs(tmp_path)
 
     result = _gate(tmp_path, project, f"{edit} {scratch}/f.txt")
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
+def test_a_perl_scratch_edit_that_opens_a_project_file_blocks(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    scratch = tmp_path / "scratch.txt"
+    scratch.write_text("initial\n", encoding="utf-8")
+    script = (
+        'open my $handle, ">", "notes.md"; print $handle "The scan ran \\x{2014} then it stopped.\\n"; '
+        "close $handle; s/initial/changed/"
+    )
+
+    result = _gate(tmp_path, project, f"perl -pi -e {shlex.quote(script)} {scratch}")
 
     assert result.get("decision") == "block"
     assert "inplace_edit_write" in result["reason"]
