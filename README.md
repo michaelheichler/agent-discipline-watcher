@@ -430,7 +430,6 @@ Every project shares the managed worker, and it stays loaded while a live turn h
 
 | variable | default | effect |
 | --- | --- | --- |
-| `ADW_SENTENCE_WORD_CAP` | 40 | Fallback sentence cap. Normally the cap is a Tukey upper fence computed from the document's own sentences, so dense prose gets a higher cap than terse prose. Only a document with too few sentences to measure uses this value. |
 | `ADW_LIST_ITEM_CAP` | 8 | Items before a list is oversized. |
 | `ADW_FUNC_BLOCK_LINES` | 80 | Function length that blocks. |
 | `ADW_MAX_SCAN_BYTES` | 1000000 | Full-text scan limit. Larger files retain fallback length checks. |
@@ -495,6 +494,8 @@ The same gate covers reviewed pattern rows from the embedding vote on every host
 In OMP, `/adw configure` and `/agent-discipline configure` edit this project policy through the same Python configuration engine. The screen covers family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, and the data boundary. Always-blocking rules stay locked. Unknown keys and environment values are not rendered.
 
 `three_item_list` is the one rule at the judged gate today. Its regex hits 278 of 60000 human sentences, all of them ordinary writing, so the regex alone cannot speak. Its precision behind the judge has no measurement yet. `pattern_exemplars.json` records no judge precision for it, so no number here backs a block. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
+
+ADW no longer counts the words in a prose sentence, because a fixed word cap pushed agents to chop their prose into rows of short main clauses. `choppy_sentences` and `de_parataxis` take the place of the old caps. The rule reports a run of four short main clauses in one paragraph, or three when a later clause opens on a back-pointing pronoun such as `It` or `Sie`. humanizer-de calls this pattern 51 (obsessive parataxis). A sentence that carries a comma, a subordinator, a relative clause, or the word `and` leaves the run. Both rules ship off, since blind raters upheld only 7 of 40 English hits and 22 of 40 German hits on the human paragraph corpora, which sits under the 0.70 bar. Encyclopedia prose held up better than literature, where deliberate narrative staccato reads fine to an editor, and `evals/parataxis_precision.json` holds the numbers. A project that wants the report anyway sets `"rule_gates": {"choppy_sentences": "observe"}` in `.agent-discipline.json`. A config that still names `sentence_word_cap`, `long_sentence`, or `de_sentence_length` loads as before, although those names no longer change anything, and code comments keep their own brevity check in `long_comment`.
 
 ## Self protection
 

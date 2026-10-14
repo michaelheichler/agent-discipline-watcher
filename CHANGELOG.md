@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **ADW no longer caps the word count of a prose sentence.** This release retires `long_sentence` and `de_sentence_length`, because the cap pushed agents to chop their prose into short main clauses. A config that still names `sentence_word_cap`, `long_sentence` or `de_sentence_length` loads as before, and the names change nothing. Code comments keep their brevity check in `long_comment`.
+- **Two new rules report telegram style.** `choppy_sentences` and `de_parataxis` report four short main clauses in a row, or three when a later one opens on a back-pointing pronoun such as `It` or `Sie`. Both ship off, because blind raters upheld 7 of 40 English hits and 22 of 40 German hits. A project opts in with `"rule_gates": {"choppy_sentences": "observe"}`.
+- **The contract, the skills and the judge prompts ask for flowing sentences.** They no longer ask the agent to split a clear sentence, and the dash and semicolon bans still hold.
+
 ## 0.26.0 (2026-10-14)
 
 ### Security
