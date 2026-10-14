@@ -486,7 +486,7 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
 
 def _file_length_findings(path: str, count: int) -> list[dict]:
     policy = scan_input.file_length_policy(count)
-    if policy is None:
+    if policy is None or scan_input.is_data_file(path):
         return []
     rule, action = policy
     return [_finding("code", rule, 1, f"File has {count} lines in {path}", path, action)]

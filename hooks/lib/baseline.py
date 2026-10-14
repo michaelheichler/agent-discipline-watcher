@@ -11,11 +11,13 @@ try:
     from . import imported_baseline
     from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from .imported_baseline import Snapshot, text_digest
+    from .scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
     from .scanner import scan_all
 except ImportError:
     import imported_baseline
     from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from imported_baseline import Snapshot, text_digest
+    from scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
     from scanner import scan_all
 
 
@@ -133,13 +135,27 @@ def _line_count(text: str) -> int:
     return len(text.splitlines()) or 1
 
 
+def _inherited_length(before: str, after: str | None) -> bool:
+    """A marker must sit in the baseline too, because the agent could otherwise add one to escape the length rule."""
+    if after is None:
+        return False
+    if _line_count(after) <= _line_count(before):
+        return True
+    return has_generated_marker(before) and has_generated_marker(after)
+
+
 def _length_relief(halves: tuple[list[dict], list[dict]], before: str, after: str | None) -> tuple[list[dict], list[dict]]:
     """Kept owned only for a longer file, because an inherited long file is not the agent's to split."""
     owned, inherited = halves
-    if after is None or _line_count(after) > _line_count(before):
+    if not _inherited_length(before, after):
         return owned, inherited
     moved = [row for row in owned if row.get("rule") in LENGTH_RULES]
     return [row for row in owned if row.get("rule") not in LENGTH_RULES], inherited + moved
+
+
+def _against(path: Path, findings: list[dict], cfg: dict, before: str, text: str | None) -> tuple[list[dict], list[dict]]:
+    owned, inherited = _length_relief(partition(findings, scan_all(str(path), before, cfg)), before, text)
+    return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
 def _split_snapshot(path: Path, findings: list[dict], cfg: dict, snapshot: Snapshot, text: str | None) -> tuple[list[dict], list[dict]] | None:
@@ -147,8 +163,7 @@ def _split_snapshot(path: Path, findings: list[dict], cfg: dict, snapshot: Snaps
         return [], findings if baseline_mode(cfg) == "report" else []
     if snapshot.text is None:
         return None
-    halves = _length_relief(partition(findings, scan_all(str(path), snapshot.text, cfg)), snapshot.text, text)
-    return halves[0], halves[1] if baseline_mode(cfg) == "report" else []
+    return _against(path, findings, cfg, snapshot.text, text)
 
 
 def split_committed(path: Path, findings: list[dict], cfg: dict, text: str | None = None) -> tuple[list[dict], list[dict]]:
@@ -162,15 +177,30 @@ def split_committed(path: Path, findings: list[dict], cfg: dict, text: str | Non
     before = committed_text(path)
     if before is None:
         return findings, []
-    return _halves(findings, scan_all(str(path), before, cfg), cfg)
+    return _against(path, findings, cfg, before, text)
+
+
+def _head(path: Path) -> str:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(CONTENT_SAMPLE_BYTES).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _inherited_fallback(path: Path, cfg: dict) -> bool:
+    snapshot = imported_baseline.lookup(cfg, path)
+    if snapshot is not None and imported_baseline.file_digest(path) == snapshot.digest:
+        return True
+    if not has_generated_marker(_head(path)):
+        return False
+    before = snapshot.text if snapshot is not None and snapshot.text is not None else committed_text(path)
+    return before is not None and has_generated_marker(before)
 
 
 def split_fallback(path: Path, rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Unscannable rows of an unchanged imported file stay advice, because the agent never wrote that file."""
-    if not rows or baseline_mode(cfg) == "none":
-        return rows, []
-    snapshot = imported_baseline.lookup(cfg, path)
-    if snapshot is None or imported_baseline.file_digest(path) != snapshot.digest:
+    """Unscannable rows stay advice for an unchanged import or an inherited generated file, because the agent wrote neither."""
+    if not rows or baseline_mode(cfg) == "none" or not _inherited_fallback(path, cfg):
         return rows, []
     return [], rows if baseline_mode(cfg) == "report" else []
 

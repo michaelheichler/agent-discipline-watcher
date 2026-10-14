@@ -139,6 +139,8 @@ def _held_fallback(descriptor: int, path: Path) -> list[dict]:
     try:
         os.lseek(descriptor, 0, os.SEEK_SET)
         with os.fdopen(os.dup(descriptor), "rb") as stream:
+            if scan_input.is_data_text(path, stream):
+                return []
             result = scan_input._count_open_file_lines(stream)
     except (OSError, ValueError):
         result = None
