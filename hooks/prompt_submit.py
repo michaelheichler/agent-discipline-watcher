@@ -14,6 +14,7 @@ from lib.config import SURFACE_PROSE, effective_hook_config, resolve_outcome
 from lib.embedding_session import lease_root_for, open_turn
 from lib.findings import Outcome
 from lib.hookio import read_payload, write_payload
+from lib.merge_state import mark_session_start
 from lib.prompt_text import has_file_token, mask_examples
 from lib.scanner import scan_all, scannable_text
 
@@ -412,6 +413,8 @@ def run(payload: object, config: object = None, *, scan: Scanner = scan_all, led
 
         if not session_id:
             return gate("")
+        with suppress(OSError, ValueError, TypeError):
+            mark_session_start(session_id, _config_root(cfg, "state_root"))
         if not turn_adapter.prepare_turn(session_id, cast(dict, cfg)):
             open_turn(session_id, lease_root_for(cast(dict, cfg)))
         return _run_with_prompt_ledger(session_id, cfg, gate, ledger)

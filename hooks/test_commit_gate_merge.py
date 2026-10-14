@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 import pre_commit
-from lib import merge_state
+from lib import merge_state, session_state
 from testing import make_repo, run_git as git
 
 DASH = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation family blocks.\n"
@@ -169,6 +170,58 @@ class MergeGateTests(unittest.TestCase):
             merge_state.incoming_commits(linked), [git(self.repo, "rev-parse", "upstream")],
         )
         self.assertEqual(merge_state.incoming_commits(self.repo), [])
+
+
+class SessionMergeGateTests(MergeGateTests):
+    """Because a session start must not change a merge whose branch predates it, every merge case runs again here."""
+
+    def gate(self, command: str = MERGE_MESSAGE) -> dict:
+        if not session_state.read_state("merge-gate-session", self.state).get(merge_state.SESSION_STARTED_KEY):
+            self.start_session(time.time() + 5)
+        return super().gate(command)
+
+    def start_session(self, started: float) -> None:
+        session_state.write_state("merge-gate-session", {merge_state.SESSION_STARTED_KEY: started}, self.state)
+
+    def merge_upstream_made_in_session(self) -> None:
+        self.start_session(1.0)
+        self.branch_with("upstream", "feature.md", CLEAN + DASH)
+        self.diverge_trunk()
+        git(self.repo, "merge", "-q", "--no-commit", "--no-ff", "upstream")
+
+    def test_a_local_branch_made_in_the_session_launders_nothing(self) -> None:
+        self.merge_upstream_made_in_session()
+
+        result = self.gate()
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("feature.md:2 Dash character", result["reason"])
+
+    def test_a_remote_tracking_ref_carries_a_branch_made_in_the_session(self) -> None:
+        self.merge_upstream_made_in_session()
+        git(self.repo, "update-ref", "refs/remotes/origin/upstream", "upstream")
+
+        self.assertNotEqual(self.gate().get("decision"), "block")
+
+    def test_a_tag_carries_a_branch_made_in_the_session(self) -> None:
+        self.merge_upstream_made_in_session()
+        git(self.repo, "tag", "v1", "upstream")
+
+        self.assertNotEqual(self.gate().get("decision"), "block")
+
+    def test_a_forged_merge_head_on_an_unpublished_commit_launders_nothing(self) -> None:
+        self.start_session(1.0)
+        super().test_a_forged_merge_head_on_an_unpublished_commit_launders_nothing()
+
+    def test_a_backdated_commit_still_meets_the_gate_when_it_is_made(self) -> None:
+        self.start_session(time.time())
+        (self.repo / "notes.md").write_text(CLEAN * 5 + DASH, encoding="utf-8")
+        git(self.repo, "add", "notes.md")
+
+        result = self.gate('GIT_COMMITTER_DATE="2001-01-01T00:00:00" git commit -m "docs(x): add notes"')
+
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("notes.md:6 Dash character", result["reason"])
 
 
 if __name__ == "__main__":

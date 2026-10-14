@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import prompt_submit
+from lib import merge_state
 
 GERMAN_PROMPT = (
     "Bitte prüfe die Datenschutzgrundverordnungsumsetzung in diesem Modul. "
@@ -110,6 +111,16 @@ def test_the_ledger_records_each_noted_style_rule_once(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in (tmp_path / "ledger.jsonl").read_text().splitlines()]
     noted = [(row["family"], row["rule"], row["outcome"]) for row in rows if row["event"] == "UserPromptSubmit"]
     assert noted == [("english", "ai_tell", "inject")]
+
+
+def test_the_first_prompt_records_the_session_start_once(tmp_path: Path) -> None:
+    config = {**_session(tmp_path), "english": False, "punctuation": False}
+    _run("First request.", config, "s1")
+    first = merge_state.session_started("s1", tmp_path / "state")
+    _run("Second request.", config, "s1")
+
+    assert first is not None
+    assert merge_state.session_started("s1", tmp_path / "state") == first
 
 
 def test_a_style_note_never_quotes_the_prompt() -> None:
