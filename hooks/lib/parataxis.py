@@ -57,6 +57,7 @@ class Sentence(NamedTuple):
     line: int
     text: str
     shown: str = ""
+    last_line: int = 0
 
 
 def _words_of(sentence: str) -> list[str]:
@@ -157,6 +158,18 @@ def _code_as_capital(match: re.Match[str]) -> str:
     return CODE_LETTER.upper() * len(match.group(0))
 
 
+class _Joined(NamedTuple):
+    offsets: list[tuple[int, int]]
+    prose: str
+    original: str
+
+    def sentence(self, start: int, end: int) -> Sentence:
+        """Keep the line of the last character, because a run owns only the lines its own sentences cover."""
+        text = self.prose[start:end]
+        tail = start + max(len(text.rstrip()) - 1, 0)
+        return Sentence(_source_line(self.offsets, start), text, self.original[start:end], _source_line(self.offsets, tail))
+
+
 def paragraph_sentences(paragraph: Paragraph, lexicon: Lexicon) -> list[Sentence]:
     """Split on a capital copy, because a sentence may open on inline code."""
     offsets, size = [], 0
@@ -164,14 +177,14 @@ def paragraph_sentences(paragraph: Paragraph, lexicon: Lexicon) -> list[Sentence
         offsets.append((size, number))
         size += len(line) + 1
     original = " ".join(line for _number, line in paragraph)
-    prose = INLINE_CODE_RE.sub(_code_as_word, original)
+    joined = _Joined(offsets, INLINE_CODE_RE.sub(_code_as_word, original), original)
     found, start = [], 0
     for boundary in SENTENCE_BREAK_RE.finditer(INLINE_CODE_RE.sub(_code_as_capital, original)):
-        if ends_sentence(prose[start:boundary.start()], lexicon):
-            found.append(Sentence(_source_line(offsets, start), prose[start:boundary.start()], original[start:boundary.start()]))
+        if ends_sentence(joined.prose[start:boundary.start()], lexicon):
+            found.append(joined.sentence(start, boundary.start()))
             start = boundary.end()
-    if prose[start:].strip():
-        found.append(Sentence(_source_line(offsets, start), prose[start:], original[start:]))
+    if joined.prose[start:].strip():
+        found.append(joined.sentence(start, len(original)))
     return found
 
 
@@ -212,13 +225,10 @@ class Run(NamedTuple):
     lexicon: Lexicon
     sentences: list[Sentence]
     paragraph: list[Sentence]
-    last_line: int
 
     def lines(self) -> range:
-        """Up to the next sentence, because the last one may wrap onto later lines."""
-        after = self.paragraph.index(self.sentences[-1]) + 1
-        end = self.paragraph[after].line if after < len(self.paragraph) else self.last_line
-        return range(self.sentences[0].line, end + 1)
+        """Through the last line of its own sentences, because an edit to the next sentence does not touch the run."""
+        return range(self.sentences[0].line, self.sentences[-1].last_line + 1)
 
 
 def shown(sentences: list[Sentence]) -> str:
@@ -231,7 +241,7 @@ def runs_in(path: str, masked: str, languages: list[str]) -> Iterator[Run]:
         lexicon = _lexicon_for(paragraph, languages)
         sentences = paragraph_sentences(paragraph, lexicon)
         for run in bare_runs(sentences, lexicon, Thresholds()):
-            yield Run(lexicon, run, sentences, paragraph[-1][0])
+            yield Run(lexicon, run, sentences)
 
 
 def _run_finding(path: str, run: Run) -> dict:

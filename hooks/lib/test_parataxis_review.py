@@ -113,6 +113,14 @@ def test_a_run_over_one_changed_and_one_unchanged_sentence_reaches_the_reviewer(
     assert [row["line"] for row in rows] == [1]
 
 
+def test_an_edit_to_the_sentence_after_an_inherited_run_leaves_the_run_alone(tmp_path: Path) -> None:
+    run = ENGLISH_CHAIN.replace(". ", ".\n")
+
+    rows = _second_turn(tmp_path, f"{run}\n{JOINED_A}", f"{run}\n{REWRITTEN_A}")
+
+    assert rows == []
+
+
 class Judge:  # pylint: disable=too-few-public-methods
     """Because only the pattern verdict is under test, the document section gets no answer."""
 

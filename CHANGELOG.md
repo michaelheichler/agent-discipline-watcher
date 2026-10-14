@@ -12,6 +12,7 @@
 ### Fixed
 
 - **A huge baseline no longer carries Stop past the host timeout.** A 9.9 MB first-seen `notes.md` took 12.5 seconds to scan, and the host kills Stop at 10. The scan cannot stop midway, so Stop now checks the baseline size against the time left at 250,000 bytes per second before it starts. A baseline too large for the time left counts as unscanned and blocks as before.
+- **An edit after an inherited telegram-style run no longer journals the run.** A run counted the first line of the next sentence as its own, so rewriting only that sentence sent the unchanged run to the reviewer. A run now covers exactly the lines of its own sentences.
 
 ## 0.26.0 (2026-10-14)
 
