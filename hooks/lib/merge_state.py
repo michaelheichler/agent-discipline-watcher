@@ -51,8 +51,9 @@ def _carried(repo: Path, commit: str, refs: tuple[str, ...]) -> bool:
 
 
 def _older_than(repo: Path, commit: str, started: float) -> bool:
+    """Whole seconds on both sides, because a commit stamped in the start second may still come after the start."""
     stamp = _git(repo, "show", "-s", "--format=%ct", commit)
-    return bool(stamp and stamp.strip().isdigit() and int(stamp.strip()) < started)
+    return bool(stamp and stamp.strip().isdigit() and int(stamp.strip()) < int(started))
 
 
 def _published(repo: Path, commit: str, started: float | None) -> bool:

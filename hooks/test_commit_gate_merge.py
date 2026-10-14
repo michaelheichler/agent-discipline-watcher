@@ -1,6 +1,7 @@
 """Real merges here because the gate must tell the agent's own lines from the ones a parent brought in."""
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import time
@@ -208,6 +209,20 @@ class SessionMergeGateTests(MergeGateTests):
         git(self.repo, "tag", "v1", "upstream")
 
         self.assertNotEqual(self.gate().get("decision"), "block")
+
+    def test_a_commit_from_the_second_the_session_started_launders_nothing(self) -> None:
+        second = int(time.time()) - 60
+        self.start_session(second + 0.5)
+        git(self.repo, "checkout", "-q", "-b", "upstream", self.trunk)
+        (self.repo / "feature.md").write_text(CLEAN + DASH, encoding="utf-8")
+        git(self.repo, "add", "feature.md")
+        stamped = {**os.environ, "GIT_COMMITTER_DATE": f"@{second} +0000"}
+        subprocess.run(["git", "commit", "-q", "-m", "add feature.md"], cwd=self.repo, env=stamped, check=True)
+        git(self.repo, "checkout", "-q", self.trunk)
+        self.diverge_trunk()
+        git(self.repo, "merge", "-q", "--no-commit", "--no-ff", "upstream")
+
+        self.assertEqual(self.gate()["decision"], "block")
 
     def test_a_forged_merge_head_on_an_unpublished_commit_launders_nothing(self) -> None:
         self.start_session(1.0)
