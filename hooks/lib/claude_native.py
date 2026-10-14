@@ -72,6 +72,15 @@ def settings_path(environment: Mapping[str, str] | None = None) -> Path:
     return Path(env.get(SETTINGS_ENV, str(Path.home() / ".claude" / "settings.json"))).expanduser()
 
 
+def _settings_target(path: str | Path | None) -> Path:
+    """Named apart, because a public keyword called settings_path hides the function of that name."""
+    return _canonical(settings_path() if path is None else path)
+
+
+def _preset_target(path: str | Path | None) -> Path:
+    return _canonical(preset_path() if path is None else path)
+
+
 def _lexical(path: str | Path) -> Path:
     """Normalize a path without resolving any symlink components."""
     value = Path(path).expanduser()
@@ -380,8 +389,8 @@ def _recover(
     settings_path: str | Path | None = None,
     preset_path: str | Path | None = None,
 ) -> None:
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _preset_target(preset_path)
+    target_settings = _settings_target(settings_path)
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
 
@@ -477,8 +486,8 @@ def luna_operation(
     preset_path: str | Path | None = None,
 ) -> Iterator[_LunaOperation | None]:
     """Reserve Luna under a short lock; provider work never runs under that lock."""
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _preset_target(preset_path)
+    target_settings = _settings_target(settings_path)
     reservation = _reserve_luna_operation(target_settings, target_preset)
     if reservation is None:
         yield None
@@ -494,8 +503,8 @@ def read_preset(
     *,
     settings_path: str | Path | None = None,
 ) -> str | None:
-    target = _canonical(path) if path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target = _preset_target(path)
+    target_settings = _settings_target(settings_path)
     with _preset_lock(target):
         try:
             _recover_unlocked(target_settings, target)
@@ -521,8 +530,8 @@ def default_preset(
     settings_path: str | Path | None = None,
 ) -> str:
     env = os.environ if environment is None else environment
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
+    target_preset = _preset_target(preset_path)
+    target_settings = _settings_target(settings_path)
     with _preset_lock(target_preset):
         try:
             _recover_unlocked(target_settings, target_preset)
@@ -777,8 +786,8 @@ def set_preset(
     preset_path: str | Path | None = None,
 ) -> str:
     selected = _validate_preset(preset)
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _settings_target(settings_path)
+    target_preset = _preset_target(preset_path)
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         return _set_preset_unlocked(selected, target_settings, target_preset)
@@ -789,12 +798,12 @@ def ensure_managed_block(
     repoint: Callable[[dict[str, Any]], dict[str, Any]],
     is_retired: Callable[[dict[str, Any]], bool],
     *,
-    settings_path: str | Path | None = None,
-    preset_path: str | Path | None = None,
+    settings_file: str | Path | None = None,
+    preset_file: str | Path | None = None,
 ) -> str | None:
     """One lock, because a racing set_preset must not interleave."""
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _settings_target(settings_file)
+    target_preset = _preset_target(preset_file)
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         current = _load_settings(target_settings)
@@ -814,8 +823,8 @@ def _rewrite_settings(path: Path, transform: Callable[[dict[str, Any]], dict[str
 
 
 def status(*, settings_path: str | Path | None = None, preset_path: str | Path | None = None, environment: Mapping[str, str] | None = None) -> dict[str, str]:
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _settings_target(settings_path)
+    target_preset = _preset_target(preset_path)
     env = os.environ if environment is None else environment
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
@@ -826,7 +835,7 @@ def status(*, settings_path: str | Path | None = None, preset_path: str | Path |
     seen = judge_status.plugin_reviewers() + judge_status.settings_reviewers(target_settings, _is_managed_hook)
     return {
         **judge_status.describe(selected, stored, seen),
-        "settings": str(settings_path or globals()["settings_path"]()),
+        "settings": str(settings_path or target_settings),
         "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates",
     }
 
@@ -864,8 +873,8 @@ def fallback_after_luna_failure(
     settings_path: str | Path | None = None,
     preset_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    target_settings = _canonical(settings_path) if settings_path is not None else _canonical(globals()["settings_path"]())
-    target_preset = _canonical(preset_path) if preset_path is not None else _canonical(globals()["preset_path"]())
+    target_settings = _settings_target(settings_path)
+    target_preset = _preset_target(preset_path)
     with _preset_lock(target_preset):
         _recover_unlocked(target_settings, target_preset)
         return _fallback_after_luna_failure_unlocked(
