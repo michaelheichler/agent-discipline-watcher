@@ -33,6 +33,10 @@ policy changes. These commands edit `.agent-discipline.json`. OMP's
 - English: write plain reader-facing prose. Cut filler, throat-clearing, dead
   metaphor, AI tell phrases, inflated diction, wordiness, empty intensifiers, and
   buried subjects. State the fact, evidence, consequence, and next action.
+- Let prose sentences flow and vary their length. Join related thoughts with a
+  subordinate clause or with and, instead of writing a row of short
+  telegram-style main clauses. The dash and semicolon bans still hold.
+  Code comments stay crisp, one terse WHY line each.
 - Code: make intent live in names, structure, and tests. Delete comments that
   narrate what the code does, label bug cases, apologize for the code, record
   change history, or hide deferred work. Do not ship commented-out code,
