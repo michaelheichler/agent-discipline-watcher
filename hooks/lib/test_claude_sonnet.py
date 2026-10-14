@@ -34,7 +34,7 @@ def _cli(structured: object, **extra: object) -> str:
     return json.dumps({"type": "result", "is_error": False, "structured_output": structured, **extra})
 
 
-class Judge:
+class Judge:  # pylint: disable=too-few-public-methods
     """Kept as a class, because the call count is the contract under test."""
 
     def __init__(self, stdout: str = "", error: Exception | None = None) -> None:
