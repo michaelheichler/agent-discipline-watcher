@@ -8,7 +8,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from lib import payloads, reporting, temp_authorship, tests_policy
+from lib import imported_baseline, payloads, reporting, temp_authorship, tests_policy
+from lib.baseline import committed_text
 from lib.config import payload_hook_config
 from lib.findings import Finding, Rule
 from lib.hookio import (
@@ -27,7 +28,7 @@ from lib.shell_parse import (
     _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_targets,
 )
 from lib.shell_parse import write_paths as shell_write_paths
-from lib.temp_scope import command_targets, scratch_target
+from lib.temp_scope import command_targets, outside_project_temp, scratch_target
 from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
 from lib.update_policy import _segment_contexts, untrusted_update
@@ -150,6 +151,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     refusal = temp_authorship.scratch_refusal(payloads.session_id(payload), write_paths(command, cwd), cwd, cfg.get("state_root"))
     if refusal:
         return deny(refusal)
+    _note_first_seen(payload, cwd, cfg)
     findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
     findings += _test_findings(payload, cfg)
     if findings:
@@ -165,6 +167,15 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         return allow()
     decisions = _record(payload, cfg, turn_id, owned, started) if owned else []
     return _verdict(decisions, cfg, inherited)
+
+
+def _note_first_seen(payload: dict, cwd: str, cfg: dict) -> None:
+    """Taken before the command runs, because an untracked file has no other record of the text the agent found."""
+    paths = [payloads.resolved_path(raw, Path(cwd)) for raw in payloads.edited_paths(payload)]
+    imported_baseline.note_first_seen(
+        payloads.session_id(payload), [str(path) for path in paths if not outside_project_temp(path, cwd)],
+        cfg.get("state_root"), lambda path: committed_text(path) is not None,
+    )
 
 
 def _test_findings(payload: dict, cfg: dict) -> list[dict]:
