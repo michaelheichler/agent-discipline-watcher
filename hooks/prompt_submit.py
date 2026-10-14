@@ -9,7 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
-from lib import payloads, reporting, session_state, turn_adapter
+from lib import payloads, pending_advice, reporting, session_state, turn_adapter
 from lib.config import SURFACE_PROSE, effective_hook_config, resolve_outcome
 from lib.embedding_session import lease_root_for, open_turn
 from lib.findings import Outcome
@@ -395,6 +395,18 @@ def _evaluate(evaluation: _PromptEvaluation) -> dict:
     }
 
 
+def _with_advice(response: dict, session_id: str, cfg: dict[str, object]) -> dict:
+    """Held past a blocked prompt, because the agent never answers a prompt the hook blocked."""
+    if response.get("decision") == "block":
+        return response
+    advice = pending_advice.take(session_id, _config_root(cfg, "state_root"))
+    if not advice:
+        return response
+    known = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+    message = "\n\n".join(part for part in (known, advice) if part)[:MAX_RESPONSE_CHARS]
+    return {**response, "hookSpecificOutput": {"hookEventName": PROMPT_EVENT, "additionalContext": message}}
+
+
 def run(payload: object, config: object = None, *, scan: Scanner = scan_all, ledger: Ledger = reporting.run_with_ledger) -> dict:
     response: dict[str, object] = {}
     try:
@@ -417,7 +429,7 @@ def run(payload: object, config: object = None, *, scan: Scanner = scan_all, led
             mark_session_start(session_id, _config_root(cfg, "state_root"))
         if not turn_adapter.prepare_turn(session_id, cast(dict, cfg)):
             open_turn(session_id, lease_root_for(cast(dict, cfg)))
-        return _run_with_prompt_ledger(session_id, cfg, gate, ledger)
+        return _with_advice(_run_with_prompt_ledger(session_id, cfg, gate, ledger), session_id, cfg)
     except (OSError, ValueError, TypeError, RuntimeError, KeyError, re.error):
         sys.stderr.write("agent-discipline-watcher: prompt hook failed\n")
         return response

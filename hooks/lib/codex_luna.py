@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import journal, payloads, session_state
+from . import journal, payloads, pending_advice, session_state
 from .codex_luna_documents import feedback_sources
 from .config import effective_hook_config
 from .document_review import data_boundary_enabled, document_work
@@ -392,8 +392,10 @@ def _judge_work(
     return "\n\n".join(feedback_rows), "\n\n".join(reported)
 
 
-def _verdict(feedback: str, reported: str) -> dict:
-    """Observed rules report, because the project chose observe."""
+def _verdict(feedback: str, reported: str, session_id: str, state_root: str | Path | None) -> dict:
+    """Observed rules are held for the next prompt too, because Codex shows a Stop systemMessage to the user alone."""
+    if reported:
+        pending_advice.hold(session_id, _bounded(reported), state_root)
     notice = system_message(_bounded(reported)) if reported else {}
     return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
 
@@ -456,7 +458,7 @@ def _perform_review(
         _rollback(session_id, turn_id, token, state_root)
         raise
     if _finish_success(session_id, turn_id, token, state_root):
-        return _verdict(feedback, reported)
+        return _verdict(feedback, reported, session_id, state_root)
     _rollback(session_id, turn_id, token, state_root)
     reason = "the successful Luna review could not be committed"
     _record_failure(session_id, turn_id, reason, state_root)

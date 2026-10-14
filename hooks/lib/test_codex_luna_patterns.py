@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import prompt_submit
 import stop
 from lib import journal, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
@@ -120,6 +121,33 @@ def test_an_observed_rule_reports_beside_a_rule_that_blocks(tmp_path) -> None:
     assert response["decision"] == "block"
     assert "note.md:7" in response["reason"] and "note.md:2" not in response["reason"]
     assert "note.md:2" in response["systemMessage"]
+
+
+def _next_prompt(tmp_path: Path, prompt: str = "Carry on with the release notes.") -> dict:
+    return prompt_submit.run(
+        {"session_id": "patterns", "prompt": prompt, "cwd": str(tmp_path)},
+        {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")},
+    )
+
+
+def test_an_observed_rule_reaches_the_model_once_at_the_next_prompt(tmp_path) -> None:
+    _review(tmp_path, [PATTERN])
+
+    first = _next_prompt(tmp_path)
+    second = _next_prompt(tmp_path)
+
+    assert "note.md:2" in first["hookSpecificOutput"]["additionalContext"]
+    assert second == {}
+
+
+def test_a_blocked_prompt_keeps_the_advice_for_the_prompt_after_it(tmp_path) -> None:
+    _review(tmp_path, [PATTERN])
+
+    blocked = _next_prompt(tmp_path, "Read @notes.md first.")
+    after = _next_prompt(tmp_path)
+
+    assert blocked["decision"] == "block"
+    assert "note.md:2" in after["hookSpecificOutput"]["additionalContext"]
 
 
 def test_an_incomplete_pattern_row_fails_closed(tmp_path) -> None:
