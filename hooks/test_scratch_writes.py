@@ -64,6 +64,41 @@ def test_a_write_with_a_project_or_unknown_target_still_blocks(tmp_path: Path, t
     assert rule in result["reason"]
 
 
+@pytest.mark.parametrize("script", [
+    "s/a/b/g",
+    "s#a#b#i",
+    "s{a}{b}gx",
+    "tr/a-z/A-Z/",
+    "y/ab/ba/",
+])
+def test_a_perl_scratch_edit_with_one_plain_operator_runs(tmp_path: Path, script: str) -> None:
+    project, scratch = _dirs(tmp_path)
+
+    assert _gate(tmp_path, project, f"perl -pi -e '{script}' {scratch}/f.txt") == {}
+
+
+@pytest.mark.parametrize("edit", [
+    """perl -pi -e 'open my $handle, ">", "notes.md"; s/a/b/'""",
+    "perl -pi -e 's/a/b/; s/c/d/'",
+    "perl -pi -e 's/a/uc $&/e'",
+    "perl -pi -e 's/a/b/r'",
+    "perl -pi -e 's/a(?{ 1 })/b/'",
+    "perl -pi -e 's/a/$ENV{X}/'",
+    "perl -pi -e 's/a/@{[ 1 ]}/'",
+    "perl -pi -e 's/a/`date`/'",
+    "perl -MPOSIX -pi -e 's/a/b/'",
+    "perl -pi -e 's/a/b/' -e 's/c/d/'",
+    "ruby -pi -e '$_.sub!(/a/, \"b\")'",
+])
+def test_a_perl_or_ruby_scratch_edit_with_any_other_script_blocks(tmp_path: Path, edit: str) -> None:
+    project, scratch = _dirs(tmp_path)
+
+    result = _gate(tmp_path, project, f"{edit} {scratch}/f.txt")
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
 def test_a_scratch_in_place_edit_after_a_leading_cd_is_recorded_as_an_agent_write(tmp_path: Path) -> None:
     project, scratch = _dirs(tmp_path)
     payload = {"cwd": str(project), "tool_name": "Bash", "tool_input": {"command": f"cd {scratch} && sed -i 's/a/b/' f.txt"}}

@@ -8,6 +8,7 @@
 - **`timeout` and `nice` count as wrappers (security fix).** Before, `timeout 5 python3 -c '<write>'` and `timeout 5 sed -i ...` ran unchecked. Wrapper option clusters now follow getopt, so `sudo -uroot` and `nice -n5` no longer hide the interpreter word.
 - **An unsafe assignment makes isolated Python untrusted (security fix).** `-I -S` does not stop a preload library or a changed `PATH` or `HOME`. An assignment to `PYTHON*`, `LD_*`, `DYLD_*`, `PATH` or `HOME` now makes `python3 -I -S` untrusted. A value with `$` or a backtick does the same.
 - **Node reflection blocks (security fix).** `module.constructor._load('fs')` and `process.getBuiltinModule('fs')` used to pass `node -e`. Reflective names such as `getBuiltinModule`, `_load`, `binding`, `constructor`, `import` and `Reflect` now block. So does a bracket key that is not one plain literal, or a string joined with `+` inside brackets. The node check stays a heuristic, not a sandbox.
+- **Perl and Ruby write builtins without parentheses block (security fix).** `perl -e 'open my $h, ">", "x"; print $h "y"'` used to pass, because the token list knew only `open(`. `open`, `sysopen`, `syswrite`, `rename`, `unlink`, `eval`, `$^I` and similar names now block in `perl -e` and `ruby -e`. So do `File::`, `IO::`, `Kernel` and `const_get`.
 
 ### Fixed
 
@@ -35,8 +36,8 @@
 - **The Sonnet review costs half the fixed tokens.** `claude -p` now runs with `--setting-sources ""` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. A one-candidate call dropped from 3,552 to 1,754 input tokens. The system prompt states the rubric once instead of once per section. A deletion-only edit makes no model call.
 - **Inline Python accepts more read-only analysis.** Text methods on JSON values now pass. Pure members of `re`, `math`, `collections`, `hashlib` and `os.path` pass. `json.dumps` without `default=` passes. Every write route stays rejected.
 - **Python startup accepts harmless prefixes.** `env` with plain assignments, `env -i`, `time -p`, `timeout` and `nice` no longer make startup untrusted.
-- **`node -p "require('./package.json').version"` passes.** The whole payload must be a `.json` require with literal member access. A wrapper of `console.log`, `JSON.stringify` or `Object.keys` also passes.
-- **Scratch temp writes run.** A redirect, `tee`, `sed -i` or `perl -pi` whose every target is scratch temp no longer blocks or hits the 100-character cap. A relative target after a leading `cd DIR &&` or `cd DIR ;` counts under DIR. `sed` scripts with `w`, `W`, `e` or `-f`, and `perl` or `ruby` without one `-e` script, keep blocking. PostToolUse records the edited files as agent writes.
+- **`node -p "require('./package.json').version"` passes.** The whole payload must be a `.json` require with literal member access. A wrapper of `console.log`, `JSON.stringify` or `Object.keys` also passes. The required file must be a regular `.json` file in every directory the command may run in. Node loads a symlink by its target extension, so a symlink, a missing file or a directory blocks.
+- **Scratch temp writes run.** A redirect, `tee`, `sed -i` or `perl -pi` whose every target is scratch temp no longer blocks or hits the 100-character cap. A relative target after a leading `cd DIR &&` or `cd DIR ;` counts under DIR. `sed` scripts with `w`, `W`, `e` or `-f` keep blocking. `perl -pi` runs only one plain `s`, `tr` or `y` operator with flags `g`, `i`, `m`, `s` or `x`, and only line-loop switches. `ruby -pi` keeps blocking. PostToolUse records the edited files as agent writes.
 
 ## 0.25.4 (2026-10-05)
 

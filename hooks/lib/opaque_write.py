@@ -13,6 +13,7 @@ from lib.shell_parse import (
 )
 from lib.inplace_targets import inplace_edit, scratch_inplace_edit
 from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection
+from lib.script_payload import SCRIPT_INTERPRETERS, script_write
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import python_rejection
 from lib.python_shell import isolated_python, rejection_finding, startup_finding, trusted_python_startup
@@ -33,6 +34,7 @@ class InterpreterRun:
     name: str
     payload: str | None
     trusted_startup: bool
+    directories: tuple[str, ...] = ()
 
 
 WRITE_CAPABLE_TOKEN_RE = re.compile(
@@ -109,12 +111,14 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
 def _payload_is_write_capable(name: str, payload: str) -> bool:
     if name in NODE_INTERPRETERS and node_reflection(payload):
         return True
+    if name in SCRIPT_INTERPRETERS and script_write(payload):
+        return True
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
 
 def _run_findings(run: InterpreterRun, make_finding: FindingFactory, rule: str) -> list[dict]:
     if not PYTHON_INTERPRETER_RE.fullmatch(run.name):
-        if run.payload is not None and node_json_read(run.name, run.payload):
+        if run.payload is not None and node_json_read(run.name, run.payload, run.directories):
             return []
         return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.name, run.payload) else []
     rejection = "" if run.payload is None else python_rejection(run.payload, isolated=True)
@@ -207,7 +211,7 @@ def _trusted_startup(segment: list[str] | tuple[str, ...], contexts: dict[tuple[
 
 def _interpreter_run(name: str, payload: str | None, segment: list[str] | tuple[str, ...], contexts: dict[tuple[str, ...], list[str]]) -> InterpreterRun:
     trusted = not PYTHON_INTERPRETER_RE.fullmatch(name) or _trusted_startup(segment, contexts)
-    return InterpreterRun(name, payload, trusted)
+    return InterpreterRun(name, payload, trusted, tuple(contexts.get(tuple(segment)) or ()))
 
 
 def inline_interpreter_findings(command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
