@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import os
 import tempfile
 import threading
@@ -285,6 +286,23 @@ class StateRecoveryTests(unittest.TestCase):
 
     def test_a_strict_read_restores_the_last_good_write(self):
         self.assertTrue(session_state.read_state_strict("s1", self.root)["kept"])
+
+    def test_a_write_that_lands_while_recovery_waits_is_kept(self) -> None:
+        directory = self.root / "s1"
+        lock_fd = os.open(directory / session_state.LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        read: list[dict] = []
+        reader = threading.Thread(target=lambda: read.append(session_state.read_state_strict("s1", self.root)))
+        reader.start()
+        time.sleep(0.2)
+        session_state.write_state("s1", {"fresh": True}, self.root)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+        reader.join()
+
+        self.assertEqual(read, [{"fresh": True}])
+        self.assertEqual(list(directory.glob("state.json.corrupt-*")), [])
+        self.assertEqual(session_state.read_state("s1", self.root), {"fresh": True})
 
     def test_two_hooks_that_both_saw_the_notice_show_it_once(self):
         session_state.read_state_strict("s1", self.root)

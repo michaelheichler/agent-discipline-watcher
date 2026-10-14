@@ -6,7 +6,8 @@ import os
 import shutil
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 try:
@@ -80,19 +81,53 @@ def read_state(
         return {}
 
 
-def read_state_strict(
-    session_id: str, root: str | os.PathLike[str] | None = None
-) -> dict:
-    path = _session_directory(session_id, root) / STATE_FILENAME
+def _parsed_or_empty(path: Path) -> dict:
     try:
         return state_recovery.parsed(path)
     except FileNotFoundError:
         return {}
+
+
+def _read_held(directory: Path) -> dict:
+    """Only under the session lock, otherwise a write that lands before the restore is moved aside and lost."""
+    path = directory / STATE_FILENAME
+    try:
+        return _parsed_or_empty(path)
     except (ValueError, UnicodeDecodeError):
         recovered = state_recovery.restored(path)
         if recovered is None:
             raise
         return recovered
+
+
+def _read_held_or_empty(directory: Path) -> dict:
+    try:
+        return _read_held(directory)
+    except (IsADirectoryError, ValueError, UnicodeDecodeError):
+        return {}
+
+
+@contextmanager
+def _session_lock(directory: Path) -> Iterator[None]:
+    """A separate .lock file, because os.replace swaps state.json to a new inode and orphans any flock on the old one."""
+    lock_fd = os.open(directory / LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+
+def read_state_strict(
+    session_id: str, root: str | os.PathLike[str] | None = None
+) -> dict:
+    directory = _session_directory(session_id, root)
+    try:
+        return _parsed_or_empty(directory / STATE_FILENAME)
+    except (ValueError, UnicodeDecodeError):
+        with _session_lock(directory):
+            return _read_held(directory)
 
 
 def write_state(
@@ -125,22 +160,21 @@ def take_recovery_notice(session_id: str, root: str | os.PathLike[str] | None = 
     return claimed[0] if claimed else ""
 
 
-def _update_state_with_lock(
-    lock_fd: int,
+def _update_locked(
     session_id: str,
     mutate: Callable[[dict], dict],
     root: str | os.PathLike[str] | None,
+    read_held: Callable[[Path], dict],
 ) -> dict:
-    fcntl.flock(lock_fd, fcntl.LOCK_EX)
-    try:
-        current = read_state(session_id, root)
-        updated = mutate(current)
+    """Reads through read_held, because a nested read_state_strict would wait on the lock this call already holds."""
+    directory = _session_directory(session_id, root)
+    directory.mkdir(parents=True, exist_ok=True)
+    with _session_lock(directory):
+        updated = mutate(read_held(directory))
         if not isinstance(updated, dict):
             raise TypeError("update mutate must return a dict")
         write_state(session_id, updated, root)
         return updated
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def update_state(
@@ -149,14 +183,7 @@ def update_state(
     root: str | os.PathLike[str] | None = None,
 ) -> dict:
     """Hold one lock across reading and writing because concurrent hook processes would otherwise lose updates."""
-    directory = _session_directory(session_id, root)
-    directory.mkdir(parents=True, exist_ok=True)
-    # Lock a separate .lock file because os.replace swaps state.json to a new inode, orphaning any flock on the old one.
-    lock_fd = os.open(directory / LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        return _update_state_with_lock(lock_fd, session_id, mutate, root)
-    finally:
-        os.close(lock_fd)
+    return _update_locked(session_id, mutate, root, _read_held_or_empty)
 
 
 def update_state_strict(
@@ -164,20 +191,7 @@ def update_state_strict(
     mutate: Callable[[dict], dict],
     root: str | os.PathLike[str] | None = None,
 ) -> dict:
-    directory = _session_directory(session_id, root)
-    directory.mkdir(parents=True, exist_ok=True)
-    lock_fd = os.open(directory / LOCK_FILENAME, os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        current = read_state_strict(session_id, root)
-        updated = mutate(current)
-        if not isinstance(updated, dict):
-            raise TypeError("update mutate must return a dict")
-        write_state(session_id, updated, root)
-        return updated
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)
+    return _update_locked(session_id, mutate, root, _read_held)
 
 
 def claim_explained(
