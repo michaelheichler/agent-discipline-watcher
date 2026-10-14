@@ -1,24 +1,61 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import pre_bash
 
 
-def verdict(command: str) -> dict:
-    return pre_bash.run({"tool_input": {"command": command}})
+def verdict(command: str, cwd: Path | None = None) -> dict:
+    payload = {"tool_input": {"command": command}}
+    return pre_bash.run({**payload, "cwd": str(cwd)} if cwd else payload)
+
+
+def _project(tmp_path: Path) -> Path:
+    project = tmp_path / "project"
+    (tmp_path / "hooks").mkdir()
+    project.mkdir()
+    for path in (project / "package.json", project / "a.json", tmp_path / "hooks" / "package.json"):
+        path.write_text("{}", encoding="utf-8")
+    (project / "evil.js").write_text("module.exports = 1\n", encoding="utf-8")
+    return project
 
 
 @pytest.mark.parametrize("command", [
     """node -p "require('./package.json').version\"""",
     """node -p "require('../hooks/package.json')['name']\"""",
-    """node -e "console.log(require('/abs/path/tsconfig.json').compilerOptions.paths)\"""",
+    """node -e "console.log(require('{project}/a.json').compilerOptions.paths)\"""",
     """node -e "console.log(JSON.stringify(require('./package.json').scripts, null, 2));\"""",
     """node -p "Object.keys(require('./package.json').dependencies)\"""",
     """nodejs -p "require('./a.json')[0]\"""",
 ])
-def test_a_json_require_read_passes(command: str) -> None:
-    assert verdict(command) == {}
+def test_a_json_require_of_a_real_json_file_passes(tmp_path: Path, command: str) -> None:
+    project = _project(tmp_path)
+
+    assert verdict(command.format(project=project), project) == {}
+
+
+@pytest.mark.parametrize(("setup", "command"), [
+    ("symlink", """node -p "require('./linked.json')\""""),
+    ("symlink", """node -p "require('{project}/linked.json').version\""""),
+    ("missing", """node -p "require('./missing.json')\""""),
+    ("directory", """node -p "require('./folder.json')\""""),
+    ("symlink", """ln -sf evil.js package.json && node -p "require('./package.json')\""""),
+    ("none", """cd .. && node -p "require('./hooks/package.json').version\""""),
+])
+def test_a_json_require_that_can_load_code_blocks(tmp_path: Path, setup: str, command: str) -> None:
+    project = _project(tmp_path)
+    if setup == "symlink":
+        (project / "linked.json").symlink_to(project / "evil.js")
+    if setup == "directory":
+        (project / "folder.json").mkdir()
+        (project / "folder.json" / "index.js").write_text("module.exports = 1\n", encoding="utf-8")
+
+    result = verdict(command.format(project=project), project)
+
+    assert result.get("decision") == "block"
+    assert "inline_interpreter_write" in result["reason"]
 
 
 @pytest.mark.parametrize("command", [
