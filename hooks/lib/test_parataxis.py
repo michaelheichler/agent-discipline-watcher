@@ -59,12 +59,6 @@ def test_an_article_before_an_adjective_and_a_noun_is_no_pronoun(opening: str) -
     assert not opens_with_back_reference(f"{opening} lief jeden Tag.", GERMAN)
 
 
-def test_three_noun_phrases_after_articles_need_a_fourth_clause() -> None:
-    text = "Das alte System lief langsam. Das neue System lief schnell. Das zweite System lief gar nicht."
-
-    assert _rules(text) & PARATAXIS_RULES == set()
-
-
 @pytest.mark.parametrize("sentence", ["Das misst den Druck.", "Die werden morgen geprüft.", "Das sehe ich anders."])
 def test_an_article_before_a_verb_still_points_back(sentence: str) -> None:
     assert opens_with_back_reference(sentence, GERMAN)
@@ -90,6 +84,31 @@ def _split(text: str, lexicon) -> list[str]:
 ])
 def test_an_abbreviation_or_a_number_splits_only_where_the_sentence_ends(text: str, lexicon, expected: int) -> None:
     assert len(_split(text, lexicon)) == expected
+
+
+def test_a_version_number_inside_a_sentence_keeps_it_in_the_run() -> None:
+    text = "Version 2.4 adds a CSV export. It was the top request. Admins can schedule it weekly."
+
+    assert _rules(text) & PARATAXIS_RULES == {"choppy_sentences"}
+
+
+@pytest.mark.parametrize("text", [
+    pytest.param("The cron entry fires at 02:30. Clocks moved back one hour. Cron saw 02:30 twice.", id="clock-time"),
+    pytest.param("The build failed. `pip` stopped on a conflict. The lock file pins an old version.", id="code-opener"),
+    pytest.param("The drawer opens. It sets a flag after the transition. The test waits for it.", id="after-phrase"),
+])
+def test_a_time_a_code_opener_or_a_plain_phrase_keeps_the_run(text: str) -> None:
+    assert _rules(text) & PARATAXIS_RULES == {"choppy_sentences"}
+
+
+def test_a_sentence_that_opens_on_inline_code_starts_a_new_sentence() -> None:
+    assert len(_split("Die Installation scheitert. `requests` verlangt eine neue Version.", GERMAN)) == 2
+
+
+def test_two_sequence_openers_do_not_break_a_run() -> None:
+    text = "The deploy has three phases. First green passes its checks. Then traffic moves to green. Blue drains its open requests."
+
+    assert _rules(text) & PARATAXIS_RULES == {"choppy_sentences"}
 
 
 def test_an_abbreviation_closing_a_sentence_keeps_the_run_whole() -> None:
@@ -144,7 +163,7 @@ def test_a_code_comment_is_never_held_to_the_prose_rule() -> None:
 
 
 @pytest.mark.parametrize("rule", sorted(PARATAXIS_RULES))
-def test_each_rule_stays_silent_by_default_because_its_precision_is_under_the_bar(rule: str) -> None:
+def test_the_static_hit_never_blocks_because_only_the_reviewer_may(rule: str) -> None:
     assert resolve_outcome({"rule": rule, "family": "english"}) is Outcome.RELEASE
 
 

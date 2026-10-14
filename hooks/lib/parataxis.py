@@ -28,8 +28,8 @@ MAX_INITIAL_LETTERS = 2
 ADJECTIVE_ENDINGS = ("e", "en", "em", "er", "es")
 # Code points, because the source may not hold these dashes and quotes.
 QUOTE_AND_DASH = "".join(chr(code) for code in (0x201E, 0x201C, 0x201D, 0x201A, 0xAB, 0xBB, 0x2013, 0x2014, 0x2026))
-# Because these marks already join clauses, quote speech, or open an aside.
-JOINING_MARK_RE = re.compile(r"[,;:()\[\]\"/" + QUOTE_AND_DASH + r"]|\.\.|\.\w")
+# Because these marks join clauses, while 2.4 or 14:30 joins nothing.
+JOINING_MARK_RE = re.compile(r"[,;()\[\]\"/" + QUOTE_AND_DASH + r"]|\.\.|\.(?!\d)\w|(?<!\d):|:(?!\d)")
 # Because a dot inside inline code would split one sentence into two.
 CODE_LETTER = "c"
 INDENTED_BLOCK = 2
@@ -44,11 +44,13 @@ ACTION = (
 
 
 class Thresholds(NamedTuple):
-    min_run: int = 4
+    """Three in any run, because the reviewer now decides and pattern 51 runs of four missed half the chops."""
+
+    min_run: int = 3
     linked_min_run: int = 3
     min_words: int = 3
     max_words: int = 12
-    max_fronted: int = 1
+    max_fronted: int = 2
 
 
 class Sentence(NamedTuple):
@@ -86,10 +88,10 @@ def _opens_fronted(sentence: str, lexicon: Lexicon) -> bool:
 
 
 def reads_as_prose(words: list[str], lexicon: Lexicon) -> bool:
-    """Demand lowercase words and no closing number, because titles, captions, and index lines have neither."""
+    """Demand lowercase words, because titles and captions have few, while a closing 14:30 is ordinary prose."""
     rest = words[1:]
     lowercase = sum(word[0].islower() for word in rest)
-    if lowercase < MIN_LOWERCASE_WORDS or words[-1][0].isdigit():
+    if lowercase < MIN_LOWERCASE_WORDS:
         return False
     return lowercase / len(rest) >= lexicon.min_lowercase_share
 
@@ -151,7 +153,12 @@ def _code_as_word(match: re.Match[str]) -> str:
     return CODE_LETTER * len(match.group(0))
 
 
+def _code_as_capital(match: re.Match[str]) -> str:
+    return CODE_LETTER.upper() * len(match.group(0))
+
+
 def paragraph_sentences(paragraph: Paragraph, lexicon: Lexicon) -> list[Sentence]:
+    """Split on a capital copy, because a sentence may open on inline code."""
     offsets, size = [], 0
     for number, line in paragraph:
         offsets.append((size, number))
@@ -159,7 +166,7 @@ def paragraph_sentences(paragraph: Paragraph, lexicon: Lexicon) -> list[Sentence
     original = " ".join(line for _number, line in paragraph)
     prose = INLINE_CODE_RE.sub(_code_as_word, original)
     found, start = [], 0
-    for boundary in SENTENCE_BREAK_RE.finditer(prose):
+    for boundary in SENTENCE_BREAK_RE.finditer(INLINE_CODE_RE.sub(_code_as_capital, original)):
         if ends_sentence(prose[start:boundary.start()], lexicon):
             found.append(Sentence(_source_line(offsets, start), prose[start:boundary.start()], original[start:boundary.start()]))
             start = boundary.end()

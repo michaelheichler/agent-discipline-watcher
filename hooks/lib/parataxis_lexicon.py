@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 ENGLISH_RULE = "choppy_sentences"
 GERMAN_RULE = "de_parataxis"
+RULES = frozenset({ENGLISH_RULE, GERMAN_RULE})
 
 
 class Lexicon(NamedTuple):
@@ -23,11 +24,12 @@ def _words(text: str) -> frozenset[str]:
     return frozenset(text.split())
 
 
+# Without after, as, once, or since, because each also opens a plain phrase.
 ENGLISH = Lexicon(
     ENGLISH_RULE,
     _words(
-        "because since although though while whereas when whenever where wherever if unless until till "
-        "after before once as so that which who whom whose whether and but or nor yet than without"
+        "because although though while whereas when whenever where wherever if unless that which who whom whose "
+        "whether and but or nor"
     ),
     None,
     _words("it this that these those they he she its their his her such"),
