@@ -10,6 +10,8 @@ import pytest
 import record
 from lib import claude_luna, claude_sonnet, config, journal, parataxis_review, pattern_semantic, session_state
 from lib.judge_contracts import ReviewKind, build_prompt
+from lib.omp_review_findings import validated_findings
+from lib.omp_review_requests import build_work
 from lib.pattern_semantic import Exemplar, Layer
 
 ENGLISH_CHAIN = "The hook reads the file. It checks every rule. It writes a report."
@@ -159,6 +161,22 @@ def test_a_skipped_run_reports_that_the_review_did_not_run(tmp_path: Path) -> No
 
     assert "decision" not in response
     assert "skipped a parataxis run" in response["systemMessage"]
+
+
+def test_an_omp_confirmed_run_asks_for_a_join_and_not_a_comment_rewrite(tmp_path: Path) -> None:
+    path = tmp_path / "notes.md"
+    path.write_text(ENGLISH_CHAIN + "\n", encoding="utf-8")
+    state_root = str(tmp_path / "state")
+    parataxis_review.record(parataxis_review.EditTurn(SESSION, "turn-1", {}, state_root), path)
+    work = build_work(path, path.read_text(encoding="utf-8"), {"session_id": SESSION, "state_root": state_root})
+    [run] = [item for item in work if item.request.rule_name == "choppy_sentences"]
+    verdict = json.dumps({"items": [{"index": 0, "verdict": "violating", "reason": "One thought in three fragments."}]})
+
+    message = " ".join(validated_findings(run, verdict).values())
+
+    assert "a relative clause" in message
+    assert "semicolons stay banned" in message
+    assert "Rewrite the comment" not in message
 
 
 def test_the_reviewer_reads_the_definition_and_both_example_sides(tmp_path: Path) -> None:

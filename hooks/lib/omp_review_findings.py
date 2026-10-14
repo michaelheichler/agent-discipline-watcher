@@ -19,7 +19,9 @@ def _candidate_findings(work: ReviewWork, payload: dict) -> list[str]:
     items = payload["items"]
     if sorted(row["index"] for row in items) != list(range(len(work.candidates))):
         raise ValueError("review must answer every candidate exactly once")
-    violating = "describes_code" if work.request.review_kind is ReviewKind.COMMENT else "violating"
+    comment = work.request.review_kind is ReviewKind.COMMENT
+    violating = "describes_code" if comment else "violating"
+    action = COMMENT_ACTION if comment else _text(work.request.rule_action)
     findings = []
     for row in items:
         if not row["reason"].strip():
@@ -28,7 +30,7 @@ def _candidate_findings(work: ReviewWork, payload: dict) -> list[str]:
             continue
         candidate = work.candidates[row["index"]]
         location = f"{_text(work.path)}:{candidate.line}"
-        findings.append(review_row(ReviewNote(location, _text(candidate.text), _text(row["reason"]), COMMENT_ACTION)))
+        findings.append(review_row(ReviewNote(location, _text(candidate.text), _text(row["reason"]), action)))
     return findings
 
 
