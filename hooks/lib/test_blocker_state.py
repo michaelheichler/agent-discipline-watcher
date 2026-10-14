@@ -50,6 +50,14 @@ def test_undecidable_hold_pends_the_key_and_touches_the_unscanned_path(tmp_path)
     )
 
 
+def test_undecidable_hold_without_paths_writes_no_pending_key(tmp_path) -> None:
+    payload = {
+        "session_id": "s1", "cwd": str(tmp_path), "tool_name": "Bash", "tool_input": {"command": "ls"},
+    }
+    blocker_state.hold_undecidable(payload, {"state_root": str(tmp_path)}, "<record-error>", "rerun")
+    assert blocker_state.details("s1", "", tmp_path)[:2] == ({}, [])
+
+
 def test_undecidable_hold_without_session_writes_nothing(tmp_path) -> None:
     blocker_state.hold_undecidable({"cwd": str(tmp_path)}, {"state_root": str(tmp_path)}, "<batch-error>", "rerun")
     assert not any(tmp_path.iterdir())

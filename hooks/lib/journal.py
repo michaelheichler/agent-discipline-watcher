@@ -7,8 +7,9 @@ from pathlib import Path
 import stat
 from typing import Any, NamedTuple
 
-from . import session_state
+from . import imported_baseline, session_state
 from .baseline import committed_text
+from .imported_baseline import Snapshot
 from .document_hunks import changed_hunks, hunk_chars
 from .narration_candidates import candidates
 from .scanner import PROSE_EXTS
@@ -426,21 +427,24 @@ def _prior_document(state: dict, target: str) -> dict[str, Any] | None:
     return prior
 
 
-def _turn_before(prior: dict[str, Any] | None, turn_id: str, target: Path) -> str | None:
+def _turn_before(prior: dict[str, Any] | None, turn_id: str, target: Path, first_seen: Snapshot | None, text: str) -> str | None:
     """Carried inside a turn, because the first write of the turn defines what the agent changed."""
     if prior is None or document_source_truncated(prior):
+        if first_seen is not None:
+            return text if first_seen.text is None else first_seen.text
         return committed_text(target)
     if prior.get("turn_id") == turn_id and "before_context" in prior:
         return prior["before_context"]
     return str(prior.get("source_context", ""))
 
 
-def _before_text(session_id: str, turn_id: str, target: Path, state_root: str | Path | None) -> str | None:
+def _before_text(session_id: str, turn_id: str, target: Path, state_root: str | Path | None, text: str) -> str | None:
     """Prose only, because code files never reach the document review."""
     if target.suffix.lower() not in PROSE_EXTS:
         return None
     prior = _prior_document(session_state.read_state(session_id, state_root), str(target))
-    return _turn_before(prior, turn_id, target)
+    first_seen = imported_baseline.lookup({"session_id": session_id, "state_root": state_root}, target)
+    return _turn_before(prior, turn_id, target, first_seen, text)
 
 
 def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Path, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
@@ -454,7 +458,7 @@ def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Pat
         session_state.update_state(session_id, lambda state: _drop_target(state, str(target)), state_root)
         return []
     digest, text = outcome.value
-    before = _before_text(session_id, turn_id, target, state_root)
+    before = _before_text(session_id, turn_id, target, state_root, text)
     fresh = _with_before(_candidate_rows(target, digest, text, turn_id, tool_use_id), before)
     added: list[dict[str, Any]] = []
     session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, added), state_root)

@@ -187,7 +187,7 @@ class EditJournalTests(unittest.TestCase):
             "tool_name": "Write",
             "tool_input": {"file_path": str(target)},
         }
-        with mock.patch.object(blocker_state, "touch_paths", side_effect=OSError("read only")):
+        with mock.patch.object(blocker_state, "apply_paths", side_effect=OSError("read only")):
             response = record.run(payload, self.cfg)
         self.assertEqual(response["decision"], "block")
         self.assertTrue(response["reason"].startswith(

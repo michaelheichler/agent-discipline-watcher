@@ -26,6 +26,10 @@ INHERITED_LEAD = (
     "agent-discipline-watcher: Diese Datei hatte schon {count} Befunde, "
     "die du nicht geschrieben hast. Behebe sie, solange du hier arbeitest."
 )
+IMPORTED_LEAD = (
+    "agent-discipline-watcher: kopierter Inhalt, nicht deiner. {count} Befunde in {files} "
+    "kopierten Dateien. Nichts blockiert. Behebe sie nur, wenn dir dieser Inhalt jetzt gehört."
+)
 FULL_REPORT = "Vollständiger Bericht"
 MORE_FINDINGS = "weitere Befunde"
 PRINCIPLE_LABEL = "Prinzip"

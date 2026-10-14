@@ -69,17 +69,29 @@ class BatchBlockTests(unittest.TestCase):
     def test_an_undecidable_batch_stays_pending_until_stop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = {"state_root": str(Path(tmp) / "state")}
-            payload = {"session_id": "s1", "agent_id": "a1", "cwd": tmp}
+            write = {"tool_use_id": "t1", "tool_name": "Write", "tool_input": {"file_path": "a.md"}}
+            payload = {"session_id": "s1", "agent_id": "a1", "cwd": tmp, "tool_calls": [write]}
             with mock.patch.object(batch, "_run", side_effect=RuntimeError("broken gate")):
                 response = batch.run(payload, config)
             self.assertEqual(response["decision"], "block")
-            reasons, _paths = blocker_state.snapshot("s1", "a1", config["state_root"])
+            reasons, paths = blocker_state.snapshot("s1", "a1", config["state_root"])
             expected = (
                 "agent-discipline-watcher could not evaluate this batch and blocked it rather than letting it "
                 f"through. Repair the gate config at {project_config_path(tmp)} and retry. Cause: broken gate"
             )
             self.assertEqual(reasons[0], expected)
+            self.assertEqual(paths, [str(Path(tmp) / "a.md")])
             self.assertEqual(response["reason"], expected)
+
+    def test_an_undecidable_batch_without_paths_blocks_once_and_holds_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = {"state_root": str(Path(tmp) / "state")}
+            read = {"tool_use_id": "t1", "tool_name": "Read", "tool_input": {"file_path": "a.md"}}
+            payload = {"session_id": "s1", "agent_id": "a1", "cwd": tmp, "tool_calls": [read]}
+            with mock.patch.object(batch, "_run", side_effect=RuntimeError("broken gate")):
+                response = batch.run(payload, config)
+            self.assertEqual(response["decision"], "block")
+            self.assertEqual(blocker_state.snapshot("s1", "a1", config["state_root"]), ([], []))
 
     def test_an_undecidable_batch_still_blocks_when_state_write_fails(self) -> None:
         payload = {"session_id": "s1"}

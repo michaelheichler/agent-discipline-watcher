@@ -60,9 +60,23 @@ The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. Th
 
 On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
 
-Temp files are not project output. The temp roots are `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, and `/var/folders`. For a file outside the project root, a temp root means no prose, comment, or code findings. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A `cp`, `mv`, `install`, `rsync`, or redirect from a temp file into the project gets the full scan of the destination.
+Temp files are not project output. The temp roots are `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, and `/var/folders`. For a file outside the project root, a temp root means no prose, comment, or code findings. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A redirect from a temp file into the project gets the full scan of the destination. A `cp`, `mv`, `install`, or `rsync` from temp gets it only when the agent wrote the temp source, see the next section.
 
 The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
+
+## Stop loops and imported content
+
+A gate blocks only on text the agent wrote. If the agent changed nothing, Stop does not repeat an identical block.
+
+1. **Copies.** A copy from temp lands the files its source holds, under the names the copy gives them. Files that were already in the destination are not part of it.
+2. **Authored or imported.** A copied file counts as the agent's own only when the agent wrote the temp source in this session, with Write, Edit, or a redirect. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row.
+3. **Baselines.** An unchanged imported file never blocks, including `file_too_long` and `unscannable_file`. After an edit, only findings the snapshot did not have block. Before the first edit of an untracked or non-git file, ADW takes the same kind of snapshot. Git HEAD stays the baseline for tracked files.
+4. **Long and large files.** Data files (`.json`, `.jsonl`, `.csv`, `.tsv`, `.lock`, `.map`, `.svg`, `.xml`, `.sql`, `*.min.*`) and lockfiles such as `uv.lock` and `pnpm-lock.yaml` give no `file_too_long`. Over the byte limit they give no `unscannable_file` while they are valid UTF-8. A file with a baseline blocks on `file_too_long` only when the edit made it longer. A generated marker such as `DO NOT EDIT` relieves growth only when the baseline had the marker too.
+5. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. The same fingerprint blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. Stop then stays silent until a file or a finding changes.
+6. **Budget.** The Stop rescan stops after 7 seconds and blocks with the number of files it did not scan. A scope tracks at most 500 files. Older files leave the rescan with one notice.
+7. **Damaged state.** Every state write also writes `state.json.bak`. If `state.json` cannot be read, ADW moves it aside, restores the backup, and says so once. Without a backup, Stop still blocks.
+
+A temp file that a subprocess wrote, without a redirect the hook can see, counts as imported. Its copy gets the notice, not a block.
 
 ## Comment policy
 

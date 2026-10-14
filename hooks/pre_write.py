@@ -5,8 +5,8 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from lib import tests_policy
-from lib.baseline import changed_lines, partition, split_committed
+from lib import imported_baseline, payloads, tests_policy
+from lib.baseline import changed_lines, committed_text, partition, split_committed
 from lib.config import payload_hook_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
@@ -135,10 +135,20 @@ def _record(payload: dict, cfg: dict, turn_id: str, findings: list[dict], starte
     )
 
 
+def _note_first_seen(payload: dict, cwd: Path, cfg: dict) -> None:
+    paths = [_resolved_path(raw, cwd) for raw in payloads.edited_paths(payload)]
+    project = [str(path) for path in paths if not outside_project_temp(path, cwd)]
+    imported_baseline.note_first_seen(
+        payloads.session_id(payload), project, cfg.get("state_root"),
+        lambda path: committed_text(path) is not None,
+    )
+
+
 def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     started = time.monotonic()
     decoded = _decode(_tool_input(payload))
     cwd = Path(payload.get("cwd") or ".")
+    _note_first_seen(payload, cwd, cfg)
     findings, inherited = _pending_findings(decoded, cwd, cfg)
     gate = tests_policy.Gate(payload, cfg, time.time())
     findings = _unique_findings(findings + tests_policy.findings(gate, _test_changes(decoded, cwd)))
@@ -275,7 +285,7 @@ def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[
         if not whole_file:
             owned_rows.extend(_label_pending_text(scanned))
             continue
-        owned, inherited = split_committed(resolved_path, scanned, cfg)
+        owned, inherited = split_committed(resolved_path, scanned, cfg, text)
         owned_rows.extend(owned)
         inherited_rows.extend(inherited)
     return owned_rows, inherited_rows

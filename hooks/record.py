@@ -10,14 +10,15 @@ from pathlib import Path
 from typing import cast
 
 from failure import normalize_payload, record_success
-from lib import blocker_state, journal, payloads, scan_input
+from lib import blocker_state, imported_baseline, journal, payloads, scan_input, temp_copies
 from lib.mcp_health import config_roots
 from lib.config import effective_config
 from lib.embedding_session import lease_root_for, renew_turn
 from lib.findings import Finding, VerdictKind
 from lib.hookio import advise, claude_feedback_response, config_failure, read_payload, write_payload
 from lib.payloads import RecordPayload, exact_string_dict, record_payload
-from lib.baseline import split_committed
+from lib.baseline import split_committed, split_fallback
+from lib.import_advice import imported_advice
 from lib.reporting import (
     append_row,
     inherited_advice,
@@ -30,6 +31,7 @@ from lib.scanner import scan_all
 from lib.temp_scope import outside_project_temp
 
 UNDECIDABLE_KEY = blocker_state.RECORD_ERROR_KEY
+MAX_IMPORTED_SCANS = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,7 @@ class _RecordGateContext:
     journal: _EditJournal
     tracked_paths: list[str]
     scan_paths: list[str]
+    imported_paths: list[str]
     cwd: Path
     config: dict
     blocker_scope: blocker_state.BlockerScope
@@ -90,10 +93,18 @@ def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
 
 def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:
     template = _edit_row_template(edits, turn_id)
+    session_id = edits.payload["session_id"]
+    cwd = edits.payload["cwd"] or None
+    scratch = []
     for path in edits.paths:
         append_row({**template, "path": path}, edits.root)
-        if edits.payload["session_id"] and not outside_project_temp(path, edits.payload["cwd"] or None):
+        if not session_id:
+            continue
+        if outside_project_temp(path, cwd):
+            scratch.append(path)
+        else:
             _journal_candidate(edits, path, turn_id)
+    temp_copies.note_authored_temp(session_id, scratch, cwd, edits.state_root)
 
 
 def _stamped(findings: list[dict], path: Path, content_hash: str | None = None) -> list[dict]:
@@ -128,6 +139,8 @@ def _held_fallback(descriptor: int, path: Path) -> list[dict]:
     try:
         os.lseek(descriptor, 0, os.SEEK_SET)
         with os.fdopen(os.dup(descriptor), "rb") as stream:
+            if scan_input.is_data_text(path, stream):
+                return []
             result = scan_input._count_open_file_lines(stream)
     except (OSError, ValueError):
         result = None
@@ -153,9 +166,9 @@ def _scan_descriptor(descriptor: int, path: Path, cfg: dict) -> tuple[list[dict]
     if scan_input.is_binary_content(path, raw):
         return [], []
     if len(raw) > limit or b"\0" in raw[:8192]:
-        return _held_fallback(descriptor, path), []
+        return split_fallback(path, _held_fallback(descriptor, path), cfg)
     text = raw.decode("utf-8", errors="replace")
-    return split_committed(path, scan_all(str(path), text, cfg), cfg)
+    return split_committed(path, scan_all(str(path), text, cfg), cfg, text)
 
 def _scan_open_file(
     path: Path, identity: tuple[int, int], cfg: dict
@@ -227,11 +240,11 @@ def _note_success(projected: RecordPayload, trusted_config: dict) -> None:
 
 
 def _response(
-    verdict: _RecordVerdict, inherited: list[dict], cfg: dict
+    verdict: _RecordVerdict, inherited: list[dict], cfg: dict, imported: str = ""
 ) -> dict:
     """Report findings without rewriting the file because PostToolUse cannot safely roll back a completed edit."""
     notice = inherited_advice(inherited, cfg)
-    content = "\n".join(part for part in (verdict.reason, notice) if part)
+    content = "\n".join(part for part in (verdict.reason, notice, imported) if part)
     if verdict.kind == "block":
         return {"decision": "block", "reason": content}
     return advise(content, "PostToolUse") if content else {}
@@ -243,12 +256,20 @@ def _clear_blocker_state(
     verdict: _RecordVerdict,
 ) -> None:
     """Leaves UNDECIDABLE_KEY untouched, because an unrelated edit succeeding is not evidence the earlier unscanned write was safe, and only Stop-time reconciliation of that specific failure may release it."""
-    blocker_state.touch_paths(scope, tracked_paths)
-    for path in tracked_paths:
-        if verdict.kind == VerdictKind.BLOCK:
-            blocker_state.set_pending(scope, path, verdict.reason)
-        else:
-            blocker_state.clear_pending(scope, path)
+    reason = verdict.reason if verdict.kind == VerdictKind.BLOCK else None
+    blocker_state.apply_paths(scope, tracked_paths, {path: reason for path in tracked_paths})
+
+
+def _imported_notice(context: _RecordGateContext, report_cfg: dict) -> str:
+    """Snapshot first, so the copy becomes its own baseline and never blocks while unchanged."""
+    if not context.imported_paths:
+        return ""
+    session_id = context.journal.payload["session_id"]
+    fresh = context.imported_paths
+    if session_id:
+        fresh = imported_baseline.snapshot_many(session_id, context.imported_paths, context.journal.state_root)
+    owned, inherited = _scan_paths(fresh[:MAX_IMPORTED_SCANS], context.cwd, context.config)
+    return imported_advice(owned + inherited, report_cfg)
 
 
 def _ledger_decisions(context: _RecordGateContext, owned: list[dict], turn_id: str, started: float) -> list:
@@ -273,9 +294,11 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
         report_cfg = {**context.config, "session_id": projected["session_id"], "turn_id": turn_id}
         kind, reason = verdict_message(decisions, report_cfg)
         verdict = _RecordVerdict(VerdictKind(kind), reason)
-        response = _response(verdict, inherited, report_cfg)
+        response = _response(verdict, inherited, report_cfg, _imported_notice(context, report_cfg))
         if projected["session_id"]:
             _clear_blocker_state(context.blocker_scope, context.tracked_paths, verdict)
+            project = [path for path in context.tracked_paths if not outside_project_temp(path, context.cwd)]
+            imported_baseline.note_written(projected["session_id"], project, context.journal.state_root)
         return response
 
     return gate
@@ -324,12 +347,15 @@ def _gate_context_for(
     if not projected["cwd"]:
         raise ValueError("PostToolUse payload requires a trusted cwd")
     cwd = Path(projected["cwd"])
-    paths = list(payloads.edited_paths(payload))
+    authored = temp_copies.authored_temp(projected["session_id"], state_root)
+    written, imported = payloads.split_edited_paths(payload, authored)
+    paths = list(written)
     removed = _missing_removed_paths(payload, cwd)
     return _RecordGateContext(
         journal=_EditJournal(projected, paths, ledger_root, state_root),
         tracked_paths=[str(payloads.resolved_path(raw, cwd)) for raw in paths],
         scan_paths=[raw for raw in paths if raw not in removed],
+        imported_paths=list(imported),
         cwd=cwd,
         config=cfg,
         blocker_scope=blocker_state.BlockerScope(

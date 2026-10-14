@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from . import catalog_de, families, session_state
+    from . import catalog_de, families, heartbeat_marks, session_state
     from .config import MAX_LISTED_ROWS
     from .findings import Finding, Outcome
     from .finding_output import (
@@ -24,6 +24,7 @@ try:
 except ImportError:
     import catalog_de
     import families
+    import heartbeat_marks
     import session_state
     from config import MAX_LISTED_ROWS
     from findings import Finding, Outcome
@@ -38,6 +39,7 @@ LEDGER_LOCK_FILENAME = ".ledger.lock"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
 REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
+MAX_REPORT_FINDINGS = 200
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
 MAX_CURRENT_LEDGER_BYTES = 256 * 1024
@@ -108,8 +110,11 @@ def write_full_report(findings: list[dict], config: dict | None = None) -> str:
     path = directory / f"{session_id}-{turn_id}-{uuid.uuid4().hex}.json"
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.fchmod(descriptor, 0o600)
+    kept = findings[:MAX_REPORT_FINDINGS]
+    if len(findings) > MAX_REPORT_FINDINGS:
+        kept = [*kept, {"omitted": len(findings) - MAX_REPORT_FINDINGS}]
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        json.dump(findings, handle, ensure_ascii=True, indent=2)
+        json.dump(kept, handle, ensure_ascii=True, indent=2)
     _prune_reports(directory, MAX_REPORT_FILES)
     return str(path)
 
@@ -129,11 +134,12 @@ def compact_block(
     config: dict | None = None,
     lead: str | Lead = BLOCK_LEADS,
     explainer: Explainer | None = None,
+    report_path: str | None = None,
 ) -> tuple[str, str]:
     """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
     max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
     unique = [localized(finding) for finding in _deduplicated(findings, config)]
-    report = write_full_report(unique, config)
+    report = report_path or write_full_report(unique, config)
     listed = unique[:max(max_rows, 1)]
     german = all_german(unique)
     tail = block_tail(len(unique) - len(listed), _clip(report, MAX_COMPACT_FIELD_BYTES), german)
@@ -364,14 +370,10 @@ def run_with_ledger(*values: object, **fields: object) -> dict:
     try:
         return gate(turn_id)
     finally:
-        if session_id:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if session_id and heartbeat_marks.worth_a_row(session_id, invocation.hook, turn_id, invocation.state_root, duration_ms):
             record_heartbeat(
-                HeartbeatRecord(
-                    session_id,
-                    invocation.hook,
-                    turn_id,
-                    int((time.monotonic() - started) * 1000),
-                ),
+                HeartbeatRecord(session_id, invocation.hook, turn_id, duration_ms),
                 root=invocation.ledger_root,
             )
 

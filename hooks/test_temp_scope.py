@@ -44,6 +44,14 @@ def _bash_record(tmp_path: Path, project: Path, command: str) -> dict:
     return record.run(payload, _config(tmp_path))
 
 
+def _authored(tmp_path: Path, source: Path, content: str) -> None:
+    source.write_text(content, encoding="utf-8")
+    record.run({
+        "cwd": str(tmp_path / "project"), "session_id": "s1", "tool_name": "Write",
+        "tool_use_id": "t0", "tool_input": {"file_path": str(source)},
+    }, _config(tmp_path))
+
+
 @pytest.mark.parametrize(("name", "content"), [("dump.py", DEFERRED), ("dump.md", DASHED)])
 def test_a_temp_write_outside_the_project_gets_no_findings(tmp_path: Path, name: str, content: str) -> None:
     assert _write(tmp_path, tmp_path / name, content) == {}
@@ -93,7 +101,7 @@ def test_a_temp_edit_writes_no_candidate_row(tmp_path: Path) -> None:
 def test_a_copy_from_temp_into_the_project_scans_the_destination(tmp_path: Path, verb: str) -> None:
     project = _project(tmp_path)
     source = tmp_path / "dump.py"
-    source.write_text(DEFERRED, encoding="utf-8")
+    _authored(tmp_path, source, DEFERRED)
     shutil.copy(source, project / "docs" / "dump.py")
 
     response = _bash_record(tmp_path, project, f"{verb} {source} docs/dump.py")
@@ -117,7 +125,7 @@ def test_a_redirect_from_temp_into_the_project_scans_the_destination(tmp_path: P
 def test_a_copy_from_temp_into_a_project_directory_scans_the_landed_file(tmp_path: Path) -> None:
     project = _project(tmp_path)
     source = tmp_path / "dump.py"
-    source.write_text(DEFERRED, encoding="utf-8")
+    _authored(tmp_path, source, DEFERRED)
     shutil.copy(source, project / "docs" / "dump.py")
 
     response = _bash_record(tmp_path, project, f"cp {source} docs/")

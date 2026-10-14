@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from lib import embedding_client, embedding_server, embedding_session, reporting
+from lib import embedding_client, embedding_server, embedding_session, reporting, session_state
 
 
 def _disable_git_background_tasks() -> None:
@@ -28,6 +28,13 @@ def _disable_git_background_tasks() -> None:
 def _quiet_git_subprocesses() -> None:
     """Session-scoped because the original call ran once at import time, so a per-test fixture would change nothing it is not meant to."""
     _disable_git_background_tasks()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_default_state(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
+    """Redirected, because a hook run without a state root would otherwise store test files under the real home."""
+    root = tmp_path_factory.mktemp("default-state")
+    monkeypatch.setattr(session_state, "_default_root", lambda: root)
 
 
 @pytest.fixture(autouse=True)

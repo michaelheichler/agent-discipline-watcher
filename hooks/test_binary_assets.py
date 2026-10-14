@@ -7,7 +7,7 @@ import pytest
 import pre_commit
 import pre_tool
 import record
-from lib import end_turn, scan_input, scanner
+from lib import scan_input, scanner, stop_scan
 from lib.write_shape import shaped_write_findings
 from testing import make_repo, run_git
 
@@ -89,9 +89,9 @@ def test_post_tool_and_stop_skip_binary_assets(
     }
 
     assert record.run(payload, config) == {}
-    findings, existing = end_turn._blocking_rows([target.name], tmp_path, config)
-    assert findings == []
-    assert existing == [str(target)]
+    scanned = stop_scan.rescan([target.name], tmp_path, config, stop_scan.deadline())
+    assert scanned.findings == []
+    assert scanned.existing == [str(target)]
 
 
 def test_direct_scan_and_length_fallback_skip_binary_assets() -> None:

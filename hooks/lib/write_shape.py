@@ -5,7 +5,7 @@ from pathlib import Path
 
 from lib.baseline import split_committed
 from lib.findings import Finding
-from lib.scan_input import file_length_policy, file_line_count, scannable_text
+from lib.scan_input import file_length_policy, file_line_count, is_data_file, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
 from lib.temp_scope import command_target, leading_directory, scratch_target
@@ -63,7 +63,7 @@ class ShapedWrite:
 def _overwrite_shape_findings(shape: ShapedWrite) -> tuple[list[dict], list[dict]]:
     findings = _stamped_findings(shape.write.path, shape.body, shape.config)
     return split_committed(
-        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}
+        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}, shape.body
     )
 
 
@@ -103,7 +103,7 @@ def _append_length_row(finding: Finding) -> dict:
 
 
 def _append_length_finding(path: str, body: str, before: FileLength, after: FileLength) -> dict | None:
-    if not _code_file(path, body):
+    if not _code_file(path, body) or is_data_file(path):
         return None
     policy = file_length_policy(after.count)
     if policy is None or (policy[0] != "file_too_long" and policy == file_length_policy(before.count)):

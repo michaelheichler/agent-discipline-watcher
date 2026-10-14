@@ -12,6 +12,9 @@ KEY = "unresolved_blockers"
 REPORT_LINE_RE = re.compile(r"\nFull report: .*?(?=\n|$)")
 RECORD_ERROR_KEY = "<record-error>"
 BATCH_ERROR_KEY = "<batch-error>"
+STALL_KEY = "stall"
+DROPPED_KEY = "dropped_paths"
+MAX_SCOPE_PATHS = 500
 # Clean Stop rescan frees it, since it rereads the lost write.
 RESCAN_RELEASED_KEYS = frozenset({RECORD_ERROR_KEY})
 
@@ -127,20 +130,82 @@ def touch_paths(scope: BlockerScope | str, *values: object) -> None:
     paths = values[0]
 
     def mutate(bucket: dict) -> dict:
-        _pending, existing, _revision = _normalized_bucket(bucket)
-        existing.extend(path for path in paths if path and path not in existing)
-        return {**bucket, "paths": existing}
+        current, existing, _revision = _normalized_bucket(bucket)
+        return _capped(bucket, current, _joined(existing, paths))
 
     _update(scope, mutate)
 
 
+def _joined(existing: list[str], paths: list[str]) -> list[str]:
+    known = set(existing)
+    added = [path for path in dict.fromkeys(paths) if path and path not in known]
+    return existing + added
+
+
+def _capped(bucket: dict, pending: dict[str, str], paths: list[str]) -> dict:
+    """Oldest paths leave first and are counted, because an unbounded scope made every Stop rescan thousands of files."""
+    dropped = paths[:-MAX_SCOPE_PATHS] if len(paths) > MAX_SCOPE_PATHS else []
+    if not dropped:
+        return {**bucket, "pending": pending, "paths": paths}
+    gone = set(dropped)
+    kept_pending = {key: value for key, value in pending.items() if key not in gone}
+    count = bucket.get(DROPPED_KEY)
+    total = (count if isinstance(count, int) and not isinstance(count, bool) else 0) + len(dropped)
+    return {**bucket, "pending": kept_pending, "paths": paths[-MAX_SCOPE_PATHS:], DROPPED_KEY: total}
+
+
+def apply_paths(scope: BlockerScope, paths: list[str], pending: dict[str, str | None]) -> None:
+    """One state write for the whole call, because a copied tree used to cost one locked rewrite per file."""
+
+    def mutate(bucket: dict) -> dict:
+        current, existing, _revision = _normalized_bucket(bucket)
+        for key, reason in pending.items():
+            if reason is None:
+                current.pop(key or "<turn>", None)
+            else:
+                current[key or "<turn>"] = REPORT_LINE_RE.sub("", reason)
+        return _capped(bucket, current, _joined(existing, paths))
+
+    _update(scope, mutate)
+
+
+def take_dropped(scope: BlockerScope) -> int:
+    """Read first and written only when set, so a Stop with nothing dropped costs no state write."""
+    stored = _bucket(session_state.read_state_strict(scope.session_id, scope.root), scope.agent_id).get(DROPPED_KEY)
+    if not isinstance(stored, int) or isinstance(stored, bool) or stored <= 0:
+        return 0
+    claimed: list[int] = []
+
+    def mutate(bucket: dict) -> dict:
+        value = bucket.get(DROPPED_KEY)
+        if isinstance(value, int) and not isinstance(value, bool):
+            claimed.append(value)
+        return {key: item for key, item in bucket.items() if key != DROPPED_KEY}
+
+    _update(scope, mutate)
+    return claimed[0] if claimed else 0
+
+
+def stall(scope: BlockerScope) -> dict:
+    """Read apart from details, because only Stop needs to know what it blocked on last time."""
+    stored = _bucket(session_state.read_state_strict(scope.session_id, scope.root), scope.agent_id).get(STALL_KEY)
+    return dict(stored) if isinstance(stored, dict) else {}
+
+
+def note_stall(scope: BlockerScope, record: dict) -> None:
+    _update(scope, lambda bucket: {**bucket, STALL_KEY: record})
+
+
 def _unscanned_paths(payload: dict) -> list[str]:
     cwd = Path(payloads.cwd(payload) or ".")
-    return [str(payloads.resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]
+    writes = (call for call in payloads.tool_calls(payload) if payloads.tool_name(call).lower() in payloads.WRITE_TOOL_NAMES)
+    calls = [payload, *({**call, "cwd": payloads.cwd(payload)} for call in writes)]
+    raw_paths = [raw for call in calls for raw in payloads.edited_paths(call)]
+    return list(dict.fromkeys(str(payloads.resolved_path(raw, cwd)) for raw in raw_paths))
 
 
 def hold_undecidable(payload: object, config: object, key: str, reason: str) -> None:
-    """Held because a failed gate left the write unscanned."""
+    """Held only with paths, because a failed gate that left nothing unscanned has nothing Stop could ever recheck."""
     fields = payloads.exact_string_dict(payload)
     session_id = payloads.session_id(fields)
     if not session_id:
@@ -148,8 +213,10 @@ def hold_undecidable(payload: object, config: object, key: str, reason: str) -> 
     root = payloads.exact_string_dict(config).get("state_root")
     target = BlockerScope(session_id, scope(fields), root if isinstance(root, str) else None)
     try:
-        set_pending(target, key, reason)
-        touch_paths(target, _unscanned_paths(fields))
+        paths = _unscanned_paths(fields)
+        if paths:
+            set_pending(target, key, reason)
+            touch_paths(target, paths)
     except Exception as state_exc:
         sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
 

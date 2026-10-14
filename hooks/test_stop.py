@@ -155,7 +155,7 @@ def test_stop_blocks_malformed_payload(tmp_path: Path) -> None:
     assert response["decision"] == "block"
 
 
-def test_stop_blocks_corrupt_state_without_replacing_it(tmp_path: Path) -> None:
+def test_stop_blocks_corrupt_state_without_replacing_it_when_no_backup_exists(tmp_path: Path) -> None:
     config = _config(tmp_path)
     state_file = Path(config["state_root"]) / "s1" / "state.json"
     state_file.parent.mkdir(parents=True)
@@ -163,6 +163,32 @@ def test_stop_blocks_corrupt_state_without_replacing_it(tmp_path: Path) -> None:
     response = stop.run(_payload(), config)
     assert response["decision"] == "block"
     assert state_file.read_text(encoding="utf-8") == "not-json"
+
+
+def test_stop_restores_corrupt_state_from_the_last_good_write(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    blocker_state.set_pending("s1", "", "<batch-error>", "Repair batch evaluation", config["state_root"])
+    state_file = Path(config["state_root"]) / "s1" / "state.json"
+    state_file.write_text("not-json", encoding="utf-8")
+
+    response = stop.run(_payload(), config)
+
+    assert response["reason"] == "Repair batch evaluation"
+    assert "unreadable" in response["systemMessage"]
+    assert [path.read_text(encoding="utf-8") for path in state_file.parent.glob("state.json.corrupt-*")] == ["not-json"]
+
+
+def test_the_recovery_notice_is_sent_once(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    session_state.update_state("s1", lambda state: {**state, "kept": True}, config["state_root"])
+    (Path(config["state_root"]) / "s1" / "state.json").write_text("{", encoding="utf-8")
+
+    first = stop.run(_payload(), config)
+    second = stop.run(_payload(), config)
+
+    assert "unreadable" in first["systemMessage"]
+    assert second == {}
+    assert session_state.read_state("s1", config["state_root"])["kept"] is True
 
 
 def test_stop_releases_the_embedding_lease_without_terminating_the_worker(tmp_path: Path, monkeypatch) -> None:

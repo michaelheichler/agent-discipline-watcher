@@ -273,5 +273,33 @@ class SessionStateTests(unittest.TestCase):
         self.assertTrue(stale_dir.exists())
 
 
+class StateRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        session_state.write_state("s1", {"kept": True}, self.root)
+        (self.root / "s1" / session_state.STATE_FILENAME).write_text("{", encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_strict_read_restores_the_last_good_write(self):
+        self.assertTrue(session_state.read_state_strict("s1", self.root)["kept"])
+
+    def test_two_hooks_that_both_saw_the_notice_show_it_once(self):
+        session_state.read_state_strict("s1", self.root)
+        stale = session_state.read_state("s1", self.root)
+        real = session_state.read_state
+        calls: list[int] = []
+
+        def first_read_is_stale(session_id, root=None):
+            calls.append(1)
+            return stale if len(calls) % 2 else real(session_id, root)
+
+        with mock.patch.object(session_state, "read_state", side_effect=first_read_is_stale):
+            taken = [session_state.take_recovery_notice("s1", self.root) for _ in range(2)]
+        self.assertEqual([bool(notice) for notice in taken], [True, False])
+
+
 if __name__ == "__main__":
     unittest.main()
