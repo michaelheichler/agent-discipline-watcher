@@ -11,6 +11,7 @@ from lib.shell_parse import (
     _is_file_target, _literal_contents, _logical_lines, _payload_command_index, _pipeline_groups, _segment_text,
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
+from lib.inplace_targets import inplace_edit, scratch_inplace_edit
 from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import python_rejection
@@ -414,8 +415,16 @@ def _has_inplace_flag(segment: list[str]) -> bool:
     return False
 
 
-def inplace_edit_findings(command: str, make_finding: FindingFactory) -> list[dict]:
-    return [make_finding("inplace_edit_write") for segment in _segments(command) if _has_inplace_flag(segment)]
+def inplace_edit_findings(command: str, make_finding: FindingFactory, *, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
+    return [
+        make_finding("inplace_edit_write") for segment in _segments(command)
+        if _has_inplace_flag(segment) and not scratch_inplace_edit(segment, command, cwd)
+    ]
+
+
+def inplace_edit_paths(command: str) -> list[str]:
+    edits = (inplace_edit(segment) for line, _, _ in _logical_lines(command) for segment in _segments(line) if _has_inplace_flag(segment))
+    return [target for edit in edits if edit is not None for target in edit.targets]
 
 
 def _dd_file_output(segment: list[str]) -> bool:

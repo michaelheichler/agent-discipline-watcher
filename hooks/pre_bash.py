@@ -1,4 +1,4 @@
-"""Bash command policy: block shell routes around the discipline gates before the command runs."""
+"""Because a shell route can step around the discipline gates, the Bash policy blocks it before the command runs."""
 from __future__ import annotations
 
 import operator
@@ -16,7 +16,7 @@ from lib.hookio import (
 )
 from lib.opaque_write import (
     MUTATING_VERB_RE, SHELL_C_INTERPRETERS, _bare_interpreter_name, decode_pipe_findings, dynamic_heredoc_findings,
-    inline_interpreter_findings, inplace_edit_findings, interpreter_stdin_findings, opaque_source_findings,
+    inline_interpreter_findings, inplace_edit_findings, inplace_edit_paths, interpreter_stdin_findings, opaque_source_findings,
 )
 from lib.policy_cli_guard import mutates_policy
 from lib.protected import POLICY_ACTION, authorized, is_install_surface_path, path_findings
@@ -24,8 +24,10 @@ from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.shell_parse import (
     _basename, _command_word_index, _is_quoted,
     _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths,
-    _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_paths, write_targets,
+    _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_targets,
 )
+from lib.shell_parse import write_paths as shell_write_paths
+from lib.temp_scope import command_target, leading_directory, scratch_target
 from lib.write_targets import mutation_targets
 from lib.write_shape import shaped_write_findings
 from lib.update_policy import _segment_contexts, untrusted_update
@@ -152,7 +154,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
         _record(payload, cfg, turn_id, findings, started)
         return deny(reason)
     scan_targets = _scan_targets(command)
-    size = _largest_oversize(scan_targets)
+    size = _largest_oversize(scan_targets, cwd)
     if size is not None:
         return deny(OVERSIZE_WRITE.format(size=size, cap=BASH_WRITE_CAP))
     owned, inherited = _write_shape_totals(scan_targets, cfg, Path(cwd))
@@ -276,7 +278,7 @@ def _opaque_findings(
     findings.extend(interpreter_stdin_findings(command, make_finding, _stdin_recurse(command, config, depth, cwd), cwd=cwd))
     findings.extend(dynamic_heredoc_findings(command, make_finding))
     findings.extend(decode_pipe_findings(command, make_finding))
-    findings.extend(inplace_edit_findings(command, make_finding))
+    findings.extend(inplace_edit_findings(command, make_finding, cwd=cwd))
     findings.extend(opaque_source_findings(command, make_finding))
     findings.extend(_shell_payload_findings(command, config, depth, cwd))
     return findings
@@ -370,21 +372,28 @@ def _literal_shell_pipe_payloads(command: str) -> list[str]:
     return [payload for payload in payloads if payload is not None]
 
 
-def _largest_oversize(commands: list[str]) -> int | None:
+def _largest_oversize(commands: list[str], cwd: str | os.PathLike[str] | None = None) -> int | None:
     """Check every scan target here, because a write wrapped in a literal shell -c payload must face the same cap as a bare one."""
-    sizes = [oversize_write(command) for command in commands]
+    sizes = [oversize_write(command, cwd) for command in commands]
     known = [size for size in sizes if size is not None]
     return max(known) if known else None
 
 
-def oversize_write(command: str) -> int | None:
-    sizes = [len(text) for _, text in write_targets(command)]
+def oversize_write(command: str, cwd: str | os.PathLike[str] | None = None) -> int | None:
+    """Because scratch temp text is no project output, a write whose every target is scratch temp faces no cap."""
+    sizes = [len(text) for path, text in write_targets(command) if not scratch_target(path, command, cwd)]
     for line, _, raw_bodies in _logical_lines(command):
-        if not any(_write_paths(segment) for segment in _segments(line)):
-            continue
-        sizes.extend(len(body) for body in raw_bodies)
+        paths = [path for segment in _segments(line) for path in _write_paths(segment)]
+        if paths and not all(scratch_target(path, command, cwd) for path in paths):
+            sizes.extend(len(body) for body in raw_bodies)
     oversized = [size for size in sizes if size > BASH_WRITE_CAP]
     return max(oversized) if oversized else None
+
+
+def write_paths(command: str) -> list[str]:
+    """Because PostToolUse journals these paths as the agent's writes, in-place edit files count and a leading cd prefixes relative ones."""
+    directory = leading_directory(command)
+    return [command_target(path, directory) for path in (*shell_write_paths(command), *inplace_edit_paths(command))]
 
 
 def _mutation_paths(command: str) -> list[str]:

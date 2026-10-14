@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
-from lib.shell_syntax import _bare, _basename, _command_word_index, _segments
+from lib.shell_syntax import _bare, _basename, _command_word_index, _is_literal_token, _segments, _tokens
 from lib.write_targets import _drop_target_dir, _expand_home, _target_directory
 
 FIXED_TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
 COPY_VERBS = frozenset({"cp", "mv", "install", "rsync"})
+DIRECTORY_VERBS = frozenset({"cd", "pushd", "popd"})
+LEADING_CD_SEPARATORS = frozenset({"&&", ";"})
+EXPANDING_RE = re.compile(r"[*?\[{\\$`]")
 
 
 def _absolute(path: str | os.PathLike[str], cwd: str | os.PathLike[str] | None) -> Path:
@@ -43,6 +47,45 @@ def outside_project_temp(path: str | os.PathLike[str], cwd: str | os.PathLike[st
     if not all(_within(form, temp_roots()) for form in forms):
         return False
     return not any(_within(form, _forms(Path(cwd))) for form in forms)
+
+
+def leading_directory(command: str) -> str | None:
+    """Because only a lone cd DIR && or cd DIR ; at the start puts every relative target under DIR, any other directory change yields None."""
+    lines = command.splitlines()
+    tokens = _tokens(lines[0]) if lines else []
+    if len(tokens) < 3 or tokens[0] != "cd" or tokens[2] not in LEADING_CD_SEPARATORS or not _plain_path(tokens[1]):
+        return None
+    changes = [segment for line in lines for segment in _segments(line) if _changes_directory(segment)]
+    return _bare(tokens[1]) if len(changes) == 1 else None
+
+
+def command_target(path: str, directory: str | None) -> str:
+    """Because the shell resolves a relative target under the leading cd, the session cwd would name the wrong file."""
+    if directory is None or path.startswith("~") or Path(path).is_absolute():
+        return path
+    return os.path.join(directory, path)
+
+
+def scratch_target(path: str, command: str, cwd: str | os.PathLike[str] | None) -> bool:
+    """Because a failed cd leaves a relative target in the session cwd, it counts only under a leading cd directory that exists."""
+    if not _plain_path(path) or path.startswith("~"):
+        return False
+    if Path(path).is_absolute():
+        return outside_project_temp(path, cwd)
+    directory = leading_directory(command)
+    if directory is None or not _absolute(directory, cwd).is_dir():
+        return False
+    return outside_project_temp(_absolute(directory, cwd) / path, cwd)
+
+
+def _plain_path(token: str) -> bool:
+    bare = _bare(token)
+    return bool(bare) and not bare.startswith("-") and _is_literal_token(token) and not EXPANDING_RE.search(bare)
+
+
+def _changes_directory(segment: list[str]) -> bool:
+    index = _command_word_index(segment)
+    return index < len(segment) and _basename(segment[index]) in DIRECTORY_VERBS
 
 
 def temp_copy_destinations(command: str, cwd: str | os.PathLike[str] | None) -> list[str]:
