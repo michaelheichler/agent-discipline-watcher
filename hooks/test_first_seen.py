@@ -206,3 +206,28 @@ def test_a_baseline_stored_by_the_previous_release_still_counts(tmp_path: Path) 
     _before, after = _edit(tmp_path, target, "Plain line.", "Plain line, edited.")
 
     assert after.get("decision") != "block"
+
+
+def _legacy_hash_only(tmp_path: Path, target: Path) -> None:
+    digest = imported_baseline.text_digest(target.read_text(encoding="utf-8"))
+    legacy = {imported_baseline.STATE_KEY: {imported_baseline.path_key(target): digest}}
+    session_state.update_state("s1", lambda state: {**state, **legacy}, _config(tmp_path)["state_root"])
+
+
+def test_a_hash_only_baseline_from_the_previous_release_still_counts_while_the_file_is_unchanged(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "NOTES.md", DASHED + "Plain line.\n")
+    _legacy_hash_only(tmp_path, target)
+
+    _before, after = _edit(tmp_path, target, "Plain line.", "Plain line, edited.")
+
+    assert after.get("decision") != "block"
+
+
+def test_a_hash_only_baseline_does_not_adopt_text_changed_since_it_was_taken(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "NOTES.md", "Plain line.\n")
+    _legacy_hash_only(tmp_path, target)
+    target.write_text(NEW_DASH + "Plain line.\n", encoding="utf-8")
+
+    _before, after = _edit(tmp_path, target, "Plain line.", "Plain line, edited.")
+
+    assert after["decision"] == "block"

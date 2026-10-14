@@ -209,9 +209,21 @@ def note_first_seen(session_id: str, paths: list[str], root: str | os.PathLike[s
     store = _store(session_id, root)
     index = _index(session_id, root)
     for key in dict.fromkeys(map(path_key, paths)):
-        mark = None if _read_mark(index, key) is not None else _first_mark(Path(key), store, has_git)
+        seen = _read_mark(index, key)
+        if seen is not None:
+            _fill_hash_only(Path(key), store, seen)
+            continue
+        mark = _first_mark(Path(key), store, has_git)
         if mark is not None:
             _put_mark(index, key, mark, replace=False)
+
+
+def _fill_hash_only(path: Path, store: Path, mark: str) -> None:
+    """Taken only while the file still matches, because 0.26.0 kept a digest without text for a file above one megabyte."""
+    if mark in (NEW_FILE, GIT_BASELINE) or (store / mark).exists():
+        return
+    if file_digest(path) == mark:
+        _captured(path, store)
 
 
 def note_written(session_id: str, paths: list[str], root: str | os.PathLike[str] | None) -> None:
