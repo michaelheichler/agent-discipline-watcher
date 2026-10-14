@@ -507,7 +507,7 @@ checks. Unknown calls must pass the read checker.
 
 Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through. Examples are `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, and `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc. It treats that write like a Write or Edit call rather than blocking it.
 
-The `node -e` and `node -p` check is a heuristic, not a sandbox. The check blocks known write and reflection routes, such as `process.getBuiltinModule` and computed member keys, and lets other payloads run.
+For inline node payloads (`node -e`, `node -p`), `inline_interpreter_write` uses a heuristic, not a sandbox. The heuristic blocks known write and reflection routes, such as `process.getBuiltinModule` and computed member keys, and lets other payloads run.
 
 For read-only Python snippets in Bash, use isolated startup with `python3 -I -S`.
 For example, `python3 -I -S -c 'from pathlib import Path; print(Path("notes.md").read_text())'`
