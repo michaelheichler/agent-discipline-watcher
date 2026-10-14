@@ -87,6 +87,29 @@ def test_a_write_call_split_across_the_operand_boundary_still_blocks():
     assert "inline_interpreter_write" in reason
 
 
+@pytest.mark.parametrize("command", [
+    "python3 -c ''open\\(chr\\(116\\),chr\\(119\\)\\).write\\(chr\\(65\\)\\)''",
+    "python3 -I -S -c ''open\\(chr\\(116\\),chr\\(119\\)\\).write\\(chr\\(65\\)\\)''",
+    """python3 -c 'print(1)'"; open(chr(116),chr(119))\"""",
+    """python3 -I -S -c 'print('"'"'x'"'"'); open(chr(116), chr(119))'""",
+    """python3 -I -S -c 'print(1)'"$CODE\"""",
+    """python3 -I -S -c 'print(1)'\\""",
+])
+def test_spliced_shell_quoting_is_judged_as_the_decoded_payload(command) -> None:
+    assert "inline_interpreter_write" in blocked(command)
+
+
+@pytest.mark.parametrize("command", [
+    """python3 -I -S -c 'print("x")'""",
+    """python3 -I -S -c "print('x')\"""",
+    """python3 -I -S -c 'print('"'"'adw'"'"')'""",
+    """python3 -I -S -c 'print("$HOME")'""",
+    """node -e 'console.log("x")'""",
+])
+def test_read_only_payloads_pass_in_every_quoting_form(command) -> None:
+    assert allowed(command) == {}
+
+
 def test_a_literal_shell_payload_reenters_the_full_gate():
     reason = blocked("sh -c 'rm -rf ~/.agent-discipline'")
     assert "state_deletion" in reason

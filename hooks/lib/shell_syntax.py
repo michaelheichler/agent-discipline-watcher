@@ -158,8 +158,20 @@ def interpreter_invocation(segment: list[str]) -> InterpreterInvocation | None:
     flag, payload_token = matched
     if payload_token is None:
         return None
-    payload = _bare(payload_token) if _is_literal_token(payload_token) else None
-    return InterpreterInvocation(name, flag, payload)
+    return InterpreterInvocation(name, flag, _decoded_payload(payload_token))
+
+
+def _decoded_payload(token: str) -> str | None:
+    """Decoded as bash hands it over, because a checker that reads the raw spliced quoting judges a different program."""
+    if len(token) >= 2 and token[0] == token[-1] == "'" and "'" not in token[1:-1]:
+        return token[1:-1]
+    if DYNAMIC_RE.search(token):
+        return None
+    try:
+        words = shlex.split(token)
+    except ValueError:
+        return None
+    return words[0] if len(words) == 1 else None
 
 
 def _flag_payload_token(
