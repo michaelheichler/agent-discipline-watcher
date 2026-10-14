@@ -12,6 +12,7 @@ KEY = "unresolved_blockers"
 REPORT_LINE_RE = re.compile(r"\nFull report: .*?(?=\n|$)")
 RECORD_ERROR_KEY = "<record-error>"
 BATCH_ERROR_KEY = "<batch-error>"
+STALL_KEY = "stall"
 # Clean Stop rescan frees it, since it rereads the lost write.
 RESCAN_RELEASED_KEYS = frozenset({RECORD_ERROR_KEY})
 
@@ -152,6 +153,16 @@ def apply_paths(scope: BlockerScope, paths: list[str], pending: dict[str, str | 
         return {**bucket, "pending": current, "paths": existing}
 
     _update(scope, mutate)
+
+
+def stall(scope: BlockerScope) -> dict:
+    """Read apart from details, because only Stop needs to know what it blocked on last time."""
+    stored = _bucket(session_state.read_state_strict(scope.session_id, scope.root), scope.agent_id).get(STALL_KEY)
+    return dict(stored) if isinstance(stored, dict) else {}
+
+
+def note_stall(scope: BlockerScope, record: dict) -> None:
+    _update(scope, lambda bucket: {**bucket, STALL_KEY: record})
 
 
 def _unscanned_paths(payload: dict) -> list[str]:

@@ -5,7 +5,7 @@ from typing import Callable, NamedTuple
 from lib import host, payloads, session_state, turn_adapter, turn_retry
 from lib.config import payload_hook_config
 from lib.embedding_session import close_turn, lease_root_for
-from lib.end_turn import foreign_scope_notice, unresolved_reason
+from lib.end_turn import foreign_scope_notice, stop_outcome
 from lib.hookio import (
     PARSE_FAILURE,
     STATE_FAILURE,
@@ -27,13 +27,13 @@ class _StopTurn(NamedTuple):
     known_turn_id: str
 
 
-def _verdict(payload: dict, cfg: dict) -> dict:
-    reason = unresolved_reason(payload, cfg)
-    if reason:
-        return stop_block(reason)
+def _verdict(payload: dict, cfg: dict, turn_id: str = "") -> dict:
+    outcome = stop_outcome(payload, cfg, hook="stop", turn_id=turn_id)
+    if outcome.reason:
+        return stop_block(outcome.reason)
     if host.is_codex_host():
         return {}
-    notice = foreign_scope_notice(payload, cfg)
+    notice = "\n".join(part for part in (outcome.notice, foreign_scope_notice(payload, cfg)) if part)
     return system_message(notice) if notice else {}
 
 
@@ -49,7 +49,7 @@ def _closed_turn_id(session_id: str, cfg: dict, retry: bool) -> str:
 
 def _gate(turn: _StopTurn) -> Callable[[str], dict]:
     def gate(turn_id: str) -> dict:
-        verdict = _verdict(turn.payload, turn.cfg)
+        verdict = _verdict(turn.payload, turn.cfg, turn_id)
         if verdict.get("decision") == "block" or not turn.adapter.reviews_turns:
             return verdict
         reviewed = turn.adapter.review(

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from lib import payloads
 from lib.config import payload_hook_config
-from lib.end_turn import unresolved_reason
-from lib.hookio import PARSE_FAILURE, STATE_FAILURE, read_payload, stop_block, write_payload
+from lib.end_turn import stop_outcome
+from lib.hookio import PARSE_FAILURE, STATE_FAILURE, read_payload, stop_block, system_message, write_payload
 from lib.reporting import run_with_ledger
 
 SUBAGENT_STOP_EVENT = "SubagentStop"
@@ -15,9 +15,11 @@ def run(payload: dict, config: dict | None = None) -> dict:
             return stop_block(STATE_FAILURE + "invalid SubagentStop payload")
         cfg = payload_hook_config(config, payload)
 
-        def gate(_turn_id: str) -> dict:
-            reason = unresolved_reason(payload, cfg)
-            return stop_block(reason) if reason else {}
+        def gate(turn_id: str) -> dict:
+            outcome = stop_outcome(payload, cfg, hook="subagent_stop", turn_id=turn_id)
+            if outcome.reason:
+                return stop_block(outcome.reason)
+            return system_message(outcome.notice) if outcome.notice else {}
 
         return run_with_ledger(
             hook="subagent_stop",

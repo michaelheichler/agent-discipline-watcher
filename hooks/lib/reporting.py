@@ -129,11 +129,12 @@ def compact_block(
     config: dict | None = None,
     lead: str | Lead = BLOCK_LEADS,
     explainer: Explainer | None = None,
+    report_path: str | None = None,
 ) -> tuple[str, str]:
     """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
     max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
     unique = [localized(finding) for finding in _deduplicated(findings, config)]
-    report = write_full_report(unique, config)
+    report = report_path or write_full_report(unique, config)
     listed = unique[:max(max_rows, 1)]
     german = all_german(unique)
     tail = block_tail(len(unique) - len(listed), _clip(report, MAX_COMPACT_FIELD_BYTES), german)
