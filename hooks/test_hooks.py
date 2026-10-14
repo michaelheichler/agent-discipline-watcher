@@ -135,7 +135,7 @@ def test_pre_write_edit_fallback_labels_pending_edit_text(tmp_path):
     tool_input = {"file_path": str(target), "old_string": "not present\n",
                   "new_string": "# Validate the cache entry\n"}
     decoded = pre_write._decode(tool_input)
-    findings = pre_write._edit_findings(decoded, target, _edit_config())
+    findings, _inherited = pre_write._edit_findings(decoded, target, _edit_config())
     assert "pending edit text" in findings[0]["detail"]
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lib import imported_baseline, payloads, temp_authorship, tests_policy
-from lib.baseline import changed_lines, committed_text, partition, split_committed
+from lib.baseline import LENGTH_RULES, changed_lines, committed_text, partition, split_committed
 from lib.config import payload_hook_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
@@ -212,22 +212,30 @@ def _apply_edits(decoded: PendingWrite, path: str) -> tuple[str, str] | None:
     return before, after
 
 
-def _edit_findings(decoded: PendingWrite, resolved_path: Path, cfg: dict) -> list[dict]:
+def _length_split(rows: list[dict], resolved_path: Path, cfg: dict, after: str) -> tuple[list[dict], list[dict]]:
+    """The Write baseline for every shape, because an inherited long file that did not grow is not the agent's to split."""
+    length = [row for row in rows if row.get("rule") in LENGTH_RULES]
+    if not length:
+        return rows, []
+    owned, inherited = split_committed(resolved_path, length, cfg, after)
+    kept = {id(row) for row in owned}
+    return [row for row in rows if row.get("rule") not in LENGTH_RULES or id(row) in kept], inherited
+
+
+def _edit_findings(decoded: PendingWrite, resolved_path: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
     scan_path = str(resolved_path)
     applied = _apply_edits(decoded, scan_path)
     if applied is None:
         pending = _pending_edit_text(decoded)
-        return _label_pending_text(_stamped(scan_all(decoded.path, pending, cfg), decoded.path))
+        return _label_pending_text(_stamped(scan_all(decoded.path, pending, cfg), decoded.path)), []
     before, after = applied
     changed = changed_lines(before, after)
     findings = scan_all(scan_path, after, cfg)
-    inherited = scan_all(scan_path, before, cfg)
-    owned, _ = partition(findings, inherited)
+    owned, _ = partition(findings, scan_all(scan_path, before, cfg))
     owned_ids = {id(finding) for finding in owned}
-    return _stamped(
-        [finding for finding in findings if finding.get("line") in changed or id(finding) in owned_ids],
-        decoded.path,
-    )
+    touched = [finding for finding in findings if finding.get("line") in changed or id(finding) in owned_ids]
+    kept, inherited = _length_split(touched, resolved_path, cfg, after)
+    return _stamped(kept, decoded.path), _stamped(inherited, decoded.path)
 
 
 def _protected_edit_text(decoded: PendingWrite, resolved_path: Path) -> str:
@@ -235,15 +243,16 @@ def _protected_edit_text(decoded: PendingWrite, resolved_path: Path) -> str:
     return applied[1] if applied is not None else _pending_edit_text(decoded)
 
 
-def _edit_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> list[dict]:
+def _edit_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
     resolved_path = _resolved_path(decoded.path, cwd)
     protected = _stamped(
         path_findings(str(resolved_path), cfg, content=_protected_edit_text(decoded, resolved_path)),
         decoded.path,
     )
     if outside_project_temp(resolved_path, cwd):
-        return protected
-    return protected + _edit_findings(decoded, resolved_path, cfg)
+        return protected, []
+    owned, inherited = _edit_findings(decoded, resolved_path, cfg)
+    return protected + owned, inherited
 
 
 class _ShapeScope(NamedTuple):
@@ -257,14 +266,17 @@ def _patch_text(tool_input: dict) -> object:
     return "\n".join(str(part) for part in patch) if isinstance(patch, list) else patch
 
 
-def _projected_rows(scope: _ShapeScope) -> list[dict]:
+def _projected_rows(scope: _ShapeScope) -> tuple[list[dict], list[dict]]:
     rows: list[dict] = []
+    inherited: list[dict] = []
     for path, content in scope.projected.items():
         resolved_path = _resolved_path(path, scope.cwd)
         rows.extend(_stamped(path_findings(str(resolved_path), scope.cfg, content=content), path))
         if content is not None and not outside_project_temp(resolved_path, scope.cwd):
-            rows.extend(_stamped(file_length_findings(path, content), path))
-    return rows
+            owned, relieved = _length_split(file_length_findings(path, content), resolved_path, scope.cfg, content)
+            rows.extend(_stamped(owned, path))
+            inherited.extend(_stamped(relieved, path))
+    return rows, inherited
 
 
 def _scanned_pending(path: str, text: str, scope: _ShapeScope) -> list[dict]:
@@ -280,8 +292,7 @@ def _write_shape_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[
     whole_file = "content" in decoded.tool_input
     patch = _patch_text(decoded.tool_input)
     scope = _ShapeScope(cwd, cfg, projected_content(patch, cwd) if isinstance(patch, str) else {})
-    owned_rows = _projected_rows(scope)
-    inherited_rows: list[dict] = []
+    owned_rows, inherited_rows = _projected_rows(scope)
     for path, text in pending_writes(decoded):
         resolved_path = _resolved_path(path, cwd)
         if path not in scope.projected:
@@ -317,9 +328,9 @@ def _test_changes(decoded: PendingWrite, cwd: Path) -> list[tests_policy.Pending
 
 
 def _pending_findings(decoded: PendingWrite, cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Split whole-file content against its committed version, because only Write carries debt the edit did not create."""
+    """Split Write content and every length row against the baseline, because only those carry debt the change did not create."""
     if decoded.is_edit:
-        return _edit_shape_findings(decoded, cwd, cfg), []
+        return _edit_shape_findings(decoded, cwd, cfg)
     return _write_shape_findings(decoded, cwd, cfg)
 
 

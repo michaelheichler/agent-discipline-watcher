@@ -109,10 +109,44 @@ def test_an_edit_of_the_agents_own_long_file_does_not_inherit_its_length(tmp_pat
     assert "file_too_long" in after["reason"]
 
 
-def test_an_edit_of_a_long_file_adw_never_saw_written_is_denied_before_it_lands(tmp_path: Path) -> None:
+PLAIN_LONG = "".join(f"value_{n} = {n}\n" for n in range(1200))
+
+
+def _patch(tmp_path: Path, name: str, removed: str, added: str) -> dict:
+    patch = f"*** Begin Patch\n*** Update File: {name}\n@@\n-{removed}\n{added}*** End Patch\n"
+    return pre_write.run(_payload(tmp_path, "apply_patch", {"input": patch}, "t1"), _config(tmp_path))
+
+
+def test_an_edit_of_a_long_file_adw_never_saw_written_keeps_its_inherited_length(tmp_path: Path) -> None:
     target = _untracked(tmp_path, "gen.py", GENERATED_LONG)
 
-    before, _after = _edit(tmp_path, target, "value_5 = 5", "value_5 = 6")
+    before, after = _edit(tmp_path, target, "value_5 = 5", "value_5 = 6")
+
+    assert before.get("decision") != "block"
+    assert after.get("decision") != "block"
+
+
+def test_a_patch_of_a_long_file_adw_never_saw_written_keeps_its_inherited_length(tmp_path: Path) -> None:
+    _untracked(tmp_path, "gen.py", GENERATED_LONG)
+
+    before = _patch(tmp_path, "gen.py", "value_5 = 5", "+value_5 = 6\n")
+
+    assert before.get("decision") != "block"
+
+
+def test_an_edit_that_grows_an_inherited_long_file_is_denied_before_it_lands(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "long.py", PLAIN_LONG)
+
+    before, _after = _edit(tmp_path, target, "value_5 = 5\n", "value_5 = 5\nvalue_x = 0\n")
+
+    assert before["decision"] == "block"
+    assert "file_too_long" in before["reason"]
+
+
+def test_a_patch_that_grows_an_inherited_long_file_is_denied(tmp_path: Path) -> None:
+    _untracked(tmp_path, "long.py", PLAIN_LONG)
+
+    before = _patch(tmp_path, "long.py", "value_5 = 5", "+value_5 = 5\n+value_x = 0\n")
 
     assert before["decision"] == "block"
     assert "file_too_long" in before["reason"]
