@@ -11,6 +11,7 @@ from . import payloads, session_state
 KEY = "unresolved_blockers"
 REPORT_LINE_RE = re.compile(r"\nFull report: .*?(?=\n|$)")
 RECORD_ERROR_KEY = "<record-error>"
+BATCH_KEY = "<batch>"
 BATCH_ERROR_KEY = "<batch-error>"
 STALL_KEY = "stall"
 DROPPED_KEY = "dropped_paths"

@@ -226,9 +226,7 @@ def _reported_entries(
     return reported
 
 
-def _duplicate_file_findings(
-    entries: list[tuple[str, str, Path]], cfg: dict
-) -> list[dict]:
+def _duplicate_groups(entries: list[tuple[str, str, Path]], cfg: dict) -> list[tuple[list[str], str]]:
     contents: dict[str, dict[tuple[int, int], str]] = {}
     for _call_id, _raw_path, path in sorted(entries, key=lambda item: str(item[2])):
         read = _stable_read(path, cfg)
@@ -236,8 +234,11 @@ def _duplicate_file_findings(
             continue
         file_id, text = read
         contents.setdefault(text, {}).setdefault(file_id, str(path))
-    groups = (sorted(group.values()) for group in contents.values() if len(group) > 1)
-    return [_duplicate_row(paths) for paths in sorted(groups)]
+    return sorted((sorted(group.values()), text) for text, group in contents.items() if len(group) > 1)
+
+
+def _duplicate_file_findings(entries: list[tuple[str, str, Path]], cfg: dict) -> list[dict]:
+    return [_duplicate_row(paths) for paths, _text in _duplicate_groups(entries, cfg)]
 
 
 def _stable_read(path: Path, cfg: dict) -> tuple[tuple[int, int], str] | None:
@@ -396,9 +397,13 @@ def _findings_for_path_scan(scan: PathBatchScan) -> list[dict]:
 
 
 def duplicate_findings_for_paths(cwd: str, paths: list[str], cfg: dict) -> list[dict]:
+    """Stamped with the shared content, because the Stop breaker must see an edit that keeps the copies equal."""
     base = Path(cwd or ".")
     entries = [("<end-turn>", raw_path, payloads.resolved_path(raw_path, base)) for raw_path in paths]
-    return _duplicate_file_findings(_project_entries(entries, base), cfg)
+    return [
+        {**_duplicate_row(group), "content_hash": sha256(text.encode("utf-8")).hexdigest()}
+        for group, text in _duplicate_groups(_project_entries(entries, base), cfg)
+    ]
 
 
 def _record_batch_row(
@@ -442,7 +447,7 @@ def _update_blocker_state(
 ) -> None:
     paths = [str(path) for _call, _raw, path in verdict.entries]
     reason = verdict.reason if verdict.kind == "block" else None
-    blocker_state.apply_paths(scope, paths, {"<batch>": reason, UNDECIDABLE_KEY: None})
+    blocker_state.apply_paths(scope, paths, {blocker_state.BATCH_KEY: reason, UNDECIDABLE_KEY: None})
 
 
 def _batch_gate(payload: dict, cfg: dict, session_id: str) -> Callable[[str], dict[str, object]]:
