@@ -11,13 +11,13 @@ from pathlib import Path
 try:
     from . import imported_baseline
     from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
-    from .imported_baseline import Snapshot, text_digest
+    from .imported_baseline import Check, Snapshot, text_digest
     from .scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
     from .scanner import scan_all
 except ImportError:
     import imported_baseline
     from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
-    from imported_baseline import Snapshot, text_digest
+    from imported_baseline import Check, Snapshot, text_digest
     from scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
     from scanner import scan_all
 
@@ -175,30 +175,39 @@ def _length_relief(halves: tuple[list[dict], list[dict]], before: str, after: st
     return [row for row in owned if row.get("rule") not in LENGTH_RULES], inherited + moved
 
 
-def _baseline_rows(path: Path, before: str, cfg: dict) -> list[dict]:
+def _deadline_check(until: float | None) -> Check:
+    return lambda: remaining(until)
+
+
+def _baseline_rows(path: Path, before: str, cfg: dict, check: Check) -> list[dict]:
     """Memoized per path and baseline hash, because a batch that edits one file twice scanned its baseline twice."""
-    key = (str(path), text_digest(before), id(cfg))
+    key = (str(path), text_digest(before, check), id(cfg))
     cached = _BASELINE_CACHE.get(key)
     if cached is not None and cached[0] is cfg:
         return cached[1]
+    check()
     rows = scan_all(str(path), before, cfg)
     if len(_BASELINE_CACHE) >= MAX_BASELINE_CACHE:
         _BASELINE_CACHE.clear()
     _BASELINE_CACHE[key] = (cfg, rows)
+    check()
     return rows
 
 
-def _against(path: Path, findings: list[dict], cfg: dict, before: str, text: str | None) -> tuple[list[dict], list[dict]]:
-    owned, inherited = _length_relief(partition(findings, _baseline_rows(path, before, cfg)), before, text)
+def _against(path: Path, findings: list[dict], cfg: dict, before: str, text: str | None, check: Check) -> tuple[list[dict], list[dict]]:
+    owned, inherited = _length_relief(partition(findings, _baseline_rows(path, before, cfg, check)), before, text)
     return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
-def _split_snapshot(path: Path, findings: list[dict], cfg: dict, snapshot: Snapshot, text: str | None) -> tuple[list[dict], list[dict]] | None:
-    if text is not None and text_digest(text) == snapshot.digest:
+def _split_snapshot(
+    path: Path, findings: list[dict], cfg: dict, snapshot: Snapshot, text: str | None, check: Check,
+) -> tuple[list[dict], list[dict]] | None:
+    if text is not None and text_digest(text, check) == snapshot.digest:
         return [], findings if baseline_mode(cfg) == "report" else []
-    if snapshot.text is None:
+    before = snapshot.read(check)
+    if before is None:
         return None
-    return _against(path, findings, cfg, snapshot.text, text)
+    return _against(path, findings, cfg, before, text, check)
 
 
 def split_committed(
@@ -207,15 +216,15 @@ def split_committed(
     """Compare against HEAD because blocking on findings that predate an edit would prevent incremental cleanup."""
     if not findings or baseline_mode(cfg) == "none":
         return findings, []
+    check = _deadline_check(until)
     snapshot = imported_baseline.lookup(cfg, path)
-    split = None if snapshot is None else _split_snapshot(path, findings, cfg, snapshot, text)
+    split = None if snapshot is None else _split_snapshot(path, findings, cfg, snapshot, text, check)
     if split is not None:
         return split
     before = committed_text(path, until)
     if before is None:
         return findings, []
-    remaining(until)
-    return _against(path, findings, cfg, before, text)
+    return _against(path, findings, cfg, before, text, check)
 
 
 def _head(path: Path) -> str:
@@ -227,12 +236,15 @@ def _head(path: Path) -> str:
 
 
 def _inherited_fallback(path: Path, cfg: dict, until: float | None) -> bool:
+    check = _deadline_check(until)
     snapshot = imported_baseline.lookup(cfg, path)
-    if snapshot is not None and imported_baseline.file_digest(path) == snapshot.digest:
+    if snapshot is not None and imported_baseline.file_digest(path, check) == snapshot.digest:
         return True
     if not has_generated_marker(_head(path)):
         return False
-    before = snapshot.text if snapshot is not None and snapshot.text is not None else committed_text(path, until)
+    before = None if snapshot is None else snapshot.read(check)
+    if before is None:
+        before = committed_text(path, until)
     return before is not None and has_generated_marker(before)
 
 

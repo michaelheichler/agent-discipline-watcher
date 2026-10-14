@@ -34,7 +34,21 @@ def inplace_edit(segment: list[str]) -> InplaceEdit | None:
     verb = _basename(segment[index]) if index < len(segment) else ""
     if verb not in VALUE_LETTERS:
         return None
-    values, operands = _values_and_operands(verb, [_bare(token) for token in segment[index + 1:]])
+    words = [_bare(token) for token in segment[index + 1:]]
+    edit = _reading(verb, words, separate_suffix=False)
+    if verb == "sed" and _bsd_backup(words):
+        return edit._replace(backup=True)
+    return edit
+
+
+def _bsd_backup(words: list[str]) -> bool:
+    """Because BSD sed takes the word after a bare -i as its suffix, that reading writes a backup whenever it still edits a file."""
+    bsd = _reading("sed", words, separate_suffix=True)
+    return bsd.backup and bool(bsd.targets)
+
+
+def _reading(verb: str, words: list[str], separate_suffix: bool) -> InplaceEdit:
+    values, operands = _values_and_operands(verb, words, separate_suffix)
     scripts = [value for letter, value in values if letter in SCRIPT_LETTERS[verb]]
     operands = [operand for operand in operands if operand]
     targets = operands if scripts else operands[1:]
@@ -66,7 +80,7 @@ def _plain_perl_options(segment: list[str]) -> bool:
     return all(word == "-e" or PERL_SWITCHES_RE.fullmatch(word) for word in options)
 
 
-def _values_and_operands(verb: str, words: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
+def _values_and_operands(verb: str, words: list[str], separate_suffix: bool) -> tuple[list[tuple[str, str]], list[str]]:
     values: list[tuple[str, str]] = []
     operands: list[str] = []
     position = 0
@@ -78,7 +92,7 @@ def _values_and_operands(verb: str, words: list[str]) -> tuple[list[tuple[str, s
         if not word.startswith("-") or word == "-":
             operands.append(word)
             continue
-        letter, value = _option(verb, word)
+        letter, value = _option(verb, word, separate_suffix)
         if letter and value is None:
             value = words[position] if position < len(words) else ""
             position += 1
@@ -87,7 +101,7 @@ def _values_and_operands(verb: str, words: list[str]) -> tuple[list[tuple[str, s
     return values, operands
 
 
-def _option(verb: str, word: str) -> tuple[str, str | None]:
+def _option(verb: str, word: str, separate_suffix: bool) -> tuple[str, str | None]:
     """Because i takes the rest of its cluster as a backup suffix, letters after it are no flags."""
     if word.startswith("--"):
         name, separator, value = word.partition("=")
@@ -98,7 +112,8 @@ def _option(verb: str, word: str) -> tuple[str, str | None]:
     letters = word[1:]
     for position, letter in enumerate(letters):
         if letter == "i":
-            return "i", letters[position + 1:]
+            suffix = letters[position + 1:]
+            return "i", (None if separate_suffix and not suffix else suffix)
         if letter in VALUE_LETTERS[verb]:
             return letter, letters[position + 1:] or None
     return "", None

@@ -33,6 +33,8 @@ def _gate(tmp_path: Path, project: Path, command: str) -> dict:
     "sed -i '' -e 's/a/b/' {scratch}/f.txt",
     "perl -pi -e 's/a/b/' {scratch}/f.txt",
     "cd {scratch} && sed -i 's/a/b/' f.txt",
+    "cd {scratch} && sed -i '' 's/a/b/' f.txt",
+    'cd {scratch} && sed -i "" -e \'s/a/b/\' f.txt',
 ])
 def test_a_write_whose_every_target_is_scratch_temp_runs(tmp_path: Path, template: str) -> None:
     project, scratch = _dirs(tmp_path)
@@ -135,6 +137,21 @@ def test_a_scratch_in_place_edit_that_writes_a_backup_blocks(tmp_path: Path, edi
     project, scratch = _dirs(tmp_path)
 
     result = _gate(tmp_path, project, f"{edit.format(project=project)} {scratch}/f.txt")
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
+@pytest.mark.parametrize("edit", [
+    "sed -i .bak -e 's/a/b/'",
+    "sed -i d 's/a/b/'",
+    "sed -i -e 's/a/b/'",
+    "sed -Ei .bak 's/a/b/'",
+])
+def test_a_scratch_sed_edit_with_a_separated_bsd_backup_suffix_after_a_scratch_cd_blocks(tmp_path: Path, edit: str) -> None:
+    project, scratch = _dirs(tmp_path)
+
+    result = _gate(tmp_path, project, f"cd {scratch} && {edit} f.txt")
 
     assert result.get("decision") == "block"
     assert "inplace_edit_write" in result["reason"]

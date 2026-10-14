@@ -5,7 +5,7 @@ import hashlib
 import os
 import tempfile
 from dataclasses import dataclass
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from functools import cached_property
 from pathlib import Path
 from typing import BinaryIO
@@ -20,7 +20,20 @@ STORE_DIRNAME = "imported"
 INDEX_DIRNAME = "paths"
 GIT_BASELINE = ""
 NEW_FILE = "new"
+BLOCK_BYTES = 1 << 16
 _MIGRATED: set[tuple[str, str]] = set()
+Check = Callable[[], object]
+
+
+def _unchecked() -> None:
+    return None
+
+
+def _blocks(handle: BinaryIO, check: Check) -> Iterator[bytes]:
+    """Checked per block, because a Stop deadline must cut off a large file mid-read."""
+    for block in iter(lambda: handle.read(BLOCK_BYTES), b""):
+        check()
+        yield block
 
 
 @dataclass(frozen=True)
@@ -31,33 +44,43 @@ class Snapshot:
     @cached_property
     def text(self) -> str | None:
         """Read on demand, because most callers only compare the digest and a blob has no size limit."""
+        return self.read()
+
+    def read(self, check: Check = _unchecked) -> str | None:
         try:
-            return self.blob.read_bytes().decode("utf-8", errors="replace")
+            with self.blob.open("rb") as handle:
+                data = b"".join(_blocks(handle, check))
         except OSError:
             return None
+        return data.decode("utf-8", errors="replace")
 
 
 def path_key(path: str | os.PathLike[str]) -> str:
     return os.path.realpath(os.path.expanduser(os.fspath(path)))
 
 
-def _stream_digest(handle: BinaryIO) -> str:
+def _stream_digest(handle: BinaryIO, check: Check) -> str:
     digest = hashlib.sha256()
-    for block in iter(lambda: handle.read(1 << 16), b""):
+    for block in _blocks(handle, check):
         digest.update(block)
     return digest.hexdigest()
 
 
-def file_digest(path: str | os.PathLike[str]) -> str | None:
+def file_digest(path: str | os.PathLike[str], check: Check = _unchecked) -> str | None:
     try:
         with open(path, "rb") as handle:
-            return _stream_digest(handle)
+            return _stream_digest(handle, check)
     except OSError:
         return None
 
 
-def text_digest(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="surrogatepass")).hexdigest()
+def text_digest(text: str, check: Check = _unchecked) -> str:
+    data = memoryview(text.encode("utf-8", errors="surrogatepass"))
+    digest = hashlib.sha256()
+    for start in range(0, len(data), BLOCK_BYTES):
+        check()
+        digest.update(data[start:start + BLOCK_BYTES])
+    return digest.hexdigest()
 
 
 def _store(session_id: str, root: str | os.PathLike[str] | None) -> Path:
@@ -186,9 +209,21 @@ def note_first_seen(session_id: str, paths: list[str], root: str | os.PathLike[s
     store = _store(session_id, root)
     index = _index(session_id, root)
     for key in dict.fromkeys(map(path_key, paths)):
-        mark = None if _read_mark(index, key) is not None else _first_mark(Path(key), store, has_git)
+        seen = _read_mark(index, key)
+        if seen is not None:
+            _fill_hash_only(Path(key), store, seen)
+            continue
+        mark = _first_mark(Path(key), store, has_git)
         if mark is not None:
             _put_mark(index, key, mark, replace=False)
+
+
+def _fill_hash_only(path: Path, store: Path, mark: str) -> None:
+    """Taken only while the file still matches, because 0.26.0 kept a digest without text for a file above one megabyte."""
+    if mark in (NEW_FILE, GIT_BASELINE) or (store / mark).exists():
+        return
+    if file_digest(path) == mark:
+        _captured(path, store)
 
 
 def note_written(session_id: str, paths: list[str], root: str | os.PathLike[str] | None) -> None:

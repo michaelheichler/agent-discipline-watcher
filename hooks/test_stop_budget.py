@@ -5,10 +5,13 @@ import time
 from pathlib import Path
 
 import stop
-from lib import baseline, blocker_state, scanner, stop_scan
+from lib import baseline, blocker_state, imported_baseline, scanner, stop_scan
 from testing import make_repo, run_git
 
 NARRATION = "# Increment the counter.\nx = 1\n"
+EDITED = NARRATION + "# Reset the total.\n"
+BASELINE_SCAN_SECONDS = 0.6
+BUDGET_SECONDS = 0.3
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -125,3 +128,44 @@ def test_a_duplicate_check_cut_off_by_the_deadline_keeps_the_batch_block(tmp_pat
     assert response["decision"] == "block"
     assert "before the duplicate content check" in response["reason"]
     assert "<batch>" in blocker_state.details("s1", "", root)[0]
+
+
+def _slow_baseline_scan(monkeypatch) -> None:
+    original = baseline.scan_all
+
+    def slow(path: str, text: str, config: dict) -> list[dict]:
+        time.sleep(BASELINE_SCAN_SECONDS)
+        return original(path, text, config)
+
+    monkeypatch.setattr(baseline, "scan_all", slow)
+
+
+def test_a_slow_scan_of_an_imported_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
+    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
+    target.write_text(EDITED, encoding="utf-8")
+    scanner.scan_all(str(target), EDITED, cfg)
+    _slow_baseline_scan(monkeypatch)
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, time.monotonic() + BUDGET_SECONDS)
+
+    assert scanned.skipped == [str(target)]
+    assert scanned.existing == []
+
+
+def test_a_slow_scan_of_the_committed_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+    repo = make_repo(tmp_path)
+    target = repo / "module.py"
+    target.write_text(NARRATION, encoding="utf-8")
+    run_git(repo, "add", "module.py")
+    run_git(repo, "commit", "-qm", "seed")
+    target.write_text(EDITED, encoding="utf-8")
+    scanner.scan_all(str(target), EDITED, {})
+    _slow_baseline_scan(monkeypatch)
+
+    scanned = stop_scan.rescan([str(target)], repo, {}, time.monotonic() + BUDGET_SECONDS)
+
+    assert scanned.skipped == [str(target)]
+    assert scanned.existing == []
