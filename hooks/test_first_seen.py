@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pre_bash
 import pre_write
 import record
 import stop
@@ -150,3 +151,16 @@ def test_a_patch_that_grows_an_inherited_long_file_is_denied(tmp_path: Path) -> 
 
     assert before["decision"] == "block"
     assert "file_too_long" in before["reason"]
+
+
+def test_a_shell_append_to_an_untracked_file_does_not_own_the_old_findings(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "NOTES.md", DASHED)
+    payload = _payload(tmp_path, "Bash", {"command": "printf 'Plain line.\\n' >> NOTES.md"}, "t1")
+
+    before = pre_bash.run(payload, _config(tmp_path))
+    target.write_text(DASHED + "Plain line.\n", encoding="utf-8")
+    after = record.run(payload, _config(tmp_path))
+
+    assert before.get("decision") != "block"
+    assert after.get("decision") != "block"
+    assert _stop(tmp_path) == {}

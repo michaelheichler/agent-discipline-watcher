@@ -254,7 +254,7 @@ def split_edited_paths(payload: object, authored: frozenset[str] | None = None) 
         import pre_bash
     from lib import temp_copies
     cwd = _exact_string(fields, "cwd") or None
-    writes = tuple(pre_bash.write_paths(text))
+    writes = tuple(pre_bash.write_paths(text, cwd))
     if authored is None:
         return (*found, *writes, *temp_copies.temp_copy_destinations(text, cwd)), ()
     own = authored | {temp_copies.source_key(write, cwd) for write in writes}

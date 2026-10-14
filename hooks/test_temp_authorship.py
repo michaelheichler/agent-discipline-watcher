@@ -116,6 +116,17 @@ def test_at_the_cap_a_scratch_redirect_is_refused(tmp_path: Path, monkeypatch) -
     assert response["reason"] == temp_authorship.FULL_REASON
 
 
+def test_at_the_cap_a_rewrite_of_a_recorded_scratch_path_passes(tmp_path: Path, monkeypatch) -> None:
+    _at_cap(tmp_path, monkeypatch)
+    recorded = tmp_path / "padding-0"
+
+    write = _pre(tmp_path, pre_write, "Write", {"file_path": str(recorded), "content": "y\n"})
+    redirect = _pre(tmp_path, pre_bash, "Bash", {"command": f"printf y > {recorded}"})
+
+    assert write.get("decision") != "block"
+    assert redirect.get("decision") != "block"
+
+
 def test_at_the_cap_a_project_write_still_passes(tmp_path: Path, monkeypatch) -> None:
     _at_cap(tmp_path, monkeypatch)
 

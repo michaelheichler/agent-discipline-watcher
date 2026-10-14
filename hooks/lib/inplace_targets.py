@@ -25,6 +25,7 @@ class InplaceEdit(NamedTuple):
     targets: list[str]
     scripts: list[str]
     script_file: bool
+    backup: bool
 
 
 def inplace_edit(segment: list[str]) -> InplaceEdit | None:
@@ -39,13 +40,14 @@ def inplace_edit(segment: list[str]) -> InplaceEdit | None:
     targets = operands if scripts else operands[1:]
     if not scripts and operands:
         scripts = [operands[0]]
-    return InplaceEdit(verb, targets, scripts, any(letter == "f" for letter, _ in values))
+    script_file = any(letter == "f" for letter, _ in values)
+    return InplaceEdit(verb, targets, scripts, script_file, any(letter == "i" and value for letter, value in values))
 
 
 def scratch_inplace_edit(segment: list[str], command: str, cwd: str | os.PathLike[str] | None) -> bool:
-    """Because the edited text never reaches the scanner, only a known script that writes nothing beyond scratch temp targets may run."""
+    """Because the edited text never reaches the scanner, only a known script that writes nothing beyond scratch temp targets may run, and a backup suffix can name a file anywhere."""
     edit = inplace_edit(segment)
-    if edit is None or not edit.targets or edit.script_file:
+    if edit is None or not edit.targets or edit.script_file or edit.backup:
         return False
     if not all(scratch_target(target, command, cwd) for target in edit.targets):
         return False
@@ -89,12 +91,14 @@ def _option(verb: str, word: str) -> tuple[str, str | None]:
     """Because i takes the rest of its cluster as a backup suffix, letters after it are no flags."""
     if word.startswith("--"):
         name, separator, value = word.partition("=")
+        if verb == "sed" and name == "--in-place":
+            return "i", value
         letter = SED_LONG_VALUES.get(name, "") if verb == "sed" else ""
         return letter, value if separator else None
     letters = word[1:]
     for position, letter in enumerate(letters):
         if letter == "i":
-            return "", None
+            return "i", letters[position + 1:]
         if letter in VALUE_LETTERS[verb]:
             return letter, letters[position + 1:] or None
     return "", None

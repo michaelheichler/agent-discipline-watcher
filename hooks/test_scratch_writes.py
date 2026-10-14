@@ -33,7 +33,6 @@ def _gate(tmp_path: Path, project: Path, command: str) -> dict:
     "sed -i '' -e 's/a/b/' {scratch}/f.txt",
     "perl -pi -e 's/a/b/' {scratch}/f.txt",
     "cd {scratch} && sed -i 's/a/b/' f.txt",
-    "cd {scratch}; printf '%s' '{long}' > note.md",
 ])
 def test_a_write_whose_every_target_is_scratch_temp_runs(tmp_path: Path, template: str) -> None:
     project, scratch = _dirs(tmp_path)
@@ -52,6 +51,8 @@ def test_a_write_whose_every_target_is_scratch_temp_runs(tmp_path: Path, templat
     ("cd {scratch} && sed -i 's/a/b/' ../project/docs/f.txt", "inplace_edit_write"),
     ("cd {scratch} && cd {project} && sed -i 's/a/b/' f.txt", "inplace_edit_write"),
     ("cd {scratch}/missing; sed -i 's/a/b/' f.txt", "inplace_edit_write"),
+    ("cd {scratch}; sed -i 's/a/b/' f.txt", "inplace_edit_write"),
+    ("cd {scratch}; printf '%s' '{long}' > note.md", "exceeds the"),
     ("perl -pi {scratch}/edit.pl {scratch}/f.txt", "inplace_edit_write"),
     ("printf '%s' '{long}' > docs/note.md", "exceeds the"),
     ("cd {scratch} && printf '%s' '{long}' > {project}/docs/note.md", "exceeds the"),
@@ -121,3 +122,45 @@ def test_a_scratch_in_place_edit_after_a_leading_cd_is_recorded_as_an_agent_writ
     payload = {"cwd": str(project), "tool_name": "Bash", "tool_input": {"command": f"cd {scratch} && sed -i 's/a/b/' f.txt"}}
 
     assert payloads.edited_paths(payload) == (f"{scratch}/f.txt",)
+
+
+@pytest.mark.parametrize("edit", [
+    "sed -i'{project}/docs/*' 's/a/b/'",
+    "sed -i.bak 's/a/b/'",
+    "sed --in-place=.bak 's/a/b/'",
+    "perl -pi'{project}/docs/*' -e 's/a/b/'",
+    "perl -pi.bak -e 's/a/b/'",
+])
+def test_a_scratch_in_place_edit_that_writes_a_backup_blocks(tmp_path: Path, edit: str) -> None:
+    project, scratch = _dirs(tmp_path)
+
+    result = _gate(tmp_path, project, f"{edit.format(project=project)} {scratch}/f.txt")
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
+def _unsearchable(scratch: Path) -> Path:
+    locked = scratch / "locked"
+    locked.mkdir()
+    locked.chmod(0o600)
+    return locked
+
+
+def test_a_leading_cd_into_an_unsearchable_directory_gates_the_project_file(tmp_path: Path) -> None:
+    project, scratch = _dirs(tmp_path)
+    (project / "notes.md").write_text("a\n", encoding="utf-8")
+    command = f"cd {_unsearchable(scratch)} && sed -i 's/a/b/' notes.md"
+
+    result = _gate(tmp_path, project, command)
+
+    assert result.get("decision") == "block"
+    assert "inplace_edit_write" in result["reason"]
+
+
+def test_a_leading_cd_that_may_fail_records_the_project_file_as_edited(tmp_path: Path) -> None:
+    project, scratch = _dirs(tmp_path)
+    command = f"cd {_unsearchable(scratch)} && sed -i 's/a/b/' notes.md"
+    payload = {"cwd": str(project), "tool_name": "Bash", "tool_input": {"command": command}}
+
+    assert "notes.md" in payloads.edited_paths(payload)
