@@ -27,6 +27,7 @@ BASELINE_MODES = ("git", "report", "none")
 DEFAULT_BASELINE_MODE = "report"
 GIT_TIMEOUT_SECONDS = 2
 MAX_BASELINE_CACHE = 256
+BASELINE_SCAN_BYTES_PER_SECOND = 250_000
 _BASELINE_CACHE: dict[tuple[str, str, int], tuple[dict, list[dict]]] = {}
 Texts = Sequence[str | None]
 
@@ -179,13 +180,20 @@ def _deadline_check(until: float | None) -> Check:
     return lambda: remaining(until)
 
 
+def _fits_deadline(before: str, check: Check) -> None:
+    """OutOfTime before the scan, because scan_all cannot stop midway and a 10 MB baseline outlasts the host Stop timeout."""
+    left = check()
+    if isinstance(left, float) and len(before) > left * BASELINE_SCAN_BYTES_PER_SECOND:
+        raise OutOfTime
+
+
 def _baseline_rows(path: Path, before: str, cfg: dict, check: Check) -> list[dict]:
     """Memoized per path and baseline hash, because a batch that edits one file twice scanned its baseline twice."""
     key = (str(path), text_digest(before, check), id(cfg))
     cached = _BASELINE_CACHE.get(key)
     if cached is not None and cached[0] is cfg:
         return cached[1]
-    check()
+    _fits_deadline(before, check)
     rows = scan_all(str(path), before, cfg)
     if len(_BASELINE_CACHE) >= MAX_BASELINE_CACHE:
         _BASELINE_CACHE.clear()

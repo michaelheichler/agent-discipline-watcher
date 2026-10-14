@@ -12,6 +12,10 @@ NARRATION = "# Increment the counter.\nx = 1\n"
 EDITED = NARRATION + "# Reset the total.\n"
 BASELINE_SCAN_SECONDS = 0.6
 BUDGET_SECONDS = 0.3
+DEADLINE_MARGIN_SECONDS = 0.5
+LARGE_BASELINE_BYTES = 3_000_000
+LARGE_PROSE = "The hook reads the file. It scans each line and records what it finds for the agent.\n\n"
+DASHED_LINE = "The scan ends here — and the agent sees it.\n"
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -153,6 +157,20 @@ def test_a_slow_scan_of_an_imported_baseline_ends_at_the_deadline_as_unscanned(t
 
     assert scanned.skipped == [str(target)]
     assert scanned.existing == []
+
+
+def test_a_baseline_too_large_for_the_deadline_is_skipped_without_scanning(tmp_path: Path) -> None:
+    target = tmp_path / "notes.md"
+    target.write_text(LARGE_PROSE * (LARGE_BASELINE_BYTES // len(LARGE_PROSE)), encoding="utf-8")
+    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
+    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
+    target.write_text(DASHED_LINE, encoding="utf-8")
+    started = time.monotonic()
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, started + BUDGET_SECONDS)
+
+    assert scanned.skipped == [str(target)]
+    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
 
 
 def test_a_slow_scan_of_the_committed_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:

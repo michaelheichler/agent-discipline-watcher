@@ -9,6 +9,10 @@
 - **The run detector reads more sentences right.** Plain present-tense verbs count, so "We read each file. We check every rule." now forms a run. "Das alte System" no longer reads as a pronoun. A sentence may end on usw., etc., a year, or a version number, while z. B., d. h., e.g., i.e., and Dr. still stay inside one. Clock times, decimals, and inline code at a sentence start no longer break a run.
 - **The contract, the skills and the judge prompts ask for flowing sentences.** They no longer ask the agent to split a clear sentence, and the dash and semicolon bans still hold.
 
+### Fixed
+
+- **A huge baseline no longer carries Stop past the host timeout.** A 9.9 MB first-seen `notes.md` took 12.5 seconds to scan, and the host kills Stop at 10. The scan cannot stop midway, so Stop now checks the baseline size against the time left at 250,000 bytes per second before it starts. A baseline too large for the time left counts as unscanned and blocks as before.
+
 ## 0.26.0 (2026-10-14)
 
 ### Security
