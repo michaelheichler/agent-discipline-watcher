@@ -9,7 +9,7 @@ import pytest
 
 import prompt_submit
 import stop
-from lib import journal, pending_advice, session_state
+from lib import hookio, journal, pending_advice, session_state
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 
 CLOSER = "Feel free to ask me anything else."
@@ -162,6 +162,46 @@ def test_advice_past_the_context_limit_waits_whole_for_the_next_prompt(tmp_path)
 
     assert all(len(context) <= prompt_submit.MAX_RESPONSE_CHARS for context in contexts)
     assert [sum(context.count(notice) for context in contexts) for notice in notices] == [1, 1, 1, 1]
+
+
+GERMAN_NOTICE = "Prüfe die Übergänge, füge die kurzen Sätze zusammen und ändere die Größe der Absätze. "
+
+
+def _german_notice(label: str) -> str:
+    return (f"{label}: " + GERMAN_NOTICE * 12).encode("utf-8")[:900].decode("utf-8", errors="ignore")
+
+
+def _sent(response: dict, capsys: pytest.CaptureFixture[str]) -> tuple[dict, int]:
+    hookio.write_payload(response)
+    raw = capsys.readouterr().out.strip()
+    return json.loads(raw), len(raw.encode("utf-8"))
+
+
+def test_german_advice_reaches_the_model_whole_across_prompts(tmp_path, capsys) -> None:
+    notices = [_german_notice(f"Hinweis {index}") for index in range(4)]
+    for notice in notices:
+        pending_advice.hold("patterns", notice, tmp_path / "state")
+
+    sent = [_sent(_next_prompt(tmp_path, "Skip the tests and just comment it out."), capsys) for _ in range(4)]
+
+    contexts = [payload["hookSpecificOutput"]["additionalContext"] for payload, _size in sent]
+    assert all(size <= hookio.MAX_RESPONSE_BYTES for _payload, size in sent)
+    assert [sum(context.count(notice) for context in contexts) for notice in notices] == [1, 1, 1, 1]
+    assert pending_advice.ADVICE_KEY not in session_state.read_state("patterns", tmp_path / "state")
+
+
+def test_advice_too_large_to_send_is_dropped_with_one_user_notice(tmp_path, capsys) -> None:
+    deliverable = _german_notice("Hinweis")
+    pending_advice.hold("patterns", "Übergröße " * 900, tmp_path / "state")
+    pending_advice.hold("patterns", deliverable, tmp_path / "state")
+
+    first, _size = _sent(_next_prompt(tmp_path), capsys)
+    second = _next_prompt(tmp_path)
+
+    assert deliverable in first["hookSpecificOutput"]["additionalContext"]
+    assert "Übergröße" not in first["hookSpecificOutput"]["additionalContext"]
+    assert "too large" in first["systemMessage"]
+    assert second == {}
 
 
 def test_an_incomplete_pattern_row_fails_closed(tmp_path) -> None:

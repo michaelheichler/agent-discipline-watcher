@@ -152,10 +152,22 @@ def _sanitized_payload(payload: dict) -> dict:
     return safe_payload
 
 
+def _serialized(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def _within_envelope(safe_payload: dict) -> bool:
+    return len(_serialized(safe_payload).encode("utf-8")) <= MAX_RESPONSE_BYTES
+
+
+def sends_whole(payload: dict) -> bool:
+    """Measured with the writer's own sanitizer and encoder, because a filler that counts characters overruns the escaped byte size and the writer then clips the context."""
+    return _within_envelope(_sanitized_payload(payload))
+
+
 def _bounded_payload(payload: dict) -> dict:
     safe_payload = _sanitized_payload(payload)
-    raw = json.dumps(safe_payload, ensure_ascii=True, separators=(",", ":"))
-    if len(raw.encode("utf-8")) <= MAX_RESPONSE_BYTES:
+    if _within_envelope(safe_payload):
         return safe_payload
     reason = _clip_utf8(_safe_text(safe_payload.get("reason", safe_payload.get("systemMessage", ""))), MAX_MESSAGE_BYTES)
     if "decision" in safe_payload:
@@ -174,7 +186,7 @@ def _bounded_payload(payload: dict) -> dict:
 
 
 def write_payload(payload: dict) -> None:
-    sys.stdout.write(json.dumps(_bounded_payload(payload), ensure_ascii=True, separators=(",", ":")))
+    sys.stdout.write(_serialized(_bounded_payload(payload)))
     sys.stdout.write("\n")
 
 
