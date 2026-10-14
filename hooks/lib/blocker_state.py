@@ -167,11 +167,14 @@ def note_stall(scope: BlockerScope, record: dict) -> None:
 
 def _unscanned_paths(payload: dict) -> list[str]:
     cwd = Path(payloads.cwd(payload) or ".")
-    return [str(payloads.resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]
+    writes = (call for call in payloads.tool_calls(payload) if payloads.tool_name(call).lower() in payloads.WRITE_TOOL_NAMES)
+    calls = [payload, *({**call, "cwd": payloads.cwd(payload)} for call in writes)]
+    raw_paths = [raw for call in calls for raw in payloads.edited_paths(call)]
+    return list(dict.fromkeys(str(payloads.resolved_path(raw, cwd)) for raw in raw_paths))
 
 
 def hold_undecidable(payload: object, config: object, key: str, reason: str) -> None:
-    """Held because a failed gate left the write unscanned."""
+    """Held only with paths, because a failed gate that left nothing unscanned has nothing Stop could ever recheck."""
     fields = payloads.exact_string_dict(payload)
     session_id = payloads.session_id(fields)
     if not session_id:
@@ -179,8 +182,9 @@ def hold_undecidable(payload: object, config: object, key: str, reason: str) -> 
     root = payloads.exact_string_dict(config).get("state_root")
     target = BlockerScope(session_id, scope(fields), root if isinstance(root, str) else None)
     try:
-        set_pending(target, key, reason)
-        touch_paths(target, _unscanned_paths(fields))
+        paths = _unscanned_paths(fields)
+        if paths:
+            apply_paths(target, paths, {key: reason})
     except Exception as state_exc:
         sys.stderr.write(f"agent-discipline-watcher: blocker state update failed: {state_exc}\n")
 

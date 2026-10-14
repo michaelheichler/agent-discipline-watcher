@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 _TOOL_INPUT_KEYS = ("tool_input", "toolInput", "input")
+# Copied from hooks.json because PostToolBatch has no matcher.
+WRITE_TOOL_NAMES = frozenset({
+    "write", "edit", "multiedit", "notebookedit", "apply_patch", "bash",
+})
 _FILE_PATH_KEYS = ("file_path", "path")
 _PROMPT_KEYS = ("prompt", "user_prompt")
 _TASK_SUBJECT_KEYS = ("task_subject", "task_name")

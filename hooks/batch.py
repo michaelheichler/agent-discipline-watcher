@@ -30,10 +30,7 @@ BATCH_EVENT = "PostToolBatch"
 UNDECIDABLE_KEY = blocker_state.BATCH_ERROR_KEY
 DEGRADED_RULE = "degraded_cross_file_only"
 MIN_DUPLICATE_NONSPACE = 200
-# Copied from hooks.json because PostToolBatch has no matcher.
-WRITE_TOOL_NAMES = frozenset({
-    "write", "edit", "multiedit", "notebookedit", "apply_patch", "bash",
-})
+WRITE_TOOL_NAMES = payloads.WRITE_TOOL_NAMES
 
 
 StatFingerprint = tuple[int, int, int, int, int]
