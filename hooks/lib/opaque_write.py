@@ -13,6 +13,7 @@ from lib.shell_parse import (
 )
 from lib.inplace_targets import inplace_edit, scratch_inplace_edit
 from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection
+from lib.script_payload import SCRIPT_INTERPRETERS, script_write
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import python_rejection
 from lib.python_shell import isolated_python, rejection_finding, startup_finding, trusted_python_startup
@@ -109,6 +110,8 @@ def _inline_open_calls_write_capable(payload: str) -> bool:
 
 def _payload_is_write_capable(name: str, payload: str) -> bool:
     if name in NODE_INTERPRETERS and node_reflection(payload):
+        return True
+    if name in SCRIPT_INTERPRETERS and script_write(payload):
         return True
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
