@@ -7,15 +7,11 @@ import os
 from pathlib import Path
 from typing import NamedTuple
 
-from lib import session_state
 from lib.shell_syntax import _bare, _basename, _command_word_index, _segments
 from lib.temp_scope import _absolute, _within, outside_project_temp
 from lib.write_targets import _drop_target_dir, _expand_home, _target_directory
 
 COPY_VERBS = frozenset({"cp", "mv", "install", "rsync"})
-AUTHORED_KEY = "authored_temp"
-MAX_AUTHORED = 256
-OVERFLOW_KEY = "authored_temp_overflow"
 GLOB_CHARS = frozenset("*?[")
 Cwd = str | os.PathLike[str] | None
 
@@ -35,33 +31,6 @@ class _Copy(NamedTuple):
 
 def source_key(path: str | os.PathLike[str], cwd: Cwd = None) -> str:
     return os.path.realpath(_absolute(path, cwd))
-
-
-def note_authored_temp(session_id: str, paths: list[str], cwd: Cwd, root: Cwd) -> None:
-    """Remembered per session, because only a temp file the agent wrote can make its copy the agent's own."""
-    keys = list(dict.fromkeys(source_key(path, cwd) for path in paths))
-    if not session_id or not keys:
-        return
-
-    def mutate(state: dict) -> dict:
-        stored = state.get(AUTHORED_KEY)
-        known = [value for value in stored if isinstance(value, str)] if isinstance(stored, list) else []
-        merged = [value for value in known if value not in keys] + keys
-        overflow = state.get(OVERFLOW_KEY) is True or len(merged) > MAX_AUTHORED
-        return {**state, AUTHORED_KEY: merged[-MAX_AUTHORED:], OVERFLOW_KEY: overflow}
-
-    session_state.update_state(session_id, mutate, root)
-
-
-def authored_temp(session_id: str, root: Cwd) -> frozenset[str] | None:
-    """None after an eviction, because an evicted source would pass as imported and every copy must count as written."""
-    if not session_id:
-        return frozenset()
-    state = session_state.read_state(session_id, root)
-    if state.get(OVERFLOW_KEY) is True:
-        return None
-    stored = state.get(AUTHORED_KEY)
-    return frozenset(value for value in stored if isinstance(value, str)) if isinstance(stored, list) else frozenset()
 
 
 def temp_copy_destinations(command: str, cwd: Cwd) -> list[str]:
