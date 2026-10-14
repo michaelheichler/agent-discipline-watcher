@@ -17,7 +17,6 @@ MAX_MAPPING_ITEMS = 512
 EDITABLE_KEYS = (
     *config.GATE_FAMILIES,
     "max_rows",
-    "sentence_word_cap",
     "list_item_cap",
     "adw_model",
     "exempt_paths",
@@ -37,7 +36,7 @@ PROTECTED_POLICY_KEYS = frozenset({
     "ledger_root",
     "protected_paths_authorized",
 })
-THRESHOLD_KEYS = ("max_rows", "sentence_word_cap", "list_item_cap")
+THRESHOLD_KEYS = ("max_rows", "list_item_cap")
 MAPPING_MERGE_KEYS = frozenset({
     "gates", "rule_gates", "kill_switches", "exempt_families", "data_boundary",
 })
@@ -159,7 +158,10 @@ def _kill_switches(fields: dict[str, object]) -> None:
 def _rule_gates(fields: dict[str, object]) -> None:
     if "rule_gates" not in fields:
         return
-    rule_gates = mapping(fields["rule_gates"], "values.rule_gates")
+    rule_gates = {
+        rule: state for rule, state in mapping(fields["rule_gates"], "values.rule_gates").items()
+        if rule not in config.RETIRED_RULES
+    }
     if set(rule_gates) - KNOWN_RULES:
         raise ConfigureError("unknown_field", "values.rule_gates contains an unknown rule")
     for rule, state in rule_gates.items():
@@ -219,7 +221,7 @@ _VALIDATORS = (
 
 def validate_policy_values(values: object) -> dict[str, object]:
     """Lock protected rules here because every write path funnels through this one call."""
-    fields = mapping(values, "values")
+    fields = {key: value for key, value in mapping(values, "values").items() if key not in config.RETIRED_SETTINGS}
     _editable_keys(fields)
     _family_booleans(fields, "values")
     for validator in _VALIDATORS:

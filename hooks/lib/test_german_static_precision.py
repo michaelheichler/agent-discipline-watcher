@@ -58,9 +58,9 @@ def test_finding_line_maps_to_its_paragraph_across_wrapped_lines() -> None:
 
 
 def test_document_rules_sample_the_paragraph_corpus() -> None:
-    hits = [_hit("de_sentence_length", "human_sentences", 1), _hit("de_sentence_length", "paragraphs", 2)]
+    hits = [_hit("de_parataxis", "human_sentences", 1), _hit("de_parataxis", "paragraphs", 2)]
 
-    assert sample.designated("de_sentence_length", hits) == [hits[1]]
+    assert sample.designated("de_parataxis", hits) == [hits[1]]
 
 
 def test_draw_caps_each_rule_and_repeats_under_the_seed() -> None:

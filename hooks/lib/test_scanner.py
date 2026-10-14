@@ -1,10 +1,14 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from lib import comment_rules, prose_structure, scanner, test_rules
 from lib.markup import mask_python_strings
 from lib.config import ALWAYS_BLOCKING_RULES, effective_config
 from lib.scanner import scan_all
+
+CHOPPY_RUN = "The hook reads the file. It checks every rule. It writes a report."
 
 
 def test_length_caps_read_the_adw_env_names(monkeypatch):
@@ -160,24 +164,9 @@ def test_readability_regex_rules_scan_code_comments_under_comment_check():
 def test_readability_rules_default_to_observe():
     gates = effective_config({})["rule_gates"]
     for rule in (
-        "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom",
-        "long_sentence", "oversized_list",
+        "ai_closer", "greeting_opener", "hedge_stack", "corporate_idiom", "oversized_list",
     ):
         assert gates[rule] == "observe"
-
-
-def test_long_sentence_uses_a_generous_default_cap():
-    forty_words = "This " + " ".join("word" for _ in range(39)) + "."
-    forty_one_words = "This " + " ".join("word" for _ in range(40)) + "."
-    assert "long_sentence" not in {row["rule"] for row in scan_all("sample.md", forty_words)}
-    assert "long_sentence" in {row["rule"] for row in scan_all("sample.md", forty_one_words)}
-
-
-def test_long_sentence_splits_on_punctuation_before_uppercase():
-    first = "First " + " ".join("word" for _ in range(20)) + "."
-    second = "Second " + " ".join("word" for _ in range(20)) + "."
-    rules = {row["rule"] for row in scan_all("sample.md", first + " " + second)}
-    assert "long_sentence" not in rules
 
 
 def test_oversized_list_uses_eight_item_default_cap():
@@ -187,46 +176,37 @@ def test_oversized_list_uses_eight_item_default_cap():
     assert "oversized_list" in {row["rule"] for row in scan_all("sample.md", nine_items)}
 
 
-def test_prose_structure_thresholds_accept_config():
-    sentence = "One two three four."
-    configured = {row["rule"] for row in scan_all("sample.md", sentence, {"sentence_word_cap": 3})}
-    assert "long_sentence" in configured
-
-
 def test_int_setting_uses_environment_without_config(monkeypatch):
     monkeypatch.setenv("ADW_LIST_ITEM_CAP", "1")
     assert scanner._int_setting({}, "list_item_cap", "ADW_LIST_ITEM_CAP", 8) == 1
 
 
 def test_explicit_config_wins_over_environment(monkeypatch):
-    monkeypatch.setenv("ADW_SENTENCE_WORD_CAP", "1")
-    text = "One two three four."
-    rules = {row["rule"] for row in scan_all("sample.md", text, {"sentence_word_cap": 10})}
-    assert "long_sentence" not in rules
+    monkeypatch.setenv("ADW_LIST_ITEM_CAP", "1")
+    text = "\n".join(f"- item {number}" for number in range(3))
+    rules = {row["rule"] for row in scan_all("sample.md", text, {"list_item_cap": 10})}
+    assert "oversized_list" not in rules
 
 
-def test_prose_structure_skips_both_fence_styles():
-    long_line = "Sentence " + " ".join("word" for _ in range(45)) + "."
+@pytest.mark.parametrize("marker", ["```", "~~~"])
+def test_prose_structure_skips_both_fence_styles(marker):
     long_list = "\n".join(f"- item {number}" for number in range(10))
-    for marker in ("```", "~~~"):
-        text = f"{marker}\n{long_line}\n{long_list}\n{marker}\n"
-        rules = {row["rule"] for row in scan_all("sample.md", text)}
-        assert not rules & {"long_sentence", "oversized_list"}, marker
+    text = f"{marker}\n{CHOPPY_RUN}\n{long_list}\n{marker}\n"
+    rules = {row["rule"] for row in scan_all("sample.md", text)}
+    assert not rules & {"choppy_sentences", "oversized_list"}
 
 
 def test_prose_structure_skips_markdown_tables():
-    long_cell = " ".join("word" for _ in range(45))
-    text = f"| Heading |\n| --- |\n| {long_cell} |\n"
+    text = f"| Heading |\n| --- |\n| {CHOPPY_RUN} |\n"
     rules = {row["rule"] for row in scan_all("sample.md", text)}
-    assert "long_sentence" not in rules
+    assert "choppy_sentences" not in rules
     assert list(prose_structure._markdown_prose_lines("Heading | Detail\n--- | ---"))[-1] == (2, "")
 
 
-def test_prose_structure_scans_long_sentences_containing_pipes():
-    long_prefix = "This " + " ".join("word" for _ in range(40))
-    for suffix in ("input | output.", "Value = Left | Right."):
-        rules = {row["rule"] for row in scan_all("sample.md", long_prefix + " " + suffix)}
-        assert "long_sentence" in rules
+@pytest.mark.parametrize("opening", ["The hook reads input | output.", "The hook reads Left | Right."])
+def test_prose_structure_scans_sentences_containing_pipes(opening):
+    rules = {row["rule"] for row in scan_all("sample.md", opening + " It checks every rule. It writes a report.")}
+    assert "choppy_sentences" in rules
 
 
 def test_prose_structure_counts_list_items_containing_pipes():
@@ -237,16 +217,15 @@ def test_prose_structure_counts_list_items_containing_pipes():
 
 
 def test_prose_structure_skips_blockquotes():
-    text = "> Quoted " + " ".join("word" for _ in range(45)) + "."
-    rules = {row["rule"] for row in scan_all("sample.md", text)}
-    assert "long_sentence" not in rules
+    rules = {row["rule"] for row in scan_all("sample.md", "> " + CHOPPY_RUN)}
+    assert "choppy_sentences" not in rules
 
 
 def test_prose_structure_skips_link_reference_lines():
-    long_target = "".join(f"part{number}/" for number in range(45))
-    text = f"[source]: https://example.com/{long_target}\n"
-    rules = {row["rule"] for row in scan_all("sample.md", text)}
-    assert "long_sentence" not in rules
+    tail = f"https://example.com/page. {CHOPPY_RUN}\n"
+    plain = {row["rule"] for row in scan_all("sample.md", "See " + tail)}
+    reference = {row["rule"] for row in scan_all("sample.md", "[source]: " + tail)}
+    assert ("choppy_sentences" in plain, "choppy_sentences" in reference) == (True, False)
 
 
 def test_clean_code_rules_cover_common_comment_faults():

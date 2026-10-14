@@ -46,6 +46,7 @@ try:
         render_regions,
     )
     from .brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
+    from .parataxis import scan_parataxis
     from .prose_structure import _next_fence, _scan_prose_structure
     from .slop_phrase import scan_slop_phrases
     from .slop_structure import _scan_slop_structure, mask_quoted
@@ -92,6 +93,7 @@ except ImportError:
         render_regions,
     )
     from brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
+    from parataxis import scan_parataxis
     from prose_structure import _next_fence, _scan_prose_structure
     from slop_phrase import scan_slop_phrases
     from slop_structure import _scan_slop_structure, mask_quoted
@@ -349,6 +351,8 @@ def _scan_english_families(path: str, masked: str, context: _ScanContext) -> lis
 
 def _scan_document_families(context: _ScanContext, masked: str, sources: _LineSources) -> list[dict]:
     findings = _scan_english_families(context.path, _english_view(masked, sources.languages), context)
+    if "english" in context.active_families and context.prose:
+        findings.extend(scan_parataxis(context.path, _strip_english_hidden(masked), sources.languages))
     german = [paragraph for paragraph in sources.paragraphs if paragraph.language == GERMAN]
     if "english" in context.active_families and german:
         findings.extend(scan_german_document(context.path, german, context.config))

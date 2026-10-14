@@ -2,11 +2,11 @@
   "exemplars": "pattern_exemplars.jsonl",
   "judge_examples": 4,
   "origins": {
-    "assistant/arena": 498,
-    "assistant/wildchat": 754,
-    "human/encyclopedia": 251,
-    "human/literature": 262,
-    "human/news": 334
+    "assistant/arena": 489,
+    "assistant/wildchat": 742,
+    "human/encyclopedia": 243,
+    "human/literature": 248,
+    "human/news": 326
   },
   "per_side": 40,
   "rules": {
@@ -74,10 +74,6 @@
       "action": "Name the actual scope or number.",
       "judge_precision": null
     },
-    "long_sentence": {
-      "action": "Cut a clause or break at one clause boundary. Do not chop it into fragments.",
-      "judge_precision": null
-    },
     "passive_voice": {
       "action": "Name the actor and use an active verb.",
       "judge_precision": null
@@ -119,5 +115,5 @@
       "judge_precision": null
     }
   },
-  "sha256": "62d3983c59fbadb391a04c6d588a639ec25bd92be15020ff508746c5b2379dd1"
+  "sha256": "64ac4e569ca697735733e28b06446bd382970bab70fa14c53f18c5a0a1eb46f0"
 }

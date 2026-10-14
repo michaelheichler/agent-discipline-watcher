@@ -74,7 +74,7 @@ export function safePolicyString(value: unknown, limit = 4096): string | undefin
   return value;
 }
 type Screen = "menu" | "models" | "families" | "rules" | "thresholds" | "baseline" | "exemptions" | "kill" | "boundary" | "runtime" | "input";
-type InputKind = "max_rows" | "sentence_word_cap" | "list_item_cap" | "exempt_paths" | "exempt_families";
+type InputKind = "max_rows" | "list_item_cap" | "exempt_paths" | "exempt_families";
 interface Row {
   id: string;
   label: string;
@@ -277,7 +277,6 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
     if (this.#screen === "thresholds") {
       return [
         { id: "threshold:max_rows", label: "max_rows", detail: String(this.#numberValue("max_rows", 8)) },
-        { id: "threshold:sentence_word_cap", label: "sentence_word_cap", detail: String(this.#numberValue("sentence_word_cap", 40)) },
         { id: "threshold:list_item_cap", label: "list_item_cap", detail: String(this.#numberValue("list_item_cap", 8)) },
         { id: "back", label: "Back" },
       ];
@@ -495,7 +494,7 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
   }
 
   #inputValue(kind: InputKind): string {
-    if (["max_rows", "sentence_word_cap", "list_item_cap"].includes(kind)) return String(this.#numberValue(kind, 1));
+    if (["max_rows", "list_item_cap"].includes(kind)) return String(this.#numberValue(kind, 1));
     if (kind === "exempt_paths") {
       const paths = Array.isArray(this.#draft.exempt_paths) ? this.#draft.exempt_paths : [];
       return paths.map(item => sanitizeDisplay(item, 4096)).join(", ");
@@ -508,7 +507,7 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
 
   #applyInput(kind: InputKind, value: string): void {
     const clean = value.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
-    if (["max_rows", "sentence_word_cap", "list_item_cap"].includes(kind)) {
+    if (["max_rows", "list_item_cap"].includes(kind)) {
       const parsed = Number(clean);
       if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 10000) {
         this.#status = `${kind} must be an integer from 1 through 10000`;

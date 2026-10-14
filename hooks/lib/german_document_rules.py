@@ -15,7 +15,6 @@ except ImportError:
     from prose_language import ParagraphLanguage
 
 FAMILY = "english"
-SENTENCE_LENGTH_CAP = 20
 RHYTHM_MIN_SENTENCES = 8
 RHYTHM_VARIATION_LIMIT = 0.4
 UNIFORM_PARAGRAPH_MIN_COUNT = 4
@@ -27,20 +26,6 @@ LONG_COMPOUND_SYLLABLES = 6
 
 def _sentence_word_counts(paragraph: ParagraphLanguage) -> list[int]:
     return [len(words(sentence)) for sentence in sentences(paragraph.text)]
-
-
-def _satzlaenge_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
-    """BAköV and Gottschling set this cap from a reader's working memory, because that limit is measured, not a style choice."""
-    rows = []
-    for sentence in sentences(paragraph.text):
-        count = len(words(sentence))
-        if count > SENTENCE_LENGTH_CAP:
-            rows.append(_finding(
-                FAMILY, "de_sentence_length", paragraph.line,
-                "Sentence runs past " + str(SENTENCE_LENGTH_CAP) + " words in " + path,
-                sentence, "Split the sentence at one clause boundary.",
-            ))
-    return rows
 
 
 def _gleichfoermiger_rhythmus_rows(path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
@@ -107,7 +92,6 @@ def scan_german_document(path: str, paragraphs: list[ParagraphLanguage], config:
     del config
     rows = []
     for paragraph in paragraphs:
-        rows.extend(_satzlaenge_rows(path, paragraph))
         rows.extend(_mechanische_konjunktionen_rows(path, paragraph))
         rows.extend(_long_compound_rows(path, paragraph))
     rows.extend(_gleichfoermiger_rhythmus_rows(path, paragraphs))

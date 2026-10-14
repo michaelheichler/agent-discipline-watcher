@@ -96,7 +96,7 @@ def _static_precisions() -> dict[str, float]:
     return {
         name: info["precision"]
         for name, info in payload["rules"].items()
-        if name not in RULE_GATE_EXEMPT and info.get("precision") is not None
+        if name not in RULE_GATE_EXEMPT | config.RETIRED_RULES and info.get("precision") is not None
     }
 
 

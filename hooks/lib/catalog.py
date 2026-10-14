@@ -38,6 +38,10 @@ RULES: dict[str, Entry] = {
         "Corporate vocabulary",
         "Cuts navigate the, unpack the, lean into, and the X landscape",
     ),
+    "choppy_sentences": Entry(
+        "Telegram-style sentences",
+        "Flags a run of short main clauses that a comma, because, which, or and would join",
+    ),
     "corporate_idiom": Entry(
         "Office idiom",
         "Cuts stock office phrasing that carries no specific claim",
@@ -54,9 +58,9 @@ RULES: dict[str, Entry] = {
         "Repeated German connector",
         "Flags a paragraph opening more than one sentence on the same connector",
     ),
-    "de_sentence_length": Entry(
-        "German sentence length",
-        "Flags a German sentence that runs past the twenty-word cap",
+    "de_parataxis": Entry(
+        "German telegram style",
+        "Flags a run of short German main clauses that a comma, weil, die, or und would join",
     ),
     "de_uniform_paragraphs": Entry(
         "Uniform German paragraph length",
@@ -129,10 +133,6 @@ RULES: dict[str, Entry] = {
     "lazy_extreme": Entry(
         "Absolute claims",
         "Cuts every, always, never, and nothing where the claim is not absolute",
-    ),
-    "long_sentence": Entry(
-        "Overlong sentence",
-        "Reports a sentence past the word cap, which defaults to 40 words",
     ),
     "low_sentence_variance": Entry(
         "Uniform sentence length",
@@ -377,10 +377,6 @@ THRESHOLDS: dict[str, Entry] = {
     "max_rows": Entry(
         "Findings shown per file",
         "How many rows one report lists before it points to the full report. At most 5",
-    ),
-    "sentence_word_cap": Entry(
-        "Sentence word limit",
-        "Word count that trips the overlong sentence rule. Default 40",
     ),
     "list_item_cap": Entry(
         "List item limit",

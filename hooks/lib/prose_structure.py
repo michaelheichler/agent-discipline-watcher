@@ -34,12 +34,6 @@ THREE_ITEM_RE = re.compile(
     re.IGNORECASE,
 )
 MIN_VARIANCE_SENTENCES = 4
-MIN_MEASURED_WORDS = 5
-# Set to 1.5 because Tukey's fence lands at 36.5 words on 5000 tracked sentences and flags 3.46 percent of them.
-TUKEY_MULTIPLIER = 1.5
-MIN_TUKEY_SENTENCES = 8
-# Floored at 28 because that is the measured p90, so a file of short sentences cannot drag the cap into normal prose.
-MIN_DYNAMIC_CAP = 28
 # Set to the measured p05 of 709 real paragraphs, because the previous 0.32 sat near the median and flagged 33.85 percent of ordinary writing.
 SENTENCE_VARIATION_LIMIT = 0.16
 RHYTHM_LIMITATIONS = {
@@ -137,50 +131,6 @@ def _source_line(offsets, start: int) -> int:
             break
         line_number = number
     return line_number
-
-
-def _sentence_lengths(lines) -> list[int]:
-    return [
-        len(WORD_RE.findall(_strip_inline_code(_strip_english_hidden(sentence))))
-        for paragraph in _paragraphs(lines)
-        for _number, sentence in _sentences(paragraph)
-    ]
-
-
-def _quartile(ordered: list[int], fraction: float) -> float:
-    position = fraction * (len(ordered) - 1)
-    low = int(position)
-    high = min(low + 1, len(ordered) - 1)
-    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
-
-
-def _dynamic_cap(lengths: list[int], cap: int) -> int:
-    """Tukey upper fence, because a fixed cap flags dense prose constantly and terse prose never."""
-    usable = sorted(value for value in lengths if value >= MIN_MEASURED_WORDS)
-    if len(usable) < MIN_TUKEY_SENTENCES:
-        return cap
-    first, third = _quartile(usable, 0.25), _quartile(usable, 0.75)
-    return max(MIN_DYNAMIC_CAP, int(third + TUKEY_MULTIPLIER * (third - first)))
-
-
-def _long_sentences_in_paragraph(path: str, paragraph, cap: int) -> list[dict]:
-    rows = []
-    for number, sentence in _sentences(paragraph):
-        visible = _strip_inline_code(_strip_english_hidden(sentence))
-        if len(WORD_RE.findall(visible)) > cap:
-            rows.append(_finding(
-                "english", "long_sentence", number,
-                "Sentence runs past " + str(cap) + " words, the length this document sustains, in " + path,
-                sentence, "Cut a clause or break at one clause boundary. Do not chop it into fragments.",
-            ))
-    return rows
-
-
-def _long_sentence_rows(path: str, lines, cap: int) -> list[dict]:
-    rows = []
-    for paragraph in _paragraphs(lines):
-        rows.extend(_long_sentences_in_paragraph(path, paragraph, cap))
-    return rows
 
 
 def _sentence_word_counts(paragraph: Paragraph) -> list[int]:
@@ -358,9 +308,7 @@ def _oversized_list_rows(path: str, lines, cap: int) -> list[dict]:
 
 def _scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:
     lines = list(_markdown_prose_lines(text))
-    sentence_cap = _int_setting(config, "sentence_word_cap", "ADW_SENTENCE_WORD_CAP", 40)
     list_cap = _int_setting(config, "list_item_cap", "ADW_LIST_ITEM_CAP", 8)
-    findings = _long_sentence_rows(path, lines, _dynamic_cap(_sentence_lengths(lines), sentence_cap))
-    findings.extend(_oversized_list_rows(path, lines, list_cap))
+    findings = _oversized_list_rows(path, lines, list_cap)
     findings.extend(_rhythm_rows(path, lines))
     return findings
