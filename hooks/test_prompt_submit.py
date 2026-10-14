@@ -224,39 +224,6 @@ def test_project_and_caller_mode_precedence_matrix(
     assert (response.get("decision") == "block") is expected_block
 
 
-def test_scanner_families_inject_and_respect_off_state():
-    assert "english/ai_tell" in context(
-        prompt_submit.run(payload("Please delve into this."))
-    )
-    assert (
-        prompt_submit.run(
-            payload("Please delve into this."), {"gates": {"english": "off"}}
-        )
-        == {}
-    )
-    observed = prompt_submit.run(
-        payload("Please delve into this."), {"gates": {"english": "observe"}}
-    )
-    assert "english/ai_tell" in context(observed)
-
-
-def test_enforced_scanner_family_cannot_invert_default_to_block():
-    response = prompt_submit.run(
-        payload("Please delve into this."), {"gates": {"english": "enforce"}}
-    )
-    assert response.get("decision") is None
-    assert "english/ai_tell" in context(response)
-
-
-def test_explicit_mode_can_block_scanner_finding():
-    response = prompt_submit.run(
-        payload("Please delve into this."),
-        {"prompt_firewall_mode": "block", "gates": {"english": "observe"}},
-    )
-    assert response["decision"] == "block"
-    assert "english/ai_tell" in response["reason"]
-
-
 @pytest.mark.parametrize("mode", [None, "inject", "block", "BLOCK", True])
 def test_data_boundary_blocks_file_reference_regardless_of_firewall_mode(mode: object):
     config = {
@@ -559,17 +526,6 @@ def test_longer_backtick_runs_do_not_hide_file_tokens(text: str):
         },
     )
     assert response["decision"] == "block"
-
-
-def test_scanner_findings_become_static_rule_reminders():
-    secret = "private-token-123"
-
-    def scan(*_args, **_kwargs) -> list[dict]:
-        return [{"family": "secrets", "rule": "credential", "snippet": secret, "action": secret}]
-
-    response = prompt_submit.run(payload(secret), {"secrets": True}, scan=scan)
-    assert "secrets/credential" in context(response)
-    assert secret not in context(response)
 
 
 def test_project_config_can_explicitly_select_block(tmp_path: Path):

@@ -9,9 +9,10 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import NamedTuple, cast
 
-from lib import payloads, reporting, turn_adapter
-from lib.config import effective_hook_config, gate_state
+from lib import payloads, reporting, session_state, turn_adapter
+from lib.config import SURFACE_PROSE, effective_hook_config, resolve_outcome
 from lib.embedding_session import lease_root_for, open_turn
+from lib.findings import Outcome
 from lib.hookio import read_payload, write_payload
 from lib.prompt_text import has_file_token, mask_examples
 from lib.scanner import scan_all, scannable_text
@@ -24,7 +25,13 @@ PROMPT_PATH = "user_prompt.md"
 PROMPT_EVENT = "UserPromptSubmit"
 FIREWALL_FAMILY = "prompt_firewall"
 FIREWALL_MODE_KEY = "prompt_firewall_mode"
-DATA_BOUNDARY_FINDING = ("data_boundary", "at_file_reference")
+STYLE_NOTED_KEY = "prompt_style_noted"
+class RuleKey(NamedTuple):
+    family: str
+    rule: str
+
+
+DATA_BOUNDARY_FINDING = RuleKey("data_boundary", "at_file_reference")
 DATA_BOUNDARY_REASON = (
     "Data boundary blocked a file-reference token. Use the Read tool explicitly."
 )
@@ -38,6 +45,8 @@ class PromptRule(NamedTuple):
 
 Scanner = Callable[[str, str, dict], list]
 Ledger = Callable[..., dict]
+StyleHits = frozenset[RuleKey]
+Findings = dict[RuleKey, str]
 
 
 class ModeSelection(NamedTuple):
@@ -169,15 +178,15 @@ def _is_explanatory(text: str, start: int) -> bool:
     return negated or bool(_EXPLANATORY_RE.search(prefix))
 
 
-def _phrase_findings(text: str) -> dict[tuple[str, str], str]:
+def _phrase_findings(text: str) -> Findings:
     scan_text = mask_examples(text)
-    matches: dict[tuple[str, str], str] = {}
+    matches: Findings = {}
     for rule in PROMPT_RULES:
         if any(
             not _is_explanatory(scan_text, match.start())
             for match in rule.pattern.finditer(scan_text)
         ):
-            matches[(FIREWALL_FAMILY, rule.rule_id)] = rule.reminder
+            matches[RuleKey(FIREWALL_FAMILY, rule.rule_id)] = rule.reminder
     return matches
 
 
@@ -191,45 +200,70 @@ def _data_boundary_enabled(cfg: dict[str, object]) -> bool:
 
 def _data_boundary_findings(
     text: str, cfg: dict[str, object]
-) -> dict[tuple[str, str], str]:
+) -> Findings:
     if not _data_boundary_enabled(cfg) or not has_file_token(mask_examples(text)):
         return {}
     return {DATA_BOUNDARY_FINDING: "Use the Read tool explicitly."}
 
 
-def _scanner_findings(text: str, cfg: dict[str, object], scan: Scanner) -> dict[tuple[str, str], str]:
+def _scanned_rules(text: str, cfg: dict[str, object], scan: Scanner) -> list[dict[str, object]]:
     raw_findings: list[dict[str, object]] | None = None
     with suppress(Exception):
         if scannable_text(text, cfg) is None:
-            return {}
+            return []
         raw_findings = scan(PROMPT_PATH, text, cfg)
     if raw_findings is None:
         sys.stderr.write("agent-discipline-watcher: prompt scan failed\n")
-        return {}
-    findings: dict[tuple[str, str], str] = {}
-    for raw_finding in raw_findings:
+        return []
+    return raw_findings
+
+
+def _style_hits(text: str, cfg: dict[str, object], scan: Scanner) -> StyleHits:
+    hits: set[RuleKey] = set()
+    for raw_finding in _scanned_rules(text, cfg, scan):
         finding = payloads.exact_string_dict(raw_finding)
         family = _exact_text(finding.get("family"), 128)
         rule = _exact_text(finding.get("rule"), 128)
-        if not family or not rule or _family_state(family, cfg) == "off":
-            continue
-        findings[(family, rule)] = "Correct this discipline violation before complying."
-    return dict(sorted(findings.items()))
+        if family and rule and _enforced_on_prose(family, rule, cfg):
+            hits.add(RuleKey(family, rule))
+    return frozenset(hits)
 
 
-def _family_state(family: str, cfg: dict[str, object]) -> str:
+def _enforced_on_prose(family: str, rule: str, cfg: dict[str, object]) -> bool:
+    """Only an enforced rule is worth a note, because off and observe rules never ask the agent for anything."""
+    finding = {"family": family, "rule": rule, "surface": SURFACE_PROSE}
     try:
-        state = gate_state(family, cfg)
+        return resolve_outcome(finding, cfg) is Outcome.BLOCK
     except (AttributeError, TypeError, ValueError):
-        return "enforce"
-    return state if state in ("off", "observe", "enforce") else "enforce"
+        return True
 
 
-def _findings(text: str, cfg: dict[str, object], scan: Scanner) -> dict[tuple[str, str], str]:
+def _unnoted(hits: StyleHits, session: SessionContext, cfg: dict[str, object]) -> StyleHits:
+    """Claimed under the state lock, because one note per rule per session is enough to steer the agent."""
+    if not hits or not session.session_id:
+        return hits
+    claimed: set[str] = set()
+
+    def mutate(state: dict) -> dict:
+        stored = state.get(STYLE_NOTED_KEY)
+        known = {name for name in stored if isinstance(name, str)} if isinstance(stored, list) else set()
+        claimed.update({_style_name(hit) for hit in hits} - known)
+        return {**state, STYLE_NOTED_KEY: sorted(known | claimed)}
+
+    try:
+        session_state.update_state(session.session_id, mutate, _config_root(cfg, "state_root"))
+    except (OSError, ValueError, TypeError):
+        return hits
+    return frozenset(hit for hit in hits if _style_name(hit) in claimed)
+
+
+def _style_name(hit: RuleKey) -> str:
+    return f"{hit.family}/{hit.rule}"
+
+
+def _findings(text: str, cfg: dict[str, object]) -> Findings:
     combined = _phrase_findings(text)
     for key, value in _data_boundary_findings(text, cfg).items():
-        combined.setdefault(key, value)
-    for key, value in _scanner_findings(text, cfg, scan).items():
         combined.setdefault(key, value)
     return dict(sorted(combined.items()))
 
@@ -239,16 +273,20 @@ def _mode(cfg: dict[str, object], selection: ModeSelection) -> str:
     return "block" if operator.is_(type(value), str) and value == "block" else "inject"
 
 
+def _outcomes(
+    findings: Findings, styles: StyleHits, mode: str,
+) -> list[tuple[RuleKey, str]]:
+    rows = [(key, "block" if key == DATA_BOUNDARY_FINDING else mode) for key in findings]
+    rows.extend((key, "inject") for key in styles)
+    return sorted(rows)
+
+
 def _record(
-    findings: dict[tuple[str, str], str],
-    mode: str,
-    session: SessionContext,
-    duration_ms: int,
-    cfg: dict[str, object],
+    outcomes: list[tuple[RuleKey, str]], evaluation: _PromptEvaluation, duration_ms: int,
 ) -> None:
-    root = _config_root(cfg, "ledger_root")
-    for family, rule in findings:
-        outcome = "block" if (family, rule) == DATA_BOUNDARY_FINDING else mode
+    session = evaluation.session
+    root = _config_root(evaluation.config, "ledger_root")
+    for (family, rule), outcome in outcomes:
         recorded = False
         with suppress(Exception):
             reporting.record_decision(
@@ -261,11 +299,23 @@ def _record(
             sys.stderr.write("agent-discipline-watcher: prompt ledger append failed\n")
 
 
-def _message(findings: dict[tuple[str, str], str]) -> str:
+def _style_rows(styles: StyleHits) -> list[str]:
+    by_family: dict[str, list[str]] = {}
+    for family, rule in sorted(styles):
+        by_family.setdefault(family, []).append(rule)
+    return [
+        f"- The user prompt uses {family} patterns ({', '.join(rules)}). "
+        "Do not copy that style into your output."
+        for family, rules in by_family.items()
+    ]
+
+
+def _message(findings: Findings, styles: StyleHits) -> str:
     rows = [
         f"- {family}/{rule}: {reminder}"
         for (family, rule), reminder in findings.items()
     ]
+    rows.extend(_style_rows(styles))
     return (
         f"Agent discipline reminder (prompt rules v{PROMPT_RULESET_VERSION}):\n"
         + "\n".join(rows)
@@ -276,7 +326,7 @@ def _config_root(cfg: dict[str, object], key: str) -> str | None:
     return _exact_text(cfg.get(key), _MAX_CONFIG_TEXT) or None
 
 
-def _firewall_block_response(findings: dict[tuple[str, str], str]) -> dict:
+def _firewall_block_response(findings: Findings) -> dict:
     names = ", ".join(f"{family}/{rule}" for family, rule in findings)
     return {
         "decision": "block",
@@ -322,22 +372,24 @@ def _evaluate(evaluation: _PromptEvaluation) -> dict:
     if not evaluation.text:
         return {}
     started = time.monotonic()
-    findings = _findings(evaluation.text, evaluation.config, evaluation.scan)
+    findings = _findings(evaluation.text, evaluation.config)
+    hits = _style_hits(evaluation.text, evaluation.config, evaluation.scan)
     duration_ms = int((time.monotonic() - started) * 1000)
-    if not findings:
-        return {}
-    boundary_block = DATA_BOUNDARY_FINDING in findings
     mode = _mode(evaluation.config, evaluation.selection)
+    blocked = DATA_BOUNDARY_FINDING in findings or (mode == "block" and bool(findings))
+    styles = frozenset() if blocked else _unnoted(hits, evaluation.session, evaluation.config)
+    if not findings and not styles:
+        return {}
     if evaluation.session.session_id:
-        _record(findings, mode, evaluation.session, duration_ms, evaluation.config)
-    if boundary_block:
+        _record(_outcomes(findings, styles, mode), evaluation, duration_ms)
+    if DATA_BOUNDARY_FINDING in findings:
         return {"decision": "block", "reason": DATA_BOUNDARY_REASON}
-    if mode == "block":
+    if blocked:
         return _firewall_block_response(findings)
     return {
         "hookSpecificOutput": {
             "hookEventName": PROMPT_EVENT,
-            "additionalContext": _message(findings),
+            "additionalContext": _message(findings, styles),
         }
     }
 
