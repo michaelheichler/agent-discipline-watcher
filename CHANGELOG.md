@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.26.0 (2026-10-14)
 
 ### Security
 
@@ -10,16 +10,21 @@
 - **Node reflection blocks (security fix).** `module.constructor._load('fs')` and `process.getBuiltinModule('fs')` used to pass `node -e`. Reflective names such as `getBuiltinModule`, `_load`, `binding`, `constructor`, `import` and `Reflect` now block. So does a bracket key that is not one plain literal, or a string joined with `+` inside brackets. The node check stays a heuristic, not a sandbox.
 - **Perl and Ruby write builtins without parentheses block (security fix).** `perl -e 'open my $h, ">", "x"; print $h "y"'` used to pass, because the token list knew only `open(`. `open`, `sysopen`, `syswrite`, `rename`, `unlink`, `eval`, `$^I` and similar names now block in `perl -e` and `ruby -e`. So do `File::`, `IO::`, `Kernel` and `const_get`.
 
-### Fixed
+### Fixed in the Stop gate
 
-- **Copied third-party files no longer block Stop.** A `cp -R` of a skill from `/tmp` made 57 files count as agent edits, and Stop blocked 88 times on findings the agent never wrote. A copy from temp now lands only the files its source holds. It counts as the agent's own only when the agent wrote the temp source in this session. Every other copy gets a snapshot, one "imported content, not yours" notice, no Stop tracking, and no journal row. An unchanged imported file never blocks. An edited one blocks only on new findings. Each temp path the agent writes goes to an append-only `authored_temp.jsonl` next to `state.json`, with no eviction. So an agent cannot push its own temp file out of the record with many later writes. The record never drops a path. At 200,000 paths, PreToolUse refuses a new scratch write, and a project write still passes. Each append is one write plus fsync under the session lock. A failed append holds the turn. ADW skips a damaged line and says so once.
+- **Copied third-party files no longer block Stop.** A `cp -R` of a skill from `/tmp` made 57 files count as agent edits, and Stop blocked 88 times on findings the agent never wrote. A copy from temp now lands only the files its source holds. It counts as the agent's own only when the agent wrote the temp source in this session. Every other copy gets a snapshot, one "imported content, not yours" notice, no Stop tracking, and no journal row. An unchanged imported file never blocks. An edited one blocks only on new findings.
+- **The record of agent temp writes is complete.** Each temp path the agent writes goes to an append-only `authored_temp.jsonl` next to `state.json`, with no eviction. So an agent cannot push its own temp file out of the record with many later writes. The record never drops a path. At 200,000 paths, PreToolUse refuses a new scratch write, and a project write still passes. Each append is one write plus fsync under the session lock. A failed append holds the turn. ADW skips a damaged line and says so once.
 - **An edit of an untracked file owns only what it changed.** Before the first edit of an untracked or non-git file, the write gate stores a snapshot. The baseline split and the document review diff against it. Before, one edited line made every old finding the agent's own, and the review saw every line as changed.
 - **An identical Stop block repeats at most twice.** Stop and SubagentStop fingerprint the blocking set. The third identical Stop ends the turn with one system message and one `stop_stall` ledger row, then stays silent until something changes. A repeated block reuses its report file. The limit is `stop_stall_limit`.
 - **Stop judges duplicates only where the batch gate blocked.** Two installs of one skill in different directories blocked at Stop although the batch gate only advised.
+### Fixed in holds, state, and limits
+
 - **A failed gate with no path holds nothing.** The call still blocks once. Before, Stop repeated "Repair the gate config" until an unrelated edit cleared it. A batch failure now holds the paths of its write calls.
 - **A damaged state file recovers.** Each state write keeps `state.json.bak`. A failed read moves the damaged file aside, restores the backup, and sends one notice. Without a backup, Stop still blocks.
 - **Data files and inherited long files stop blocking on size.** JSON, CSV, SQL, minified bundles, and lockfiles such as `uv.lock` give no `file_too_long`, and no `unscannable_file` while they are valid UTF-8. A file with a baseline blocks on `file_too_long` only when the edit made it longer.
 - **Stop finishes inside its timeout.** Baseline git calls time out after 2 seconds. The rescan stops after 7 seconds and blocks with the number of files it did not scan. Before, one stalled git call let the host kill the hook, and the turn ended unchecked.
+### Fixed in prompts and model review
+
 - **A user prompt no longer asks the agent to fix the user's text.** UserPromptSubmit ignored rule gates. So `de_long_compound` injected "Correct this discipline violation" on German prompts, although its gate is `off`. Only rules that enforce on prose now count. A hit becomes one line per family, "The user prompt uses english patterns (ai_tell). Do not copy that style into your output." ADW notes each rule once per session. Block mode no longer blocks on a style hit. The prompt firewall phrases and the data boundary keep their wording.
 - **A failing Sonnet CLI no longer runs on every Stop.** A timeout or CLI error starts a 300 second cooldown. Each queued row gets two attempts, then ADW drops it with a notice. A candidate the model skipped counts as clean, and a repeated one keeps its first answer.
 - **The Luna and Sonnet Stop blocks keep every finding.** Both list at most 5 rows in 900 characters. Both end with the path of a full report. Luna used to cut the text at 900 characters and lose the later sections.
@@ -27,16 +32,18 @@
 - **Document review rounds count per turn.** A document edited in a third turn gets a review again.
 - **A long single-line hunk splits between sentences.** A sentence longer than the budget ends with "[line truncated]".
 
-### Changed
+### Changed in cost and size
 
 - **Blocker state writes once per call.** Record and the batch gate write all paths and reasons of a call in one state update. A copied tree of 57 files cost 58 locked rewrites before.
 - **One scope tracks at most 500 files.** The oldest leave the Stop rescan first, with one notice that counts them.
 - **The ledger writes one heartbeat per hook and turn.** Heartbeats were 79 percent of a 240,000-row ledger. A call of 1 second or more still gets its own row.
 - **A full report keeps the first 200 findings** and ends with the count of the rest.
 - **The Sonnet review costs half the fixed tokens.** `claude -p` now runs with `--setting-sources ""` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. A one-candidate call dropped from 3,552 to 1,754 input tokens. The system prompt states the rubric once instead of once per section. A deletion-only edit makes no model call.
+### Changed in the Bash write gate
+
 - **Inline Python accepts more read-only analysis.** Text methods on JSON values now pass. Pure members of `re`, `math`, `collections`, `hashlib` and `os.path` pass. `json.dumps` without `default=` passes. Every write route stays rejected.
 - **Python startup accepts harmless prefixes.** `env` with plain assignments, `env -i`, `time -p`, `timeout` and `nice` no longer make startup untrusted.
-- **`node -p "require('./package.json').version"` passes.** The whole payload must be a `.json` require with literal member access. A wrapper of `console.log`, `JSON.stringify` or `Object.keys` also passes. The required file must be a regular `.json` file in every directory the command may run in. Node loads a symlink by its target extension, so a symlink, a missing file or a directory blocks.
+- **`node -p "require('./package.json').version"` passes.** The whole payload must be a `.json` require with literal member access. A wrapper of `console.log`, `JSON.stringify` or `Object.keys` also passes. The required file must be a regular `.json` file in every directory the command can run in. Node loads a symlink by its target extension, so a symlink, a missing file or a directory blocks.
 - **Scratch temp writes run.** A redirect, `tee`, `sed -i` or `perl -pi` whose every target is scratch temp no longer blocks or hits the 100-character cap. A relative target after a leading `cd DIR &&` or `cd DIR ;` counts under DIR. `sed` scripts with `w`, `W`, `e` or `-f` keep blocking. `perl -pi` runs only one plain `s`, `tr` or `y` operator with flags `g`, `i`, `m`, `s` or `x`, and only line-loop switches. `ruby -pi` keeps blocking. PostToolUse records the edited files as agent writes.
 
 ### Known limits

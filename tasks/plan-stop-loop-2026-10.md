@@ -20,7 +20,7 @@ A Bash `cp -R` copied a third-party skill (57 files) into `~/.claude/skills/impe
 | A | Copy provenance, imported baseline, first-seen snapshot, Stop no-progress breaker, pathless holds, state recovery, data-file length rules, Stop time budget, report and ledger size | merged |
 | B | PreToolUse read-only Python, startup prefixes, node require of JSON, temp-only redirects and in-place edits, four security fixes | merged |
 | C | UserPromptSubmit gates and wording, Sonnet and Luna review cost and stability, review rounds per turn, merge gate refs | merged |
-| L | Leverframe diagnose config_stale, hermetic tests, comments, tagged binding result, 0.4.6 | committed, not released |
+| L | Leverframe diagnose config_stale, hermetic tests, comments, tagged binding result, read-only credential peek, 0.4.6 | released as v0.4.6, installed on Mac and tux |
 
 ## Merged tree checks
 
@@ -35,10 +35,15 @@ A Bash `cp -R` copied a third-party skill (57 files) into `~/.claude/skills/impe
 | Finding | Severity | Owner | Status |
 |---|---|---|---|
 | `functools.reduce` called a stored `open` | major | B | fixed in bf6a92f, merged |
-| `authored_temp` evicts after 256 paths, so an old scratch file copies in as imported | major | A | in progress |
-| `perl -pi` on a scratch file runs arbitrary Perl and writes project files | major | B2 | in progress |
-| A `.json` require through a symlink runs JavaScript | minor | B2 | in progress |
-| `patch --diagnose` can refresh OAuth credentials over the network | major (plausible) | L | in progress |
+| `authored_temp` evicts after 256 paths, so an old scratch file copies in as imported | major | A | fixed, complete store in cea7fc8 |
+| The overflow flag counted genuine external copies as agent-owned | major | A | fixed, refusal at the cap in 34ca999 |
+| Three Stop breaker gaps (duplicate hashes, skipped-file stamps, deadline release) | major | A | fixed in 20c75cd |
+| `perl -pi` on a scratch file runs arbitrary Perl and writes project files | major | B2 | fixed in 5dce4c5 and 98a9b7e |
+| A `.json` require through a symlink runs JavaScript | minor | B2 | fixed in 8f17f4b |
+| `patch --diagnose` can refresh OAuth credentials over the network | major | L | fixed in aa1f4cd and bcb0451 |
+| A file a saved script writes loses detection after a first-seen snapshot | not blocking | A | documented as a known limit |
+
+Final Sol verdict on 83dcb38 is "no blocking findings".
 
 ## Gates before release
 
