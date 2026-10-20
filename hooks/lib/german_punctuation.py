@@ -63,5 +63,5 @@ def dash_cluster_findings(path: str, lines: list[str], languages: list[str]) -> 
         detail=f"{len(dash_lines)} spaced dashes in {words} German words in {path}",
         force=True, snippet=lines[first - 1].strip()[:180],
         action="Replace some dashes with a comma, period, or colon.",
-        path=None, severity=None, tool_use_id=None, match="\u2013", language=GERMAN,
+        path=None, severity=None, tool_use_id=None, match="\u2013", language=GERMAN, end_line=dash_lines[-1],
     ).to_dict()]

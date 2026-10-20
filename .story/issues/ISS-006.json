@@ -3,6 +3,7 @@
   "createdBy": "main-session-2026-10-20",
   "dedupeKey": "main-session-2026-10-20:no-trap-balance",
   "discoveredDate": "2026-10-20",
+  "displayId": "ISS-006",
   "id": "ISS-006",
   "impact": "Two sides of one balance, user requirement 2026-10-20: an agent must never get stuck completely.\n1. Too loose: baseline.subtract (hooks/lib/baseline.py:128-141) falls back to a rule-only count. If the baseline had 3 passive_voice hits and the agent rewrites them into 3 new passives, all 3 count as inherited and nothing blocks.\n2. Too tight: T-035 makes the agent's own findings block every Stop. A false positive the agent cannot fix would then trap it forever.\nFor Sol QA: judge both with the no-trap constraint. Proposed: T-035 keeps blocking own findings up to a higher cap, then releases visibly and puts the finding list in front of the user; the loose match stays or narrows to the same paragraph.",
   "location": [
@@ -11,9 +12,10 @@
   ],
   "phase": "test-gate",
   "relatedTickets": [
-    "T-035"
+    "T-035",
+    "T-045"
   ],
-  "resolution": null,
+  "resolution": "Moved to T-045 (provenance by unit diff), target 0.29.0, plan in docs/plans/2026-10-20-finding-provenance.md.",
   "resolvedDate": null,
   "severity": "medium",
   "status": "open",

@@ -313,7 +313,7 @@ def check(unit: Unit, text: str) -> list[Hit]:
 RULE_SET = RuleSet(
     rules=(
         Rule(LOOP, "Test asserts inside a loop, so the first failing case hides the rest",
-             "Parameterize the cases or wrap each one in subTest.", MEASURED_ENFORCE),
+             "Parameterize the cases or wrap each one in subTest.", MEASURED_ENFORCE, spans_test=True),
         Rule(NAME, "Test pins a hard-coded name or value in a static table",
              "Assert the behavior the name drives instead of its presence."),
         Rule(SOURCE, "Test asserts a literal in the text of a source or config file",

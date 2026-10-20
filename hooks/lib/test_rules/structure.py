@@ -217,9 +217,9 @@ def check(unit: Unit, text: str) -> list[Hit]:
 RULE_SET = RuleSet(
     rules=(
         Rule(IF_NAME, "Test branches between two different asserts",
-             "Split the branches into their own test methods."),
+             "Split the branches into their own test methods.", spans_test=True),
         Rule(ACT_NAME, "Test calls the unit under test, asserts, then calls it and asserts again",
-             "Split the second act and assert into their own test method."),
+             "Split the second act and assert into their own test method.", spans_test=True),
         Rule(CTOR_NAME, "Test calls an object that setUp or __init__ built for the whole class",
              "Move the setup into a factory method the test calls for itself."),
     ),

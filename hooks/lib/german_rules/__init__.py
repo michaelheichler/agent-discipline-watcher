@@ -8,10 +8,10 @@ from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
 try:
-    from ..findings import Finding
+    from ..findings import Finding, spanning
     from ..prose_language import ParagraphLanguage
 except ImportError:
-    from findings import Finding
+    from findings import Finding, spanning
     from prose_language import ParagraphLanguage
 
 FAMILY = "english"
@@ -117,11 +117,12 @@ def _finding(path: str, rule: Rule, hit: Hit) -> dict:
 def _set_findings(rule_set: RuleSet, path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
     """Reject stray names, because a typo would dodge the gate."""
     named = {rule.name: rule for rule in rule_set.rules}
+    ends = {paragraph.line: paragraph.end_line for paragraph in paragraphs}
     rows: list[dict] = []
     for hit in rule_set.check(path, paragraphs):
         if hit.rule not in named:
             raise ValueError("German rule hit names an undeclared rule: " + hit.rule)
-        rows.append(_finding(path, named[hit.rule], hit))
+        rows.append(spanning(_finding(path, named[hit.rule], hit), ends.get(hit.line)))
     return rows
 
 

@@ -49,6 +49,7 @@ class ParagraphLanguage:
     text: str
     language: str
     weak: bool
+    end_line: int | None = None
 
 
 def countable_text(text: str) -> str:
@@ -90,15 +91,15 @@ def _prose_lines(text: str) -> list[str]:
     return lines
 
 
-def _paragraph_blocks(text: str) -> list[tuple[int, str]]:
-    blocks: list[tuple[int, str]] = []
+def _paragraph_blocks(text: str) -> list[tuple[int, str, int]]:
+    blocks: list[tuple[int, str, int]] = []
     current: list[str] = []
     for number, line in enumerate([*_prose_lines(text), ""], 1):
         if line:
             current.append(line)
             continue
         if current:
-            blocks.append((number - len(current), " ".join(current)))
+            blocks.append((number - len(current), " ".join(current), number - 1))
         current = []
     return blocks
 
@@ -115,12 +116,12 @@ def _document_language(signals: list[Signal]) -> str:
 def paragraph_languages(text: str, allowed: tuple[str, ...] = LANGUAGES) -> list[ParagraphLanguage]:
     blocks = _paragraph_blocks(text)
     if len(allowed) == 1:
-        return [ParagraphLanguage(line, block, allowed[0], False) for line, block in blocks]
-    signals = [paragraph_signal(block) for _, block in blocks]
+        return [ParagraphLanguage(line, block, allowed[0], False, end) for line, block, end in blocks]
+    signals = [paragraph_signal(block) for _, block, _ in blocks]
     fallback = _document_language(signals)
     return [
-        ParagraphLanguage(line, block, signal.language, False)
+        ParagraphLanguage(line, block, signal.language, False, end)
         if _is_strong(signal)
-        else ParagraphLanguage(line, block, fallback, True)
-        for (line, block), signal in zip(blocks, signals, strict=True)
+        else ParagraphLanguage(line, block, fallback, True, end)
+        for (line, block, end), signal in zip(blocks, signals, strict=True)
     ]

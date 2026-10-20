@@ -27,6 +27,7 @@ class Rule(NamedTuple):
     detail: str
     action: str
     state: str = UNMEASURED_STATE
+    spans_test: bool = False
 
 
 class Hit(NamedTuple):
@@ -88,6 +89,7 @@ def _finding(unit: Unit, rule: Rule, hit: Hit) -> dict:
         detail=rule.detail + " in " + unit.name + " in " + unit.path, force=False,
         snippet=hit.snippet.strip()[:180] or unit.name, action=rule.action,
         path=None, severity=None, tool_use_id=None,
+        end_line=max(unit.end, hit.line) if rule.spans_test else None,
     ).to_dict()
 
 

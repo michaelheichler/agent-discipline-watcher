@@ -49,7 +49,7 @@ class Provenance:  # owns(finding), changed_lines, removed_seams, growth(first, 
 4. Moved units. A `Counter` of old keys outside `equal` blocks marks a changed new unit as moved when its key has at least 12 characters. The counter makes an extra copy owned, and the length floor stops `}` or `pass` from laundering a new finding.
 5. `owns(finding)`.
    - Always-blocking and fixed-observe rules stay owned, as at `baseline.py:133`. `_length_relief` keeps the growth and generated-marker rules for `file_too_long` and `unscannable_file`.
-   - `function_too_long` and `oversized_list` count as owned when the span grew. Otherwise rewording one line of an inherited long function would demand a refactor. This needs a user decision.
+   - `function_too_long` and `oversized_list` count as owned when the span grew. Otherwise rewording one line of an inherited long function would demand a refactor.
    - `uniform_paragraph_endings` counts as owned when a paragraph-ending unit changed.
    - Every other finding counts as owned when any unit in `[line, end_line]` changed. A prose finding in a prose file narrows to the sentence holding its match.
 6. Merges. `compare_any` marks a unit changed only when it changed against every parent. This replaces pooling at `baseline.py:287`.
@@ -101,8 +101,8 @@ To pass, a reflow or a move must explain every owned-to-inherited flip. Every in
 2. A block emitter without `end_line` under-owns. A registry test runs one fixture per block rule and asserts `end_line >= line`.
 3. Units only need to stay stable between the two texts, so the provenance splitter stays separate from rule tuning, and a test freezes it.
 4. An edit that touches only masked text, such as an HTML attribute or a link URL, leaves prose unchanged. The README says so.
-5. The commit gate never applies `_length_relief` today. It keeps that behavior, and that question stays separate.
-6. `ADW_PROVENANCE=legacy` routes `partition` back to `subtract` for 0.29.0 only. The public `split_*` and `strip_*` signatures stay the same, and `baseline.changed_lines` stays as an alias for one release.
+5. The commit gate starts applying `_length_relief`, so a commit of an old long file that did not grow passes.
+6. No legacy switch. The public `split_*` and `strip_*` signatures stay the same, so callers need no edits beyond `pre_write._edit_findings` and `pre_commit`. `baseline.changed_lines` goes away with its callers moved to the engine.
 
 ## Sequence
 
@@ -111,10 +111,10 @@ To pass, a reflow or a move must explain every owned-to-inherited flip. Every in
 3. Switch `baseline.py`, `pre_write._edit_findings` and `pre_commit`.
 4. Move `document_hunks`, `journal` and `parataxis_review` onto the engine.
 5. Benchmark and replay, with the numbers recorded.
-6. README, CHANGELOG and the legacy switch.
+6. README and CHANGELOG.
 
-## Open decisions
+## Decisions (user, 2026-10-20)
 
-1. Do `function_too_long` and `oversized_list` use growth instead of touch-to-own?
-2. Does the commit gate start applying the length growth rule?
-3. Does 0.29.0 keep the legacy escape hatch for one release?
+1. `function_too_long` and `oversized_list` count as owned only when their span grows.
+2. The commit gate applies the same length growth rule as Stop, so the two gates agree.
+3. Clean cut with no legacy switch. `subtract` and the loose pass leave in 0.29.0, and the replay must clear its acceptance bar before release.

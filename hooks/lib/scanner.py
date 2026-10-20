@@ -31,6 +31,7 @@ try:
     from .german_document_rules import scan_german_document
     from .prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
+    from .findings import spanning
     from .markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
@@ -78,6 +79,7 @@ except ImportError:
     from german_document_rules import scan_german_document
     from prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
+    from findings import spanning
     from markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
@@ -507,23 +509,23 @@ def _long_functions(tree, func_limit: int) -> Iterator[ast.FunctionDef | ast.Asy
             continue
         yield node
 
-def _long_function_rows(context: _ScanContext) -> list[tuple[int, str]]:
+def _long_function_rows(context: _ScanContext) -> list[tuple[int, str, int]]:
     func_limit = _int_setting(context.config, "function_block_lines", "ADW_FUNC_BLOCK_LINES", 80)
     if context.tree is not None:
-        return [(node.lineno, node.name) for node in _long_functions(context.tree, func_limit)]
+        return [(node.lineno, node.name, node.end_lineno or node.lineno) for node in _long_functions(context.tree, func_limit)]
     if PurePath(context.path.lower()).suffix in BRACE_LANGUAGE_EXTS:
-        return [(line, name) for line, name, _span in long_brace_functions(context.text, func_limit)]
+        return [(line, name, line + span - 1) for line, name, span in long_brace_functions(context.text, func_limit)]
     return []
 
 
 def _function_length_findings(context: _ScanContext) -> list[dict]:
     return [
-        _finding(
+        spanning(_finding(
             "code", "function_too_long", line,
             "Function is over the length cap in " + context.path,
             name, "Extract helpers until each function does one thing.",
-        )
-        for line, name in _long_function_rows(context)
+        ), end)
+        for line, name, end in _long_function_rows(context)
     ]
 
 
@@ -563,14 +565,14 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
             continue
         block, next_index = _test_block(lines, index)
         if block and not any(ASSERT_RE.search(part) for part in block):
-            findings.append(_finding(
+            findings.append(spanning(_finding(
                 "code",
                 "hollow_test",
                 index + 1,
                 "Test body has no assertion in " + path,
                 line,
                 "Add an assertion or delete the hollow test.",
-            ))
+            ), max(next_index, index + 1)))
         index = max(next_index, index + 1)
     return findings
 

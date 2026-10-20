@@ -251,7 +251,7 @@ def _multiline_comment_findings(path: str, text: str) -> list[dict]:
     if PurePath(path.lower()).suffix in SHELL_GLOB_COLLISION_EXTS:
         return []
     return [
-        _finding(Finding(family="comment", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None))
+        _finding(Finding(family="comment", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None, end_line=text.count("\n", 0, match.end() - 1) + 1))
         for match in BLOCK_COMMENT_RE.finditer(text)
         if "\n" in match.group(0) and LETTER_RE.search(match.group(0))
         and not _structured_block_comment(match.group(0))
@@ -432,7 +432,7 @@ def _flush_comment_run(path: str, run: list[tuple[int, str]]) -> list[dict]:
     if len(run) < 2 or _is_header_run(run):
         return []
     line_number, line = run[0]
-    return [_finding(Finding(family="comment", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None))]
+    return [_finding(Finding(family="comment", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None, end_line=run[-1][0]))]
 
 
 def _scan_comment_blocks(path: str, text: str) -> list[dict]:
@@ -497,7 +497,7 @@ def _scan_docstrings(path: str, tree) -> list[dict]:
     for scope in _docstring_scopes(tree):
         narration = _narrating_docstring(scope)
         if narration:
-            findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
+            findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None, end_line=getattr(scope.body[0], "end_lineno", None))))
     return findings
 
 
@@ -511,7 +511,7 @@ def _lexical_docstring_findings(path: str, text: str) -> list[dict]:
         before = [row.strip() for row in text[:match.start()].splitlines() if row.strip()]
         if before and not _lexical_scope_header(before):
             continue
-        findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)))
+        findings.append(_finding(Finding(family="comment", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None, end_line=text.count("\n", 0, match.end() - 1) + 1)))
     return findings
 
 

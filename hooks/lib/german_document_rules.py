@@ -5,11 +5,13 @@ from statistics import fmean, pstdev
 
 try:
     from .comment_rules import _finding
+    from .findings import spanning
     from .german_readability import sentences, words
     from .german_syllables import count_syllables
     from .prose_language import ParagraphLanguage
 except ImportError:
     from comment_rules import _finding
+    from findings import spanning
     from german_readability import sentences, words
     from german_syllables import count_syllables
     from prose_language import ParagraphLanguage
@@ -36,11 +38,11 @@ def _gleichfoermiger_rhythmus_rows(path: str, paragraphs: list[ParagraphLanguage
     variation = pstdev(counts) / fmean(counts)
     if variation >= RHYTHM_VARIATION_LIMIT:
         return []
-    return [_finding(
+    return [spanning(_finding(
         FAMILY, "de_uniform_rhythm", paragraphs[0].line,
         "Sentence lengths stay uniform across the German text in " + path,
         paragraphs[0].text, "Vary the sentence lengths across the document.",
-    )]
+    ), paragraphs[-1].end_line)]
 
 
 def _isometrisches_dokument_rows(path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
@@ -50,11 +52,11 @@ def _isometrisches_dokument_rows(path: str, paragraphs: list[ParagraphLanguage])
     sentence_counts = [len(sentences(paragraph.text)) for paragraph in paragraphs]
     if max(sentence_counts) - min(sentence_counts) > UNIFORM_PARAGRAPH_SPREAD:
         return []
-    return [_finding(
+    return [spanning(_finding(
         FAMILY, "de_uniform_paragraphs", paragraphs[0].line,
         "Every German paragraph holds close to the same length in " + path,
         paragraphs[0].text, "Let some paragraphs run shorter or longer than the rest.",
-    )]
+    ), paragraphs[-1].end_line)]
 
 
 def _opens_with_connector(sentence: str) -> bool:
@@ -67,11 +69,11 @@ def _mechanische_konjunktionen_rows(path: str, paragraph: ParagraphLanguage) -> 
     opener_count = sum(1 for sentence in sentences(paragraph.text) if _opens_with_connector(sentence))
     if opener_count <= CONNECTOR_DENSITY_CAP:
         return []
-    return [_finding(
+    return [spanning(_finding(
         FAMILY, "de_repeated_connector", paragraph.line,
         "Paragraph opens more than one sentence on a stock connector in " + path,
         paragraph.text, "Open at most one sentence in the paragraph with a connector like außerdem.",
-    )]
+    ), paragraph.end_line)]
 
 
 def _long_compound_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
@@ -79,11 +81,11 @@ def _long_compound_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
     rows = []
     for word in words(paragraph.text):
         if count_syllables(word) >= LONG_COMPOUND_SYLLABLES:
-            rows.append(_finding(
+            rows.append(spanning(_finding(
                 FAMILY, "de_long_compound", paragraph.line,
                 "Compound runs past " + str(LONG_COMPOUND_SYLLABLES) + " syllables with no hyphen in " + path,
                 word, "Add a hyphen split or rewrite the compound as a genitive phrase.",
-            ))
+            ), paragraph.end_line))
     return rows
 
 

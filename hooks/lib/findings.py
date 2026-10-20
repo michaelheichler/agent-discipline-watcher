@@ -38,13 +38,15 @@ class FindingDict(_RequiredFindingDict, total=False):
     content_hash: str
     match: str
     language: str
+    end_line: int
 
 
 _FINDING_KEYS = frozenset({
     "family", "rule", "line", "detail", "force", "snippet", "action",
     "path", "severity", "surface", "_tool_use_id",
-    "content_hash", "match", "language",
+    "content_hash", "match", "language", "end_line",
 })
+_REQUIRED_KEYS = frozenset(_RequiredFindingDict.__annotations__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +77,7 @@ class Finding:
     surface: str | None = None
     match: str | None = None
     language: str | None = None
+    end_line: int | None = None
 
     def __post_init__(self) -> None:
         if not self.family:
@@ -83,6 +86,8 @@ class Finding:
             raise ValueError("finding rule must not be empty")
         if self.line < 1:
             raise ValueError("finding line must be at least 1")
+        if self.end_line is not None and self.end_line < self.line:
+            raise ValueError("finding end_line must not precede line")
         if not self.detail:
             raise ValueError("finding detail must not be empty")
         if not self.action:
@@ -110,6 +115,7 @@ class Finding:
                 surface=row.get("surface"),
                 match=row.get("match"),
                 language=row.get("language"),
+                end_line=row.get("end_line"),
             )
         except KeyError as error:
             raise ValueError(f"finding is missing required key: {error.args[0]}") from error
@@ -126,29 +132,20 @@ class Finding:
     def with_content_hash(self, content_hash: str) -> Finding:
         return replace(self, content_hash=content_hash)
 
+    def with_end_line(self, end_line: int) -> Finding:
+        return replace(self, end_line=end_line)
+
     def to_dict(self) -> dict:
-        row: dict = {
-            "family": self.family,
-            "rule": self.rule,
-            "line": self.line,
-            "detail": self.detail,
-        }
-        if self.force is not None:
-            row["force"] = self.force
-        row["snippet"] = self.snippet
-        if self.match is not None:
-            row["match"] = self.match
-        row["action"] = self.action
-        if self.path is not None:
-            row["path"] = self.path
-        if self.severity is not None:
-            row["severity"] = self.severity
-        if self.surface is not None:
-            row["surface"] = self.surface
-        if self.language is not None:
-            row["language"] = self.language
-        if self.tool_use_id is not None:
-            row["_tool_use_id"] = self.tool_use_id
-        if self.content_hash is not None:
-            row["content_hash"] = self.content_hash
-        return row
+        fields = (
+            ("family", self.family), ("rule", self.rule), ("line", self.line),
+            ("end_line", self.end_line), ("detail", self.detail), ("force", self.force),
+            ("snippet", self.snippet), ("match", self.match), ("action", self.action),
+            ("path", self.path), ("severity", self.severity), ("surface", self.surface),
+            ("language", self.language), ("_tool_use_id", self.tool_use_id),
+            ("content_hash", self.content_hash),
+        )
+        return {key: value for key, value in fields if value is not None or key in _REQUIRED_KEYS}
+
+
+def spanning(row: dict, end_line: int | None) -> dict:
+    return row if end_line is None else Finding.from_dict(row).with_end_line(end_line).to_dict()

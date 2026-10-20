@@ -7,13 +7,16 @@ from bisect import bisect_right
 from collections.abc import Iterator
 from pathlib import PurePath
 from statistics import fmean, pstdev
+from typing import NamedTuple
 
 try:
     from .comment_rules import _finding
+    from .findings import spanning
     from .markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from .scan_input import int_setting as _int_setting
 except ImportError:
     from comment_rules import _finding
+    from findings import spanning
     from markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from scan_input import int_setting as _int_setting
 
@@ -51,6 +54,13 @@ PUNCHY_ENDING_RATIO = 0.7018
 PUNCHY_SHARE_LIMIT = 0.6667
 ProseLine = tuple[int, str]
 Paragraph = list[ProseLine]
+
+
+class _ListSpan(NamedTuple):
+    start: int
+    first_line: str
+    last: int
+    count: int
 
 
 def _next_fence(line: str, fence: str | None) -> tuple[str | None, bool]:
@@ -151,11 +161,11 @@ def _low_variance_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
         if variation >= SENTENCE_VARIATION_LIMIT:
             continue
         number, first_line = paragraph[0]
-        rows.append(_finding(
+        rows.append(spanning(_finding(
             "english", "low_sentence_variance", number,
             "Paragraph has uniform sentence lengths in " + path,
             first_line, "Vary the sentence lengths in this paragraph.",
-        ))
+        ), paragraph[-1][0]))
     return rows
 
 
@@ -177,11 +187,11 @@ def _uniform_endings_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
     if sum(punchy) / len(punchy) <= PUNCHY_SHARE_LIMIT:
         return []
     number, first_line = measured[0][0][0]
-    return [_finding(
+    return [spanning(_finding(
         "english", "uniform_paragraph_endings", number,
         "Paragraphs all end on a short sentence in " + path,
         first_line, "Let some paragraphs end on their long sentence.",
-    )]
+    ), measured[-1][0][-1][0])]
 
 
 def _three_item_finding(path: str, number: int, evidence: str) -> dict:
@@ -230,26 +240,23 @@ def _three_item_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
 
 def _three_item_markdown_rows(path: str, lines: list[ProseLine]) -> list[dict]:
     rows = []
-    count = 0
-    start = 0
+    count = start = last = item_indent = 0
     first_line = ""
-    item_indent = 0
     for number, line in [*lines, (0, "")]:
         marker = LIST_ITEM_RE.match(line)
         indent = len(line) - len(line.lstrip())
         if marker and (count == 0 or indent == item_indent):
             start, first_line = (number, line) if count == 0 else (start, first_line)
-            item_indent = indent
+            item_indent, last = indent, number
             count += 1
             continue
-        if marker and indent > item_indent:
+        if (marker and indent > item_indent) or _is_list_continuation(line, count, item_indent):
+            last = number
             continue
         if not line.strip() and count and number:
             continue
-        if _is_list_continuation(line, count, item_indent):
-            continue
         if count == 3:
-            rows.append(_three_item_finding(path, start, first_line))
+            rows.append(spanning(_three_item_finding(path, start, first_line), last))
         count = 0
     return rows
 
@@ -277,31 +284,33 @@ def _is_list_continuation(line: str, count: int, item_indent: int) -> bool:
 
 
 def _oversized_list_rows(path: str, lines, cap: int) -> list[dict]:
-    rows = []
-    count = 0
-    start = 0
+    return [
+        spanning(_finding(
+            "english", "oversized_list", span.start,
+            "List exceeds the item cap in " + path,
+            span.first_line, "Split the list into smaller ranked groups.",
+        ), span.last)
+        for span in _list_spans(lines)
+        if span.count > cap
+    ]
+
+
+def _list_spans(lines: list[ProseLine]) -> Iterator[_ListSpan]:
+    count = start = last = item_indent = 0
     first_line = ""
-    item_indent = 0
-    for number, line in lines:
+    for number, line in [*lines, (0, "")]:
         is_item = bool(LIST_ITEM_RE.match(line))
-        continues_list = not is_item and _is_list_continuation(line, count, item_indent)
-        if continues_list:
+        if not is_item and _is_list_continuation(line, count, item_indent):
+            last = number
             continue
-        if not is_item:
-            count = 0
+        if is_item:
+            item_indent = len(line) - len(line.lstrip())
+            start, first_line = (number, line) if count == 0 else (start, first_line)
+            count, last = count + 1, number
             continue
-        item_indent = len(line) - len(line.lstrip())
-        if count == 0:
-            start = number
-            first_line = line
-        count += 1
-        if count == cap + 1:
-            rows.append(_finding(
-                "english", "oversized_list", start,
-                "List exceeds the item cap in " + path,
-                first_line, "Split the list into smaller ranked groups.",
-            ))
-    return rows
+        if count:
+            yield _ListSpan(start, first_line, last, count)
+        count = 0
 
 
 def _scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:

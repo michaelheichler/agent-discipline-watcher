@@ -1,0 +1,18 @@
+{
+  "components": [],
+  "createdBy": "t045-step1-test-writer",
+  "dedupeKey": "t045-step1:duplicate-prose-comment-block",
+  "discoveredDate": "2026-10-20",
+  "id": "ISS-010",
+  "impact": "Seen on main and on feat/finding-provenance: the agent gets the same finding twice and the block count doubles. Likely the block path and the brace-language comment path both emit. Fix: emit once, or deduplicate by rule plus span before reporting.",
+  "location": [
+    "hooks/lib/comment_rules.py"
+  ],
+  "phase": null,
+  "relatedTickets": [],
+  "resolution": null,
+  "resolvedDate": null,
+  "severity": "low",
+  "status": "open",
+  "title": "A /* */ comment block in a .ts file yields two identical prose_comment_block rows"
+}
