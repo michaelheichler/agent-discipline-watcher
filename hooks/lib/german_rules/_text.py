@@ -15,6 +15,7 @@ except ImportError:
 
 QUOTED_RE = re.compile(r"„[^“”\n]*[“”]|»[^«\n]*«")
 SentenceFinder = Callable[[str], "re.Match[str] | None"]
+Span = tuple[int, int]
 
 
 def _blank(match: re.Match[str]) -> str:
@@ -36,8 +37,10 @@ def sentence_spans(text: str) -> list[tuple[int, str]]:
     return [(offset, sentence) for offset, sentence in spans if sentence.strip()]
 
 
-def line_at(paragraph: ParagraphLanguage, index: int) -> int:
-    return paragraph.line + paragraph.text.count("\n", 0, index)
+def placed(paragraph: ParagraphLanguage, span: Span, hit: Hit) -> Hit:
+    """Place the hit on its own lines, because a paragraph span blocks provenance narrowing."""
+    line, end_line = paragraph.lines_of(*span)
+    return hit._replace(line=line, end_line=end_line)
 
 
 def _containing(spans: list[tuple[int, str]], index: int) -> str:
@@ -55,7 +58,7 @@ def phrase_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Patt
         text = visible(paragraph.text)
         spans = sentence_spans(text)
         hits.extend(
-            Hit(rule, line_at(paragraph, found.start()), _containing(spans, found.start()), found.group(0))
+            placed(paragraph, found.span(), Hit(rule, paragraph.line, _containing(spans, found.start()), found.group(0)))
             for found in pattern.finditer(text)
         )
     return hits
@@ -64,7 +67,7 @@ def phrase_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Patt
 def _paragraph_sentence_hits(rule: str, paragraph: ParagraphLanguage, finder: SentenceFinder) -> list[Hit]:
     found = [(offset, sentence, finder(sentence)) for offset, sentence in sentence_spans(visible(paragraph.text))]
     return [
-        Hit(rule, line_at(paragraph, offset + match.start()), sentence, match.group(0))
+        placed(paragraph, (offset + match.start(), offset + match.end()), Hit(rule, paragraph.line, sentence, match.group(0)))
         for offset, sentence, match in found if match is not None
     ]
 

@@ -7,11 +7,11 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import SentenceFinder, line_at, phrase_hits, sentence_hits, sentence_spans, visible
+    from ._text import SentenceFinder, phrase_hits, placed, sentence_hits, sentence_spans, visible
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import SentenceFinder, line_at, phrase_hits, sentence_hits, sentence_spans, visible
+    from german_rules._text import SentenceFinder, phrase_hits, placed, sentence_hits, sentence_spans, visible
     from prose_language import ParagraphLanguage
 
 SYMBOLISM = Rule(
@@ -140,7 +140,8 @@ def _closing_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Pa
         offset, sentence = spans[-1] if spans else (0, "")
         found = pattern.search(sentence)
         if found is not None:
-            hits.append(Hit(rule, line_at(paragraph, offset + found.start()), sentence, found.group(0)))
+            span = (offset + found.start(), offset + found.end())
+            hits.append(placed(paragraph, span, Hit(rule, paragraph.line, sentence, found.group(0))))
     return hits
 
 

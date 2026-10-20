@@ -45,6 +45,7 @@ class Hit(NamedTuple):
     line: int
     snippet: str
     match: str
+    end_line: int | None = None
 
 
 def no_hits(_path: str, _paragraphs: list[ParagraphLanguage]) -> Iterable[Hit]:
@@ -110,21 +111,18 @@ def _finding(path: str, rule: Rule, hit: Hit) -> Finding:
         family=FAMILY, rule=rule.name, line=hit.line,
         detail=rule.english.title + " in " + path, force=False,
         snippet=hit.snippet.strip()[:180] or hit.match, action=rule.english.action,
-        path=None, severity=None, tool_use_id=None, match=hit.match,
+        path=None, severity=None, tool_use_id=None, match=hit.match, end_line=hit.end_line,
     )
 
 
 def _set_findings(rule_set: RuleSet, path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
     """Reject stray names, because a typo would dodge the gate."""
     named = {rule.name: rule for rule in rule_set.rules}
-    ends = {paragraph.line: paragraph.end_line for paragraph in paragraphs}
     rows: list[dict] = []
     for hit in rule_set.check(path, paragraphs):
         if hit.rule not in named:
             raise ValueError("German rule hit names an undeclared rule: " + hit.rule)
-        finding = _finding(path, named[hit.rule], hit)
-        end_line = ends.get(hit.line)
-        rows.append((finding if end_line is None else finding.with_end_line(end_line)).to_dict())
+        rows.append(_finding(path, named[hit.rule], hit).to_dict())
     return rows
 
 

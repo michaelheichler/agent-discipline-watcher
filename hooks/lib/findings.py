@@ -50,7 +50,7 @@ _REQUIRED_KEYS = frozenset(_RequiredFindingDict.__annotations__)
 BLOCK_RULES = frozenset({
     "low_sentence_variance", "uniform_paragraph_endings", "oversized_list", "three_item_list",
     "choppy_sentences", "de_parataxis", "de_uniform_rhythm", "de_uniform_paragraphs",
-    "de_repeated_connector", "de_long_compound", "dash_cluster",
+    "de_repeated_connector", "dash_cluster",
     "prose_comment_block", "docstring_narration", "function_too_long", "hollow_test",
 })
 

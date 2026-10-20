@@ -6,11 +6,11 @@ from itertools import groupby
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import line_at, phrase_hits, sentence_hits, visible
+    from ._text import phrase_hits, placed, sentence_hits, visible
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import line_at, phrase_hits, sentence_hits, visible
+    from german_rules._text import phrase_hits, placed, sentence_hits, visible
     from prose_language import ParagraphLanguage
 
 NESTED_CLAUSES = Rule(
@@ -175,7 +175,8 @@ def _is_staccato(sentence: str) -> bool:
 
 def _run_hit(paragraph: ParagraphLanguage, run: list[re.Match[str]]) -> Hit:
     snippet = " ".join(found.group(0).strip() for found in run)
-    return Hit(EXCLAMATION_STACCATO.name, line_at(paragraph, run[0].start()), snippet, run[0].group(0).strip())
+    span = (run[0].start(), run[-1].end())
+    return placed(paragraph, span, Hit(EXCLAMATION_STACCATO.name, paragraph.line, snippet, run[0].group(0).strip()))
 
 
 def _staccato_runs(paragraph: ParagraphLanguage) -> list[Hit]:

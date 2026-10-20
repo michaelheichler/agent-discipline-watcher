@@ -3,6 +3,7 @@
   "createdBy": "t045-step1-implementer",
   "dedupeKey": "t045-step1:german-line-at",
   "discoveredDate": "2026-10-20",
+  "displayId": "ISS-009",
   "id": "ISS-009",
   "impact": "german_rules/_text.line_at counts newlines in paragraph.text, but paragraph text is joined with spaces, so the count is always zero. Every German hit points at the paragraph's first line whatever line the match sits on, so the agent edits the wrong line. Since T-045 step 1 each German hit carries the paragraph span as end_line, which keeps ownership correct but not the reported line. Fix: map the match offset back to the host line through the paragraph's line offsets.",
   "location": [
@@ -12,9 +13,9 @@
   "relatedTickets": [
     "T-045"
   ],
-  "resolution": null,
-  "resolvedDate": null,
+  "resolution": "German hits map their match offset to the host line (prose_language line_starts, german_rules/_text.placed), T-045 step 5",
+  "resolvedDate": "2026-10-20",
   "severity": "medium",
-  "status": "open",
+  "status": "resolved",
   "title": "German rule hits always report the first line of their paragraph"
 }

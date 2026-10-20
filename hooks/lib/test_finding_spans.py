@@ -23,7 +23,7 @@ class Case(NamedTuple):
     text: str
     config: dict
     rule: str
-    span: tuple[int, int]
+    span: tuple[int, int | None]
 
 
 def _five_word_sentences() -> str:
@@ -104,13 +104,13 @@ def _german_cases() -> dict[str, Case]:
             "doc.md", _equal_german_paragraphs(), dict(GERMAN_ONLY), "de_uniform_paragraphs", (1, 8)),
         "de_long_compound": Case(
             "doc.md", "Der Bericht kam gestern an.\nEr nennt die Donaudampfschifffahrtsgesellschaft.\n",
-            dict(GERMAN_ONLY), "de_long_compound", (1, 2)),
+            dict(GERMAN_ONLY), "de_long_compound", (2, None)),
         "de_parataxis": Case(
             "doc.md", "Wir haben eine Pumpe entwickelt.\nSie misst den Druck.\nSie speichert jeden Wert.\n",
             dict(GERMAN_ONLY), "de_parataxis", (1, 3)),
         "german-registry-de_empty_intensifier": Case(
             "doc.md", "Der Hund kam heute nach Hause.\nEr war sehr müde und schlief dort.\n",
-            dict(GERMAN_ONLY), "de_empty_intensifier", (1, 2)),
+            dict(GERMAN_ONLY), "de_empty_intensifier", (2, None)),
         "dash_cluster": Case("doc.md", _dash_cluster(), dict(GERMAN_ONLY), "dash_cluster", (1, 4)),
     }
 
@@ -175,7 +175,7 @@ def _spans(case: Case) -> set[tuple[int, int | None]]:
 
 
 @pytest.mark.parametrize("case", [pytest.param(case, id=name) for name, case in _span_cases().items()])
-def test_a_block_finding_spans_from_its_first_to_its_last_line(case: Case) -> None:
+def test_a_finding_spans_only_the_lines_its_evidence_covers(case: Case) -> None:
     assert _spans(case) == {case.span}
 
 

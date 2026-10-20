@@ -33,6 +33,10 @@ evals/corpus_human_sentences_de.jsonl
 evals/corpus_ai_sentences_de.jsonl
 evals/corpus_paragraphs_de.jsonl
 
+# Provenance replay output, private because it quotes the user's own documents.
+# Rebuild with: python3 -I evals/provenance_replay.py
+evals/provenance_replay_result.json
+
 # German rule hits quote those corpora.
 # Rebuild with: python3 evals/measure_german_hit_rate.py
 evals/german_static_hits.jsonl

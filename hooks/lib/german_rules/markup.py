@@ -7,10 +7,12 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
+    from ._text import Span, placed
     from .format import EMOJI, pattern_hits, scannable
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
+    from german_rules._text import Span, placed
     from german_rules.format import EMOJI, pattern_hits, scannable
     from prose_language import ParagraphLanguage
 
@@ -136,12 +138,20 @@ def _title_case(paragraph: ParagraphLanguage) -> list[Hit]:
     return [] if word is None else [Hit(ENGLISH_TITLE_CASE.name, paragraph.line, paragraph.text, word)]
 
 
-def _bare_items(text: str) -> list[str]:
+def _items(text: str, start: int) -> list[tuple[Span, str]]:
+    bounds = [start, *(found for split in ITEM_SPLIT_RE.finditer(text, start) for found in split.span())]
+    pieces = zip(bounds[::2], [*bounds[1::2], len(text)])
+    return [((low, high), text[low:high].strip()) for low, high in pieces]
+
+
+def _bare_items(text: str) -> list[tuple[Span, str]]:
     start = LIST_START_RE.search(text)
     if start is None:
         return []
-    items = [item.strip() for item in ITEM_SPLIT_RE.split(text[start.end():])]
-    return [item for item in items if BARE_KEYWORD_RE.match(item) and item.split()[-1] not in ABBREVIATIONS]
+    return [
+        (span, item) for span, item in _items(text, start.end())
+        if BARE_KEYWORD_RE.match(item) and item.split()[-1] not in ABBREVIATIONS
+    ]
 
 
 def _bullet_punctuation(paragraph: ParagraphLanguage) -> list[Hit]:
@@ -149,7 +159,7 @@ def _bullet_punctuation(paragraph: ParagraphLanguage) -> list[Hit]:
     bare = _bare_items(scannable(paragraph.text))
     if len(bare) < MIN_BARE_ITEMS:
         return []
-    return [Hit(BULLET_PUNCTUATION.name, paragraph.line, item, item) for item in bare]
+    return [placed(paragraph, span, Hit(BULLET_PUNCTUATION.name, paragraph.line, item, item)) for span, item in bare]
 
 
 def _one_row_table(paragraph: ParagraphLanguage) -> list[Hit]:
@@ -161,7 +171,7 @@ def _one_row_table(paragraph: ParagraphLanguage) -> list[Hit]:
     width = len(SEPARATOR_CELL_RE.findall(separator.group(0))) + 1
     if len(PIPE_RE.findall(text)) != width * ONE_DATA_ROW_TABLE_ROWS:
         return []
-    return [Hit(MARKDOWN_ARTIFACT.name, paragraph.line, paragraph.text, separator.group(0))]
+    return [Hit(MARKDOWN_ARTIFACT.name, paragraph.line, paragraph.text, separator.group(0), paragraph.end_line)]
 
 
 def _skipped_levels(paragraphs: list[ParagraphLanguage]) -> list[Hit]:

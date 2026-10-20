@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -50,6 +51,18 @@ class ParagraphLanguage:
     language: str
     weak: bool
     end_line: int | None = None
+    line_starts: tuple[int, ...] = ()
+
+    def line_at(self, index: int) -> int:
+        """Use the line offsets, because the text joins lines with spaces."""
+        if not self.line_starts:
+            return self.line + self.text.count("\n", 0, index)
+        return self.line + bisect_right(self.line_starts, index) - 1
+
+    def lines_of(self, start: int, end: int) -> tuple[int, int | None]:
+        """Name an end line only past a break, as English prose hits do."""
+        first, last = self.line_at(start), self.line_at(max(start, end - 1))
+        return first, last if last > first else None
 
 
 def countable_text(text: str) -> str:
@@ -91,15 +104,30 @@ def _prose_lines(text: str) -> list[str]:
     return lines
 
 
-def _paragraph_blocks(text: str) -> list[tuple[int, str, int]]:
-    blocks: list[tuple[int, str, int]] = []
+class _Block(NamedTuple):
+    line: int
+    text: str
+    end_line: int
+    line_starts: tuple[int, ...]
+
+
+def _block(first: int, lines: list[str]) -> _Block:
+    starts, offset = [], 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    return _Block(first, " ".join(lines), first + len(lines) - 1, tuple(starts))
+
+
+def _paragraph_blocks(text: str) -> list[_Block]:
+    blocks: list[_Block] = []
     current: list[str] = []
     for number, line in enumerate([*_prose_lines(text), ""], 1):
         if line:
             current.append(line)
             continue
         if current:
-            blocks.append((number - len(current), " ".join(current), number - 1))
+            blocks.append(_block(number - len(current), current))
         current = []
     return blocks
 
@@ -113,15 +141,17 @@ def _document_language(signals: list[Signal]) -> str:
     return GERMAN if strong.count(GERMAN) > strong.count(ENGLISH) else DEFAULT_LANGUAGE
 
 
+def _paragraph(block: _Block, language: str, weak: bool) -> ParagraphLanguage:
+    return ParagraphLanguage(block.line, block.text, language, weak, block.end_line, block.line_starts)
+
+
 def paragraph_languages(text: str, allowed: tuple[str, ...] = LANGUAGES) -> list[ParagraphLanguage]:
     blocks = _paragraph_blocks(text)
     if len(allowed) == 1:
-        return [ParagraphLanguage(line, block, allowed[0], False, end) for line, block, end in blocks]
-    signals = [paragraph_signal(block) for _, block, _ in blocks]
+        return [_paragraph(block, allowed[0], False) for block in blocks]
+    signals = [paragraph_signal(block.text) for block in blocks]
     fallback = _document_language(signals)
     return [
-        ParagraphLanguage(line, block, signal.language, False, end)
-        if _is_strong(signal)
-        else ParagraphLanguage(line, block, fallback, True, end)
-        for (line, block, end), signal in zip(blocks, signals, strict=True)
+        _paragraph(block, signal.language, False) if _is_strong(signal) else _paragraph(block, fallback, True)
+        for block, signal in zip(blocks, signals, strict=True)
     ]

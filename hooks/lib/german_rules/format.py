@@ -8,11 +8,11 @@ from pathlib import PurePath
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import sentence_spans, visible
+    from ._text import placed, sentence_spans, visible
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import sentence_spans, visible
+    from german_rules._text import placed, sentence_spans, visible
     from prose_language import ParagraphLanguage
 
 PLACEHOLDER_TEXT = Rule(
@@ -180,7 +180,7 @@ def window(paragraph: ParagraphLanguage, start: int, end: int) -> str:
 
 def pattern_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Pattern[str]) -> list[Hit]:
     return [
-        Hit(rule, paragraph.line, window(paragraph, found.start(), found.end()), found.group(0))
+        placed(paragraph, found.span(), Hit(rule, paragraph.line, window(paragraph, *found.span()), found.group(0)))
         for paragraph in paragraphs
         for found in pattern.finditer(scannable(paragraph.text))
     ]
@@ -197,7 +197,7 @@ def _abrupt_ending(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     found = UNFINISHED_RE.search(text)
     if found is None:
         return []
-    return [Hit(ABRUPT_ENDING.name, last.line, sentence_spans(text)[-1][1], found.group(0).strip())]
+    return [Hit(ABRUPT_ENDING.name, last.line, sentence_spans(text)[-1][1], found.group(0).strip(), last.end_line)]
 
 
 def _versioned(path: str) -> bool:
@@ -230,7 +230,9 @@ def _allowed_hidden(paragraph: ParagraphLanguage, index: int) -> bool:
 
 def _hidden_unicode(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     return [
-        Hit(HIDDEN_UNICODE.name, paragraph.line, window(paragraph, found.start(), found.end()), f"U+{ord(found.group(0)):04X}")
+        placed(paragraph, found.span(), Hit(
+            HIDDEN_UNICODE.name, paragraph.line, window(paragraph, *found.span()), f"U+{ord(found.group(0)):04X}",
+        ))
         for paragraph in paragraphs
         for found in HIDDEN_RE.finditer(paragraph.text)
         if not _allowed_hidden(paragraph, found.start())

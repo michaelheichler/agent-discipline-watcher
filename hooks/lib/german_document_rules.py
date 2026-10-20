@@ -6,13 +6,13 @@ from statistics import fmean, pstdev
 try:
     from .comment_rules import _finding
     from .findings import spanning
-    from .german_readability import sentences, words
+    from .german_readability import WORD_RE, sentences, words
     from .german_syllables import count_syllables
     from .prose_language import ParagraphLanguage
 except ImportError:
     from comment_rules import _finding
     from findings import spanning
-    from german_readability import sentences, words
+    from german_readability import WORD_RE, sentences, words
     from german_syllables import count_syllables
     from prose_language import ParagraphLanguage
 
@@ -79,13 +79,14 @@ def _mechanische_konjunktionen_rows(path: str, paragraph: ParagraphLanguage) -> 
 def _long_compound_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
     """Gottschling ties six syllables to one eye fixation, because past that point a compound stops reading as one word."""
     rows = []
-    for word in words(paragraph.text):
+    for found in WORD_RE.finditer(paragraph.text):
+        word = found.group(0)
         if count_syllables(word) >= LONG_COMPOUND_SYLLABLES:
-            rows.append(spanning(_finding(
-                FAMILY, "de_long_compound", paragraph.line,
+            rows.append(_finding(
+                FAMILY, "de_long_compound", paragraph.line_at(found.start()),
                 "Compound runs past " + str(LONG_COMPOUND_SYLLABLES) + " syllables with no hyphen in " + path,
-                word, "Add a hyphen split or rewrite the compound as a genitive phrase.",
-            ), paragraph.end_line))
+                word, "Add a hyphen split or rewrite the compound as a genitive phrase.", match=word,
+            ))
     return rows
 
 

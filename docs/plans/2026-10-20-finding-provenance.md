@@ -110,6 +110,23 @@ Reports in `~/.adw/reports` hold only owned rows, so they cannot show inherited 
 
 To pass, a reflow or a move must explain every owned-to-inherited flip. Every inherited-to-owned flip must sit on a changed unit. The totals go into the CHANGELOG.
 
+## 7a. Replay result (2026-10-20)
+
+`python3 -I evals/provenance_replay.py` wrote `evals/provenance_replay_result.json`. It scanned 124 pairs from 34 sessions, 26 snapshots and 98 journal rows. 120 of the pairs are prose, so code files are barely covered. The skips are 2862 git or new marks, 100 missing files, 67 snapshots with no known path, 126 journal rows without a base and 1 identical file.
+
+| Outcome | Findings |
+|---|---|
+| Both owned | 13 |
+| Both inherited | 599 |
+| Inherited to owned | 23 |
+| Owned to inherited | 0 |
+
+The diff took 0.5 ms at p50, 4 ms at p90 and 16 ms at most. The legacy baseline scan took 9, 51 and 194 ms.
+
+Verdict: passed. The owned-to-inherited bar holds with no flips. All 23 inherited-to-owned flips were read, and each sits on a changed unit. 7 are lists that grew. 3 are new or reworded lines, 2 are reworded list items, and 9 are German hits whose own span holds the changed text. In 2, the flagged words are unchanged but share a changed unit. These are a `choppy_sentences` row with a reworded sentence on its line, and a German sentence that ends at a date inside a reworded list item.
+
+The first run found ISS-009. German hits took the line and `end_line` of their whole paragraph, so 42 of 54 flips were German words in unchanged sentences. The fix places each hit on its match lines.
+
 ## 8. Risks and what stays for one release
 
 1. Rewording an inherited offender now makes it owned, by design. The T-035 visible release in 0.28.0 keeps that from trapping an agent.
