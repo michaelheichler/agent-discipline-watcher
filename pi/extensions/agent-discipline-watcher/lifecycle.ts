@@ -6,12 +6,18 @@ type SessionState = {
   acceptedTools: Map<string, Set<string>>;
   deletedTargets: Map<string, Set<string>>;
   rejectedTools: Set<string>;
+  unresolvedCalls: Map<string, string>;
+  unresolvedSerial: number;
+  unresolvedStops?: { fingerprint: string; count: number };
 };
 
 function stateFor(sessions: Map<string, SessionState>, session: string): SessionState {
   let state = sessions.get(session);
   if (!state) {
-    state = { pending: new Map(), acceptedTools: new Map(), deletedTargets: new Map(), rejectedTools: new Set() };
+    state = {
+      pending: new Map(), acceptedTools: new Map(), deletedTargets: new Map(), rejectedTools: new Set(),
+      unresolvedCalls: new Map(), unresolvedSerial: 0,
+    };
     sessions.set(session, state);
   }
   return state;
@@ -83,8 +89,39 @@ export class VerificationLedger {
     state.pending.set(key, reason || previous);
   }
 
-  markUnknown(session: string): void {
+  markUnknown(session: string, toolCallId = "", toolName = "tool"): void {
+    if (!session) return;
     this.markPending(session, UNKNOWN_TARGET);
+    const state = stateFor(this.#sessions, session);
+    const key = toolCallId || `${toolName}#${state.unresolvedSerial++}`;
+    state.unresolvedCalls.set(key, toolCallId ? `${toolName} ${toolCallId}` : toolName);
+  }
+
+  resolveCall(session: string, toolCallId: string): void {
+    const state = this.#sessions.get(session);
+    if (!state || !toolCallId || !state.unresolvedCalls.delete(toolCallId)) return;
+    if (state.unresolvedCalls.size === 0) this.releaseUnresolved(session);
+  }
+
+  unresolvedStopCount(session: string): number {
+    const state = this.#sessions.get(session);
+    if (!state?.pending.has(UNKNOWN_TARGET)) return 0;
+    const fingerprint = JSON.stringify([...state.unresolvedCalls.keys()].sort());
+    const previous = state.unresolvedStops;
+    const count = previous?.fingerprint === fingerprint ? previous.count + 1 : 1;
+    state.unresolvedStops = { fingerprint, count };
+    return count;
+  }
+
+  releaseUnresolved(session: string): string[] {
+    const state = this.#sessions.get(session);
+    if (!state) return [];
+    const calls = [...state.unresolvedCalls.values()];
+    state.unresolvedCalls.clear();
+    state.unresolvedStops = undefined;
+    state.pending.delete(UNKNOWN_TARGET);
+    this.#dropEmpty(session, state);
+    return calls;
   }
 
   clearTarget(session: string, target: string): void {

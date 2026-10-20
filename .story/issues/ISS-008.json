@@ -1,0 +1,22 @@
+{
+  "components": [],
+  "createdBy": "implementer-t030-2026-10-20",
+  "dedupeKey": "implementer-t030-2026-10-20:remaining-routes",
+  "discoveredDate": "2026-10-20",
+  "displayId": "ISS-008",
+  "id": "ISS-008",
+  "impact": "After T-042 (archives and directory pathspecs now block under deny), still open: 1. a bare directory name such as `git restore src` passes, because gated_test_targets gets no cwd to tell a directory from a file (needs a cwd argument and the caller at pre_bash.py:204). 2. git checkout <branch>, git stash (push), git am, git reset --hard. 3. A saved script run with python3 /tmp/x.py.",
+  "location": [
+    "hooks/lib/write_targets.py",
+    "hooks/pre_bash.py"
+  ],
+  "phase": "test-gate",
+  "relatedTickets": [
+    "T-030"
+  ],
+  "resolution": null,
+  "resolvedDate": null,
+  "severity": "medium",
+  "status": "open",
+  "title": "Shell routes still able to change tests after T-030"
+}

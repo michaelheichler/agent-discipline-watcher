@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Bypass. hooks/lib/protected.py:345-353 protects agent definitions by file stem only. Claude Code takes agent_type from frontmatter name, so .claude/agents/helper.md with `name: adw-test-writer` (also .claude/agents/sub/adw-test-writer.md, .codex/agents/helper.toml with name = \"adw-test-writer\", .omp/agents/helper.md) passes and opens the test gate in the next session.\n\nFix: block any write under an agents directory (project or user scope, Claude/Codex/OMP) whose content declares the name adw-test-writer, in markdown frontmatter or TOML, keep the stem check.\n\nAcceptance: those four writes return test_writer_definition; an unrelated agent file still passes. Tests by adw-test-writer.",
+  "displayId": "T-029",
+  "id": "T-029",
+  "order": 20,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Block agent files that declare the adw-test-writer name under any file name",
+  "type": "task"
+}

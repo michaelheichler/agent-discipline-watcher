@@ -1,0 +1,20 @@
+{
+  "components": [],
+  "createdBy": "bug-scan-2026-10-20",
+  "dedupeKey": "bug-scan-2026-10-20:bug-9",
+  "discoveredDate": "2026-10-20",
+  "displayId": "ISS-004",
+  "id": "ISS-004",
+  "impact": "pre_write.py:170 returns a bare systemMessage for inherited findings, but finding_output.py:242-246 already claimed the rule as explained, so the agent never gets the principle text in PostToolUse. Fix: do not claim explanations for a user-only message, or send it via advise().",
+  "location": [
+    "hooks/pre_write.py:170",
+    "hooks/lib/finding_output.py:242"
+  ],
+  "phase": null,
+  "relatedTickets": [],
+  "resolution": "pre_write.py and pre_bash.py use advise, 0.28.0",
+  "resolvedDate": "2026-10-20",
+  "severity": "low",
+  "status": "resolved",
+  "title": "PreToolUse inherited notice uses up the principle explanation on a user-only message"
+}

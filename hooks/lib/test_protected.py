@@ -187,6 +187,7 @@ def test_existing_gate_config_is_sealed(tmp_path):
     {"kill_switches": {"punctuation": True, "english": True, "clean_code": True}},
     {"exempt_paths": ["**"]},
     {"exempt_families": {"**": ["punctuation", "english", "clean_code"]}},
+    {"gates": {"punctuation": "observe", "english": "observe", "comment": "observe", "code": "observe"}},
 ])
 def test_a_config_that_silences_every_family_is_an_escape(tmp_path, settings):
     target = _config(tmp_path)
@@ -199,6 +200,7 @@ def test_a_config_that_silences_every_family_is_an_escape(tmp_path, settings):
     {"exempt_families": {"LICENSE": ["english"]}},
     {"exempt_paths": ["vendor/**"]},
     {"gates": {"english": "off"}},
+    {"gates": {"english": "observe"}},
     {"kill_switches": {"english": True}},
 ])
 def test_a_narrow_gate_config_edit_is_the_humans_to_make(tmp_path, settings):
@@ -306,6 +308,7 @@ def test_unreadable_config_text_grants_nothing(text):
     {"punctuation": False, "gates": {"english": "off", "clean_code": "off"}},
     {"prose": False, "comment": False, "code": False},
     {"prose": False, "clean_code": False},
+    {"prose": False, "clean_code": False, "gates": {"code": "observe"}},
     {"gates": {"prose": "off", "comment": "off", "code": "off"}},
     {"kill_switches": {"prose": True, "clean_code": True}},
     {"exempt_families": {"**": ["prose", "comment", "code"]}},
@@ -317,7 +320,7 @@ def test_all_family_disables_and_root_redirection_grant_an_escape(payload):
 @pytest.mark.parametrize("payload", [
     {"clean_code": False},
     {"prose": False, "comment": False},
-    {"prose": False, "clean_code": False, "gates": {"code": "observe"}},
+    {"prose": False, "clean_code": False, "gates": {"code": "enforce"}},
     {"exempt_families": {"**": ["prose", "comment"]}},
 ])
 def test_one_family_disable_does_not_grant_an_escape(payload: dict) -> None:

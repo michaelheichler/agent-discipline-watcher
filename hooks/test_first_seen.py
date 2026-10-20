@@ -127,6 +127,15 @@ def test_an_edit_of_a_long_file_adw_never_saw_written_keeps_its_inherited_length
     assert after.get("decision") != "block"
 
 
+def test_an_allowed_edit_of_an_inherited_long_file_puts_the_old_finding_in_model_context(tmp_path: Path) -> None:
+    target = _untracked(tmp_path, "long.py", PLAIN_LONG)
+    tool_input = {"file_path": str(target), "old_string": "value_5 = 5", "new_string": "value_5 = 6"}
+
+    before = pre_write.run(_payload(tmp_path, "Edit", tool_input, "t1"), _config(tmp_path))
+
+    assert "file_too_long" in before["hookSpecificOutput"]["additionalContext"]
+
+
 def test_a_patch_of_a_long_file_adw_never_saw_written_keeps_its_inherited_length(tmp_path: Path) -> None:
     _untracked(tmp_path, "gen.py", GENERATED_LONG)
 

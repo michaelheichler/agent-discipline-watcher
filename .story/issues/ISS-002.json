@@ -1,0 +1,22 @@
+{
+  "components": [],
+  "createdBy": "bug-scan-2026-10-20",
+  "dedupeKey": "bug-scan-2026-10-20:bug-8",
+  "discoveredDate": "2026-10-20",
+  "displayId": "ISS-002",
+  "id": "ISS-002",
+  "impact": "reporting.py:43,149 sizes the block to 4096 raw bytes, hookio.py:168-185 limits the escaped JSON to 4096 and falls back to 900. A 3980-byte block with 5 rows escapes to 4115 bytes; the agent sees 2 rows and no Full report path, while all principle explanations are marked shown. advise() (hookio.py:239-242) sends the message twice, so PostToolUse breaks near 2 KB. Fix: measure with hookio.sends_whole in compact_block, or clip the reason to fit instead of dropping to 900.",
+  "location": [
+    "hooks/lib/reporting.py:149",
+    "hooks/lib/hookio.py:168"
+  ],
+  "phase": null,
+  "relatedTickets": [
+    "T-039"
+  ],
+  "resolution": "T-039, 0.28.0",
+  "resolvedDate": "2026-10-20",
+  "severity": "medium",
+  "status": "resolved",
+  "title": "Block messages over the escaped 4 KB limit drop to 900 bytes and lose the report path"
+}

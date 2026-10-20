@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Callable
 
@@ -144,15 +145,15 @@ def _joined(existing: list[str], paths: list[str]) -> list[str]:
 
 
 def _capped(bucket: dict, pending: dict[str, str], paths: list[str]) -> dict:
-    """Oldest paths leave first and are counted, because an unbounded scope made every Stop rescan thousands of files."""
-    dropped = paths[:-MAX_SCOPE_PATHS] if len(paths) > MAX_SCOPE_PATHS else []
-    if not dropped:
+    """Clean paths alone leave, so volume cannot shed a blocker."""
+    excess = max(len(paths) - MAX_SCOPE_PATHS, 0)
+    gone = set(islice((path for path in paths if path not in pending), excess))
+    if not gone:
         return {**bucket, "pending": pending, "paths": paths}
-    gone = set(dropped)
-    kept_pending = {key: value for key, value in pending.items() if key not in gone}
     count = bucket.get(DROPPED_KEY)
-    total = (count if isinstance(count, int) and not isinstance(count, bool) else 0) + len(dropped)
-    return {**bucket, "pending": kept_pending, "paths": paths[-MAX_SCOPE_PATHS:], DROPPED_KEY: total}
+    total = (count if isinstance(count, int) and not isinstance(count, bool) else 0) + len(gone)
+    kept = [path for path in paths if path not in gone]
+    return {**bucket, "pending": pending, "paths": kept, DROPPED_KEY: total}
 
 
 def apply_paths(scope: BlockerScope, paths: list[str], pending: dict[str, str | None]) -> None:

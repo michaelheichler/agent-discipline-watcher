@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "User decision 2026-10-20: tests deny by default everywhere.\n\nDone in working tree:\n1. hooks/lib/config.py DEFAULTS tests allow -> deny.\n2. hooks/lib/tests_policy.py accepts agent_type agent-discipline-watcher:adw-test-writer (Claude Code scopes plugin agents; transcripts confirm). Without it the deny default blocked the test writer itself.\n3. hooks/lib/protected.py _gated_off treats any non-enforce family state as silenced, so an all-observe config hits config_seal.\n4. Regression tests by adw-test-writer, README and CHANGELOG.\n\nFull suite: 4614 passed, 17 skipped.",
+  "displayId": "T-028",
+  "id": "T-028",
+  "order": 10,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Deny test writes by default and let the plugin test writer through",
+  "type": "task"
+}

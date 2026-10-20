@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "False block, worse under deny. tests_policy.touches_tests (lines 65-71) blocks when a test exists before or after the edit. An Edit of `{ a + b }` in src/lib.rs that also holds #[cfg(test)] mod tests gets test_write_gate. The same holds for a Python module with test functions.\n\nFix: for a non-test path, compare the extracted test units (test_units.extract, plus the Rust cfg(test) block text) before and after, block only when they differ. A test path keeps the name rule.\n\nAcceptance: editing non-test code in a Rust file with inline tests passes; editing the tests module blocks; deleting a test blocks. Tests by adw-test-writer.",
+  "displayId": "T-032",
+  "id": "T-032",
+  "order": 50,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Block a Rust edit only when its inline tests change",
+  "type": "task"
+}

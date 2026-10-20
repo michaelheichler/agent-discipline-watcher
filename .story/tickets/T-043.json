@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Sol QA, regression from T-032. Adding @pytest.mark.skip above an inline test in src/total.py gives touches_tests False, so an agent can skip a test unchecked. The compared test body leaves out decorators (and likely Rust attributes such as #[ignore] above a #[test] fn inside the cfg(test) block is covered, verify).\n\nFix: inline_test_bodies includes each test unit's decorator lines (Python) and attributes (Rust). Acceptance: adding or removing @pytest.mark.skip / @unittest.skip / #[ignore] on an inline test blocks; a decorator change on a non-test function passes. Tests by adw-test-writer.",
+  "displayId": "T-043",
+  "id": "T-043",
+  "order": 160,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Count decorators and markers as part of an inline test",
+  "type": "task"
+}

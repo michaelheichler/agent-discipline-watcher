@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-003. shell_syntax.py:391 runs on the raw command from pre_bash.py:234, so a `>` in a heredoc body reads as a redirect. Fix: run command_findings and target_findings on logical lines with heredoc bodies removed; the heredoc redirect target and interpreter heredocs (python3 <<EOF) keep their checks.\n\nAcceptance: cat > /tmp/x.py <<'EOF' with a body line containing `> .agent-discipline.json` passes; cat > .agent-discipline.json <<EOF still blocks; python3 <<EOF writing files still blocks. Tests by adw-test-writer.",
+  "displayId": "T-040",
+  "id": "T-040",
+  "order": 130,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Strip heredoc bodies before the Bash gate reads commands",
+  "type": "task"
+}

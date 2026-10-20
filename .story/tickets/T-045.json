@@ -1,0 +1,12 @@
+{
+  "blockedBy": [],
+  "completedDate": null,
+  "createdDate": "2026-10-20",
+  "description": "From ISS-006, user decision 2026-10-20, target 0.29.0.\n\nReplace baseline.subtract (exact snippet match, then rule-count match) with one step: diff baseline (git HEAD or first-seen snapshot) against current by units, sentences for prose and lines for code, and mark each current unit unchanged or changed. A finding on an unchanged unit is inherited; on a changed unit it is the agent's own (\"you touch it, you own it\"). T-035 keeps this from trapping an agent.\n\nConstraints: no pure text match of findings, no embeddings, deterministic, lean. One function used at every point that splits owned and inherited today (PostToolUse, Stop rescan, commit gate, batch, document reviewer hunks).\n\nMust handle: 1. reflowed prose paragraphs (sentence units, normalized whitespace); 2. moved blocks (an unchanged unit found elsewhere counts as moved, not changed); 3. file-level rules (file_too_long etc.) keep the growth rule; 4. deleted findings produce nothing.\n\nDeliverables: design doc docs/plans/2026-10-20-finding-provenance.md, implementation, tests by adw-test-writer, measurement on real session reports (how many findings flip from inherited to own), README and CHANGELOG.",
+  "id": "T-045",
+  "order": 180,
+  "phase": "test-gate",
+  "status": "open",
+  "title": "Decide finding ownership by unit provenance instead of text matching",
+  "type": "feature"
+}

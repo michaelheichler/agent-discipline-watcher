@@ -22,15 +22,15 @@ def policy(cwd: Path) -> dict:
     return json.loads((cwd / ".agent-discipline.json").read_text(encoding="utf-8"))
 
 
-def test_status_reports_the_allow_default_without_a_file(tmp_path: Path) -> None:
+def test_status_reports_the_deny_default_without_a_file(tmp_path: Path) -> None:
     result = cli(tmp_path, "status")
     assert result.returncode == 0
-    assert "tests: allow" in result.stdout.splitlines()
+    assert "tests: deny" in result.stdout.splitlines()
     assert not (tmp_path / ".agent-discipline.json").exists()
 
 
 def test_tests_deny_writes_the_policy_and_keeps_other_keys(tmp_path: Path) -> None:
-    (tmp_path / ".agent-discipline.json").write_text('{"custom": 7, "max_rows": 3}', encoding="utf-8")
+    (tmp_path / ".agent-discipline.json").write_text('{"custom": 7, "max_rows": 3, "tests": "allow"}', encoding="utf-8")
     result = cli(tmp_path, "tests", "deny")
     assert result.returncode == 0
     assert policy(tmp_path) == {"custom": 7, "max_rows": 3, "tests": "deny"}

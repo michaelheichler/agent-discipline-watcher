@@ -136,18 +136,16 @@ def compact_block(
     explainer: Explainer | None = None,
     report_path: str | None = None,
 ) -> tuple[str, str]:
-    """Write the report path last and outside the clip, because a clipped path leaves the reader no way to the rest."""
+    """Fit rows by the escaped size the hook sends, because a raw byte count let the writer cut the report path."""
     max_rows = min(int((config or {}).get("max_rows", MAX_LISTED_ROWS)), MAX_LISTED_ROWS)
     unique = [localized(finding) for finding in _deduplicated(findings, config)]
     report = report_path or write_full_report(unique, config)
-    listed = unique[:max(max_rows, 1)]
+    shown = _clip(report, MAX_COMPACT_FIELD_BYTES)
     german = all_german(unique)
-    tail = block_tail(len(unique) - len(listed), _clip(report, MAX_COMPACT_FIELD_BYTES), german)
-    lines = [_clip(lead_text(lead, german), MAX_COMPACT_FIELD_BYTES)]
-    chosen = explainer or session_explainer(config)
-    lines.extend(listed_lines(listed, chosen, MAX_COMPACT_FIELD_BYTES))
-    body_budget = MAX_COMPACT_BYTES - len(tail.encode("utf-8")) - 1
-    return _clip("\n".join(lines), body_budget) + "\n" + tail, report
+    head = _clip(lead_text(lead, german), MAX_COMPACT_FIELD_BYTES)
+    frame = (head, block_tail(len(unique), shown, german))
+    lines, sent = listed_lines(unique[:max(max_rows, 1)], explainer or session_explainer(config), MAX_COMPACT_FIELD_BYTES, frame)
+    return "\n".join([head, *lines, block_tail(len(unique) - sent, shown, german)]), report
 
 
 def verdict_message(

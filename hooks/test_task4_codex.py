@@ -455,21 +455,20 @@ def test_async_finding_dedup_uses_session_turn_rule_canonical_path_and_content_h
     assert reporting._deduplicated([left, alias, changed], {"session_id": "s1", "turn_id": "t1"}) == [left, changed]
 
 
-def test_every_serialized_hook_message_is_individually_capped() -> None:
+def test_an_oversized_payload_fits_the_envelope_and_keeps_each_model_field_tail(capsys) -> None:
     from lib import hookio
 
+    tail = "rest: /reports/full.json"
+    body = "\n".join(["ä" * 500] * 100) + "\n" + tail
     payload = {
-        "systemMessage": "s" * 50_000,
-        "reason": "r" * 50_000,
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": "c" * 50_000,
-            "permissionDecisionReason": "p" * 50_000,
-        },
+        "systemMessage": body,
+        "reason": body,
+        "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": body, "permissionDecisionReason": body},
     }
 
-    serialized = json.dumps(hookio._bounded_payload(payload), ensure_ascii=True, separators=(",", ":"))
-    assert len(serialized.encode("utf-8")) <= hookio.MAX_RESPONSE_BYTES
+    hookio.write_payload(payload)
+
+    serialized = capsys.readouterr().out.rstrip("\n")
     decoded = json.loads(serialized)
-    assert len(decoded["systemMessage"]) <= hookio.MAX_MESSAGE_BYTES
-    assert len(decoded["reason"]) <= hookio.MAX_MESSAGE_BYTES
+    model = (decoded["reason"], decoded["hookSpecificOutput"]["additionalContext"], decoded["hookSpecificOutput"]["permissionDecisionReason"])
+    assert (len(serialized.encode("utf-8")) <= hookio.MAX_RESPONSE_BYTES, [field.splitlines()[-1] for field in model]) == (True, [tail] * 3)

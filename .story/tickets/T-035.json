@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-001 (d854fea) and ISS-006. User 2026-10-20: own findings must keep blocking, but an agent must never get stuck completely.\n\nFix: keep the stall release. A fingerprint that holds an own finding releases only after 5 identical Stops (named constant), not 2. On release the system message lists the unfixed own findings for the user, and the ledger stop_stall row marks them as own. Inherited-only fingerprints keep the limit of 2. Update README \"Repeat limit\" and CHANGELOG.\n\nAcceptance: own finding blocks Stops 1-5 and releases on 6 with the list shown; inherited-only releases on 3. Tests by adw-test-writer.",
+  "displayId": "T-035",
+  "id": "T-035",
+  "order": 80,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Raise the Stop release limit for the agent's own unfixed findings",
+  "type": "task"
+}

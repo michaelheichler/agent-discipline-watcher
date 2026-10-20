@@ -5,9 +5,9 @@ import { isAbsolute, resolve } from "node:path";
 import { sanitizeDisplay } from "./adw-config";
 import { hashlineEdits, hashlinePatchSource, type HashlineEdit } from "./hashline";
 import { VerificationLedger } from "./lifecycle";
-import { WorkspaceObserver } from "./workspace-observer";
 import type { OmpReviewContext, OmpReviewRun } from "./omp-review";
 import { runReviewBridge, validatedTargetPaths, type ReviewBridge } from "./omp-review-bridge";
+import { appendReleaseRow, UNRESOLVED_STOP_LIMIT, unresolvedReleaseNotice } from "./stop-release";
 import {
   adaptPythonEvent,
   adaptToolCall,
@@ -70,6 +70,8 @@ const MAX_CACHED_BASH_TARGETS = 256;
 const UNVERIFIED_POST_TOOL = "PostToolUse watcher could not verify the completed tool result";
 const UNRESOLVED_NATIVE_EDIT =
   "OMP edit expects hashline input beginning with [path#hash] and anchored operations. Read the file for its current hashline, then use PUT, INS, or DEL.";
+const UNKNOWN_OMP_WRITE =
+  "agent-discipline-watcher could not classify this OMP tool as a safe mutation.";
 
 function sessionId(ctx: ExtensionContext): string {
   return ctx.sessionManager.getSessionId();
@@ -231,7 +233,6 @@ type Lifecycle = {
   run: WatcherRun;
   review: OmpReviewRun;
   ledger: VerificationLedger;
-  observer: WorkspaceObserver;
   resolveBashTargets: (ctx: ExtensionContext, event: ToolCallEvent | ToolResultEvent) => TargetResolver;
 };
 
@@ -242,8 +243,6 @@ type ResultTurn = {
   session: string;
   adapted: AdaptedTool;
 };
-
-type WorkspaceChanges = ReturnType<WorkspaceObserver["collect"]>;
 
 const TRACKED_MUTATIONS = ["write", "bash", "mcp", "notebook", "python"];
 
@@ -270,12 +269,12 @@ function bashTargetResolver(targetsBridge: ReviewBridge): Lifecycle["resolveBash
   };
 }
 
-async function sendContext(pi: ExtensionAPI, message: string): Promise<void> {
+async function sendContext(pi: ExtensionAPI, message: string, display = false): Promise<void> {
   await pi.sendMessage(
     {
       customType: "agent-discipline-watcher.context",
       content: sanitizeDisplay(message, 16 * 1024),
-      display: false,
+      display,
       attribution: "agent-discipline-watcher",
     },
     { deliverAs: "nextTurn", triggerTurn: false },
@@ -284,7 +283,6 @@ async function sendContext(pi: ExtensionAPI, message: string): Promise<void> {
 
 async function onSessionStart(state: Lifecycle, ctx: ExtensionContext): Promise<void> {
   state.ledger.resetSession(sessionId(ctx));
-  state.observer.reset(sessionId(ctx));
   try {
     const result = state.run("SessionStart", watcherPayload(ctx.cwd, sessionId(ctx)));
     const message = feedbackMessage(result) ?? blockReason(result);
@@ -330,9 +328,8 @@ async function onToolCall(state: Lifecycle, event: ToolCallEvent, ctx: Extension
   } catch (error) {
     return rejectCall(state, sessionId(ctx), event, errorReason(error, "agent-discipline-watcher could not decode this OMP tool call"));
   }
-  if (adapted.kind === "observed") {
-    state.observer.begin(sessionId(ctx), ctx.cwd);
-    return undefined;
+  if (adapted.kind === "unknown-write") {
+    return rejectCall(state, sessionId(ctx), event, adapted.reason ?? UNKNOWN_OMP_WRITE);
   }
   if (adapted.kind === "host-report") return undefined;
   if (!isPreGateTool(event.toolName) && !TRACKED_MUTATIONS.includes(adapted.kind)) return undefined;
@@ -360,7 +357,7 @@ function adaptResult(state: Lifecycle, event: ToolResultEvent, ctx: ExtensionCon
   try {
     return adaptToolResult(event, state.resolveBashTargets(ctx, event));
   } catch {
-    return { kind: "observed", hookToolName: event.toolName, input: event.input, requiresTarget: false };
+    return { kind: "unknown-write", hookToolName: event.toolName, input: event.input, requiresTarget: true, reason: UNKNOWN_OMP_WRITE };
   }
 }
 
@@ -372,20 +369,18 @@ function scansResult(turn: ResultTurn): boolean {
   const { event, adapted } = turn;
   if (adapted.kind === "host-report" && !acceptedCall(turn)) return false;
   const acceptedMcpResult = event.toolName.toLowerCase().startsWith("mcp__") && acceptedCall(turn);
-  return adapted.kind === "observed" || isPostScanTool(event.toolName) || TRACKED_MUTATIONS.includes(adapted.kind) || acceptedMcpResult;
+  return adapted.kind === "unknown-write" || isPostScanTool(event.toolName) || TRACKED_MUTATIONS.includes(adapted.kind) || acceptedMcpResult;
 }
 
-function resultPaths(turn: ResultTurn, changes: WorkspaceChanges): Set<string> {
+function resultPaths(turn: ResultTurn): Set<string> {
   const { state, event, ctx, session, adapted } = turn;
-  const observed = adapted.kind === "observed";
   const paths = new Set<string>();
   try {
-    if (!observed) for (const path of postToolPaths(adapted.input, event.details, event.content, ctx.cwd)) paths.add(path);
+    for (const path of postToolPaths(adapted.input, event.details, event.content, ctx.cwd)) paths.add(path);
   } catch {
     paths.clear();
   }
-  if (!observed) addAdaptedTargets(paths, adapted, ctx.cwd);
-  for (const path of changes.changed) paths.add(path);
+  addAdaptedTargets(paths, adapted, ctx.cwd);
   if (event.toolCallId) {
     for (const path of state.ledger.acceptedTargets(session, event.toolCallId)) paths.add(path);
   }
@@ -419,13 +414,13 @@ function failedResult(turn: ResultTurn, paths: ReadonlySet<string>) {
   return noticeResult(event, message ? [message] : []);
 }
 
-function unresolvedResult(turn: ResultTurn, changes: WorkspaceChanges) {
+function unresolvedResult(turn: ResultTurn) {
   const { state, event, session, adapted } = turn;
   if (!adapted.requiresTarget) {
     if (event.toolCallId) state.ledger.finishTool(session, event.toolCallId);
-    return changes.notices.length ? { content: appendNotice(event.content, changes.notices.join("\n\n")) } : undefined;
+    return undefined;
   }
-  state.ledger.markUnknown(session);
+  state.ledger.markUnknown(session, event.toolCallId, event.toolName);
   if (event.toolCallId) state.ledger.finishTool(session, event.toolCallId);
   return { content: appendNotice(event.content, UNRESOLVED_EDIT_SCAN) };
 }
@@ -433,8 +428,7 @@ function unresolvedResult(turn: ResultTurn, changes: WorkspaceChanges) {
 async function scanResultPath(turn: ResultTurn, filePath: string, messages: string[]): Promise<void> {
   const { state, event, ctx, session, adapted } = turn;
   try {
-    state.observer.acknowledge(session, filePath);
-    const tool = adapted.kind === "observed" ? "Write" : adapted.hookToolName;
+    const tool = adapted.hookToolName;
     const result = state.run("PostToolUse", watcherPayload(ctx.cwd, session, tool, { file_path: filePath }, event.toolCallId));
     const postReason = blockReason(result);
     if (result.decision === "block" || postReason) {
@@ -466,15 +460,13 @@ async function onToolResult(state: Lifecycle, event: ToolResultEvent, ctx: Exten
   const adapted = adaptResult(state, event, ctx);
   const session = sessionId(ctx);
   const turn: ResultTurn = { state, event, ctx, session, adapted };
-  const observed = adapted.kind === "observed";
-  const changes: WorkspaceChanges = observed ? state.observer.collect(session) : { changed: [], deleted: [], notices: [] };
-  for (const path of changes.deleted) if (isMissingPath(path)) state.ledger.clearTarget(session, path);
   if (!scansResult(turn)) return undefined;
-  const paths = resultPaths(turn, changes);
+  const paths = resultPaths(turn);
   const deletedTargets = new Set(event.toolCallId ? state.ledger.acceptedDeletedTargets(session, event.toolCallId) : []);
-  if (event.isError && !observed) return failedResult(turn, paths);
-  if (paths.size === 0) return unresolvedResult(turn, changes);
-  const messages: string[] = [...changes.notices];
+  if (event.isError) return failedResult(turn, paths);
+  if (paths.size === 0) return unresolvedResult(turn);
+  if (event.toolCallId) state.ledger.resolveCall(session, event.toolCallId);
+  const messages: string[] = [];
   for (const filePath of paths) {
     if (deletedTargets.has(filePath) && isMissingPath(filePath)) {
       state.ledger.clearTarget(session, filePath);
@@ -527,12 +519,18 @@ function stopVerdict(state: Lifecycle, event: SessionStopEvent, ctx: ExtensionCo
   }
 }
 
+/** Released after the limit because no rescan clears an unresolved target. */
+async function releaseStalledUnresolved(state: Lifecycle, session: string): Promise<void> {
+  if (state.ledger.unresolvedStopCount(session) <= UNRESOLVED_STOP_LIMIT) return;
+  const calls = state.ledger.releaseUnresolved(session);
+  appendReleaseRow(session, VerificationLedger.UNKNOWN_TARGET);
+  await sendContext(state.pi, unresolvedReleaseNotice(calls), true);
+}
+
 async function onSessionStop(state: Lifecycle, event: SessionStopEvent, ctx: ExtensionContext): Promise<SessionStopResult> {
   const session = sessionId(ctx);
-  const changes = state.observer.collect(session);
-  for (const path of changes.deleted) if (isMissingPath(path)) state.ledger.clearTarget(session, path);
-  for (const path of changes.changed) state.ledger.markPending(session, path);
-  const recoveryMessages = [...changes.notices, ...(await recoverPending(state, event, ctx))];
+  const recoveryMessages = await recoverPending(state, event, ctx);
+  await releaseStalledUnresolved(state, session);
   if (state.ledger.hasPending(session)) {
     return {
       decision: "block",
@@ -551,7 +549,6 @@ export function registerLifecycleHandlers(
   const state: Lifecycle = {
     pi, run, review,
     ledger: new VerificationLedger(),
-    observer: new WorkspaceObserver(),
     resolveBashTargets: bashTargetResolver(targetsBridge),
   };
   pi.on("session_start", async (_event, ctx: ExtensionContext) => onSessionStart(state, ctx));

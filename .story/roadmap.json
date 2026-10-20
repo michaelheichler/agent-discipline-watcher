@@ -10,6 +10,13 @@
       "summary": "German prose rules from Duden and humanizer-de"
     },
     {
+      "description": "Test writes are denied by default since 2026-10-20. Close the bypasses and false blocks of test_write_gate and the config seal, found in the 2026-10-20 bug scan.",
+      "id": "test-gate",
+      "label": "PHASE 2",
+      "name": "Test gate hardening",
+      "summary": "Deny-by-default test gate: close bypasses and false blocks"
+    },
+    {
       "description": "Initial project setup.",
       "id": "p0",
       "label": "PHASE 0",

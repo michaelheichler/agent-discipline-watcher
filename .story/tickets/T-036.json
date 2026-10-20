@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-001, 38fd461. blocker_state.py:18,148 caps a scope at 500 paths and drops the oldest together with their pending blockers, so touching 500+ files escapes a blocker.\n\nFix: evict only paths without a pending blocker. If every tracked path has a blocker, keep them all and let the 7 s Stop budget report unscanned files as it already does. Update README \"Budget\" and CHANGELOG.\n\nAcceptance: 501 paths with the first holding a blocker, the blocker survives and still blocks Stop; clean old paths are evicted. Tests by adw-test-writer.",
+  "displayId": "T-036",
+  "id": "T-036",
+  "order": 90,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Never evict a path with a pending blocker from the Stop scope",
+  "type": "task"
+}

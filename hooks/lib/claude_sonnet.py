@@ -6,14 +6,15 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from . import claude_luna, journal, payloads, turn_retry
+from . import claude_luna, journal, payloads, reporting, turn_retry
 from .claude_presets import CLAUDE_SONNET_MODEL
 from .document_review import HUNK_NOTICE
-from .hookio import read_payload, system_message, write_payload
+from .hookio import advise, read_payload, system_message, write_payload
 from .judge_contracts import (
     DOCUMENT_RUBRIC, DOCUMENT_SCHEMA, GERMAN_PATTERN_RUBRIC, PATTERN_RUBRIC, PATTERN_SCHEMA,
     JudgeResult, ReviewKind, build_prompt, validate_payload,
@@ -29,6 +30,9 @@ NO_AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 NO_HOOKS_SETTINGS = '{"disableAllHooks":true}'
 NO_MCP_CONFIG = '{"mcpServers":{}}'
 MISSING_VERDICT_REASON = "The reviewer gave no verdict for this candidate."
+LEDGER_HOOK = "claude_sonnet"
+DROPPED_RULE = "review_dropped"
+MAX_NAMED_ROWS = 5
 SYSTEM_PROMPT = (
     "You review one finished turn for reader-facing English. The user message holds numbered sections.\n"
     "A pattern section names one rule, the fix it asks for, real examples of both sides, and numbered "
@@ -76,6 +80,12 @@ class StopContext(NamedTuple):
     session_id: str
     payload: object
     root: str | Path | None
+    ledger_root: str | Path | None = None
+
+
+class Verdicts(NamedTuple):
+    texts: list[claude_luna.Answer]
+    skipped: list[dict[str, Any]]
 
 
 def section_body(request: Any) -> str:
@@ -142,8 +152,8 @@ def _result(payload: dict[str, Any]) -> JudgeResult:
     return JudgeResult(payload, "claude", CLAUDE_SONNET_MODEL, "", "adw-batch-v1", {})
 
 
-def _pattern_result(request: Any, items: list[dict[str, Any]]) -> JudgeResult:
-    """Because one slip must not void every verdict, a gap reads as clean and a repeat keeps its first answer."""
+def _pattern_result(request: Any, items: list[dict[str, Any]]) -> tuple[JudgeResult, list[int]]:
+    """Because one slip must not void every verdict, a gap stays queued and a repeat keeps its first answer."""
     count = len(request.candidates)
     chosen: dict[int, dict[str, Any]] = {}
     for item in items:
@@ -153,11 +163,12 @@ def _pattern_result(request: Any, items: list[dict[str, Any]]) -> JudgeResult:
         chosen.setdefault(index, {key: item[key] for key in _VERDICT["required"]})
     if request.rule_name in PARATAXIS_RULES and len(chosen) < count:
         raise ReviewUnavailable("the verdict skipped a parataxis run, which needs its own answer")
+    skipped = [index for index in range(count) if index not in chosen]
     clean = {"verdict": "clean", "reason": MISSING_VERDICT_REASON}
-    return _result({"items": [chosen.get(index, {"index": index, **clean}) for index in range(count)]})
+    return _result({"items": [chosen.get(index, {"index": index, **clean}) for index in range(count)]}), skipped
 
 
-def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> list[claude_luna.Answer]:
+def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> Verdicts:
     """Slice the batch per request, because the Luna wording code reads one request at a time."""
     answered: dict[int, list[dict[str, Any]]] = {}
     for item in payload["items"]:
@@ -165,48 +176,113 @@ def verdict_texts(work: list[claude_luna.Work], payload: dict[str, Any]) -> list
     pattern_sections = {number for number, (request, _s) in enumerate(work) if request.review_kind is ReviewKind.PATTERN}
     if set(answered) - pattern_sections:
         raise ReviewUnavailable("the verdict named a section that holds no pattern")
-    texts = [
-        (request, claude_luna.feedback(request, _pattern_result(request, answered.get(number, [])), sources, REVIEWER))
-        for number, (request, sources) in enumerate(work)
-        if number in pattern_sections
-    ]
+    texts: list[claude_luna.Answer] = []
+    skipped: list[dict[str, Any]] = []
+    for number, (request, sources) in enumerate(work):
+        if number in pattern_sections:
+            result, gaps = _pattern_result(request, answered.get(number, []))
+            skipped.extend(sources[index] for index in gaps)
+            texts.append((request, claude_luna.feedback(request, result, sources, REVIEWER)))
     documents = [(request, sources) for request, sources in work if request.review_kind is ReviewKind.DOCUMENT]
     if documents:
         rows = [row for _request, sources in documents for row in sources]
         note = claude_luna.feedback(documents[0][0], _result({"notes": payload["notes"]}), rows, REVIEWER)
         texts.append((documents[0][0], note))
-    return [(request, text) for request, text in texts if text]
+    return Verdicts([(request, text) for request, text in texts if text], skipped)
 
 
-def _unavailable(reason: str, dropped: int, queued: int) -> dict:
+def _row_names(rows: list[dict[str, Any]]) -> str:
+    names = []
+    for row in rows:
+        name = Path(str(row.get("path") or "")).name or "an unnamed file"
+        line = row.get("line")
+        names.append(f"{name}:{line}" if row.get("role") == "pattern" and type(line) is int else name)
+    unique = list(dict.fromkeys(names))
+    shown = ", ".join(unique[:MAX_NAMED_ROWS])
+    return f"{shown} and {len(unique) - MAX_NAMED_ROWS} more" if len(unique) > MAX_NAMED_ROWS else shown
+
+
+def _dropped_text(dropped: list[dict[str, Any]]) -> str:
+    return (
+        f"It dropped {len(dropped)} queued findings unreviewed after {turn_retry.MAX_REVIEW_ATTEMPTS} "
+        f"attempts without a verdict: {_row_names(dropped)}."
+    )
+
+
+def _record_dropped(stop: StopContext, dropped: list[dict[str, Any]]) -> None:
+    for row in dropped:
+        reporting.record_decision(
+            session_id=stop.session_id, hook=LEDGER_HOOK, event="Stop", family="", rule=DROPPED_RULE,
+            path=str(row.get("path") or ""), tool_use_id="", outcome="release", duration_ms=0,
+            turn_id=str(row.get("turn_id") or ""), root=stop.ledger_root,
+        )
+
+
+def _exhausted(stop: StopContext, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Counted per row, so a row that never gets a verdict stops resending."""
+    try:
+        keys = [journal._reviewed_key(row) for row in rows]
+        exhausted = turn_retry.exhausted_reviews(stop.session_id, keys, stop.root)
+    except (OSError, ValueError, TypeError):
+        return []
+    dropped = [row for row in rows if journal._reviewed_key(row) in exhausted]
+    if dropped:
+        claude_luna.mark_reviewed(stop.payload, dropped, stop.root)
+        _record_dropped(stop, dropped)
+    return dropped
+
+
+def _unavailable(reason: str, dropped: list[dict[str, Any]], queued: int) -> dict:
+    lead = f"ADW {REVIEWER} review did not run this turn: {reason}."
     if not dropped:
-        tail = "Its findings stay queued."
-    else:
-        rest = ", the rest stay queued" if dropped < queued else ""
-        tail = f"It dropped {dropped} queued findings after {turn_retry.MAX_REVIEW_ATTEMPTS} failed attempts{rest}."
-    return system_message(bounded(f"ADW {REVIEWER} review did not run this turn: {reason}. {tail}"))
+        return system_message(bounded(f"{lead} Its findings stay queued."))
+    rest = " The rest stay queued." if len(dropped) < queued else ""
+    return advise(bounded(f"{lead} {_dropped_text(dropped)}{rest}"), "Stop")
 
 
 def _failed(stop: StopContext, rows: list[dict[str, Any]], error: ReviewUnavailable) -> dict:
-    dropped: list[dict[str, Any]] = []
     try:
         if isinstance(error, CliUnavailable):
             turn_retry.record_cli_outage(stop.session_id, str(error), stop.root)
-        keys = [journal._reviewed_key(row) for row in rows]
-        exhausted = turn_retry.exhausted_reviews(stop.session_id, keys, stop.root)
-        dropped = [row for row in rows if journal._reviewed_key(row) in exhausted]
     except (OSError, ValueError, TypeError):
-        dropped = []
-    if dropped:
-        claude_luna.mark_reviewed(stop.payload, dropped, stop.root)
-    return _unavailable(str(error), len(dropped), len(rows))
+        return _unavailable(str(error), [], len(rows))
+    return _unavailable(str(error), _exhausted(stop, rows), len(rows))
+
+
+def _cooldown_notice(stop: StopContext) -> dict:
+    """Visible, because a silent cooldown reads like a clean review."""
+    try:
+        cooldown = turn_retry.cli_cooldown(stop.session_id, stop.root)
+    except (OSError, ValueError, TypeError):
+        return {}
+    if cooldown is None:
+        return {}
+    reason, retry_after = cooldown
+    until = time.strftime("%H:%M:%S", time.localtime(retry_after))
+    return system_message(bounded(
+        f"ADW {REVIEWER} review did not run this turn: {reason or 'the claude CLI failed'}. "
+        f"ADW skips the CLI until {until}, and the queued findings stay queued."
+    ))
+
+
+def _answered(rows: list[dict[str, Any]], skipped: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Held back by key, because rows of one file share a reviewed mark."""
+    held = {journal._reviewed_key(row) for row in skipped}
+    return [row for row in rows if journal._reviewed_key(row) not in held]
+
+
+def _with_notice(response: dict, text: str) -> dict:
+    """Joined, because one hook reply carries one message per channel."""
+    if not text:
+        return response
+    if response.get("decision") == "block":
+        return {**response, "reason": f"{response.get('reason', '')}\n\n{text}"}
+    earlier = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+    return advise("\n\n".join(part for part in (earlier, text) if part), "Stop")
 
 
 def _retryable(stop: StopContext, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Empty while the CLI cools down, because a Stop in that window would only wait out the same failure."""
     try:
-        if turn_retry.provider_cooling(stop.session_id, stop.root, turn_retry.CLI_OUTAGE_KEY):
-            return []
         counts = turn_retry.attempts(stop.session_id, stop.root)
     except (OSError, ValueError, TypeError):
         return rows
@@ -222,18 +298,26 @@ def run(payload: object, *, state_root: str | Path | None = None, judge: Judge =
     if os.environ.get(RECURSION_GUARD, "").strip() or not _is_stop(payload):
         return {}
     config = claude_luna.hook_config(payload)
-    stop = StopContext(payloads.session_id(payload), payload, state_root if state_root is not None else config.get("state_root"))
+    root = state_root if state_root is not None else config.get("state_root")
+    stop = StopContext(payloads.session_id(payload), payload, root, config.get("ledger_root"))
     queued = claude_luna.stop_rows(payload, stop.root)
-    rows = _retryable(stop, queued) if queued else []
+    if not queued:
+        return {}
+    cooling = _cooldown_notice(stop)
+    if cooling:
+        return cooling
+    rows = _retryable(stop, queued)
     if not rows:
         return {}
     work = claude_luna.stop_work(rows, config)
     try:
-        texts = verdict_texts(work, batch_payload(judge(batch_prompt(work)))) if work else []
+        verdicts = verdict_texts(work, batch_payload(judge(batch_prompt(work)))) if work else Verdicts([], [])
     except ReviewUnavailable as exc:
         return _failed(stop, rows, exc)
-    claude_luna.mark_reviewed(payload, rows, stop.root)
-    return claude_luna.stop_verdict(texts, config)
+    claude_luna.mark_reviewed(payload, _answered(rows, verdicts.skipped), stop.root)
+    dropped = _exhausted(stop, verdicts.skipped) if verdicts.skipped else []
+    response = claude_luna.stop_verdict(verdicts.texts, config)
+    return _with_notice(response, bounded(f"ADW {REVIEWER} review skipped candidates. {_dropped_text(dropped)}") if dropped else "")
 
 
 def main() -> int:

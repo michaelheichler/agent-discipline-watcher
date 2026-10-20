@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Sol QA, P1 trap. pi lifecycle-handlers.ts:359,422,483,523: an undecodable tool_result becomes unknown-write requiring a target, records <unresolved-target>, and recoverPending always skips that key. Every session_stop then blocks before the Python Stop hook, so T-035 never releases it. Sol reproduced 8 identical blocking Stops. Violates the user rule that an agent must never get stuck completely.\n\nFix: count identical unresolved-target Stop blocks and release after the same limit as an own finding (5), with a visible message listing the unresolved tool calls for the user and a ledger row. A later decodable result for the same call clears it.\n\nAcceptance: 5 Stops block, the 6th releases with the list; a new unresolved target re-arms. Tests (bun) by adw-test-writer, including the recovery path pre-execution-block.test.ts never exercised.",
+  "displayId": "T-044",
+  "id": "T-044",
+  "order": 170,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Release an OMP unresolved-target Stop block after the stall limit",
+  "type": "task"
+}

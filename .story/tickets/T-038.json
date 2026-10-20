@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-001, f0c6874. OMP JS eval and unknown tools are classed observed, run first, and ADW scans changed files afterwards (pi/extensions/agent-discipline-watcher/tool-adapter.ts:243-283, lifecycle-handlers.ts:333). Before f0c6874 they were unknown-write and blocked.\n\nFix: restore the pre-execution block for JS eval and unknown write-capable tools, keep the post-run scan for known read tools. Check git show f0c6874 for the deleted js-dispatch.ts and its test as reference. Update README:226 and CHANGELOG.\n\nAcceptance: an OMP eval call blocks before execution; a read tool still runs. Tests (pi test runner) by adw-test-writer.",
+  "displayId": "T-038",
+  "id": "T-038",
+  "order": 110,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Block OMP JavaScript eval and unknown write tools before they run",
+  "type": "task"
+}

@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.27.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.28.0**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -72,8 +72,8 @@ A gate blocks only on text the agent wrote. If the agent changed nothing, Stop d
 2. **Authored or imported.** ADW checks who wrote the temp source. If the agent wrote it in this session, the copy counts as the agent's own. Write, Edit, and a redirect count as writes. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row. The record of authored temp paths never drops a path. At 200,000 paths, ADW refuses a new scratch write and asks for a project path or a new session.
 3. **Baselines.** An unchanged imported file never blocks, including `file_too_long` and `unscannable_file`. After an edit, only findings the snapshot did not have block. Before the first edit of an untracked or non-git file, ADW takes the same kind of snapshot. Git HEAD stays the baseline for tracked files.
 4. **Long and large files.** Data files give no `file_too_long`. The list is `.json .jsonl .csv .tsv .lock .map .svg .xml .sql *.min.*` plus lockfiles such as `uv.lock`. Over the byte limit they give no `unscannable_file` while they are valid UTF-8. If an edit makes any other file longer than its baseline, `file_too_long` blocks over the length limit. An edit that does not add lines leaves it alone. The baseline is git HEAD, the import snapshot, or the first-seen snapshot. If the baseline had a generated marker such as `DO NOT EDIT`, the marker relieves growth.
-5. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. The same fingerprint blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. Stop then stays silent until a file or a finding changes.
-6. **Budget.** The Stop rescan stops after 7 seconds and blocks with the number of files it did not scan. A scope tracks at most 500 files. Older files leave the rescan with one notice.
+5. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. A fingerprint that holds a finding the agent wrote this session blocks 5 identical Stops, or `stop_stall_limit` times if that is higher. The next Stop ends the turn with a system message that lists the unfixed findings and the report, and its `stop_stall` ledger row carries the family `own_finding`. A fingerprint without such a finding, for example inherited findings under `baseline: none`, blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. In both cases Stop then stays silent until a file or a finding changes.
+6. **Budget.** The Stop rescan stops after 7 seconds and blocks with the number of files it did not scan. A scope tracks at most 500 files. Older files without a pending finding leave the rescan with one notice. A file with a pending finding never leaves, so a scope where every file has one grows past 500 and the 7 second budget names the files it did not reach.
 7. **Damaged state.** Every state write also writes `state.json.bak`. If `state.json` cannot be read, ADW moves it aside, restores the backup, and says so once. Without a backup, Stop still blocks.
 
 A temp file that a subprocess wrote, without a redirect the hook can see, counts as imported. Its copy gets the notice, not a block.
@@ -108,7 +108,7 @@ The `code` family also runs one static test-quality scan, taken from Vladimir Kh
 
 A Code Check finding carries one plain-text explanation of the principle it breaks, pulled from a local DevIQ or programming-principles knowledge base. The text shows once per rule per session, stays under 80 words, and carries no link. A missing database or a missing entry leaves the finding unchanged.
 
-A project can deny test writes outright. With `tests: deny` set through `adw-config`, only the `adw-test-writer` subagent adds or changes a test function. Claude Code and Codex 0.159 identify that subagent through its `agent_type` field on the tool call. OMP names no agent on tool calls, so `adw-config tests allow --for 30m` opens a timed window there instead. A write to any `adw-test-writer` definition file gets a block, in both project and user scope.
+ADW denies test writes by default. Only the `adw-test-writer` subagent adds or changes a test function, unless a project sets `tests: allow` through `adw-config`. Claude Code and Codex 0.159 identify that subagent through its `agent_type` field on the tool call. OMP names no agent on tool calls, so `adw-config tests allow --for 30m` opens a timed window there instead. A write to any `adw-test-writer` definition file gets a block, in both project and user scope.
 
 `adw-test-writer` ships on three hosts. Claude Code runs it on Opus 5.5 at high effort. Codex runs it on `gpt-6-luna` at high effort. OMP runs it with a model the user picks, through a limited tool set. Each host loads the `unit-testing-principles` skill first. That skill holds a full-depth summary of the Khorikov book in the project's own words, one chapter file per book chapter.
 
@@ -223,21 +223,14 @@ that Code Check findings quote. It downloads about 60 MB. If the download
 fails, the install still succeeds and `adw update` retries. Set
 `ADW_OFFLINE=1` to skip the download on an air-gapped machine.
 
-OMP JavaScript execution has no ADW syntax allowlist. JavaScript eval and tools
-without a known adapter use workspace observation, so computed calls and `hub`
-operations can run. Native Write, Edit, and Bash calls keep their existing checks.
-
-The observer compares regular-file metadata before execution, after success or
-failure, and at Stop. It scans concrete changed files through the post-write
-pipeline. Actual content findings still receive the normal review. An unknown
-tool name or incomplete snapshot does not create an unresolved Stop blocker.
-
-Observation covers the current workspace. It skips symlinks and the `.git`,
-`node_modules`, and `.adw` directories, and each snapshot stops after 20,000
-entries or 250 ms. An incomplete snapshot produces a notice without rejecting
-execution. External paths and transient changes have no coverage guarantee.
-Background writes after Stop escape observation, while concurrent edits can
-appear in the workspace diff without reliable attribution to the agent.
+ADW blocks OMP JavaScript eval before it runs, because the watcher cannot tell
+which files the code would write. Code made only of literal
+`await tool.name({...})` calls, optionally wrapped in `display(...)`, still runs,
+and each nested tool call passes its own gate. The same block applies to a tool
+without a known adapter, to a non-Bash tool that carries a `command` field, and
+to `lsp` or `debug` actions outside their read lists. Python eval goes through the Python
+gate, and native Write, Edit, and Bash calls keep their existing checks. Read
+tools run as before.
 
 ### Controlled release updates
 

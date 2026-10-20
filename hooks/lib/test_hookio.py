@@ -4,7 +4,9 @@ import io
 import json
 from pathlib import Path
 
-from lib import hookio
+import pytest
+
+from lib import hookio, host
 
 
 def test_empty_stdin_returns_empty_payload(monkeypatch) -> None:
@@ -61,17 +63,6 @@ def test_write_payload_bounds_non_message_fields(capsys) -> None:
     assert len(payload["decision"]) <= 64
     assert len(payload["hookSpecificOutput"]["hookEventName"]) <= 128
     assert len(payload["hookSpecificOutput"]["permissionDecision"]) <= 32
-
-
-def test_fitting_payload_preserves_complete_context() -> None:
-    payload = {
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": hookio.CONTRACT,
-        },
-    }
-    assert hookio._bounded_payload(payload) == payload
-    assert hookio._bounded_payload(payload)["hookSpecificOutput"]["additionalContext"] == hookio.CONTRACT
 
 
 def test_write_payload_preserves_complete_fitting_context(capsys) -> None:
@@ -140,12 +131,13 @@ def test_fail_closed_names_the_config_path_for_other_failures(tmp_path, monkeypa
     assert reason.endswith("Cause: bad gate map")
 
 
-def test_contract_and_skill_do_not_claim_a_reply_scan() -> None:
-    skill = Path(__file__).resolve().parents[2] / "skills" / "agent-discipline-watcher" / "SKILL.md"
-    for text in (hookio.CONTRACT, skill.read_text(encoding="utf-8")):
-        lowered = " ".join(text.lower().split())
-        for claim in ("reply text", "final prose", "final reply"):
-            assert claim not in lowered
+SKILL = Path(__file__).resolve().parents[2] / "skills" / "agent-discipline-watcher" / "SKILL.md"
+
+
+@pytest.mark.parametrize("claim", ("reply text", "final prose", "final reply"))
+@pytest.mark.parametrize("read", (lambda: hookio.CONTRACT, lambda: SKILL.read_text(encoding="utf-8")), ids=("contract", "skill"))
+def test_contract_and_skill_do_not_claim_a_reply_scan(read, claim: str) -> None:
+    assert claim not in " ".join(read().lower().split())
 
 
 def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:
@@ -159,3 +151,25 @@ def test_claude_pretool_response_removes_deprecated_top_level_block() -> None:
             "permissionDecisionReason": "fix and retry",
         }
     }
+
+
+def _sent(capsys) -> str:
+    return capsys.readouterr().out.rstrip("\n")
+
+
+def test_a_two_copy_advice_keeps_the_whole_model_context_and_shrinks_only_the_user_copy(monkeypatch, capsys) -> None:
+    monkeypatch.delenv(host.CODEX_ENV, raising=False)
+    message = "\n".join(f"{number}. " + "x" * 96 for number in range(22))
+
+    hookio.write_payload(hookio.advise(message, "PostToolUse"))
+
+    output = json.loads(_sent(capsys))
+    assert (output["hookSpecificOutput"]["additionalContext"], len(output["systemMessage"]) < len(message)) == (message, True)
+
+
+def test_a_lone_oversized_user_message_fills_most_of_the_envelope(capsys) -> None:
+    hookio.write_payload({"systemMessage": "s" * 20_000})
+
+    size = len(_sent(capsys).encode("utf-8"))
+
+    assert hookio.MAX_RESPONSE_BYTES * 0.9 <= size <= hookio.MAX_RESPONSE_BYTES

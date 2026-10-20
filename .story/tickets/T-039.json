@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-002. reporting.py:43,149 budgets raw bytes, hookio.py:168-185 measures escaped JSON and falls back to 900 bytes; advise() sends the text twice. Fix: budget the compact block by the escaped size via hookio.sends_whole (or clip the reason in _bounded_payload to fit) so the Full report line always survives, and claim principle explanations only for rows that were sent.\n\nAcceptance: a 5-row block that escapes past 4096 bytes keeps the report path; a 2.2 KB PostToolUse advice is not cut to 900. Tests by adw-test-writer.",
+  "displayId": "T-039",
+  "id": "T-039",
+  "order": 120,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Fit block messages into the hook size limit without losing the report path",
+  "type": "task"
+}

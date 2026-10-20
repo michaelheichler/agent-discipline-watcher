@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import NamedTuple
 
 try:
-    from . import catalog, catalog_de, principle_kb, session_state
+    from . import catalog, catalog_de, hookio, principle_kb, session_state
     from .findings import Finding
     from .prose_language import GERMAN
 except ImportError:
     import catalog
     import catalog_de
+    import hookio
     import principle_kb
     import session_state
     from findings import Finding
@@ -232,30 +233,54 @@ def explanation(rule: str, explainer: Explainer) -> str:
     return f"{_label(row)} {_one_line(text)}" if text else ""
 
 
-def explanations(rules: Iterable[str], explainer: Explainer | None) -> dict[str, str]:
-    """Claim after lookup, because a failed lookup showed nothing."""
+def _found_explanations(rules: Iterable[str], explainer: Explainer | None) -> dict[str, str]:
     if explainer is None:
         return {}
-    found = {rule: text for rule in dict.fromkeys(rules) if (text := explanation(rule, explainer))}
-    if not found:
-        return {}
+    return {rule: text for rule in dict.fromkeys(rules) if (text := explanation(rule, explainer))}
+
+
+def _claimed(rules: Iterable[str], explainer: Explainer | None) -> frozenset[str]:
+    """Claim after lookup, because a failed lookup showed nothing."""
+    wanted = frozenset(rules)
+    if explainer is None or not wanted:
+        return frozenset()
     try:
-        claimed = explainer.claim(frozenset(found))
+        return explainer.claim(wanted)
     except Exception:
-        return {}
-    return {rule: text for rule, text in found.items() if rule in claimed}
+        return frozenset()
 
 
-def listed_lines(listed: list[dict], explainer: Explainer | None, limit: int) -> list[str]:
-    """Explain a rule once per block, because repeats cost tokens."""
-    texts = explanations((str(item.get("rule") or "") for item in listed), explainer)
-    lines: list[str] = []
+def _fits(frame: tuple[str, str], lines: list[str]) -> bool:
+    return hookio.fits_once("\n".join([frame[0], *lines, frame[1]]))
+
+
+def _sent_rows(listed: list[dict], limit: int, frame: tuple[str, str]) -> list[str]:
+    rows: list[str] = []
     for number, item in enumerate(listed, 1):
-        lines.append(clip(f"{number}. {format_row(item)}", limit))
-        text = texts.pop(str(item.get("rule") or ""), "")
-        if text:
-            lines.append(clip(f"   {_principle_line(text, item)}", limit))
-    return lines
+        row = clip(f"{number}. {format_row(item)}", limit)
+        if not _fits(frame, [*rows, row]):
+            break
+        rows.append(row)
+    return rows
+
+
+def listed_lines(listed: list[dict], explainer: Explainer | None, limit: int, frame: tuple[str, str] = ("", "")) -> tuple[list[str], int]:
+    """Claim only the principles that fit beside every sent row, because a claimed principle that is cut never reaches the agent."""
+    rows = _sent_rows(listed, limit, frame)
+    found = _found_explanations((str(item.get("rule") or "") for item in listed[:len(rows)]), explainer)
+    lines: list[str] = []
+    offered: dict[int, str] = {}
+    for index, (row, item) in enumerate(zip(rows, listed)):
+        lines.append(row)
+        rule = str(item.get("rule") or "")
+        text = found.get(rule, "")
+        principle = clip(f"   {_principle_line(text, item)}", limit) if text else ""
+        if principle and _fits(frame, [*lines, principle, *rows[index + 1:]]):
+            del found[rule]
+            offered[len(lines)] = rule
+            lines.append(principle)
+    claimed = _claimed(offered.values(), explainer)
+    return [line for position, line in enumerate(lines) if position not in offered or offered[position] in claimed], len(rows)
 
 
 def _principle_line(text: str, item: dict) -> str:

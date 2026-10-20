@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from lib import claude_luna, claude_native, claude_sonnet, journal, session_state, turn_retry
+from lib import claude_luna, claude_native, claude_sonnet, journal, reporting, session_state, turn_retry
 from lib.document_review import HUNK_NOTICE
 from lib.judge_contracts import DOCUMENT_RUBRIC, PATTERN_RUBRIC, JudgeRequest, JudgeResult, ReviewKind
 
@@ -27,6 +27,12 @@ def _closer(line: int) -> dict:
 def _enforce_the_closer(tmp_path: Path) -> None:
     """Enforced here, because the shipped default only observes this rule."""
     (tmp_path / ".agent-discipline.json").write_text(json.dumps({"rule_gates": {"ai_closer": "enforce"}}), encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirected, because the Sonnet Stop writes its ledger rows under the home directory."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
 
 class Judge:  # pylint: disable=too-few-public-methods
@@ -54,8 +60,12 @@ def _stop(tmp_path: Path, state_root: Path, judge: Judge) -> dict:
     return claude_sonnet.run({**STOP, "cwd": str(tmp_path)}, state_root=state_root, judge=judge)
 
 
-def _unreviewed(state_root: Path) -> int:
+def _next_turn(state_root: Path) -> None:
     session_state.update_state("sonnet", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+
+
+def _unreviewed(state_root: Path) -> int:
+    _next_turn(state_root)
     return len(journal.read_for_stop("sonnet", state_root=state_root))
 
 
@@ -63,14 +73,63 @@ def _verdicts(*answers: tuple[int, str]) -> dict:
     return {"items": [{"section": 0, "index": index, "verdict": verdict, "reason": "r"} for index, verdict in answers], "notes": []}
 
 
-def test_a_candidate_the_model_skipped_counts_as_clean(tmp_path: Path) -> None:
+def _both_channels(response: dict) -> list[str]:
+    return [response.get("systemMessage", ""), response.get("hookSpecificOutput", {}).get("additionalContext", "")]
+
+
+def _dropped_rows() -> list[tuple[str, str]]:
+    rows = reporting.read_jsonl(reporting.LEDGER_FILENAME)
+    return [(row["rule"], row["path"]) for row in rows if row.get("rule") == "review_dropped"]
+
+
+def _skipped_twice(tmp_path: Path) -> dict:
+    state_root = _journal(tmp_path, [_closer(2)])
+    _stop(tmp_path, state_root, Judge(_verdicts()))
+    return _stop(tmp_path, state_root, Judge(_verdicts()))
+
+
+def _failed_twice(tmp_path: Path) -> tuple[Path, dict]:
+    state_root = _journal(tmp_path, [_closer(2)])
+    _stop(tmp_path, state_root, Judge(NO_SECTION))
+    return state_root, _stop(tmp_path, state_root, Judge(NO_SECTION))
+
+
+def _after_cli_failure(tmp_path: Path) -> Path:
+    state_root = _journal(tmp_path, [_closer(2)])
+    _stop(tmp_path, state_root, Judge(error=claude_sonnet.CliUnavailable("the claude CLI timed out after 90 seconds")))
+    return state_root
+
+
+def test_a_candidate_the_model_skipped_is_not_reported(tmp_path: Path) -> None:
     state_root = _journal(tmp_path, [_closer(2), _closer(3)])
 
     response = _stop(tmp_path, state_root, Judge(_verdicts((1, "violating"))))
 
     assert "reader 3" in response["reason"]
     assert "reader 2" not in response["reason"]
-    assert _unreviewed(state_root) == 0
+
+
+def test_a_candidate_the_model_skipped_is_sent_again_on_the_next_stop(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, [_closer(2), _closer(3)])
+    _stop(tmp_path, state_root, Judge(_verdicts((1, "violating"))))
+    _next_turn(state_root)
+    retry = Judge(_verdicts())
+
+    _stop(tmp_path, state_root, retry)
+
+    assert ["reader 2" in prompt for prompt in retry.prompts] == [True]
+
+
+def test_a_candidate_skipped_twice_is_named_to_the_user_and_the_agent(tmp_path: Path) -> None:
+    response = _skipped_twice(tmp_path)
+
+    assert ["note.md:2" in text for text in _both_channels(response)] == [True, True]
+
+
+def test_a_candidate_skipped_twice_leaves_a_dropped_review_row_in_the_ledger(tmp_path: Path) -> None:
+    _skipped_twice(tmp_path)
+
+    assert _dropped_rows() == [("review_dropped", "note.md")]
 
 
 def test_a_repeated_candidate_keeps_the_first_answer(tmp_path: Path) -> None:
@@ -79,28 +138,54 @@ def test_a_repeated_candidate_keeps_the_first_answer(tmp_path: Path) -> None:
     assert response["decision"] == "block"
 
 
-def test_a_row_is_dropped_after_two_failed_reviews(tmp_path: Path) -> None:
+def test_a_failed_review_keeps_its_rows_queued(tmp_path: Path) -> None:
     state_root = _journal(tmp_path, [_closer(2)])
 
-    first = _stop(tmp_path, state_root, Judge(NO_SECTION))
-    second = _stop(tmp_path, state_root, Judge(NO_SECTION))
-    third = Judge(error=AssertionError("must not judge"))
+    _stop(tmp_path, state_root, Judge(NO_SECTION))
 
-    assert first["systemMessage"].endswith("Its findings stay queued.")
-    assert second["systemMessage"].endswith("It dropped 1 queued findings after 2 failed attempts.")
-    assert _stop(tmp_path, state_root, third) == {}
+    assert _unreviewed(state_root) == 1
+
+
+def test_a_second_failed_review_names_each_dropped_row_to_the_user_and_the_agent(tmp_path: Path) -> None:
+    _state_root, response = _failed_twice(tmp_path)
+
+    assert ["note.md:2" in text for text in _both_channels(response)] == [True, True]
+
+
+def test_a_row_dropped_after_two_failed_reviews_is_not_sent_again(tmp_path: Path) -> None:
+    state_root, _response = _failed_twice(tmp_path)
+
+    response = _stop(tmp_path, state_root, Judge(error=AssertionError("must not judge")))
+
+    assert response == {}
     assert _unreviewed(state_root) == 0
 
 
-def test_a_cli_failure_skips_the_cli_until_the_cooldown_ends(tmp_path: Path) -> None:
-    state_root = _journal(tmp_path, [_closer(2)])
-    _stop(tmp_path, state_root, Judge(error=claude_sonnet.CliUnavailable("the claude CLI timed out after 90 seconds")))
+def test_a_stop_inside_the_cli_cooldown_says_why_and_until_when_without_running_the_cli(tmp_path: Path) -> None:
+    state_root = _after_cli_failure(tmp_path)
     cooling = Judge(error=AssertionError("must not judge"))
 
-    assert _stop(tmp_path, state_root, cooling) == {}
+    response = _stop(tmp_path, state_root, cooling)
+
+    assert list(response) == ["systemMessage"]
+    assert "timed out after 90 seconds" in response["systemMessage"]
+    assert re.search(r"\b\d{2}:\d{2}:\d{2}\b", response["systemMessage"])
+    assert cooling.prompts == []
+
+
+def test_the_cli_cooldown_stays_silent_when_nothing_is_queued(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, [])
+    turn_retry.record_cli_outage("sonnet", "the claude CLI timed out after 90 seconds", state_root)
+
+    assert _stop(tmp_path, state_root, Judge(error=AssertionError("must not judge"))) == {}
+
+
+def test_the_cli_runs_again_once_the_cooldown_ends(tmp_path: Path) -> None:
+    state_root = _after_cli_failure(tmp_path)
     session_state.update_state(
         "sonnet", lambda state: {**state, turn_retry.CLI_OUTAGE_KEY: {"retry_after": time.time() - 1}}, state_root,
     )
+
     assert _stop(tmp_path, state_root, Judge(_verdicts((0, "violating"))))["decision"] == "block"
 
 

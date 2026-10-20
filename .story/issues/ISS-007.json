@@ -1,0 +1,18 @@
+{
+  "components": [],
+  "createdBy": "test-writer-2026-10-20",
+  "dedupeKey": "test-writer-2026-10-20:omp-ambiguous-quote-timeout",
+  "discoveredDate": "2026-10-20",
+  "id": "ISS-007",
+  "impact": "omp-review.integration.test.ts \"an ambiguous document quote drops only that note and names the cause without a retry\" hits the 5 s timeout with calls = 0 on a clean git archive HEAD copy, so it is not caused by T-038. Either the review never calls the provider in that path or the test waits on the wrong signal.",
+  "location": [
+    "pi/extensions/agent-discipline-watcher/omp-review.integration.test.ts"
+  ],
+  "phase": null,
+  "relatedTickets": [],
+  "resolution": null,
+  "resolvedDate": null,
+  "severity": "low",
+  "status": "open",
+  "title": "OMP ambiguous-quote review test times out at HEAD"
+}

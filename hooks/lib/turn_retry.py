@@ -58,6 +58,15 @@ def record_cli_outage(session_id: str, reason: str, state_root: str | Path | Non
     session_state.update_state(session_id, lambda state: {**state, CLI_OUTAGE_KEY: outage}, state_root)
 
 
+def cli_cooldown(session_id: str, state_root: str | Path | None) -> tuple[str, float] | None:
+    """Reason and end, so a skipped Stop can say why it skipped."""
+    outage = session_state.read_state(session_id, state_root).get(CLI_OUTAGE_KEY)
+    retry_after = outage.get("retry_after") if isinstance(outage, dict) else None
+    if type(retry_after) not in (int, float) or retry_after <= time.time():
+        return None
+    return str(outage.get("reason") or ""), retry_after
+
+
 def exhausted_reviews(session_id: str, keys: list[str], state_root: str | Path | None) -> frozenset[str]:
     """Counted per queued row, because a row that never gets a verdict would otherwise resend its text on every Stop."""
     exhausted: set[str] = set()

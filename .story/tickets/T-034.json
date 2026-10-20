@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Gap. tests_policy.py:25-28 misses pkg/foo_test.go, test/foo.js, src/test/java/FooTest.java, spec/foo_spec.rb, conftest.py. Under deny everywhere these slip past.\n\nFix: add test and spec directories, _test.go, *Test.java / *Tests.java, _spec.rb, conftest.py to the name rule.\n\nAcceptance: each example blocks under deny; src/testing_utils.go and contest.py do not. Tests by adw-test-writer.",
+  "displayId": "T-034",
+  "id": "T-034",
+  "order": 70,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Gate test files in Go, JS, Java and Ruby layouts",
+  "type": "task"
+}

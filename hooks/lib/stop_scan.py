@@ -5,14 +5,16 @@ import math
 import signal
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
 from . import imported_baseline, scan_input
-from .baseline import OutOfTime, fits_deadline, remaining, split_fallback_with_snapshot, split_with_snapshot
+from .baseline import (
+    OutOfTime, baseline_mode, fits_deadline, remaining, split_fallback_with_snapshot, split_with_snapshot,
+)
 from .config import resolve_outcome
 from .imported_baseline import Snapshot
 from .scanner import read_scannable, scan_all
@@ -20,6 +22,8 @@ from .temp_scope import outside_project_temp
 
 STOP_SCAN_SECONDS = 7.0
 MAX_NAMED_SKIPPED = 3
+INHERITED_FIELD = "inherited"
+Split = Callable[[dict], tuple[list[dict], list[dict]]]
 
 
 @dataclass(slots=True)
@@ -38,6 +42,14 @@ def _resolved(raw_path: str, cwd: Path) -> Path:
     return path if path.is_absolute() else cwd / path
 
 
+def _tagged(split: Split, cfg: dict) -> list[dict]:
+    """Tagged, because only own findings outlast the stall release."""
+    if baseline_mode(cfg) != "none":
+        return split(cfg)[0]
+    owned, inherited = split({**cfg, "baseline": "report"})
+    return [*owned, *({**row, INHERITED_FIELD: True} for row in inherited)]
+
+
 def _path_rows(path: Path, cfg: dict, snapshot: Snapshot | None, until: float) -> list[dict]:
     """Reads and scans only, because the alarm can stop it at any line and a cut state write would lose blockers."""
     text = read_scannable(path, cfg)
@@ -46,13 +58,13 @@ def _path_rows(path: Path, cfg: dict, snapshot: Snapshot | None, until: float) -
         stamp = path.stat()
         found = scan_input.fallback_findings(path)
         remaining(until)
-        rows = split_fallback_with_snapshot(path, found, cfg, snapshot, until=until)[0]
+        rows = _tagged(lambda mode: split_fallback_with_snapshot(path, found, mode, snapshot, until=until), cfg)
         digest = f"{stamp.st_size}:{stamp.st_mtime_ns}"
     else:
         fits_deadline(text, lambda: remaining(until))
         found = scan_all(str(path), text, cfg)
         remaining(until)
-        rows = split_with_snapshot(path, found, cfg, snapshot, text, until=until)[0]
+        rows = _tagged(lambda mode: split_with_snapshot(path, found, mode, snapshot, text, until=until), cfg)
         digest = sha256(text.encode("utf-8")).hexdigest()
     return [{**row, "content_hash": digest, "path": str(path)} for row in rows if resolve_outcome(row, cfg) == "block"]
 

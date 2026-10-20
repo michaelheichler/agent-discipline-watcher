@@ -6,6 +6,7 @@ import stop
 from lib import blocker_state
 
 BODY = "".join(f"value_{index} = {index}\n" for index in range(40))
+OWN_STOPS = 5
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -45,7 +46,7 @@ def test_stop_keeps_a_duplicate_the_batch_gate_blocked(tmp_path: Path) -> None:
 def test_an_edit_that_keeps_the_copies_equal_blocks_again_after_a_release(tmp_path: Path) -> None:
     _twins(tmp_path)
     blocker_state.set_pending("s1", "", "<batch>", "Duplicate content", _config(tmp_path)["state_root"])
-    assert "decision" not in [_stop(tmp_path) for _ in range(3)][2]
+    assert "decision" not in [_stop(tmp_path) for _ in range(OWN_STOPS + 1)][-1]
 
     for name in ("a", "b"):
         (tmp_path / name / "settings.py").write_text(BODY + "extra = 1\n", encoding="utf-8")

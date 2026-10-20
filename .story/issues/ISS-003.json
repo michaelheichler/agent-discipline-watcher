@@ -1,0 +1,22 @@
+{
+  "components": [],
+  "createdBy": "bug-scan-2026-10-20",
+  "dedupeKey": "bug-scan-2026-10-20:bug-10",
+  "discoveredDate": "2026-10-20",
+  "displayId": "ISS-003",
+  "id": "ISS-003",
+  "impact": "shell_syntax.py:391 runs on the raw command from pre_bash.py:234, so a `>` inside a heredoc body reads as a redirect and blocks (state_mutation seen live). Fix: run command_findings and target_findings on logical lines with heredoc bodies removed, while the heredoc target itself stays checked.",
+  "location": [
+    "hooks/lib/shell_syntax.py:391",
+    "hooks/pre_bash.py:234"
+  ],
+  "phase": null,
+  "relatedTickets": [
+    "T-040"
+  ],
+  "resolution": "T-040, 0.28.0",
+  "resolvedDate": "2026-10-20",
+  "severity": "low",
+  "status": "resolved",
+  "title": "Heredoc bodies are parsed as shell commands by the Bash gate"
+}

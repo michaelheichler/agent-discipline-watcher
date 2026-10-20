@@ -25,11 +25,12 @@ from lib.reporting import compact_block, record_findings, run_with_ledger
 from lib.shell_parse import (
     _basename, _command_word_index, _is_quoted,
     _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths,
-    _segment_text, _segments, _words, _write_paths, heredoc_events, interpreter_invocation, write_targets,
+    _segment_text, _segments, _words, _write_paths, executable_text, heredoc_events, interpreter_invocation,
+    write_targets,
 )
 from lib.shell_parse import write_paths as shell_write_paths
 from lib.temp_scope import command_targets, outside_project_temp, scratch_target
-from lib.write_targets import mutation_targets
+from lib.write_targets import gated_test_targets, mutation_targets
 from lib.write_shape import shaped_write_findings
 from lib.update_policy import _segment_contexts, untrusted_update
 
@@ -152,7 +153,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     if refusal:
         return deny(refusal)
     _note_first_seen(payload, cwd, cfg)
-    findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg) + opaque_write_findings(command, cfg, cwd=cwd)
+    findings = command_findings(command, cfg, cwd=cwd) + target_findings(command, cfg, cwd=cwd) + opaque_write_findings(command, cfg, cwd=cwd)
     findings += _test_findings(payload, cfg)
     if findings:
         reason, _ = compact_block(findings, cfg)
@@ -181,12 +182,29 @@ def _note_first_seen(payload: dict, cwd: str, cfg: dict) -> None:
 def _test_findings(payload: dict, cfg: dict) -> list[dict]:
     """Every scan target, because sh -c can wrap the write."""
     cwd = Path(payload.get("cwd") or ".")
+    texts: dict[str, str | None] = {}
+    unresolved: list[str] = []
+    for target in _scan_targets(_command(payload)):
+        texts.update(_shell_targets(target))
+        paths, unnamed = _gated_targets(target, cwd)
+        texts.update({path: texts.get(path) for path in paths})
+        unresolved.extend(unnamed)
     changes = [
         tests_policy.PendingChange(path, tests_policy.read_before(payloads.resolved_path(path, cwd)), text)
-        for target in _scan_targets(_command(payload))
-        for path, text in _shell_targets(target).items()
+        for path, text in texts.items()
     ]
-    return tests_policy.findings(tests_policy.Gate(payload, cfg, time.time()), changes)
+    return tests_policy.findings(tests_policy.Gate(payload, cfg, time.time()), changes, unresolved)
+
+
+def _gated_targets(command: str, cwd: Path) -> tuple[list[str], list[str]]:
+    """Joined to a leading cd, because write_paths does so too."""
+    paths: list[str] = []
+    unresolved: list[str] = []
+    for segment in _segments(command):
+        gated = gated_test_targets(segment)
+        paths.extend(joined for path in gated.paths for joined in command_targets(path, command, cwd))
+        unresolved.extend([" ".join(segment)] if gated.unresolved else [])
+    return paths, unresolved
 
 
 def _scan_targets(command: str) -> list[str]:
@@ -224,14 +242,14 @@ def _verdict(decisions: list[tuple[dict, str]], cfg: dict, inherited: list[dict]
     notice = reporting.inherited_advice(inherited or [], cfg)
     if kind == "observe":
         return advise("\n".join(part for part in (reason, notice) if part), "PreToolUse")
-    return {"systemMessage": notice} if notice else allow()
+    return advise(notice, "PreToolUse") if notice else allow()
 
 
 def command_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     """Judge shell segments independently because an allowed segment must not hide a prohibited sibling."""
     if not command or authorized(config):
         return []
-    segments = _segments(command)
+    segments = _segments(executable_text(command))
     contexts = _segment_contexts(segments, cwd, home)
     hits = []
     if any(
@@ -254,20 +272,27 @@ def command_findings(command: str, config: dict | None = None, home: str | os.Pa
     return [_finding(rule, command) for rule in hits]
 
 
-def target_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None) -> list[dict]:
+def target_findings(command: str, config: dict | None = None, home: str | os.PathLike[str] | None = None, cwd: str | os.PathLike[str] | None = None) -> list[dict]:
     """Apply the protected-path policy to shell writes, because a redirect reaches the same files the Write tool does."""
     findings = []
     for path, text in _shell_targets(command).items():
-        for finding in path_findings(path, config, home, text):
+        for finding in path_findings(_session_path(path, cwd), config, home, text):
             item = dict(finding)
             item["path"] = path
             findings.append(item)
     return findings
 
 
+def _session_path(path: str, cwd: str | os.PathLike[str] | None) -> str:
+    """Join cwd, because the hook process runs somewhere else."""
+    if cwd is None or path.startswith("~") or os.path.isabs(path):
+        return path
+    return os.path.join(cwd, path)
+
+
 def _shell_targets(command: str) -> dict[str, str | None]:
     """Retain targets with unknown content because protected-path checks still apply when content inspection cannot."""
-    targets: dict[str, str | None] = {path: None for path in _mutation_paths(command)}
+    targets: dict[str, str | None] = {path: None for path in _mutation_paths(executable_text(command))}
     targets.update({path: None for path in write_paths(command)})
     targets.update(dict(write_targets(command)))
     return targets
@@ -346,7 +371,7 @@ def _recursed_findings(
     """Re-enter one level of the gate's own self-protection checks, because a literal shell -c payload is a fresh command."""
     return (
         command_findings(payload, config, cwd=cwd)
-        + target_findings(payload, config)
+        + target_findings(payload, config, cwd=cwd)
         + _opaque_findings(payload, config, depth, cwd)
     )
 

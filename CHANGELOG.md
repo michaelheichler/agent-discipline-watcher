@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.28.0 (2026-10-20)
+
+### Changed
+
+- **OMP JavaScript eval and unknown write tools block before they run.** Since 0.20.21 they ran first and ADW scanned the changed files afterwards, so a write outside the workspace or one undone before the scan went unchecked. Read tools still run.
+- **ADW denies test writes by default.** Only the `adw-test-writer` subagent adds or changes a test function. A project that wants the old behavior runs `adw-config tests allow`, and `adw-config tests allow --for 30m` still opens a timed window.
+
+### Security
+
+- **An agent file that declares the `adw-test-writer` name blocks under any file name (security fix).** The gate protected agent files by file name only, so `.claude/agents/helper.md` with `name: adw-test-writer` opened the test gate in the next session.
+- **A settings write that switches ADW off blocks (security fix).** A config that sets every family to `observe` hits the config seal too, since the seal counted only `off`. Disabling the plugin, setting `disableAllHooks`, or setting `ADW_ALLOW_PROTECTED_EDIT` in user or project `.claude/settings*.json` passed, because the check matched the plugin name as text.
+- **Shell commands that change tests hit the test gate (security fix).** `mv`, `cp`, `install`, `rsync`, `git checkout`, `git restore`, `git rm`, `git apply`, `patch`, `git stash pop`, `tar -x`, and `unzip` changed tests unchecked. The Bash gate also resolves relative targets against the session folder instead of the hook process folder.
+- **Git folder flags, folder pathspecs, and archive extraction hit the test gate (security fix).** `git -C tests restore -- x.py`, `git --work-tree=tests restore x.py`, `git restore .`, and `git checkout .` passed because the gate read the pathspec without its folder. ADW now joins `-C` and `--work-tree` to each pathspec and treats a folder or glob pathspec as unknown, and `tar -x` or `unzip` now blocks with or without a target folder, since the archive members are unknown. `git restore src/a.py`, `tar -t`, `tar -c`, and `unzip -l` still pass.
+- **A skip decorator on an inline test hits the test gate (security fix).** Adding `@pytest.mark.skip` above a test in `src/total.py` passed, because the gate compared test bodies without their decorators. The compared body now includes Python decorators, the decorators of the enclosing class, and Rust attributes such as `#[ignore]`, while a decorator on a function that is not a test still passes.
+
+### Fixed in the test gate
+
+- **The plugin test writer passes the test gate.** Claude Code reports the plugin agent as `agent-discipline-watcher:adw-test-writer`, and the gate accepted only the bare name, so under `tests: deny` it blocked the one agent allowed to write tests.
+- **A Rust or Python edit blocks only when its inline tests change.** Any edit to a file that held a test blocked, even when the tests stayed the same.
+- **A folder named `tests` above the project no longer marks every file as a test.** The gate now reads test folders from the project root.
+- **Go, JavaScript, Java, and Ruby test layouts hit the test gate.** `_test.go`, `test/`, `spec/`, `*Test.java`, `_spec.rb`, and `conftest.py` slipped past it. A Markdown or text document in such a folder stays exempt.
+
+### Fixed in Stop
+
+- **The agent's own unfixed findings block for 5 identical Stops.** The repeat limit released an identical Stop block on the third Stop, so an agent could end its turn by waiting out its own findings. A block that holds a finding the agent wrote this session now releases only after 5 identical Stops, with a system message that lists the unfixed findings and a `stop_stall` ledger row marked `own_finding`. A block without one keeps the limit of 2.
+- **An OMP tool result without a file path no longer blocks every Stop.** The extension recorded it as an unresolved target that no rescan could clear, so each Stop blocked before the Python Stop hook ran. It now releases on the sixth identical Stop with a visible message that lists the unresolved tool calls and a `stop_stall` ledger row, and a new unresolved call starts the count again.
+- **Touching more than 500 files no longer drops a pending finding.** The scope cap evicted the oldest paths together with their blockers, so an agent could escape a finding by editing enough other files. Only paths without a pending finding leave the Stop rescan now.
+- **A candidate the Sonnet reviewer skipped stays queued.** A skipped candidate used to count as clean. It now stays queued for the next Stop, and after 2 attempts without a verdict ADW drops it like a failed row.
+- **Sonnet names the rows it dropped unreviewed.** After 2 failed attempts the Stop output tells the agent which files and lines went unreviewed, and the ledger gets one `review_dropped` row per dropped row.
+- **A Sonnet CLI cooldown says so.** A Stop inside the 300 second cooldown after a CLI failure printed nothing. It now shows one message that names the failure and the time the cooldown ends.
+
+### Fixed in messages and shell parsing
+
+- **A long block keeps its report path.** A block with many findings used to lose its last rows and the `Full report:` line once the hook escaped it to JSON. ADW now counts the size the hook sends, and an oversized reply shrinks to the room left instead of to 900 bytes, keeping the report line.
+- **A principle explanation counts as shown only when the agent gets it.** ADW used to mark it shown even when the clip removed the line from the message.
+- **A note about findings a file already carried reaches the agent.** Before a write, that note went only to the user.
+- **A `cat` or `tee` heredoc body no longer reads as commands.** A line such as `echo hi > .agent-discipline.json` inside a literal body written to `/tmp/x.py` blocked as a state mutation. The Bash gate now skips that body when it reads commands, but still checks the target and the written content, and interpreter, piped, nested, and expanding heredocs stay checked as before.
+- **A quoted `<<EOF` no longer hides the lines after it.** In `cat '<<EOF'` the shell reads `<<EOF` as an argument, but the Bash gate took it for a heredoc and skipped the next lines as its body, so a `git commit --no-verify` there passed. Only an unquoted `<<` starts a heredoc now.
+
 ## 0.27.0 (2026-10-15)
 
 ### Security

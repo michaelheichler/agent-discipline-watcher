@@ -78,7 +78,8 @@ def _blocking_set(scanned: stop_scan.Rescan, duplicates: list[dict] | None, resi
         residual.append(stop_scan.skipped_reason(scanned.skipped))
     if duplicates is None:
         residual.append(DUPLICATES_UNCHECKED)
-    return BlockingSet(findings, residual, stop_scan.stamps(unchecked))
+    owned = any(not row.get(stop_scan.INHERITED_FIELD) for row in findings)
+    return BlockingSet(findings, residual, stop_scan.stamps(unchecked), owned)
 
 
 def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
@@ -115,7 +116,7 @@ def stop_outcome(payload: dict, cfg: dict, *, hook: str = "stop", turn_id: str =
     if not dropped:
         return outcome
     capped = (
-        f"agent-discipline-watcher: {dropped} older edited files left the Stop rescan, "
+        f"agent-discipline-watcher: {dropped} older edited files without a pending finding left the Stop rescan, "
         f"because one scope tracks at most {blocker_state.MAX_SCOPE_PATHS} files."
     )
     return StopOutcome(outcome.reason, "\n".join(part for part in (outcome.notice, capped) if part))

@@ -14,7 +14,6 @@ except ImportError:
 
 CONTRACT_MAX_CHARS = 4000
 MAX_RESPONSE_BYTES = 4096
-MAX_MESSAGE_BYTES = 900
 MAX_INPUT_CHARS = 1_000_000
 STATE_FAILURE = "Agent discipline state could not be verified. Repair the state store before stopping. Cause: "
 PAYLOAD_FAILURE = (
@@ -116,20 +115,30 @@ def _safe_text(value: str) -> str:
     )
 
 
-def _compact_specific(specific: object) -> dict | None:
+def _clip_keeping_tail(value: object, limit: int) -> str:
+    """Cut the body and keep the last line, because a block ends with the report path the reader needs for the rest."""
+    text = str(value)
+    if len(text.encode("utf-8")) <= limit:
+        return text
+    head, newline, tail = text.rpartition("\n")
+    room = limit - len(tail.encode("utf-8")) - 1
+    if not newline or room < 4:
+        return _clip_utf8(text, limit)
+    return _clip_utf8(head, room) + "\n" + tail
+
+
+def _compact_specific(specific: object, limit: int) -> dict | None:
     if not isinstance(specific, dict):
         return None
     compact: dict[str, object] = {}
-    for key, limit in (("hookEventName", 128), ("permissionDecision", 32)):
+    for key, key_limit in (("hookEventName", 128), ("permissionDecision", 32)):
         value = specific.get(key)
         if isinstance(value, str):
-            compact[key] = _clip_utf8(_safe_text(value), limit)
-    context = specific.get("additionalContext")
-    if isinstance(context, str):
-        compact["additionalContext"] = _clip_utf8(_safe_text(context), 900)
-    permission_reason = specific.get("permissionDecisionReason")
-    if isinstance(permission_reason, str):
-        compact["permissionDecisionReason"] = _clip_utf8(_safe_text(permission_reason), 900)
+            compact[key] = _clip_utf8(_safe_text(value), key_limit)
+    for key in ("additionalContext", "permissionDecisionReason"):
+        value = specific.get(key)
+        if isinstance(value, str):
+            compact[key] = _clip_keeping_tail(value, limit)
     return compact
 
 
@@ -160,29 +169,51 @@ def _within_envelope(safe_payload: dict) -> bool:
     return len(_serialized(safe_payload).encode("utf-8")) <= MAX_RESPONSE_BYTES
 
 
+def fits_once(message: str) -> bool:
+    """Measure one escaped copy in the widest single-copy envelope, because the block is built before the hook picks its envelope."""
+    return sends_whole(claude_pretool_response(deny(message)))
+
+
 def sends_whole(payload: dict) -> bool:
     """Measured with the writer's own sanitizer and encoder, because a filler that counts characters overruns the escaped byte size and the writer then clips the context."""
     return _within_envelope(_sanitized_payload(payload))
 
 
-def _bounded_payload(payload: dict) -> dict:
-    safe_payload = _sanitized_payload(payload)
-    if _within_envelope(safe_payload):
-        return safe_payload
-    reason = _clip_utf8(_safe_text(safe_payload.get("reason", safe_payload.get("systemMessage", ""))), MAX_MESSAGE_BYTES)
+def _compacted(safe_payload: dict, model: int, user: int) -> dict:
     if "decision" in safe_payload:
-        compacted = {
-            "decision": _clip_utf8(safe_payload["decision"], 64),
-            "reason": reason,
-        }
+        reason = _clip_keeping_tail(safe_payload.get("reason", ""), model)
+        compacted = {"decision": _clip_utf8(safe_payload["decision"], 64), "reason": reason}
     else:
-        compacted = {"systemMessage": reason}
+        compacted = {"systemMessage": _clip_keeping_tail(safe_payload.get("reason", safe_payload.get("systemMessage", "")), user)}
         if "reason" in safe_payload:
-            compacted["reason"] = _clip_utf8(safe_payload["reason"], MAX_MESSAGE_BYTES)
-    compact_specific = _compact_specific(safe_payload.get("hookSpecificOutput"))
+            compacted["reason"] = _clip_keeping_tail(safe_payload["reason"], model)
+    compact_specific = _compact_specific(safe_payload.get("hookSpecificOutput"), model)
     if compact_specific:
         compacted["hookSpecificOutput"] = compact_specific
     return compacted
+
+
+def _largest(fits: Callable[[int], bool]) -> int:
+    low, high = 0, MAX_RESPONSE_BYTES
+    while low < high:
+        middle = (low + high + 1) // 2
+        if fits(middle):
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def _bounded_payload(payload: dict) -> dict:
+    """Shrink the user copy before the model copy, because the agent acts on the findings and a fixed cap wasted the room left."""
+    safe_payload = _sanitized_payload(payload)
+    if _within_envelope(safe_payload):
+        return safe_payload
+    if _within_envelope(_compacted(safe_payload, MAX_RESPONSE_BYTES, 0)):
+        user = _largest(lambda size: _within_envelope(_compacted(safe_payload, MAX_RESPONSE_BYTES, size)))
+        return _compacted(safe_payload, MAX_RESPONSE_BYTES, user)
+    model = _largest(lambda size: _within_envelope(_compacted(safe_payload, size, size)))
+    return _compacted(safe_payload, model, model)
 
 
 def write_payload(payload: dict) -> None:

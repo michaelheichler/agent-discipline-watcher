@@ -1,0 +1,30 @@
+{
+  "components": [
+    "gates",
+    "stop"
+  ],
+  "createdBy": "weakening-review-2026-10-20",
+  "dedupeKey": "weakening-review-2026-10-20:still-weakened",
+  "discoveredDate": "2026-10-20",
+  "displayId": "ISS-001",
+  "id": "ISS-001",
+  "impact": "An agent can end a turn without fixing findings. 1. d854fea: an identical Stop block releases after 2 repeats (stop_stall.py:13, DEFAULT_LIMIT 2). 2. 38fd461: past 500 tracked paths the oldest pending blockers are dropped (blocker_state.py:18,148). 3. 23e971e: a skipped Sonnet candidate counts as clean (claude_sonnet.py:146), a queued row drops after 2 failures, a CLI failure gives 300 s of silence (turn_retry.py:17,20). 4. f0c6874: OMP JS eval and unknown tools run first and are only scanned afterwards (pi tool-adapter.ts:243-283). Also 3fca7d2: Codex Luna login/config/transport failures still fail open. Each needs a user decision: keep, or restore the block.",
+  "location": [
+    "hooks/lib/stop_stall.py:13",
+    "hooks/lib/blocker_state.py:18",
+    "hooks/lib/claude_sonnet.py:146",
+    "hooks/lib/turn_retry.py:17"
+  ],
+  "phase": null,
+  "relatedTickets": [
+    "T-035",
+    "T-036",
+    "T-037",
+    "T-038"
+  ],
+  "resolution": "T-035 to T-038, 0.28.0",
+  "resolvedDate": "2026-10-20",
+  "severity": "medium",
+  "status": "resolved",
+  "title": "Weakening commits since 2026-08-01 still in HEAD without a measured reason"
+}

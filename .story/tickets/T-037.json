@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "From ISS-001, 23e971e.\n1. claude_sonnet.py:146: a candidate the model skipped counts as clean. Fix: it stays queued for the next Stop, like a failed parataxis run already does (claude_sonnet.py:155).\n2. turn_retry.py:17,20: a row is dropped after 2 failed attempts. Fix: drop it, but tell the agent in the Stop output which rows went unreviewed and record a ledger row.\n3. CLI failure cooldown of 300 s prints nothing. Fix: print one visible message naming the failure and the cooldown end, the cooldown itself stays so a broken CLI does not run every Stop.\nUpdate CHANGELOG.\n\nAcceptance: skipped candidate re-queued; dropped rows named in output; cooldown message visible. Tests by adw-test-writer.",
+  "displayId": "T-037",
+  "id": "T-037",
+  "order": 100,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Treat an unreviewed Sonnet candidate as unreviewed, not clean",
+  "type": "task"
+}

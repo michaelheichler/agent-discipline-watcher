@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "False block. tests_policy.is_test_path checks every part of the absolute path, so /Users/me/tests/proj/src/app.py counts as a test file and every write in that project blocks.\n\nFix: check parts relative to the session cwd or project root when the path is inside it; keep the absolute check for paths outside.\n\nAcceptance: a source file in a project under a folder named tests passes; tests/x.py inside the project blocks. Tests by adw-test-writer.",
+  "displayId": "T-033",
+  "id": "T-033",
+  "order": 60,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Judge test directories relative to the project root",
+  "type": "task"
+}

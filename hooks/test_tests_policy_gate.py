@@ -82,8 +82,12 @@ def test_a_rust_module_without_tests_is_production_code() -> None:
     assert not tests_policy.touches_tests(change)
 
 
-def test_default_allow_lets_a_test_write_pass(tmp_path: Path) -> None:
-    assert not blocked_by(write(tmp_path / "test_total.py", TEST_BODY), tests_policy.RULE)
+def test_a_project_without_config_blocks_a_test_write(tmp_path: Path) -> None:
+    assert blocked_by(write(tmp_path / "test_total.py", TEST_BODY), tests_policy.RULE)
+
+
+def test_allow_lets_a_test_write_pass(tmp_path: Path) -> None:
+    assert not blocked_by(write(project(tmp_path, tests="allow") / "test_total.py", TEST_BODY), tests_policy.RULE)
 
 
 def test_deny_leaves_production_code_alone(tmp_path: Path) -> None:
@@ -96,8 +100,16 @@ def test_the_test_writer_agent_passes(tmp_path: Path) -> None:
     assert not blocked_by(response, tests_policy.RULE)
 
 
-def test_another_agent_type_stays_blocked(tmp_path: Path) -> None:
-    response = write(project(tmp_path, tests="deny") / "test_total.py", TEST_BODY, agent_type="general-purpose")
+def test_the_plugin_scoped_test_writer_agent_passes(tmp_path: Path) -> None:
+    cwd = project(tmp_path, tests="deny")
+    response = write(cwd / "test_total.py", TEST_BODY, agent_id="a1",
+                     agent_type="agent-discipline-watcher:adw-test-writer")
+    assert not blocked_by(response, tests_policy.RULE)
+
+
+@pytest.mark.parametrize("agent_type", ["general-purpose", "other-plugin:adw-test-writer"])
+def test_another_agent_type_stays_blocked(tmp_path: Path, agent_type: str) -> None:
+    response = write(project(tmp_path, tests="deny") / "test_total.py", TEST_BODY, agent_type=agent_type)
     assert blocked_by(response, tests_policy.RULE)
 
 

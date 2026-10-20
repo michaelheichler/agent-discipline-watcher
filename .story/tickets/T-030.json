@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Bypass. With tests: deny, pre_bash allows: mv/cp/install/rsync into tests/, git checkout|restore -- tests/x, git rm, git apply /tmp/p.diff, patch -p1 <, git stash pop, tar -x, unzip -d tests.\n\nCauses:\n1. tests_policy.is_test_path drops the last path part, so a destination dir named tests is not a test path.\n2. write_targets.py:29-38 and pre_bash.py:267-272 do not model these verbs as test writes.\n\nFix: when a copy destination is a directory, join it with the source name, count a last part named tests or __tests__ as a test dir, and block git checkout/restore/rm/apply/stash pop, patch, tar -x and unzip when they target a test path or name no paths (git apply, patch, stash pop) while the gate is closed.\n\nAcceptance: each command above blocks under deny, passes under allow and for the test writer. Tests by adw-test-writer.",
+  "displayId": "T-030",
+  "id": "T-030",
+  "order": 30,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Gate shell routes that change test files",
+  "type": "task"
+}

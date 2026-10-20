@@ -66,31 +66,6 @@ def test_a_slow_baseline_git_call_ends_at_the_deadline_as_unscanned(tmp_path: Pa
     assert time.monotonic() - started < 1.5
 
 
-def test_a_scope_keeps_its_newest_paths_and_counts_the_rest_once(tmp_path: Path) -> None:
-    root = _config(tmp_path)["state_root"]
-    paths = [str(tmp_path / f"gone{index}.py") for index in range(blocker_state.MAX_SCOPE_PATHS + 5)]
-    blocker_state.touch_paths("s1", "", paths, root)
-
-    first = _stop(tmp_path)
-    second = _stop(tmp_path)
-
-    assert "5 older edited files left the Stop rescan" in first["systemMessage"]
-    assert second == {}
-
-
-def test_the_cap_drops_the_pending_reason_of_a_dropped_path(tmp_path: Path) -> None:
-    root = _config(tmp_path)["state_root"]
-    scope = blocker_state.BlockerScope("s1", "", root)
-    oldest = str(tmp_path / "old.py")
-    blocker_state.apply_paths(scope, [oldest], {oldest: "Fix old.py"})
-
-    blocker_state.apply_paths(scope, [str(tmp_path / f"n{index}.py") for index in range(blocker_state.MAX_SCOPE_PATHS)], {})
-
-    pending, paths, _revision = blocker_state.details("s1", "", root)
-    assert oldest not in paths
-    assert oldest not in pending
-
-
 def test_a_baseline_is_scanned_once_per_content(tmp_path: Path, monkeypatch) -> None:
     repo = make_repo(tmp_path)
     target = repo / "module.py"

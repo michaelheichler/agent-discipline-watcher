@@ -41,6 +41,11 @@ WIRING_FILES = frozenset({
 })
 # Text-level so that one pattern covers the JSON and TOML wirings alike, since both name the package or its hook runner.
 WATCHER_WIRING_RE = re.compile(r"agent-discipline|/hooks/run\.sh")
+# Per line, so that an edit fragment matches like a whole file.
+TEST_WRITER_NAME_RE = re.compile(
+    r"""^\s*["']?name["']?\s*[:=]\s*["']?adw-test-writer["']?\s*(?:#.*)?$""",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 INSTALL_ACTION = (
     "Change the repo source and reinstall instead of editing the live install. If this edit "
@@ -57,6 +62,10 @@ POLICY_ACTION = "The user sets this policy. Ask the human to run adw-config in a
 STATE_ACTION = "Leave watcher state under host control and repair the reported finding."
 DEFINITION_ACTION = (
     "The test gate trusts this agent file, so the user owns it. Ask the human to edit it in a terminal."
+)
+SWITCH_ACTION = (
+    "Keep the watcher plugin enabled, its hooks on, and the escape variable out of these "
+    "settings. Ask the human to make this change in a terminal."
 )
 GRANT_ACTION = (
     "The config key no longer grants anything. Ask the human to export "
@@ -125,7 +134,7 @@ def _gated_off(settings: dict, family_gates: dict, leaf: str) -> bool:
     names = families.scope(leaf)
     for name in names:
         if name in family_gates:
-            return family_gates[name] == "off"
+            return family_gates[name] != "enforce"
     return any(settings.get(name) is False for name in names)
 
 
@@ -191,14 +200,25 @@ def path_findings(write: ProtectedWrite | str, *values: object, **fields: object
         return [_finding(Finding(family="self_protection", rule="watcher_install_surface", line=1, detail="Unresolvable ~user path in " + write.path, force=True, snippet=write.path.strip()[:180], action=INSTALL_ACTION, path=None, severity=None, tool_use_id=None))]
     if resolved is None or _env_authorized():
         return []
-    return _definition_findings(write, resolved) or _write_target_findings(ResolvedProtectedWrite(resolved, write))
+    return (
+        _definition_findings(write, resolved)
+        or _switch_off_findings(write, resolved)
+        or _write_target_findings(ResolvedProtectedWrite(resolved, write))
+    )
 
 
 def _definition_findings(write: ProtectedWrite, resolved: Path) -> list[dict]:
     """Both routes, because a symlink can hide the agent file."""
-    if not (_is_test_writer_definition(_literal(write.path, write.home)) or _is_test_writer_definition(resolved)):
+    literal = _literal(write.path, write.home)
+    if not (_is_test_writer_definition(literal, write.content) or _is_test_writer_definition(resolved, write.content)):
         return []
     return [_finding(Finding(family="self_protection", rule="test_writer_definition", line=1, detail="Test writer definition in " + write.path, force=True, snippet=write.path.strip()[:180], action=DEFINITION_ACTION, path=None, severity=None, tool_use_id=None))]
+
+
+def _switch_off_findings(write: ProtectedWrite, resolved: Path) -> list[dict]:
+    if not _switches_watcher_off((_literal(write.path, write.home), resolved), write.content):
+        return []
+    return [_finding(Finding(family="self_protection", rule="watcher_wiring_removal", line=1, detail="Write switches the watcher off in " + write.path, force=True, snippet=write.path.strip()[:180], action=SWITCH_ACTION, path=None, severity=None, tool_use_id=None))]
 
 
 def _write_target_findings(write: ResolvedProtectedWrite) -> list[dict]:
@@ -311,6 +331,35 @@ def _unwires_watcher(resolved: Path, home: Path, content: str | None) -> bool:
     return content is None or not WATCHER_WIRING_RE.search(content)
 
 
+def _is_claude_settings(path: Path | None) -> bool:
+    if path is None:
+        return False
+    name = path.name.lower()
+    return path.parent.name.lower() == ".claude" and name.startswith("settings") and name.endswith(".json")
+
+
+def _switches_watcher_off(paths: tuple[Path | None, Path], content: str | None) -> bool:
+    """Parsed, because the plugin name survives a false toggle."""
+    if not content or not any(_is_claude_settings(path) for path in paths):
+        return False
+    try:
+        settings = json.loads(content)
+    except ValueError:
+        return False
+    if not isinstance(settings, dict):
+        return False
+    if settings.get("disableAllHooks") not in (None, False):
+        return True
+    env = settings.get("env")
+    if isinstance(env, dict) and AUTH_ENV in env:
+        return True
+    plugins = settings.get("enabledPlugins")
+    return isinstance(plugins, dict) and any(
+        key.lower().startswith(WATCHER_NAME_PREFIX) and value is not True
+        for key, value in plugins.items()
+    )
+
+
 def _has_watcher_wiring(path: Path) -> bool:
     """Treats an unreadable file as wired, because a write that cannot be compared against the current wiring cannot be cleared."""
     try:
@@ -342,15 +391,25 @@ def _changes_tests_policy(path: Path, content: str | None) -> bool:
     return _tests_value(content) != _tests_value(current)
 
 
-def _is_test_writer_definition(path: Path | None) -> bool:
-    """Any agents dir, because every host and scope names it so."""
-    if path is None:
+def _is_test_writer_definition(path: Path | None, content: str | None) -> bool:
+    """By name too, because hosts read the name from the file."""
+    if path is None or path.suffix.lower() not in AGENT_FILE_SUFFIXES:
         return False
-    return (
-        path.stem.lower() == TEST_WRITER_STEM
-        and path.suffix.lower() in AGENT_FILE_SUFFIXES
-        and path.parent.name.lower() == "agents"
-    )
+    if not any(part.lower() == "agents" for part in path.parent.parts):
+        return False
+    if path.stem.lower() == TEST_WRITER_STEM or TEST_WRITER_NAME_RE.search(content or ""):
+        return True
+    return _declares_test_writer_on_disk(path)
+
+
+def _declares_test_writer_on_disk(path: Path) -> bool:
+    """Unreadable counts as declared, since it cannot be cleared."""
+    try:
+        return bool(TEST_WRITER_NAME_RE.search(path.read_text(encoding="utf-8")))
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except (OSError, UnicodeDecodeError):
+        return True
 
 
 def _is_gate_config(path: Path) -> bool:

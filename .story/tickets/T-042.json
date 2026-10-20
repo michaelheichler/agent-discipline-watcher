@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Sol QA. write_targets.gated_test_targets: `git -C tests restore -- x.py` returns ['x.py'] and passes; `git restore .` and `git checkout .` return ['.'] and pass; tar -x -C src and unzip -d src pass even when members are tests (ISS-008).\n\nFix: apply -C <dir> and --work-tree (repeatable, relative to cwd) to the pathspecs. A directory pathspec (., a dir, a glob) counts as unresolved while the test gate is closed. Archive extraction (tar -x, unzip) counts as unresolved while the gate is closed, since members are unknown. Listing and creating archives still pass.\n\nAcceptance: git -C tests restore -- x.py, git restore ., tar -xzf a.tgz -C src, unzip a.zip -d src block under deny; git restore src/a.py, tar -czf, unzip -l pass. Tests by adw-test-writer.",
+  "displayId": "T-042",
+  "id": "T-042",
+  "order": 150,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Resolve git -C and directory-wide git restores against test paths",
+  "type": "task"
+}

@@ -167,7 +167,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     notice = inherited_advice(inherited, cfg)
     if kind == "observe":
         return advise("\n".join(part for part in (message, notice) if part), "PreToolUse")
-    return {"systemMessage": notice} if notice else allow()
+    return advise(notice, "PreToolUse") if notice else allow()
 
 
 def _stamped(findings: list[dict], path: str) -> list[dict]:

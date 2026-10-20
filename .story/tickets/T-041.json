@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Sol QA, regression from T-040. shell_parse.executable_text(\"cat '<<EOF'\\ngit commit --no-verify\\nEOF\") returns only \"cat '<<EOF'\", so command_findings returns [] and the real git commit --no-verify passes. The heredoc detection matches << inside a quoted word.\n\nFix: only strip a body when the << operator is unquoted in the tokenized command line. Acceptance: that command gives commit_gate_bypass; the T-040 literal-body cases still pass. Tests by adw-test-writer.",
+  "displayId": "T-041",
+  "id": "T-041",
+  "order": 140,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Treat a quoted <<EOF as an argument, not a heredoc",
+  "type": "task"
+}

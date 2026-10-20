@@ -1,0 +1,13 @@
+{
+  "blockedBy": [],
+  "completedDate": "2026-10-20",
+  "createdDate": "2026-10-20",
+  "description": "Bypass of every gate. protected.py:34-41 and :304-311 check settings with a text regex and only under home. These writes pass:\n1. ~/.claude/settings.json with \"agent-discipline-watcher@agent-discipline-watcher\": false (plugin name still present).\n2. \"disableAllHooks\": true.\n3. \"env\": {\"ADW_ALLOW_PROTECTED_EDIT\": \"1\"}.\n4. project .claude/settings.local.json or settings.json with 2 or 3.\n\nFix: parse the JSON. Block when enabledPlugins sets the ADW plugin to anything but true, when disableAllHooks is true, or when env sets ADW_ALLOW_PROTECTED_EDIT. Apply to user and project .claude/settings*.json. Unparseable JSON keeps the current behavior.\n\nAcceptance: the four writes block; an unrelated settings edit passes. Tests by adw-test-writer.",
+  "displayId": "T-031",
+  "id": "T-031",
+  "order": 40,
+  "phase": "test-gate",
+  "status": "complete",
+  "title": "Block settings writes that switch ADW off",
+  "type": "task"
+}

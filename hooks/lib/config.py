@@ -165,8 +165,8 @@ DEFAULTS = {
     "kill_switches": {},
     # Off until the E7-H policy gate clears it because redaction needs a human decision on identifier classes and key custody.
     "data_boundary": {"enabled": False},
-    # Allow, because a default deny stalls every project.
-    "tests": "allow",
+    # Deny, because only adw-test-writer may write tests (user, 2026-10-20).
+    "tests": "deny",
     # German on by default, because the user decided so in N-007.
     "prose_languages": list(prose_language.LANGUAGES),
 }

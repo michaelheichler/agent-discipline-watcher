@@ -1,4 +1,4 @@
-"""Shell command tokenizing: split a Bash command into segments and locate the literal targets it writes."""
+"""Shared, because every Bash gate must read one token view."""
 from __future__ import annotations
 
 import re
@@ -17,7 +17,7 @@ from .shell_syntax import (
     _fused_split_string_payload, _interpreter_code_flags,
     _is_literal_token, _is_quoted, _is_unquoted_assignment,
     _leading_assignments, _merge_adjacent_fragments, _merge_clobber_operator,
-    _payload_command_index, _pipeline_groups, _segment_text, _segments,
+    QUOTED_FRAGMENT_RE, _payload_command_index, _pipeline_groups, _segment_text, _segments,
     _skip_leading_redirect, _skip_prefixes, _skip_wrapper_options,
     _tokens, _words, _wrapper_consumes_value,
     has_process_substitution, interpreter_invocation,
@@ -39,7 +39,7 @@ __all__ = [
     "_skip_leading_redirect", "_skip_prefixes", "_skip_wrapper_options",
     "_tokens", "_words", "_wrapper_consumes_value",
     "has_process_substitution", "interpreter_invocation",
-    "HeredocEvent", "LiteralWrite", "heredoc_events", "literal_writes",
+    "HeredocEvent", "LiteralWrite", "executable_text", "heredoc_events", "literal_writes",
     "write_paths", "write_targets",
 ]
 
@@ -49,6 +49,7 @@ LITERAL_PRODUCERS = frozenset({"echo", "printf"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
+HEREDOC_SINKS = frozenset({"cat", "tee"})
 MAX_LITERAL_OUTPUT_CHARS = 1_000_000
 PRINTF_TOKEN_RE = re.compile(r"%%|%s|\\[\\abefnrtv]|[^%\\]+")
 PRINTF_ESCAPES = {
@@ -101,12 +102,40 @@ def _logical_lines(command: str) -> list[tuple[str, list[str | None], list[str]]
         index += 1
         bodies: list[str | None] = []
         raw_bodies: list[str] = []
-        for match in HEREDOC_RE.finditer(line):
+        for match in _heredoc_matches(line):
             raw_body, dynamic, index = _heredoc_body(lines, index, match)
             raw_bodies.append(raw_body)
             bodies.append(None if dynamic else raw_body)
         rows.append((line, bodies, raw_bodies))
     return rows
+
+
+def _heredoc_matches(text: str) -> list[re.Match]:
+    """Skip a << inside quotes, because the shell reads it as data."""
+    quoted = [span.span() for span in QUOTED_FRAGMENT_RE.finditer(text)]
+    return [
+        match for match in HEREDOC_RE.finditer(text)
+        if not any(start <= match.start() < end for start, end in quoted)
+    ]
+
+
+def executable_text(command: str) -> str:
+    """Drop literal cat or tee heredoc bodies, because no shell runs them."""
+    kept: list[str] = []
+    for line, bodies, raw_bodies in _logical_lines(command):
+        kept.append(line)
+        unnested = "(" not in line and "`" not in line
+        cursor = 0
+        for group in _pipeline_groups(line):
+            events, cursor = _group_heredoc_events(group, bodies, raw_bodies, cursor)
+            data_only = unnested and all(_is_heredoc_sink(segment) for segment in group)
+            kept.extend(event.body for event in events if event.dynamic or not data_only)
+    return "\n".join(kept)
+
+
+def _is_heredoc_sink(segment: list[str]) -> bool:
+    index = _payload_command_index(segment)
+    return index < len(segment) and _basename(segment[index]) in HEREDOC_SINKS
 
 
 def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str, bool, int]:
@@ -129,7 +158,7 @@ def _line_writes(line: str, bodies: list[str | None]) -> list[LiteralWrite]:
     rows: list[LiteralWrite] = []
     cursor = 0
     for group in _pipeline_groups(line):
-        heredoc_total = sum(len(HEREDOC_RE.findall(_segment_text(segment))) for segment in group)
+        heredoc_total = sum(len(_heredoc_matches(_segment_text(segment))) for segment in group)
         group_bodies = bodies[cursor:cursor + heredoc_total]
         cursor += heredoc_total
         target_writes = [write for segment in group for write in _write_path_writes(segment)]
@@ -312,7 +341,7 @@ def _group_heredoc_events(
     group_has_write_target = any(_write_path_writes(segment) for segment in group)
     events: list[HeredocEvent] = []
     for segment in group:
-        heredoc_count = len(HEREDOC_RE.findall(_segment_text(segment)))
+        heredoc_count = len(_heredoc_matches(_segment_text(segment)))
         for offset in range(heredoc_count):
             events.append(HeredocEvent(
                 consumer_segment=segment,
