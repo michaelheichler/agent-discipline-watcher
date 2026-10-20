@@ -180,11 +180,9 @@ def _repo_findings(repo: Path, cfg: dict, started_at: float | None) -> tuple[lis
         if is_binary_content(path, raw):
             continue
         text = raw.decode("utf-8", errors="replace")
-        if scannable_text(text, cfg) is None:
-            findings.extend({**finding, "path": path} for finding in file_length_findings(path, text))
-            continue
+        scanned = file_length_findings(path, text) if scannable_text(text, cfg) is None else scan_all(path, text, cfg)
         previous = [revision_text(repo, revision, path) for revision in ("HEAD", *incoming)]
-        owned, carried = split_against(previous, path, scan_all(path, text, cfg), cfg)
+        owned, carried = split_against(previous, path, scanned, cfg, text)
         findings.extend({**finding, "path": path} for finding in owned)
         if incoming:
             inherited.extend({**finding, "path": path} for finding in carried)

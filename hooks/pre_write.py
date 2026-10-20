@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lib import imported_baseline, payloads, temp_authorship, tests_policy
-from lib.baseline import LENGTH_RULES, changed_lines, committed_text, partition, split_committed
+from lib.baseline import LENGTH_RULES, committed_text, partition, split_committed
 from lib.config import payload_hook_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
 from lib.protected import path_findings
+from lib.provenance import compare
 from lib.patch_content import projected_content
 from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
@@ -229,12 +230,8 @@ def _edit_findings(decoded: PendingWrite, resolved_path: Path, cfg: dict) -> tup
         pending = _pending_edit_text(decoded)
         return _label_pending_text(_stamped(scan_all(decoded.path, pending, cfg), decoded.path)), []
     before, after = applied
-    changed = changed_lines(before, after)
-    findings = scan_all(scan_path, after, cfg)
-    owned, _ = partition(findings, scan_all(scan_path, before, cfg))
-    owned_ids = {id(finding) for finding in owned}
-    touched = [finding for finding in findings if finding.get("line") in changed or id(finding) in owned_ids]
-    kept, inherited = _length_split(touched, resolved_path, cfg, after)
+    owned, _ = partition(scan_all(scan_path, after, cfg), compare(scan_path, before, after))
+    kept, inherited = _length_split(owned, resolved_path, cfg, after)
     return _stamped(kept, decoded.path), _stamped(inherited, decoded.path)
 
 

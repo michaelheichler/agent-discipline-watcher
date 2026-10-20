@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -60,6 +61,52 @@ def test_pre_write_edit_ignores_preexisting_debt(tmp_path):
         _edit_config(),
     )
     assert response == {}
+
+
+DASHED_SENTENCE = "Intro line here.\n\nThe scan ends here " + chr(0x2014) + " and\nthe agent sees it.\n"
+
+
+class InheritedEdit(NamedTuple):
+    name: str
+    body: str
+    old: str
+    new: str
+    line: int
+    rule: str
+    reported: bool
+
+
+@pytest.mark.parametrize("edit", [
+    pytest.param(
+        InheritedEdit("legacy.py", "# Validate the old entry\nvalue = 1\n", "old entry", "stale entry", 1, "what_comment", True),
+        id="reworded-inherited-offender"),
+    pytest.param(
+        InheritedEdit("notes.md", DASHED_SENTENCE, " and\nthe agent", "\nand the agent", 3, "banned_dash", False),
+        id="reflowed-inherited-offender"),
+])
+def test_pre_write_edit_owns_an_inherited_finding_only_when_its_words_changed(tmp_path: Path, edit: InheritedEdit) -> None:
+    target = tmp_path / edit.name
+    target.write_text(edit.body, encoding="utf-8")
+    row = f"{target}:{edit.line} {catalog.rule_entry(edit.rule).title}"
+
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": edit.old, "new_string": edit.new}}, _edit_config(),
+    )
+
+    assert (row in _style_advice(response)) is edit.reported
+
+
+def test_pre_write_edit_fallback_owns_a_finding_the_file_already_had(tmp_path) -> None:
+    target = tmp_path / "legacy.py"
+    target.write_text("# Validate the old entry\nvalue = 1\n", encoding="utf-8")
+
+    response = pre_write.run(
+        {"tool_input": {"file_path": str(target), "old_string": "not present\n",
+                         "new_string": "# Validate the old entry\n"}},
+        _edit_config(),
+    )
+
+    assert response["decision"] == "block"
 
 
 def test_pre_write_maps_multiedit_findings_to_each_post_edit_line(tmp_path):

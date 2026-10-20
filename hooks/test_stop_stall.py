@@ -40,14 +40,27 @@ def _own(tmp_path: Path) -> Arranged:
     return _payload(tmp_path), _config(tmp_path)
 
 
-def _inherited(tmp_path: Path) -> Arranged:
+def _committed(tmp_path: Path, current: str) -> Arranged:
     repo = make_repo(tmp_path)
     target = repo / "a.py"
     target.write_text(NARRATION, encoding="utf-8")
     run_git(repo, "add", "a.py")
     run_git(repo, "commit", "-qm", "seed")
+    target.write_text(current, encoding="utf-8")
     blocker_state.touch_paths("s1", "", [str(target)], _config(tmp_path)["state_root"])
     return _payload(repo), {**_config(tmp_path), "baseline": "none"}
+
+
+def _inherited(tmp_path: Path) -> Arranged:
+    return _committed(tmp_path, NARRATION)
+
+
+def _inherited_beside_an_edit(tmp_path: Path) -> Arranged:
+    return _committed(tmp_path, NARRATION + "y = 2\n")
+
+
+def _reworded_inherited(tmp_path: Path) -> Arranged:
+    return _committed(tmp_path, NARRATION.replace("counter", "total"))
 
 
 def _run(arranged: Arranged, count: int) -> list[dict]:
@@ -69,8 +82,11 @@ def _reports(tmp_path: Path) -> list[Path]:
 
 @pytest.mark.parametrize(
     ("arrange", "blocking"),
-    [(_own, OWN_STOPS), (_inherited, INHERITED_STOPS)],
-    ids=["own finding", "inherited finding"],
+    [
+        (_own, OWN_STOPS), (_inherited, INHERITED_STOPS),
+        (_inherited_beside_an_edit, INHERITED_STOPS), (_reworded_inherited, OWN_STOPS),
+    ],
+    ids=["own finding", "inherited finding", "inherited finding beside an edit", "reworded inherited finding"],
 )
 def test_an_unchanged_finding_blocks_to_its_limit_then_releases_once(tmp_path: Path, arrange: Arrange, blocking: int) -> None:
     arranged = arrange(tmp_path)

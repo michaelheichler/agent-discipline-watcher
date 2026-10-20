@@ -1,34 +1,28 @@
 """Committed debt stays nonblocking because an edit should answer only for findings it introduced."""
 from __future__ import annotations
 
-import difflib
 import subprocess
 import time
-from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
 try:
     from . import imported_baseline
-    from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from .imported_baseline import Check, Snapshot, text_digest
+    from .provenance import OWNED_RULES, Provenance, compare_any
     from .scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
-    from .scanner import scan_all
 except ImportError:
     import imported_baseline
-    from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from imported_baseline import Check, Snapshot, text_digest
+    from provenance import OWNED_RULES, Provenance, compare_any
     from scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
-    from scanner import scan_all
 
 
 LENGTH_RULES = frozenset({"file_too_long", "unscannable_file"})
 BASELINE_MODES = ("git", "report", "none")
 DEFAULT_BASELINE_MODE = "report"
 GIT_TIMEOUT_SECONDS = 2
-MAX_BASELINE_CACHE = 256
 BASELINE_SCAN_BYTES_PER_SECOND = 250_000
-_BASELINE_CACHE: dict[tuple[str, str, int], tuple[dict, list[dict]]] = {}
 Texts = Sequence[str | None]
 
 
@@ -90,68 +84,11 @@ def committed_text(path: Path, until: float | None = None) -> str | None:
     return _git(["show", "HEAD:" + relative], directory, until)
 
 
-def changed_lines(before: str, after: str) -> set[int]:
-    old_lines = before.splitlines(keepends=True)
-    new_lines = after.splitlines(keepends=True)
-    changed: set[int] = set()
-    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
-    for tag, _old_start, _old_end, new_start, new_end in matcher.get_opcodes():
-        if tag != "equal":
-            changed.update(range(new_start + 1, new_end + 1))
-    return changed
-
-
-def finding_key(finding: dict) -> tuple[str, str, str]:
-    """Identify a finding without its line number, so that an edit shifting a file does not resurface old debt."""
-    return (
-        str(finding.get("family", "")),
-        str(finding.get("rule", "")),
-        str(finding.get("snippet", "")).strip(),
-    )
-
-
-def rule_key(finding: dict) -> tuple[str, str]:
-    return finding_key(finding)[:2]
-
-
-def _consume(findings: list[dict], budget: Counter, key_of) -> list[dict]:
-    kept = []
-    for row in findings:
-        key = key_of(row)
-        if budget[key]:
-            budget[key] -= 1
-            continue
-        kept.append(row)
-    return kept
-
-
-def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
-    """Drop the baseline's own findings, exact text first and rule alone second, because rewording an already offending line adds no debt."""
-    exact = Counter(
-        finding_key(row)
-        for row in baseline
-        if row.get("rule") not in SCANNER_ALWAYS_BLOCKING_RULES | FIXED_OBSERVE_RULES
-    )
-    survivors = _consume(findings, exact, finding_key)
-    if not survivors:
-        return []
-    loose: Counter = Counter()
-    for key, remaining in exact.items():
-        loose[key[:2]] += remaining
-    return _consume(survivors, loose, rule_key)
-
-
-def partition(findings: list[dict], baseline: list[dict]) -> tuple[list[dict], list[dict]]:
+def partition(findings: list[dict], provenance: Provenance) -> tuple[list[dict], list[dict]]:
     """Keep inherited findings separate because callers must surface them without turning them into blockers."""
-    owned = subtract(findings, baseline)
+    owned = [row for row in findings if provenance.owns(row)]
     kept = {id(row) for row in owned}
     return owned, [row for row in findings if id(row) not in kept]
-
-
-def _halves(findings: list[dict], baseline: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Withhold the inherited half outside report mode, because git mode promises silence about committed debt."""
-    owned, inherited = partition(findings, baseline)
-    return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
 def _line_count(text: str) -> int:
@@ -187,24 +124,32 @@ def fits_deadline(text: str, check: Check) -> None:
         raise OutOfTime
 
 
-def _baseline_rows(path: Path, before: str, cfg: dict, check: Check) -> list[dict]:
-    """Memoized per path and baseline hash, because a batch that edits one file twice scanned its baseline twice."""
-    key = (str(path), text_digest(before, check), id(cfg))
-    cached = _BASELINE_CACHE.get(key)
-    if cached is not None and cached[0] is cfg:
-        return cached[1]
-    fits_deadline(before, check)
-    rows = scan_all(str(path), before, cfg)
-    if len(_BASELINE_CACHE) >= MAX_BASELINE_CACHE:
-        _BASELINE_CACHE.clear()
-    _BASELINE_CACHE[key] = (cfg, rows)
-    check()
-    return rows
+def _current(path: Path, text: str | None) -> str | None:
+    if text is not None:
+        return text
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _owned_split(path: Path, findings: list[dict], befores: list[str], text: str | None, check: Check) -> tuple[list[dict], list[dict]]:
+    """No diff when every rule stays owned, because the diff could not move a row."""
+    current = _current(path, text)
+    if current is None or all(row.get("rule") in OWNED_RULES for row in findings):
+        return findings, []
+    return partition(findings, compare_any(str(path), befores, current, check))
+
+
+def _split_texts(path: Path, findings: list[dict], cfg: dict, befores: list[str], text: str | None, check: Check) -> tuple[list[dict], list[dict]]:
+    """Relieved by any parent, because a merge may take the long file whole from one."""
+    relieving = next((before for before in befores if _inherited_length(before, text)), befores[0])
+    owned, inherited = _length_relief(_owned_split(path, findings, befores, text, check), relieving, text)
+    return owned, inherited if baseline_mode(cfg) == "report" else []
 
 
 def _against(path: Path, findings: list[dict], cfg: dict, before: str, text: str | None, check: Check) -> tuple[list[dict], list[dict]]:
-    owned, inherited = _length_relief(partition(findings, _baseline_rows(path, before, cfg, check)), before, text)
-    return owned, inherited if baseline_mode(cfg) == "report" else []
+    return _split_texts(path, findings, cfg, [before], text, check)
 
 
 def _split_snapshot(
@@ -279,13 +224,12 @@ def split_fallback_with_snapshot(
     return [], rows if baseline_mode(cfg) == "report" else []
 
 
-def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> tuple[list[dict], list[dict]]:
-    """Pool every previous text because a merge resolution may take a line from any parent."""
-    present = [text for text in texts if text is not None]
+def split_against(texts: Texts, path: str, findings: list[dict], cfg: dict, text: str) -> tuple[list[dict], list[dict]]:
+    """Owned only where every parent differs, because a merge resolution may take a line from any parent."""
+    present = [before for before in texts if before is not None]
     if not findings or not present or baseline_mode(cfg) == "none":
         return findings, []
-    pooled = [row for text in present for row in scan_all(path, text, cfg)]
-    return _halves(findings, pooled, cfg)
+    return _split_texts(Path(path), findings, cfg, present, text, _deadline_check(None))
 
 
 def strip_committed(
@@ -294,5 +238,5 @@ def strip_committed(
     return split_committed(path, findings, cfg, text, until=until)[0]
 
 
-def strip_against(texts: Texts, path: str, findings: list[dict], cfg: dict) -> list[dict]:
-    return split_against(texts, path, findings, cfg)[0]
+def strip_against(texts: Texts, path: str, findings: list[dict], cfg: dict, text: str) -> list[dict]:
+    return split_against(texts, path, findings, cfg, text)[0]

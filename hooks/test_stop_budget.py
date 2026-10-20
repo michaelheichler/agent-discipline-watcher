@@ -3,15 +3,18 @@ from __future__ import annotations
 import os
 import signal
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
+
+import pytest
 
 import stop
-from lib import baseline, blocker_state, imported_baseline, scanner, state_recovery, stop_scan
+from lib import baseline, blocker_state, imported_baseline, state_recovery, stop_scan
 from testing import make_repo, run_git
 
 NARRATION = "# Increment the counter.\nx = 1\n"
 EDITED = NARRATION + "# Reset the total.\n"
-BASELINE_SCAN_SECONDS = 0.6
 BUDGET_SECONDS = 0.3
 DEADLINE_MARGIN_SECONDS = 0.5
 LARGE_BASELINE_BYTES = 3_000_000
@@ -66,26 +69,6 @@ def test_a_slow_baseline_git_call_ends_at_the_deadline_as_unscanned(tmp_path: Pa
     assert time.monotonic() - started < 1.5
 
 
-def test_a_baseline_is_scanned_once_per_content(tmp_path: Path, monkeypatch) -> None:
-    repo = make_repo(tmp_path)
-    target = repo / "module.py"
-    target.write_text(NARRATION, encoding="utf-8")
-    run_git(repo, "add", "module.py")
-    run_git(repo, "commit", "-qm", "seed")
-    edited = NARRATION + "# Reset the total.\n"
-    cfg = {"baseline": "report"}
-    findings = scanner.scan_all(str(target), edited, cfg)
-    scanned: list[str] = []
-    original = baseline.scan_all
-    monkeypatch.setattr(baseline, "scan_all", lambda path, text, config: scanned.append(path) or original(path, text, config))
-
-    first = baseline.split_committed(target, findings, cfg, edited)
-    second = baseline.split_committed(target, findings, cfg, edited)
-
-    assert first == second
-    assert scanned == [str(target)]
-
-
 def test_an_edit_to_an_unscanned_file_blocks_again_after_a_release(tmp_path: Path, monkeypatch) -> None:
     target = tmp_path / "a.py"
     target.write_text("x = 1\n", encoding="utf-8")
@@ -117,59 +100,76 @@ def test_a_duplicate_check_cut_off_by_the_deadline_keeps_the_batch_block(tmp_pat
     assert "<batch>" in blocker_state.details("s1", "", root)[0]
 
 
-def _slow_baseline_scan(monkeypatch) -> None:
-    original = baseline.scan_all
-
-    def slow(path: str, text: str, config: dict) -> list[dict]:
-        time.sleep(BASELINE_SCAN_SECONDS)
-        return original(path, text, config)
-
-    monkeypatch.setattr(baseline, "scan_all", slow)
+class Edited(NamedTuple):
+    target: Path
+    cwd: Path
+    cfg: dict
 
 
-def test_a_slow_scan_of_an_imported_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+def _imported_edit(tmp_path: Path) -> Edited:
     target = tmp_path / "module.py"
     target.write_text(NARRATION, encoding="utf-8")
     cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
     imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
     target.write_text(EDITED, encoding="utf-8")
-    scanner.scan_all(str(target), EDITED, cfg)
-    _slow_baseline_scan(monkeypatch)
-
-    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, time.monotonic() + BUDGET_SECONDS)
-
-    assert scanned.skipped == [str(target)]
-    assert scanned.existing == []
+    return Edited(target, tmp_path, cfg)
 
 
-def test_a_baseline_too_large_for_the_deadline_is_skipped_without_scanning(tmp_path: Path) -> None:
-    target = tmp_path / "notes.md"
-    target.write_text(LARGE_PROSE * (LARGE_BASELINE_BYTES // len(LARGE_PROSE)), encoding="utf-8")
-    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
-    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
-    target.write_text(DASHED_LINE, encoding="utf-8")
-    started = time.monotonic()
-
-    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, started + BUDGET_SECONDS)
-
-    assert scanned.skipped == [str(target)]
-    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
-
-
-def test_a_slow_scan_of_the_committed_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
+def _committed_edit(tmp_path: Path) -> Edited:
     repo = make_repo(tmp_path)
     target = repo / "module.py"
     target.write_text(NARRATION, encoding="utf-8")
     run_git(repo, "add", "module.py")
     run_git(repo, "commit", "-qm", "seed")
     target.write_text(EDITED, encoding="utf-8")
-    scanner.scan_all(str(target), EDITED, {})
-    _slow_baseline_scan(monkeypatch)
+    return Edited(target, repo, {})
 
-    scanned = stop_scan.rescan([str(target)], repo, {}, time.monotonic() + BUDGET_SECONDS)
 
-    assert scanned.skipped == [str(target)]
-    assert scanned.existing == []
+def _stall(monkeypatch, module: object, name: str) -> None:
+    original = getattr(module, name)
+
+    def busy(*args: object) -> object:
+        ends = time.monotonic() + BUSY_SCAN_SECONDS
+        while time.monotonic() < ends:
+            pass
+        return original(*args)
+
+    monkeypatch.setattr(module, name, busy)
+
+
+class Stall(NamedTuple):
+    module: object
+    name: str
+    arrange: Callable[[Path], Edited]
+
+
+@pytest.mark.parametrize("stall", [
+    pytest.param(Stall(stop_scan, "scan_all", _imported_edit), id="scan-of-the-current-file"),
+    pytest.param(Stall(baseline, "compare_any", _imported_edit), id="diff-against-an-imported-baseline"),
+    pytest.param(Stall(baseline, "compare_any", _committed_edit), id="diff-against-the-committed-baseline"),
+])
+def test_a_stalled_rescan_step_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch, stall: Stall) -> None:
+    edited = stall.arrange(tmp_path)
+    _stall(monkeypatch, stall.module, stall.name)
+    started = time.monotonic()
+
+    scanned = stop_scan.rescan([str(edited.target)], edited.cwd, edited.cfg, started + BUDGET_SECONDS)
+
+    assert (scanned.skipped, scanned.existing) == ([str(edited.target)], [])
+    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
+
+
+def test_a_large_imported_baseline_finishes_inside_the_stop_budget(tmp_path: Path) -> None:
+    target = tmp_path / "notes.md"
+    target.write_text(LARGE_PROSE * (LARGE_BASELINE_BYTES // len(LARGE_PROSE)), encoding="utf-8")
+    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
+    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
+    target.write_text(DASHED_LINE, encoding="utf-8")
+
+    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, stop_scan.deadline())
+
+    assert scanned.skipped == []
+    assert [(row["line"], row["rule"]) for row in scanned.findings] == [(1, "banned_dash")]
 
 
 def test_an_oversized_current_file_ends_at_the_deadline_as_unscanned(tmp_path: Path) -> None:
@@ -178,34 +178,6 @@ def test_an_oversized_current_file_ends_at_the_deadline_as_unscanned(tmp_path: P
     started = time.monotonic()
 
     scanned = stop_scan.rescan([str(target)], tmp_path, {"max_scan_bytes": RAISED_SCAN_BYTES}, started + BUDGET_SECONDS)
-
-    assert scanned.skipped == [str(target)]
-    assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS
-
-
-def _busy_baseline_scan(monkeypatch) -> None:
-    original = baseline.scan_all
-
-    def busy(path: str, text: str, config: dict) -> list[dict]:
-        ends = time.monotonic() + BUSY_SCAN_SECONDS
-        while time.monotonic() < ends:
-            pass
-        return original(path, text, config)
-
-    monkeypatch.setattr(baseline, "scan_all", busy)
-
-
-def test_a_busy_scan_of_a_small_baseline_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
-    target = tmp_path / "module.py"
-    target.write_text(NARRATION, encoding="utf-8")
-    cfg = {"session_id": "s1", "state_root": str(tmp_path / "state")}
-    imported_baseline.snapshot_many("s1", [str(target)], cfg["state_root"])
-    target.write_text(EDITED, encoding="utf-8")
-    scanner.scan_all(str(target), EDITED, cfg)
-    _busy_baseline_scan(monkeypatch)
-    started = time.monotonic()
-
-    scanned = stop_scan.rescan([str(target)], tmp_path, cfg, started + BUDGET_SECONDS)
 
     assert scanned.skipped == [str(target)]
     assert time.monotonic() - started < BUDGET_SECONDS + DEADLINE_MARGIN_SECONDS

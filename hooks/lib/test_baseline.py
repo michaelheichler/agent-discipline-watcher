@@ -4,6 +4,9 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import NamedTuple
+
+import pytest
 
 from lib import baseline, config, scanner
 from testing import make_repo, run_git as git
@@ -21,44 +24,6 @@ def commit(repo: Path, name: str, body: str) -> Path:
     git(repo, "add", name)
     git(repo, "commit", "-q", "-m", "seed")
     return path
-
-
-def row(rule: str, snippet: str, line: int = 1) -> dict:
-    return {"family": "clean_code", "rule": rule, "snippet": snippet, "line": line}
-
-
-class FindingKeyTests(unittest.TestCase):
-    def test_the_key_ignores_the_line_number(self):
-        self.assertEqual(baseline.finding_key(row("a", "s", 1)), baseline.finding_key(row("a", "s", 90)))
-
-    def test_the_key_separates_different_rules_and_snippets(self):
-        self.assertNotEqual(baseline.finding_key(row("a", "s")), baseline.finding_key(row("b", "s")))
-        self.assertNotEqual(baseline.finding_key(row("a", "s")), baseline.finding_key(row("a", "t")))
-
-
-class SubtractTests(unittest.TestCase):
-    def test_a_finding_the_baseline_already_had_is_dropped(self):
-        self.assertEqual(baseline.subtract([row("a", "s")], [row("a", "s", 40)]), [])
-
-    def test_an_extra_copy_of_a_repeated_finding_survives(self):
-        current = [row("a", "s"), row("a", "s"), row("a", "s")]
-        self.assertEqual(len(baseline.subtract(current, [row("a", "s"), row("a", "s")])), 1)
-
-    def test_a_finding_absent_from_the_baseline_survives(self):
-        self.assertEqual(baseline.subtract([row("b", "t")], [row("a", "s")]), [row("b", "t")])
-
-    def test_an_empty_baseline_keeps_everything(self):
-        self.assertEqual(baseline.subtract([row("a", "s")], []), [row("a", "s")])
-
-    def test_an_always_blocking_finding_is_not_removed_from_the_baseline(self):
-        marker = row("suppression_escape_hatch", "marker")
-
-        self.assertEqual(baseline.subtract([marker], [marker]), [marker])
-
-    def test_file_length_guard_is_not_removed_from_the_baseline(self):
-        for rule in ("file_length_warning", "file_length_critical", "file_too_long"):
-            finding = row(rule, "long.py")
-            self.assertEqual(baseline.subtract([finding], [finding]), [finding])
 
 
 class BaselineModeTests(unittest.TestCase):
@@ -184,21 +149,21 @@ class StripCommittedTests(unittest.TestCase):
     def test_a_finding_any_previous_text_carries_is_inherited(self):
         cfg = {"baseline": "report"}
         rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
-        owned, inherited = baseline.split_against([None, LEGACY, EXTRA_DEBT], "legacy.py", rows, cfg)
+        owned, inherited = baseline.split_against([None, LEGACY, EXTRA_DEBT], "legacy.py", rows, cfg, EXTRA_DEBT)
         self.assertEqual(owned, [])
         self.assertEqual(len(inherited), 2)
 
     def test_split_against_owns_everything_when_no_previous_text_exists(self):
         cfg = {"baseline": "report"}
         rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
-        self.assertEqual(baseline.split_against([None, None], "legacy.py", rows, cfg), (rows, []))
-        self.assertEqual(baseline.split_against([], "legacy.py", rows, cfg), (rows, []))
+        self.assertEqual(baseline.split_against([None, None], "legacy.py", rows, cfg, EXTRA_DEBT), (rows, []))
+        self.assertEqual(baseline.split_against([], "legacy.py", rows, cfg, EXTRA_DEBT), (rows, []))
 
     def test_strip_against_still_returns_the_owned_half_alone(self):
         cfg = {"baseline": "report"}
         rows = scanner.scan_all("legacy.py", EXTRA_DEBT, cfg)
         self.assertEqual(
-            [item["snippet"] for item in baseline.strip_against([LEGACY], "legacy.py", rows, cfg)],
+            [item["snippet"] for item in baseline.strip_against([LEGACY], "legacy.py", rows, cfg, EXTRA_DEBT)],
             ["# resets the counter"],
         )
 
@@ -312,30 +277,186 @@ class BaselineRuntimeTests(unittest.TestCase):
         self.assertIn("Suppression marker added", response["reason"])
 
 
-class RewordedFindingTests(unittest.TestCase):
-    """Renaming the text of a line that already broke the same rule adds no debt."""
+ENGLISH = {"prose_languages": ["en"]}
+LONG_FUNCTION = {"function_block_lines": 80}
+INTRO = "Intro line here.\n\n"
+WRITTEN = INTRO + "The report was written by the team.\n"
+FIRST_PARAGRAPH = "The report was written by the team before lunch."
+SECOND_PARAGRAPH = "Our second paragraph talks about something else."
+THIRD_PARAGRAPH = "A third paragraph closes the short document here."
+FIVE_WORD_SENTENCES = (
+    "The hook reads each file.",
+    "The scan checks every rule.",
+    "The gate blocks bad writes.",
+    "The ledger keeps each row.",
+)
+COUNTER = "def count():\n    total = 0\n    # increments the counter\n    total += 1\n    return total\n"
+MOVED_COUNTER = "def count():\n    total = 0\n    total += 1\n    # increments the counter\n    return total\n"
+REWORDED_TEST_COMMENT = "#!/usr/bin/env python3\n# Test 10: post-{} cleanup\nx = 1\n"
+LONG_SOURCE = "".join(f"value_{number} = {number}\n" for number in range(1200))
+GENERATED = "# Code generated by protoc. DO NOT EDIT.\n"
+GROWN = "extra = 1\n"
 
-    def test_a_reworded_offender_is_not_new_debt(self):
-        before = [row("what_comment", "# Test 10: post-TeamDelete cleanup")]
-        after = [row("what_comment", "# Test 10: post-shutdown residual cleanup")]
-        self.assertEqual(baseline.subtract(after, before), [])
 
-    def test_an_added_offender_still_reports_alongside_a_reworded_one(self):
-        before = [row("what_comment", "# old one")]
-        after = [row("what_comment", "# reworded one"), row("what_comment", "# a brand new one")]
-        self.assertEqual(len(baseline.subtract(after, before)), 1)
+class Change(NamedTuple):
+    path: str
+    before: str
+    after: str
+    config: dict
 
-    def test_a_different_rule_is_never_covered_by_the_loose_pass(self):
-        before = [row("what_comment", "# old one")]
-        after = [row("banned_dash", "some other line")]
-        self.assertEqual(len(baseline.subtract(after, before)), 1)
 
-    def test_the_exact_pass_still_runs_first(self):
-        shared = row("what_comment", "# identical")
-        before = [shared, row("what_comment", "# other")]
-        after = [shared, row("what_comment", "# reworded other")]
-        self.assertEqual(baseline.subtract(after, before), [])
+def _paragraphs(*paragraphs: str) -> str:
+    return "\n\n".join(paragraphs) + "\n"
 
+
+def _long_function(*extra: str) -> str:
+    body = "".join(f"    v{number} = {number}\n" for number in range(90))
+    return "import os\n\ndef big():\n" + body + "".join(extra) + "    return v0\n"
+
+
+class Case(NamedTuple):
+    change: Change
+    rule: str
+    expected: list[tuple[int, bool]]
+
+
+def _verdicts(rows: list[dict], owned: list[dict], rule: str) -> list[tuple[int, bool]]:
+    return [(item["line"], item in owned) for item in rows if item["rule"] == rule]
+
+
+def _committed_verdicts(root: Path, change: Change, rule: str) -> list[tuple[int, bool]]:
+    path = commit(make_repo(root), change.path, change.before)
+    path.write_text(change.after, encoding="utf-8")
+    rows = scanner.scan_all(str(path), change.after, change.config)
+    owned, _inherited = baseline.split_committed(path, rows, {**change.config, "baseline": "report"}, change.after)
+    return _verdicts(rows, owned, rule)
+
+
+def _prose(before: str, after: str) -> Change:
+    return Change("doc.md", before, after, ENGLISH)
+
+
+def _code(before: str, after: str, cfg: dict | None = None) -> Change:
+    return Change("mod.py", before, after, cfg or {})
+
+
+@pytest.mark.parametrize("case", [
+    pytest.param(Case(_prose(WRITTEN, WRITTEN), "passive_voice", [(3, False)]), id="unchanged-file"),
+    pytest.param(Case(
+        _prose(
+            INTRO + "The report was written by the team before\nthe meeting began today.\n",
+            INTRO + "The report was written\nby the team before the meeting began today.\n"),
+        "passive_voice", [(3, False)]), id="reflowed-paragraph"),
+    pytest.param(Case(
+        _prose(WRITTEN, INTRO + "The plan was drafted by the team.\n"),
+        "passive_voice", [(3, True)]), id="new-passive-replacing-an-old-one"),
+    pytest.param(Case(
+        _prose(
+            INTRO + "The report was written by the team. The plan got drafted today.\n",
+            INTRO + "The report was written by the team. The plan got approved today.\n"),
+        "passive_voice", [(3, False)]), id="match-in-the-unchanged-sentence-of-a-shared-line"),
+    pytest.param(Case(
+        _prose(
+            INTRO + "The plan was drafted by the board. The report goes to the team.\n",
+            INTRO + "The plan was approved by the board. The report goes to the team.\n"),
+        "passive_voice", [(3, True)]), id="match-in-the-changed-sentence-of-a-shared-line"),
+    pytest.param(Case(
+        _prose(
+            INTRO + "\n".join(FIVE_WORD_SENTENCES) + "\n",
+            INTRO + "\n".join(FIVE_WORD_SENTENCES).replace("blocks bad", "stops bad") + "\n"),
+        "low_sentence_variance", [(3, True)]), id="third-sentence-of-a-low-variance-paragraph-edited"),
+    pytest.param(Case(
+        _prose(
+            _paragraphs(FIRST_PARAGRAPH, SECOND_PARAGRAPH, THIRD_PARAGRAPH),
+            _paragraphs(SECOND_PARAGRAPH, THIRD_PARAGRAPH, FIRST_PARAGRAPH)),
+        "passive_voice", [(5, False)]), id="moved-paragraph"),
+    pytest.param(Case(
+        _prose(
+            _paragraphs(FIRST_PARAGRAPH, SECOND_PARAGRAPH, THIRD_PARAGRAPH),
+            _paragraphs(FIRST_PARAGRAPH, SECOND_PARAGRAPH, THIRD_PARAGRAPH, FIRST_PARAGRAPH)),
+        "passive_voice", [(1, False), (7, True)]), id="extra-copy-of-a-paragraph"),
+])
+def test_split_committed_owns_a_prose_finding_only_where_a_sentence_changed(tmp_path: Path, case: Case) -> None:
+    assert _committed_verdicts(tmp_path, case.change, case.rule) == case.expected
+
+
+@pytest.mark.parametrize("case", [
+    pytest.param(Case(
+        _code(LEGACY, LEGACY.replace("\n", "\nimport os\n", 1)), "what_comment", [(3, False)]),
+        id="shifted-down-by-an-inserted-line"),
+    pytest.param(Case(_code(COUNTER, COUNTER.replace("    ", "  ")), "what_comment", [(3, False)]), id="reindented-block"),
+    pytest.param(Case(
+        _code(REWORDED_TEST_COMMENT.format("TeamDelete"), REWORDED_TEST_COMMENT.format("shutdown residual")),
+        "what_comment", [(2, True)]), id="reworded-offender"),
+    pytest.param(Case(
+        _code(EXTRA_DEBT, EXTRA_DEBT.replace("resets the counter", "resets the total")),
+        "what_comment", [(2, False), (4, True)]), id="reworded-beside-an-unchanged-offender"),
+    pytest.param(Case(
+        _code(LEGACY, LEGACY.replace("counter", "total") + "# resets the counter\ny = 2\n"),
+        "what_comment", [(2, True), (4, True)]), id="added-beside-a-reworded-offender"),
+    pytest.param(Case(_code(COUNTER, MOVED_COUNTER), "what_comment", [(4, False)]), id="moved-line"),
+    pytest.param(Case(
+        _code(LEGACY, LEGACY + "# increments the counter\n"), "what_comment", [(2, False), (4, True)]),
+        id="extra-copy-of-a-line"),
+    pytest.param(Case(_code("", LEGACY), "what_comment", [(2, True)]), id="empty-committed-file"),
+    pytest.param(Case(
+        _code(_long_function(), _long_function().replace("    v5 = 5\n", "    v5 = 55\n"), LONG_FUNCTION),
+        "function_too_long", [(3, False)]), id="long-function-edited-in-place"),
+    pytest.param(Case(
+        _code(_long_function(), _long_function("    extra = 1\n"), LONG_FUNCTION),
+        "function_too_long", [(3, True)]), id="long-function-grown"),
+])
+def test_split_committed_owns_a_code_finding_only_where_the_edit_added_it(tmp_path: Path, case: Case) -> None:
+    assert _committed_verdicts(tmp_path, case.change, case.rule) == case.expected
+
+
+@pytest.mark.parametrize(("body", "rule"), [
+    pytest.param("# craftsman" + "-ignore: PY002\nvalue = 1\n", "suppression_escape_hatch", id="suppression-marker"),
+    pytest.param(LONG_SOURCE[:LONG_SOURCE.index("value_500 ")], "file_length_warning", id="file-length-warning"),
+])
+def test_a_rule_that_always_reports_stays_owned_in_an_unchanged_file(tmp_path: Path, body: str, rule: str) -> None:
+    assert _committed_verdicts(tmp_path, _code(body, body), rule) == [(1, True)]
+
+
+@pytest.mark.parametrize(("change", "expected"), [
+    pytest.param(_code(LONG_SOURCE, LONG_SOURCE.replace("value_5 = 5", "value_5 = 6")), [(1, False)], id="edited-in-place"),
+    pytest.param(_code(LONG_SOURCE, LONG_SOURCE + GROWN), [(1, True)], id="grown"),
+    pytest.param(_code(GENERATED + LONG_SOURCE, GENERATED + LONG_SOURCE + GROWN), [(1, False)], id="grown-generated-file"),
+    pytest.param(_code(LONG_SOURCE, GENERATED + LONG_SOURCE), [(1, True)], id="marker-added-by-the-edit"),
+])
+def test_file_too_long_is_owned_only_when_the_file_grew(tmp_path: Path, change: Change, expected: list) -> None:
+    assert _committed_verdicts(tmp_path, change, "file_too_long") == expected
+
+
+def test_split_against_owns_a_finding_that_no_previous_text_has() -> None:
+    cfg = {"baseline": "report"}
+    text = EXTRA_DEBT + "# clears the cache\nz = 3\n"
+    rows = scanner.scan_all("legacy.py", text, cfg)
+
+    owned, _inherited = baseline.split_against([LEGACY, EXTRA_DEBT], "legacy.py", rows, cfg, text)
+
+    assert _verdicts(rows, owned, "what_comment") == [(2, False), (4, False), (6, True)]
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    pytest.param(LONG_SOURCE, [(1, False)], id="taken-whole-from-the-merge-parent"),
+    pytest.param(LONG_SOURCE + GROWN, [(1, True)], id="longer-than-every-parent"),
+])
+def test_a_long_file_keeps_its_length_inherited_when_some_parent_was_as_long(text: str, expected: list) -> None:
+    cfg = {"baseline": "report"}
+    rows = scanner.scan_all("long.py", text, cfg)
+
+    owned, _inherited = baseline.split_against(["x = 1\n", LONG_SOURCE], "long.py", rows, cfg, text)
+
+    assert _verdicts(rows, owned, "file_too_long") == expected
+
+
+def test_split_committed_without_text_owns_every_finding_of_a_file_it_cannot_read(tmp_path: Path) -> None:
+    path = commit(make_repo(tmp_path), "legacy.py", LEGACY)
+    rows = scanner.scan_all(str(path), LEGACY, {})
+    path.unlink()
+
+    assert baseline.split_committed(path, rows, {"baseline": "report"}) == (rows, [])
 
 if __name__ == "__main__":
     unittest.main()

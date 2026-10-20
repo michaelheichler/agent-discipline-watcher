@@ -1,9 +1,11 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
+import pre_commit
 import pre_tool
 import record
 from lib import catalog, patch_content, shell_parse, write_shape
@@ -362,3 +364,31 @@ def test_post_tool_patch_cannot_baseline_away_a_committed_oversized_file(
     assert response.get("decision") == "block"
     assert _title("file_too_long") in _feedback(response)
     assert f"{target}:1" in _feedback(response)
+
+
+class Staged(NamedTuple):
+    text: str
+    decision: str | None
+
+
+@pytest.mark.parametrize("gate_config", [
+    pytest.param(None, id="scannable"),
+    pytest.param({"max_scan_bytes": 1000}, id="unscannable"),
+])
+@pytest.mark.parametrize("staged", [
+    pytest.param(Staged(_source(1200).replace("value_5 = 5", "value_5 = 6"), None), id="same-length"),
+    pytest.param(Staged(_source(1200) + "added_value = 1\n", "block"), id="grown"),
+])
+def test_the_commit_gate_blocks_an_old_long_file_only_when_it_grew(tmp_path: Path, gate_config: dict | None, staged: Staged) -> None:
+    repo = make_repo(tmp_path)
+    target = repo / "module.py"
+    target.write_text(_source(1200), encoding="utf-8")
+    run_git(repo, "add", target.name)
+    run_git(repo, "commit", "-qm", "Add source fixture")
+    target.write_text(staged.text, encoding="utf-8")
+    run_git(repo, "add", target.name)
+    payload = {"tool_name": "Bash", "tool_input": {"command": 'git commit -m "chore(x): edit the module"'}, "cwd": str(repo)}
+
+    response = pre_commit.run(payload, gate_config, ledger_root=tmp_path / "ledger", state_root=tmp_path / "state")
+
+    assert response.get("decision") == staged.decision

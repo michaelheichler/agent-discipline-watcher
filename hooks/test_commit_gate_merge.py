@@ -15,6 +15,7 @@ from testing import make_repo, run_git as git
 DASH = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation family blocks.\n"
 SEMICOLON = "We ship the fix; it works on every host today.\n"
 CLEAN = "This sentence is plain and blocks nothing.\n"
+LONG_SOURCE = "".join(f"value_{number} = {number}\n" for number in range(1200))
 MERGE_MESSAGE = 'git commit -m "chore(x): merge upstream work"'
 
 
@@ -99,6 +100,14 @@ class MergeGateTests(unittest.TestCase):
         self.assertEqual(result["decision"], "block")
         self.assertIn("Semicolon in prose", result["reason"])
         self.assertNotIn("Dash character", result["reason"])
+
+    def test_a_long_file_taken_whole_from_upstream_passes(self) -> None:
+        commit_file(self.repo, "long.py", "value = 0\n")
+        self.branch_with("upstream", "long.py", LONG_SOURCE)
+        self.diverge_trunk()
+        git(self.repo, "merge", "-q", "--no-commit", "--no-ff", "upstream")
+
+        self.assertNotEqual(self.gate().get("decision"), "block")
 
     def test_an_octopus_merge_passes_findings_from_every_parent(self):
         self.branch_with("first", "first.md", DASH)
