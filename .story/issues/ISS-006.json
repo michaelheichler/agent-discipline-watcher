@@ -15,9 +15,9 @@
     "T-035",
     "T-045"
   ],
-  "resolution": "Moved to T-045 (provenance by unit diff), target 0.29.0, plan in docs/plans/2026-10-20-finding-provenance.md.",
-  "resolvedDate": null,
+  "resolution": "T-045 provenance by unit diff, 0.29.0",
+  "resolvedDate": "2026-10-20",
   "severity": "medium",
-  "status": "open",
+  "status": "resolved",
   "title": "Stop enforcement must never trap an agent, and the loose baseline match lets rewritten debt pass"
 }

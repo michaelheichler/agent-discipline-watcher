@@ -1,13 +1,13 @@
 {
   "blockedBy": [],
-  "completedDate": null,
+  "completedDate": "2026-10-20",
   "createdDate": "2026-10-20",
   "description": "From ISS-006, target 0.29.0. Plan: docs/plans/2026-10-20-finding-provenance.md.\n\nOne step instead of baseline.subtract: diff baseline (git HEAD or first-seen snapshot) against current by units, sentences for prose and lines for code. A finding on an unchanged or moved unit counts as inherited, on a changed unit as owned. No text match of findings, no embeddings, deterministic.\n\nUser decisions 2026-10-20:\n1. function_too_long and oversized_list count as owned only when their span grows.\n2. The commit gate applies the same length growth rule as Stop.\n3. Clean cut, no legacy switch. The replay must pass its acceptance bar before release.\n\nSequence: end_line on Finding plus emitters and registry test; provenance.py; switch baseline.py, pre_write._edit_findings, pre_commit; move document_hunks, journal, parataxis_review onto the engine; benchmark and replay; README and CHANGELOG. Tests by adw-test-writer.",
   "displayId": "T-045",
   "id": "T-045",
   "order": 180,
   "phase": "test-gate",
-  "status": "inprogress",
+  "status": "complete",
   "title": "Decide finding ownership by unit provenance instead of text matching",
   "type": "feature"
 }

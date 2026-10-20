@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.29.0 (2026-10-20)
+
+### Changed
+
+- **ADW decides who owns a finding by what the agent changed.** It diffs the baseline against the current text by units, sentences in prose and lines in code, and a finding on a changed unit belongs to the agent. The old match by finding text and then by rule count let an agent replace an old passive sentence with a new one unnoticed (ISS-006). A replay on 124 file pairs from 34 real sessions moved 23 of 635 findings from inherited to owned and none the other way, each on a changed unit or a grown span.
+- **A reflowed paragraph or a reindented block keeps its findings inherited.** A moved unit of at least 12 characters counts as moved, not changed.
+- **`function_too_long` and `oversized_list` become the agent's own only when they grow.** Rewording one line of an old long function no longer demands a refactor.
+- **The commit gate applies the long-file growth rule.** A commit of an old long file that did not grow passes, as it already did at Stop, and a merge compares against every incoming parent.
+- **The document reviewer gets only the sentences that changed.** A reflow-only turn sends no hunk and makes no model call.
+- **The ownership split no longer scans the baseline.** The Stop split on a 1 MB file drops from 468 ms to 72 ms.
+
+### Fixed
+
+- **German hits report the line of their match.** They always reported the first line of their paragraph, so the agent looked at the wrong line (ISS-009).
+- **A block finding carries its last line.** Paragraph rules, lists, comment blocks, docstrings, long functions, and test units report `end_line`, so an edit to the third sentence of a flagged paragraph counts.
+
 ## 0.28.0 (2026-10-20)
 
 ### Changed
