@@ -119,6 +119,48 @@ def test_a_reverted_edit_makes_no_luna_call(tmp_path: Path) -> None:
     assert response == {} and provider.requests == []
 
 
+def _section(number: int, reflowed: int | None, edited: int | None) -> str:
+    """A reflowed section joins its two lines, and an edited one changes one word."""
+    verb = "parses" if number == edited else "reads"
+    joint = " " if number == reflowed else "\n"
+    return f"Section {number} explains how the hook {verb} a file.{joint}It then checks the rules for section {number}."
+
+
+def _sections(reflowed: int | None = None, edited: int | None = None) -> str:
+    return "\n\n".join(_section(number, reflowed, edited) for number in range(1, 21)) + "\n"
+
+
+def _readme_turn_after(tmp_path: Path, state_root: Path, second: str) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(_sections(), encoding="utf-8")
+    journal.record_edit("session", "turn-1", "tool-1", readme, state_root=state_root)
+    journal.mark_reviewed("session", journal.read_stop("session", turn_id="turn-1", state_root=state_root), state_root=state_root)
+    readme.write_text(second, encoding="utf-8")
+    journal.record_edit("session", "turn-2", "tool-2", readme, state_root=state_root)
+    session_state.update_state("session", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+
+
+def test_a_reflow_only_turn_makes_no_luna_call(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_turn_after(tmp_path, state_root, _sections(reflowed=3))
+    provider = Provider()
+    payload = {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False, "cwd": str(tmp_path)}
+
+    response = claude_luna.run(payload, provider=provider, state_root=state_root, **_luna_paths(tmp_path))
+
+    assert response == {} and provider.requests == []
+
+
+def test_a_reflow_beside_a_real_edit_sends_only_the_edited_hunk(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    _readme_turn_after(tmp_path, state_root, _sections(reflowed=3, edited=15))
+
+    ((request, _rows),) = claude_luna.stop_request({"session_id": "session", "stop_hook_active": False}, state_root)
+
+    assert "Section 15 explains how the hook parses a file." in request.source_context
+    assert "Section 3 explains" not in request.source_context
+
+
 def _luna_paths(tmp_path: Path) -> dict:
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
     claude_native.set_preset("luna", settings_path=settings, preset_path=preset)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import difflib
+import re
 from bisect import bisect_left
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
@@ -16,7 +17,9 @@ try:
     from .findings import BLOCK_RULES
     from .markup import MIXED_LANGUAGE_EXTS
     from .pattern_semantic import prose_source
-    from .prose_structure import _markdown_prose_lines, _paragraph_groups, sentence_spans
+    from .prose_structure import (
+        LIST_ITEM_RE, Paragraph, ProseLine, SentenceSpan, _markdown_prose_lines, _paragraph_groups, sentence_spans,
+    )
     from .scanner import _is_prose
 except ImportError:
     import german_rules
@@ -25,7 +28,9 @@ except ImportError:
     from findings import BLOCK_RULES
     from markup import MIXED_LANGUAGE_EXTS
     from pattern_semantic import prose_source
-    from prose_structure import _markdown_prose_lines, _paragraph_groups, sentence_spans
+    from prose_structure import (
+        LIST_ITEM_RE, Paragraph, ProseLine, SentenceSpan, _markdown_prose_lines, _paragraph_groups, sentence_spans,
+    )
     from scanner import _is_prose
 
 # Floored because a key like } or pass recurs too often to prove a move.
@@ -35,6 +40,10 @@ ENDING_RULES = frozenset({"uniform_paragraph_endings"})
 OWNED_RULES = SCANNER_ALWAYS_BLOCKING_RULES | FIXED_OBSERVE_RULES
 DIFF_UNITS_PER_SECOND = 200_000
 MAX_DIFF_CELLS = 50_000
+# Capped because a block of bare lines would otherwise diff as one sentence.
+MAX_UNBROKEN_LINES = 3
+ORDERED_ITEM_RE = re.compile(r"^\s*(\d+)[.)]\s+")
+TERMINAL_RE = re.compile(r"[.!?][\"')\]]*$")
 Check = Callable[[], object]
 
 
@@ -81,17 +90,50 @@ def _code_units(text: str) -> list[Unit]:
     return [Unit(key, number, number) for number, line in enumerate(text.splitlines(), 1) if (key := _normal(line))]
 
 
+def _interrupts(line: str, paragraph: Paragraph, in_list: bool) -> bool:
+    """Only 1 interrupts prose, because CommonMark keeps a reflowed "12." inside its paragraph."""
+    if not LIST_ITEM_RE.match(line):
+        return False
+    ordered = ORDERED_ITEM_RE.match(line)
+    return not (paragraph and not in_list and ordered and int(ordered.group(1)) != 1)
+
+
+def _paragraphs(path: str, lines: list[ProseLine]) -> list[Paragraph]:
+    if PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS:
+        return _paragraph_groups(path, lines)
+    found: list[Paragraph] = []
+    paragraph: Paragraph = []
+    in_list = False
+    for number, line in lines:
+        if line.strip() and not _interrupts(line, paragraph, in_list):
+            paragraph.append((number, line.strip()))
+            continue
+        in_list = bool(line.strip())
+        if paragraph:
+            found.append(paragraph)
+            paragraph = []
+    return [*found, paragraph] if paragraph else found
+
+
+def _span_units(span: SentenceSpan, ending: bool, texts: dict[int, str]) -> list[Unit]:
+    """Per line past the cap, because an unterminated run of bare lines is no sentence."""
+    if span.last - span.first < MAX_UNBROKEN_LINES or TERMINAL_RE.search(span.text):
+        return [Unit(_normal(span.text), span.first, span.last, span.start, span.end, ending)]
+    middle = [Unit(_normal(texts[number]), number, number) for number in range(span.first + 1, span.last)]
+    first = Unit(_normal(texts[span.first][span.start:]), span.first, span.first, span.start)
+    last = Unit(_normal(texts[span.last][:span.end]), span.last, span.last, 0, span.end, ending)
+    return [first, *middle, last]
+
+
 def _sentence_units(path: str, text: str) -> tuple[list[Unit], dict[int, str]]:
     lines = list(_markdown_prose_lines(prose_source(path, text)))
     texts: dict[int, str] = {}
     units: list[Unit] = []
-    for paragraph in _paragraph_groups(path, lines):
+    for paragraph in _paragraphs(path, lines):
         texts.update(paragraph)
         spans = list(sentence_spans(paragraph))
-        units.extend(
-            Unit(_normal(span.text), span.first, span.last, span.start, span.end, index == len(spans) - 1)
-            for index, span in enumerate(spans)
-        )
+        for index, span in enumerate(spans):
+            units.extend(_span_units(span, index == len(spans) - 1, texts))
     return [unit for unit in units if unit.key], texts
 
 

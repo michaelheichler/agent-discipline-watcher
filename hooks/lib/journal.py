@@ -553,12 +553,14 @@ def _stop_row(row: dict[str, Any]) -> dict[str, Any]:
             "text": str(row.get("text", ""))[:MAX_PATTERN_CHARS],
         }
     before = row.get("before_context")
+    before = before if isinstance(before, str) else ""
+    path = str(row.get("path", ""))
     return {
         "role": "document",
-        "path": str(row.get("path", ""))[:512],
+        "path": path[:512],
         "content_hash": str(row.get("content_hash", ""))[:64],
         "turn_id": str(row.get("turn_id", ""))[:64],
-        "hunks": changed_hunks(before if isinstance(before, str) else "", str(row.get("source_context", ""))),
+        "hunks": changed_hunks(path, before, str(row.get("source_context", ""))),
     }
 
 

@@ -1,0 +1,20 @@
+{
+  "components": [],
+  "createdBy": "t045-step4",
+  "dedupeKey": "t045-step4:terminated-bare-block",
+  "discoveredDate": "2026-10-20",
+  "id": "ISS-011",
+  "impact": "provenance._span_units splits a span over 3 lines into line units only when it does not end with . ! or ?. A block of bare lines whose last line ends with a period stays one unit, so a one-line edit marks the whole block and the reviewer gets it all. Real long sentences stay reflow-proof under the current rule. Check in the T-045 QA pass with real session data whether a line-count cap for terminated spans is worth the reflow cost.",
+  "location": [
+    "hooks/lib/provenance.py"
+  ],
+  "phase": "test-gate",
+  "relatedTickets": [
+    "T-045"
+  ],
+  "resolution": null,
+  "resolvedDate": null,
+  "severity": "low",
+  "status": "open",
+  "title": "Provenance keeps a bare block that ends with a period as one unit"
+}

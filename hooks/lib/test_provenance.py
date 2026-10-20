@@ -335,3 +335,40 @@ def test_every_rule_that_emits_an_end_line_is_a_block_rule(case: Case) -> None:
 ])
 def test_sentence_spans_split_like_the_released_splitter(paragraph: list, expected: list) -> None:
     assert [(span.first, span.text) for span in sentence_spans(paragraph)] == expected
+
+
+@pytest.mark.parametrize(("number", "expected"), [
+    pytest.param(12, frozenset(), id="a-later-number-continues-the-paragraph"),
+    pytest.param(1, frozenset({3, 4}), id="one-starts-a-list"),
+])
+def test_a_reflow_that_puts_a_number_at_a_line_start_counts_only_when_it_starts_a_list(
+    number: int, expected: frozenset[int],
+) -> None:
+    before = INTRO + f"The upgrade moved everyone to version {number}. The old servers went offline.\n"
+    after = INTRO + f"The upgrade moved everyone to version\n{number}. The old servers went offline.\n"
+
+    assert compare("doc.md", before, after).changed_lines == expected
+
+
+def test_a_one_line_edit_in_a_block_of_bare_lines_marks_only_that_line() -> None:
+    roster = [f"Entry {number} in the roster" for number in range(1, 41)]
+    edited = [*roster[:19], "Entry twenty in the roster", *roster[20:]]
+
+    assert compare("doc.md", _joined(roster), _joined(edited)).changed_lines == frozenset({20})
+
+
+def test_a_one_word_edit_in_a_long_wrapped_sentence_marks_the_whole_sentence() -> None:
+    sentence = (
+        "The hook reads the file\nand checks every rule\nagainst the stored config\n"
+        "before it writes the report\nto the ledger on disk.\n"
+    )
+
+    result = compare("doc.md", INTRO + sentence, INTRO + sentence.replace("stored", "merged"))
+
+    assert result.changed_lines == frozenset({3, 4, 5, 6, 7})
+
+
+def test_an_edit_to_a_numbered_item_leaves_the_wrapped_item_before_it_unchanged() -> None:
+    steps = "Steps:\n\n1. Install the hook into the\n   repository root.\n2. Restart the shell so the\n   hook loads.\n"
+
+    assert compare("doc.md", steps, steps.replace("Restart", "Reload")).changed_lines == frozenset({5})

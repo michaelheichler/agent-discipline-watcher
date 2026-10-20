@@ -7,12 +7,12 @@ from typing import NamedTuple
 
 from . import journal
 from .config import JUDGED_STATE, gate_state, rule_state
-from .document_hunks import changed_lines
 from .markup import _strip_english_hidden
 from .parataxis import Run, Sentence, runs_in, shown
 from .parataxis_lexicon import RULES
 from .pattern_language import line_languages
 from .pattern_semantic import prose_source
+from .provenance import compare
 from .scanner import _active_families, _is_exempt, _is_prose
 
 NEIGHBOURS = 2
@@ -81,7 +81,7 @@ def record(turn: EditTurn, path: str | Path) -> list[dict]:
             return []
         digest, text = source
         before = journal.turn_before(turn.session_id, path, digest, turn.state_root)
-        changed = None if before is None else changed_lines(before, text)
+        changed = None if before is None else compare(str(path), before, text).changed_lines
         rows = [_row(run) for run in review_runs(str(path), text, turn.config) if _touched(run, changed)]
         if not rows:
             return []

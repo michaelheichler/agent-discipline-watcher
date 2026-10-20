@@ -115,6 +115,12 @@ def test_a_run_over_one_changed_and_one_unchanged_sentence_reaches_the_reviewer(
     assert [row["line"] for row in rows] == [1]
 
 
+def test_a_reflowed_inherited_run_does_not_reach_the_reviewer(tmp_path: Path) -> None:
+    reflowed = ENGLISH_CHAIN.replace("checks ", "checks\n")
+
+    assert _second_turn(tmp_path, ENGLISH_CHAIN, reflowed) == []
+
+
 def test_an_edit_to_the_sentence_after_an_inherited_run_leaves_the_run_alone(tmp_path: Path) -> None:
     run = ENGLISH_CHAIN.replace(". ", ".\n")
 

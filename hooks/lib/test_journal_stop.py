@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from lib import document_hunks, journal, session_state
 
 
@@ -156,10 +158,20 @@ def test_each_turn_gets_its_own_review_rounds(tmp_path: Path) -> None:
     assert served == ["first", "second", "fourth"]
 
 
-def test_a_deletion_only_edit_is_not_served_and_counts_as_reviewed(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("before", "after"), [
+    pytest.param(
+        "\n".join(f"Line {number}." for number in range(1, 11)),
+        "\n".join(f"Line {number}." for number in range(1, 11) if number not in (4, 5)),
+        id="deletion-only"),
+    pytest.param(
+        "The hook reads each file and checks every\nrule. It writes the report to the ledger.\n",
+        "The hook reads each file\nand checks every rule. It writes the\nreport to the ledger.\n",
+        id="reflow-only"),
+])
+def test_an_edit_that_adds_no_words_is_not_served_and_counts_as_reviewed(
+    tmp_path: Path, before: str, after: str,
+) -> None:
     doc = tmp_path / "a.md"
-    before = "\n".join(f"Line {number}." for number in range(1, 11))
-    after = "\n".join(f"Line {number}." for number in range(1, 11) if number not in (4, 5))
     row = {**_document(doc, "cut", "turn-1"), "before_context": before, "source_context": after}
     state_root = _store(tmp_path, [row])
 
