@@ -45,11 +45,12 @@ class Provenance:  # owns(finding), changed_lines, removed_seams, growth(first, 
 
 1. Units. A prose file uses `prose_source`, then paragraphs, then sentences split by `SENTENCE_BREAK_RE` with their spans. A span-yielding sibling in `prose_structure.py` keeps one splitter. Every non-blank host line that no sentence covers becomes a line unit. In code, every non-blank line is a unit.
 2. Normalization with `" ".join(text.split())`, so a reflowed sentence keeps its key and a reindented code line stays unchanged.
-3. Alignment. Trim the common prefix and suffix, then run `difflib.SequenceMatcher(None, old_mid, new_mid, autojunk=False)` on the middle. `equal` means unchanged and anything else means changed.
+3. Alignment. Trim the common prefix and suffix. Units that occur exactly once on each side become anchor pairs, and the longest chain that rises on both sides (patience sorting) splits the middle into gaps. Each gap runs `difflib.SequenceMatcher(None, old_gap, new_gap, autojunk=False)`. `equal` and the anchors mean unchanged, and anything else means changed. The anchors exist because one SequenceMatcher over 25k lines of real repo code with 2 percent of lines edited took 7.6 s, since repeated lines such as `}` make it quadratic.
 4. Moved units. A `Counter` of old keys outside `equal` blocks marks a changed new unit as moved when its key has at least 12 characters. The counter makes an extra copy owned, and the length floor stops `}` or `pass` from laundering a new finding.
 5. `owns(finding)`.
    - Always-blocking and fixed-observe rules stay owned, as at `baseline.py:133`. `_length_relief` keeps the growth and generated-marker rules for `file_too_long` and `unscannable_file`.
    - `function_too_long` and `oversized_list` count as owned when the span grew. Otherwise rewording one line of an inherited long function would demand a refactor.
+   - A block-scoped finding (a rule in `findings.BLOCK_RULES` or any finding with `end_line > line`) counts as owned when a removal seam lies in `[line, end_line]`, so deleting a sentence inside a paragraph or after its last line makes the paragraph finding owned. A seam is the line a removal follows, with 0 for the top. The size rules above keep the growth rule only.
    - `uniform_paragraph_endings` counts as owned when a paragraph-ending unit changed.
    - Every other finding counts as owned when any unit in `[line, end_line]` changed. A prose finding in a prose file narrows to the sentence holding its match.
 6. Merges. `compare_any` marks a unit changed only when it changed against every parent. This replaces pooling at `baseline.py:287`.
@@ -62,7 +63,21 @@ In `baseline.py`, `_against` builds a `Provenance` instead of scanning the basel
 
 The Stop rescan has 7 s (`stop_scan.py:23`) and files go up to 1 MB. Today the split rescans the baseline at about 250 KB/s, which costs about 4 s on a 1 MB file. The new cost is one masking pass and a regex split per text, plus a diff over the trimmed middle.
 
-A `DIFF_UNITS_PER_SECOND` rate measured by a benchmark test feeds `fits_deadline`. If the middle passes `MAX_DIFF_CELLS`, every middle unit counts as changed, which is the conservative answer. The target is under 300 ms for a 1 MB rewrite.
+A `DIFF_UNITS_PER_SECOND` rate measured by a benchmark test feeds `fits_deadline`. When the middle holds more units than the remaining time allows at that rate, every middle unit counts as changed, which is the conservative answer. `MAX_DIFF_CELLS` caps the equal pairs inside one gap rather than the full rectangle, because repeated units are what slow SequenceMatcher down, and a gap over the cap counts as changed. The engine ships with 200,000 units per second and 50,000 cells, and a single gap with 48,873 equal pairs took 0.12 s. The target is under 300 ms for a 1 MB rewrite.
+
+Measured on 2026-10-20 with `compare`, best of three runs:
+
+| Input | Time | Changed units |
+|---|---|---|
+| 1 MB markdown, full rewrite | 98 ms | 15822 of 15822 |
+| 1 MB markdown, every other paragraph edited | 97 ms | 1461 of 15815 |
+| 1 MB markdown, reflowed | 83 ms | 0 |
+| 1 MB markdown, paragraphs shuffled | 100 ms | 0 |
+| 1 MB markdown, unchanged | 43 ms | 0 |
+| 25k lines of real repo code, 2 percent edited | 42 ms | 414 of 20735 |
+| 25k lines of real repo code, 20 percent edited | 47 ms | 4143 of 20735 |
+| 25k lines of real repo code, every line edited | 32 ms | 20735 of 20735 |
+| 25k synthetic repetitive code lines, 2 percent edited | 34 ms | 500 of 25000 |
 
 ## 6. Behaviors to test
 

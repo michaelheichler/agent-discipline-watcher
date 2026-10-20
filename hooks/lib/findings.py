@@ -47,6 +47,12 @@ _FINDING_KEYS = frozenset({
     "content_hash", "match", "language", "end_line",
 })
 _REQUIRED_KEYS = frozenset(_RequiredFindingDict.__annotations__)
+BLOCK_RULES = frozenset({
+    "low_sentence_variance", "uniform_paragraph_endings", "oversized_list", "three_item_list",
+    "choppy_sentences", "de_parataxis", "de_uniform_rhythm", "de_uniform_paragraphs",
+    "de_repeated_connector", "de_long_compound", "dash_cluster",
+    "prose_comment_block", "docstring_narration", "function_too_long", "hollow_test",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,4 +154,7 @@ class Finding:
 
 
 def spanning(row: dict, end_line: int | None) -> dict:
+    """Strict, because provenance reads BLOCK_RULES to decide which findings skip match narrowing."""
+    if row["rule"] not in BLOCK_RULES:
+        raise ValueError("spanning finding names an undeclared block rule: " + row["rule"])
     return row if end_line is None else Finding.from_dict(row).with_end_line(end_line).to_dict()

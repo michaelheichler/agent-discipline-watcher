@@ -8,10 +8,10 @@ from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
 try:
-    from ..findings import Finding, spanning
+    from ..findings import Finding
     from ..prose_language import ParagraphLanguage
 except ImportError:
-    from findings import Finding, spanning
+    from findings import Finding
     from prose_language import ParagraphLanguage
 
 FAMILY = "english"
@@ -105,13 +105,13 @@ def default_gates(rule_sets: Iterable[RuleSet] | None = None) -> dict[str, str]:
     return {rule.name: rule.state for rule in declared(rule_sets)}
 
 
-def _finding(path: str, rule: Rule, hit: Hit) -> dict:
+def _finding(path: str, rule: Rule, hit: Hit) -> Finding:
     return Finding(
         family=FAMILY, rule=rule.name, line=hit.line,
         detail=rule.english.title + " in " + path, force=False,
         snippet=hit.snippet.strip()[:180] or hit.match, action=rule.english.action,
         path=None, severity=None, tool_use_id=None, match=hit.match,
-    ).to_dict()
+    )
 
 
 def _set_findings(rule_set: RuleSet, path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
@@ -122,7 +122,9 @@ def _set_findings(rule_set: RuleSet, path: str, paragraphs: list[ParagraphLangua
     for hit in rule_set.check(path, paragraphs):
         if hit.rule not in named:
             raise ValueError("German rule hit names an undeclared rule: " + hit.rule)
-        rows.append(spanning(_finding(path, named[hit.rule], hit), ends.get(hit.line)))
+        finding = _finding(path, named[hit.rule], hit)
+        end_line = ends.get(hit.line)
+        rows.append((finding if end_line is None else finding.with_end_line(end_line)).to_dict())
     return rows
 
 

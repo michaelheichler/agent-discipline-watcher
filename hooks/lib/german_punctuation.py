@@ -4,10 +4,10 @@ from __future__ import annotations
 import re
 
 try:
-    from .findings import Finding
+    from .findings import Finding, spanning
     from .prose_language import GERMAN
 except ImportError:
-    from findings import Finding
+    from findings import Finding, spanning
     from prose_language import GERMAN
 
 # Kept because T-010 has not measured them yet.
@@ -58,10 +58,10 @@ def dash_cluster_findings(path: str, lines: list[str], languages: list[str]) -> 
     if not _is_cluster(len(dash_lines), words):
         return []
     first = dash_lines[0]
-    return [Finding(
+    return [spanning(Finding(
         family="punctuation", rule="dash_cluster", line=first,
         detail=f"{len(dash_lines)} spaced dashes in {words} German words in {path}",
         force=True, snippet=lines[first - 1].strip()[:180],
         action="Replace some dashes with a comma, period, or colon.",
-        path=None, severity=None, tool_use_id=None, match="\u2013", language=GERMAN, end_line=dash_lines[-1],
-    ).to_dict()]
+        path=None, severity=None, tool_use_id=None, match="\u2013", language=GERMAN,
+    ).to_dict(), dash_lines[-1])]

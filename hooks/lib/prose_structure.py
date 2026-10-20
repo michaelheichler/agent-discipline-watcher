@@ -63,6 +63,14 @@ class _ListSpan(NamedTuple):
     count: int
 
 
+class SentenceSpan(NamedTuple):
+    first: int
+    start: int
+    last: int
+    end: int
+    text: str
+
+
 def _next_fence(line: str, fence: str | None) -> tuple[str | None, bool]:
     marker = FENCE_RE.match(line)
     if not marker:
@@ -119,6 +127,12 @@ def _paragraphs(lines) -> Iterator[list[tuple[int, str]]]:
 
 
 def _sentences(paragraph) -> Iterator[tuple[int, str]]:
+    for span in sentence_spans(paragraph):
+        yield span.first, span.text
+
+
+def sentence_spans(paragraph: Paragraph) -> Iterator[SentenceSpan]:
+    """Columns index the stripped paragraph lines, because provenance places a match by them."""
     offsets = []
     chunks = []
     size = 0
@@ -127,18 +141,29 @@ def _sentences(paragraph) -> Iterator[tuple[int, str]]:
         chunks.append(line)
         size += len(line) + 1
     prose = " ".join(chunks)
+    for start, end in _sentence_bounds(prose):
+        first, column = _position(offsets, start)
+        last, stop = _position(offsets, max(end - 1, start))
+        yield SentenceSpan(first, column, last, stop + 1, prose[start:end])
+
+
+def _sentence_bounds(prose: str) -> Iterator[tuple[int, int]]:
     start = 0
     for boundary in SENTENCE_BREAK_RE.finditer(prose):
-        yield _source_line(offsets, start), prose[start:boundary.start()]
+        yield start, boundary.start()
         start = boundary.end()
     if prose[start:].strip():
-        yield _source_line(offsets, start), prose[start:]
+        yield start, len(prose)
+
+
+def _position(offsets: list[tuple[int, int]], start: int) -> tuple[int, int]:
+    """Bisected, because a scan from the first line for every sentence made a long paragraph quadratic."""
+    size, number = offsets[max(bisect_right(offsets, (start, float("inf"))) - 1, 0)]
+    return number, start - size
 
 
 def _source_line(offsets: list[tuple[int, int]], start: int) -> int:
-    """Bisected, because a scan from the first line for every sentence made a long paragraph quadratic."""
-    index = bisect_right(offsets, (start, float("inf"))) - 1
-    return offsets[max(index, 0)][1]
+    return _position(offsets, start)[0]
 
 
 def _sentence_word_counts(paragraph: Paragraph) -> list[int]:
