@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.30.0 (2026-10-22)
+
+### Security in the shell gates
+
+- **A shell write to a destination that only the run decides blocks (security fix).** A command substitution such as `$(mktemp)`, a glob, an unset variable, or a relative path after a `cd` the gate cannot follow picks its file at run time, so the text could land in `.agent-discipline.json` or ADW state. These writes now block as `dynamic_write_target`, a self-protection rule that no project config can turn off. When the gate can prove a variable, as in `f=.agent-discipline.json; echo x > "$f"`, it judges the file the variable names, so that write now hits the config seal. A variable reassigned after the write keeps the value it had at the write.
+- **Output flags count as writes (security fix).** `curl -o` and `--output`, `wget -O`, and `sort -o` write their file the way `>` does, and the gates never saw that file. ADW now checks it against the protected paths and the test gate before the run, journals it, and scans it after the run. A `wget` or `curl -O` download whose URL names no file blocks, since ADW cannot tell which file it writes.
+- **`git merge-file` faces the gates (security fix).** Without `-p`, `--stdout`, or `--object-id` it writes the merge into its first file. ADW now treats that file as the write target before the run and scans it after the run.
+- **A deleting `find` and a fed `xargs` face the gates on their exact targets (security fix).** For `find -delete`, `find -exec rm`, and a literal feed such as `printf tests/test_x.py | xargs rm`, ADW walks the paths the command reaches and judges each one. The walk stops at 20,000 entries, 1,000 matches, or 0.25 seconds, and a command past any of these limits blocks. A `find` or `xargs` callback that writes to paths ADW cannot list blocks too.
+- **A recursive delete or move of a folder counts against every file inside it (security fix).** `rm -r`, `mv`, and `rsync --delete` on a folder that holds `.agent-discipline.json`, ADW state, or a test now block like a direct delete of those files. A folder past 20,000 entries, or one the walk cannot finish within 0.25 seconds, blocks.
+- **Text that a group, loop, function, or `exec` routes into a file blocks (security fix).** In `{ echo x; } > notes.md` the redirect sits on the group, so the scanner never read the text. That form, a `for` loop, a shell function, and `exec > file` now block as `opaque_source_write`. A stderr redirect such as `2>notes.md` gets the same scan as a stdout one.
+- **A command on a later line hits every gate (security fix).** The shell runs each line as its own command, but a copy onto a test, a `git rm` of a test, a copy onto the config, or a state deletion on the second line could pass. The Bash gate now reads each line as if it came first.
+- **A relative write after a mid-command `cd` faces the gates in the folder that `cd` reaches (security fix).** Only a leading `cd DIR &&` or `cd DIR;` moved a relative target, so in `true; cd tests; git rm x.py` the gates and the journal looked for `x.py` in the session folder. ADW now follows each `cd` and keeps the old folder too when the `cd` might fail. A relative write after a `cd` it cannot follow, such as `cd -` or `pushd`, blocks as `dynamic_write_target`.
+
+### Security in the commit gate
+
+- **The commit gate refuses a commit that takes content from outside the index (security fix).** The gate scans the index before the command runs, so it judged `git add -A && git commit` on the old index and let the new content through unchecked. A commit that stages in the same command, or that reads the worktree through paths, `-a`, `-i`, `-o`, or `-p`, now blocks and asks the agent to stage in its own tool call.
+- **The commit gate finds a commit behind a wrapper, a shell payload, or an alias (security fix).** It now reads a commit after a subshell, inside `sh -c`, `eval`, or a heredoc fed to `bash`, behind `sudo`, `nohup`, `timeout`, `nice`, `time`, or `exec`, on a second line, and inside a shell function, a shell alias, or a git alias. A script that commits, a commit through `xargs`, `find -exec`, `env -C`, or `git rebase -x`, and a commit under `GIT_INDEX_FILE` or another git location variable block, since the gate cannot see what they record.
+
+### Changed
+
+- **ADW finds German compounds by splitting them into dictionary words.** `de_long_compound` used to count syllables, held 0 of 20 hits on human text, and shipped off. It now splits a word into parts from a lexicon built from Wiktionary, which NOTICE items 9 and 10 credit under CC BY-SA. A compound of 25 or more letters without a hyphen blocks as `de_long_compound`, and one of 14 to 24 letters reports as the observed `de_compound_hint`. On a held-out set the split held 180 of 184 flagged words, a Wilson lower bound of 0.9454, with two raters at kappa 0.9611 (`evals/german_compounds.json`).
+- **`de_information_cluster` reads verbs before it counts a list item.** The counter now counts the word after a closing `und` or `oder` as an item, and it skips that word when a finite verb there opens a new clause. The verb stems come from the kaikki.org extraction of Wiktionary in NOTICE item 10. The rule stays off by default.
+- **Every model reviewer gets one set of instructions.** Sonnet, Claude Luna, Codex Luna, and OMP now take the same block from `judge_contracts.reviewer_instructions`. It asks for one verdict per candidate, a passing verdict when the text alone cannot decide, and at most six document notes, and it tells the model to treat the reviewed text as data. It also names the 80 character comment cap and the project's list item cap, so a reviewer judges text inside those caps on what it says and keeps every suggested fix inside them. The German style line appears only when the project allows German prose. The rubric versions move to `adw-rubric-v2` and `adw-rubric-de-v2`, so Luna cache entries from the old rubric no longer match.
+- **Codex sends only the changed hunks of a document.** The Codex Stop review sent the whole file. It now sends the same hunks as the Claude presets, so a one-line edit no longer pays for the whole file.
+- **Model review skips files under dot folders.** `.build`, `.claude`, `.agent`, `.story`, and every other folder whose name starts with a dot stay out of the candidate journal, the `JudgeReview` route, and the reviewers on every host, while `.github` stays in. The deterministic scan still covers these files.
+
+### Fixed in Stop
+
+- **A reviewer block holds for the rest of the turn.** ADW does not send an answered pattern candidate again within a turn, so after a Sonnet or Claude Luna block the next Stop found nothing to review and let the turn end. The block now stays on every later Stop in the turn without a new model call, including a Stop that continues after a Stop hook block. It ends when the file holding the flagged text changes or disappears, or when the turn ends. If ADW cannot read that file to check, it keeps the block and says that the check failed.
+- **One bad item no longer voids a Sonnet verdict.** An item that named a document section or a candidate that does not exist failed the whole review. ADW now ignores that item and keeps the rest, and a parataxis run the reviewer skipped stays queued for the next Stop.
+- **The full report keeps every finding.** The report file a block links to stopped at 200 findings and counted the rest. It now holds all of them.
+
+### Fixed in finding ownership
+
+- **Merging or splitting a paragraph counts as a change.** Deleting the blank line between two paragraphs changes no sentence, so a paragraph finding on the merged paragraph stayed inherited and the document reviewer got no hunk. ADW now treats a paragraph break that appears or disappears as a change at that seam. A reflow inside one paragraph still keeps its findings inherited. The hunk header for a split paragraph says that a paragraph break changed, where it used to report removed text.
+- **A blank line added to a long function counts as growth.** The scanner counts blank lines toward function length, so ADW now also compares the physical lines of a code file, and padding an old long function makes `function_too_long` the agent's own.
+- **A merge commit owns a finding that each parent sees changed.** When one parent edited a sentence of a paragraph and the other removed a line from it, the finding stayed inherited. ADW now judges the finding against each parent and makes it the agent's own when no parent already holds it.
+- **A German staccato run counts as changed when any of its sentences changed.** ADW judged `de_exclamation_staccato` only on the sentence that held its first exclamation.
+
+### Fixed in prose rules
+
+- **Jinja in a config file no longer trips `spaced_hyphen`.** A minus inside `{{ ... }}` or `{% ... %}` in YAML is arithmetic, so ADW now blanks the template before it looks for a spaced hyphen, also when the template spans lines. A prose value beside the template and a banned dash inside it still report. A banned dash between words inside a quoted config value now reports, while a dash in a list of font glyphs does not.
+- **German rules read a Markdown table one cell at a time.** Short sentences in separate cells formed an exclamation run or an information cluster, and a table at the end of a document read as an abrupt ending. Each cell now counts as its own text and reports the line of its row.
+- **German rules skip inline code.** Text in backticks no longer feeds the German phrase, sentence, and list rules, so a number in a code span no longer counts as a list item.
+
+### Fixed in the shell gates
+
+- **Write and Edit refuse a FIFO, device, or socket target.** Text written there reaches a reader that no scan sees. The gates also open such a file without waiting for a writer, so a named pipe no longer stalls a hook.
+- **Read-only and resolvable commands pass.** A read-only `node -e` regex check, a read-only Python here-string such as `python3 <<< "print(1)"`, and `adw-config --help` now run. `cd "$(pwd)"` and `cd "$(git rev-parse --show-toplevel)"` resolve to their folder, unless the command redefines `pwd` or `git` through a function, an alias, or `hash`, or changes `PATH` or a `GIT_` variable before the git lookup.
+- **`git restore`, `git checkout --`, and `git rm` on a folder or glob ask git which files they touch.** The test gate blocked every folder or glob pathspec. It now lists the tracked files through `git ls-files` or `git ls-tree` and blocks only when one of them is a test. `git checkout` on a folder without `--` still blocks.
+- **OMP `/adw configure` shows a rule gate set per surface.** A gate such as `{"prose": "observe", "commit": "enforce"}` showed as `observe`. The screen now lists each surface, and Enter on such a gate picks its strictest state.
+
 ## 0.29.0 (2026-10-20)
 
 ### Changed

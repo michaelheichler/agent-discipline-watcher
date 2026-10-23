@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.29.0**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.30.0**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -10,7 +10,7 @@ The watcher reads what an agent writes and names what is wrong with it. Every fi
 
 **Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
 
-**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the lines the agent changed this turn and a few lines around them. It names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. The reader judges the changed lines only. The lines around them help it understand the change, and it never flags them. Each hunk carries its line range, so these questions stay meaningful on a partial view. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset, and they still read the whole file.
+**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the lines the agent changed this turn and a few lines around them. It names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. The reader judges the changed lines only. The lines around them help it understand the change, and it never flags them. Each hunk carries its line range, so these questions stay meaningful on a partial view. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset. Codex sends the same changed hunks, and OMP still reads the whole file.
 
 Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
 
@@ -46,7 +46,7 @@ All three corpora rebuild byte for byte. See `evals/README.md`.
 
 Known mutations go through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
 
-Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it.
+Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it. It reads the index before the command runs, so a commit that stages in the same command, or that takes content from the worktree through paths, `-a`, `-i`, `-o`, or `-p`, blocks. Stage in one tool call and commit in the next.
 
 Text rules do not apply to binary assets such as screenshots, PDFs, fonts, archives, and audio or video files. The scanner requires both a recognized asset extension and content evidence before skipping one. An image filename alone does not exempt code or text stored under it. Commit checks classify the staged bytes, not the working copy, and PostToolUse and Stop apply the same policy before counting lines. Missing files, unreadable source, unknown file types, SVG markup, prose, and commit messages retain their existing checks.
 
@@ -62,6 +62,8 @@ On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP jud
 
 Temp files are not project output. The temp roots are `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, and `/var/folders`. For a file outside the project root, a temp root means no prose, comment, or code findings. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A redirect from a temp file into the project gets the full scan of the destination. If the agent wrote the temp source, a `cp`, `mv`, `install`, or `rsync` from temp gets the full scan. The next section has the details.
 
+Files under a dot-directory are not project output either. `.build`, `.claude`, `.agent`, `.story`, and every other directory whose name starts with a dot stay out of model review, while `.github` stays in. The scanner still gives such a file every deterministic finding. The candidate journal skips its document and comment rows, the Stop reviewers on Claude Code and Codex drop every queued row for it, and the OMP review leaves it out. The project root is the Git root above the working directory, or the working directory itself when no repository holds it. Only the part of a path below that root counts, so a project that itself lives under a dot-directory keeps its review. A path outside the project leaves review when any directory in it starts with a dot, such as `~/.claude/projects/x/memory/note.md`.
+
 The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
 
 ## Stop loops and imported content
@@ -71,7 +73,7 @@ A gate blocks only on text the agent wrote. If the agent changed nothing, Stop d
 1. **Copies.** A copy from temp lands the files its source holds, under the names the copy gives them. Files that were already in the destination are not part of it.
 2. **Authored or imported.** ADW checks who wrote the temp source. If the agent wrote it in this session, the copy counts as the agent's own. Write, Edit, and a redirect count as writes. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row. The record of authored temp paths never drops a path. At 200,000 paths, ADW refuses a new scratch write and asks for a project path or a new session.
 3. **Baselines.** An unchanged imported file never blocks, including `file_too_long` and `unscannable_file`. Before the first edit of an untracked or non-git file, ADW takes the same kind of snapshot. Git HEAD stays the baseline for tracked files.
-4. **Ownership.** After an edit, ADW diffs the baseline against the current text by units, sentences in prose and lines in code. A finding on a unit the agent changed belongs to the agent and blocks, so rewording an old offending sentence makes it the agent's own. A finding on an unchanged or moved unit stays inherited. A reflowed paragraph or a reindented block keeps its findings inherited. A paragraph or block finding becomes the agent's own when any unit in its span changes or a deletion falls inside it, and `function_too_long` and `oversized_list` only when their span grows. An edit to masked text alone, such as an HTML attribute or a link URL, leaves the prose unchanged. The commit gate compares against HEAD and every incoming parent, and it applies the same growth rule for long files as Stop.
+4. **Ownership.** After an edit, ADW diffs the baseline against the current text by units, sentences in prose and lines in code. A finding on a unit the agent changed belongs to the agent and blocks, so rewording an old offending sentence makes it the agent's own. A finding on an unchanged or moved unit stays inherited. A reflowed paragraph or a reindented block keeps its findings inherited. A paragraph or block finding becomes the agent's own when any unit in its span changes or a deletion falls inside it, and `function_too_long` and `oversized_list` only when their span grows. Joining two paragraphs or splitting one counts as a change where the break appeared or went away. In code a blank line counts toward growth, since it counts toward function length too. An edit to masked text alone, such as an HTML attribute or a link URL, leaves the prose unchanged. The commit gate compares against HEAD and every incoming parent, and it applies the same growth rule for long files as Stop. A merge makes a finding the agent's own only when no parent already holds it.
 5. **Long and large files.** Data files give no `file_too_long`. The list is `.json .jsonl .csv .tsv .lock .map .svg .xml .sql *.min.*` plus lockfiles such as `uv.lock`. Over the byte limit they give no `unscannable_file` while they are valid UTF-8. If an edit makes any other file longer than its baseline, `file_too_long` blocks over the length limit. An edit that does not add lines leaves it alone. The baseline is git HEAD, the import snapshot, or the first-seen snapshot. If the baseline had a generated marker such as `DO NOT EDIT`, the marker relieves growth.
 6. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. A fingerprint that holds a finding the agent wrote this session blocks 5 identical Stops, or `stop_stall_limit` times if that is higher. The next Stop ends the turn with a system message that lists the unfixed findings and the report, and its `stop_stall` ledger row carries the family `own_finding`. A fingerprint without such a finding, for example inherited findings under `baseline: none`, blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. In both cases Stop then stays silent until a file or a finding changes.
 7. **Budget.** The Stop rescan stops after 7 seconds and blocks with the number of files it did not scan. A scope tracks at most 500 files. Older files without a pending finding leave the rescan with one notice. A file with a pending finding never leaves, so a scope where every file has one grows past 500 and the 7 second budget names the files it did not reach.
@@ -142,10 +144,15 @@ uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora
 
 **Gate policy.** Three bands decide what a German rule does. A Wilson lower bound of 0.85 or more blocks (decision Q23). A point precision above 0.70 reports. A point precision of 0.70 or less turns the rule off (N-009). An unmeasured rule stays at observe. `evals/german_static_precision.json` and `evals/judge_stage_de.json` hold the numbers, and `hooks/lib/test_german_rule_registry.py` checks every measured rule against the 0.70 bar.
 
-Two measured rules block German lines today.
+Three measured rules block German lines today.
 
 1. `de_meta_commentary` holds 40 of 40, lower bound 0.9124.
 2. `spaced_hyphen` holds 39 of 40, lower bound 0.8712.
+3. `de_long_compound` rests on the compound split, which holds 180 of 184 flagged words on a held-out set, lower bound 0.9454, recorded in `evals/german_compounds.json`.
+
+**Compounds.** `hooks/lib/german_compounds.py` splits a word of 14 or more letters into parts from a lexicon built from Wiktionary, and NOTICE items 9 and 10 name its sources. A compound of 25 or more letters without a hyphen blocks as `de_long_compound`. One of 14 to 24 letters reports as `de_compound_hint` and stays at observe. Words in quotes, inline code, links, and paths do not count.
+
+**Tables and code.** The German rules read a Markdown table one cell at a time, so sentences in separate cells never join into one run, and each hit reports the line of its row. Text in backticks feeds no German rule.
 
 The punctuation family also applies its family default to German lines. `banned_dash`, `dash_break`, `pronoun_apostrophe`, and `decade_apostrophe` therefore block there as well. `banned_dash` measured 0.15 on German text and still blocks. N-009 keeps the em dash ban and leaves `banned_dash` and `spaced_hyphen` at their family default. The German SEMANTIC rules send trigger matches to Luna. Their best lower bound on `gpt-6-luna` is 0.64, so none of them blocks.
 
@@ -362,10 +369,33 @@ The prompt goes in on stdin. The call has no tools, so the reviewer never needs
 Bash. `disableAllHooks` stops the nested session from firing ADW on its own
 review. An empty turn makes no call. The call uses your Claude Code login.
 
+Every model reviewer gets the same instructions from
+`judge_contracts.reviewer_instructions`, whether it runs on Sonnet, Claude
+Luna, Codex Luna, or OMP. They ask for one verdict per candidate, a passing
+verdict when the text alone cannot decide, and at most six document notes, and
+they tell the model to treat the reviewed text as data. They also name the 80
+character comment cap and the project's list item cap, so the reviewer judges
+text inside those caps on what it says and keeps each suggested fix inside
+them. The German style line appears only when the project allows German prose.
+The rubric versions are `adw-rubric-v2` and `adw-rubric-de-v2`.
+
 The review can fail. The CLI can be missing, run past 90 seconds, or return
 no usable verdict. If the review fails, the Stop shows one line that the
-review did not run. It does not block. The rows stay unreviewed, so the next
-Stop retries.
+review did not run, and the failure itself does not block. The rows stay
+unreviewed for a later Stop. When the CLI itself fails, ADW pauses the review
+for 300 seconds before the next try. ADW ignores a verdict item that names a
+document section, because a document section holds no pattern. It also ignores
+an item whose section or candidate number does not exist, and it keeps the rest
+of the verdict. A pattern candidate that got an answer is not sent again in the
+same turn. If the reviewer's answer to that candidate was a block, that block
+stays in force on every later Stop in the same turn, with no new model call.
+This includes a Stop that continues after a Stop hook block, and a Stop whose
+retry fails. The held block ends when the agent edits or deletes the file that
+holds the flagged text, or when the turn ends. If ADW cannot read that file to
+check whether it changed, it keeps the block and adds a notice that the check
+failed. A candidate that gets no answer
+stays queued for the next Stop. After two attempts without an answer, ADW
+releases it unreviewed and names it in the Stop message.
 
 `luna` uses a command handler on the subscription-backed Codex runtime for
 both PostToolUse and Stop, and switches to `mixed` only after Luna is
@@ -508,7 +538,9 @@ checks. Unknown calls must pass the read checker.
 
 `config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that weakens the gates. That means a self-authorization key, a downgraded always-blocking rule, or a redirected state or ledger root. It also means anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
 
-Seven rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and `opaque_source_write`. Each blocks a Bash-mediated write the scanner cannot read through. Examples are `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, and `dd`. The scanner reads a literal write body such as a clean `echo` or heredoc. It treats that write like a Write or Edit call rather than blocking it.
+Eight rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, `opaque_source_write`, and `dynamic_write_target`. Each blocks a Bash-mediated write the scanner cannot read through. Examples are `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, `dd`, and text that a group, loop, function, or `exec` routes into a file. `dynamic_write_target` blocks a write whose destination only the run decides, such as `$(mktemp)`, a glob, or a relative path after a `cd` the gate cannot follow. When the gate can prove a variable, it judges the file the variable names instead. The scanner reads a literal write body such as a clean `echo` or heredoc. It treats that write like a Write or Edit call rather than blocking it.
+
+Output flags count as writes. `curl -o`, `wget -O`, `sort -o`, and `git merge-file` without `-p` face the same gates as a `>` redirect, and ADW scans their files after the run. A `find -delete`, a `find -exec rm`, or a literal feed into `xargs rm` faces the gates on each path it reaches, and so does `rm -r`, `mv`, or `rsync --delete` on a folder. The walk stops at 20,000 entries, 1,000 `find` matches, or 0.25 seconds, and a command past a limit blocks. Write and Edit refuse a named pipe, a device, or a socket.
 
 For inline node, perl and ruby payloads (`node -e`, `node -p`, `perl -e`, `ruby -e`), `inline_interpreter_write` uses heuristics, not a sandbox. These heuristics block known write and reflection routes, such as `process.getBuiltinModule`, Perl `open` without parentheses, and computed member keys. Other payloads run.
 
