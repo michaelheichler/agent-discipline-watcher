@@ -1,3 +1,8 @@
+---
+description: Update ADW to the latest commit with a clean plugin cache.
+argument-hint: "[--check]"
+---
+
 # ADW Update $ARGUMENTS
 
 Update ADW to the latest commit with a clean plugin cache. Pass `--check` to report without

@@ -580,4 +580,3 @@ def test_failed_block_write_rolls_the_update_back(available_update, capsys) -> N
     assert "settings are not JSON" in capsys.readouterr().err
     assert settings.read_text(encoding="utf-8") == '{"theme":"dark"}'
     assert not (available_update.home / ".adw/updates/installed.json").exists()
-

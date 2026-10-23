@@ -7,6 +7,7 @@ import pytest
 
 from lib import protected, tests_policy
 from test_tests_policy_gate import blocked_by, project, shell
+from testing import make_repo, run_git as git
 
 TEST_CHANGING_COMMANDS = [
     "mv /tmp/x.py tests",
@@ -38,6 +39,9 @@ TEST_CHANGING_COMMANDS = [
     "git restore src/",
     "git restore 'src/*.py'",
     "git restore :/",
+    "git rm -q config/esphome/bedside/fonts/*.txt",
+    "git rm --cached tests/test_fonts.py",
+    "git rm --cached tests/*.py",
 ]
 TEST_SAFE_COMMANDS = [
     "git apply --check p.diff",
@@ -50,6 +54,8 @@ TEST_SAFE_COMMANDS = [
     "git restore src/a.py",
     "git -C src restore a.py",
 ]
+FONTS = "config/esphome/bedside/fonts"
+Names = tuple[str, ...]
 
 
 @pytest.fixture(autouse=True)
@@ -78,10 +84,44 @@ def test_deny_passes_a_shell_command_that_leaves_tests_alone(tmp_path: Path, com
     assert not blocked_by(shell(project(tmp_path, tests="deny"), command), tests_policy.RULE)
 
 
-def test_a_copy_onto_the_session_config_is_sealed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def tracked_project(tmp_path: Path, tracked: Names, gone: Names = ()) -> Path:
+    repo = project(make_repo(tmp_path), tests="deny")
+    for name in tracked:
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text("x\n", encoding="utf-8")
+    git(repo, "add", "--", *tracked)
+    for name in gone:
+        (repo / name).unlink()
+    return repo
+
+
+@pytest.mark.parametrize("arrangement", [
+    pytest.param(((f"{FONTS}/a.txt", f"{FONTS}/b.txt", "tests/test_fonts.py"), f"git rm -q --cached {FONTS}/*.txt"),
+                 id="fonts"),
+    pytest.param((("tests/test_fonts.py",), f"git rm -q --cached {FONTS}/*.txt"), id="no-match"),
+    pytest.param((("tests/test_fonts.py",), 'git -C . rm --cached "config/*.txt"'), id="A9-git-c-no-match"),
+])
+def test_deny_passes_an_index_removal_whose_glob_names_no_test(tmp_path: Path, arrangement: tuple) -> None:
+    tracked, command = arrangement
+    assert not blocked_by(shell(tracked_project(tmp_path, tracked), command), tests_policy.RULE)
+
+
+@pytest.mark.parametrize("arrangement", [
+    pytest.param((("tests/test_fonts.py", f"{FONTS}/a.txt"), (), "git rm --cached tests/*.py"), id="worktree"),
+    pytest.param((("tests/test_fonts.py",), ("tests/test_fonts.py",), "git rm --cached tests/*.py"), id="index-only"),
+    pytest.param(((f"{FONTS}/a.txt", f"{FONTS}/test_glyphs.py"), (), f"git rm --cached {FONTS}/*"), id="mixed"),
+    pytest.param((("tests/test_fonts.py",), (), 'git -C . rm --cached "tests/*.py"'), id="git-c"),
+])
+def test_deny_blocks_an_index_removal_whose_glob_names_a_test(tmp_path: Path, arrangement: tuple) -> None:
+    tracked, gone, command = arrangement
+    assert blocked_by(shell(tracked_project(tmp_path, tracked, gone), command), tests_policy.RULE)
+
+
+@pytest.mark.parametrize("verb", ["cp", "install"])
+def test_a_copy_onto_the_session_config_is_sealed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verb: str) -> None:
     session = tmp_path / "session"
     elsewhere = tmp_path / "elsewhere"
     session.mkdir()
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
-    assert blocked_by(shell(project(session, tests="allow"), "cp x .agent-discipline.json"), "config_seal")
+    assert blocked_by(shell(project(session, tests="allow"), f"{verb} x .agent-discipline.json"), "config_seal")

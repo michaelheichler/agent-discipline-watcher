@@ -234,6 +234,19 @@
         0.9721
       ]
     },
+    "de_compound_hint": {
+      "kappa": 0.9611,
+      "n": 184,
+      "precision": 0.9783,
+      "reason": "lower bound 0.95 clears the 0.85 bar",
+      "recommendation": "enforce",
+      "sampled_from": "german_compounds.json",
+      "violating": 180,
+      "wilson_95": [
+        0.9454,
+        0.9915
+      ]
+    },
     "de_corporate_closing": {
       "gate": "observe",
       "kappa": null,
@@ -475,23 +488,16 @@
       ]
     },
     "de_long_compound": {
-      "gate": "observe",
-      "kappa": 0.0,
-      "n": 20,
-      "per_1000": {
-        "ai": 924.8,
-        "human": 879.547
-      },
-      "precision": 0.0,
-      "rater_agreement": 11,
-      "reason": "precision 0.00 at 879.547 human hits per 1000",
-      "recommendation": "off",
-      "sampled_from": "paragraphs",
-      "sampled_human": 11,
-      "violating": 0,
+      "kappa": 0.9611,
+      "n": 184,
+      "precision": 0.9783,
+      "reason": "lower bound 0.95 clears the 0.85 bar",
+      "recommendation": "enforce",
+      "sampled_from": "german_compounds.json",
+      "violating": 180,
       "wilson_95": [
-        0.0,
-        0.1611
+        0.9454,
+        0.9915
       ]
     },
     "de_meta_commentary": {

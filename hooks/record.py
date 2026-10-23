@@ -84,11 +84,16 @@ def _journal_candidate(edits: _EditJournal, path: str, turn_id: str) -> None:
     session_id = edits.payload["session_id"]
     try:
         target = payloads.resolved_path(path, Path(edits.payload["cwd"] or "."))
-        journal.record_edit(session_id, turn_id, edits.payload["tool_use_id"], target, state_root=edits.state_root)
+        journal.record_edit(
+            session_id, turn_id, edits.payload["tool_use_id"], target,
+            state_root=edits.state_root, project=edits.payload["cwd"] or None,
+        )
     except Exception as exc:
         sys.stderr.write(f"agent-discipline-watcher: candidate journal append failed: {exc}\n")
         return
-    parataxis_review.record(parataxis_review.EditTurn(session_id, turn_id, edits.config, edits.state_root), target)
+    parataxis_review.record(
+        parataxis_review.EditTurn(session_id, turn_id, edits.config, edits.state_root, edits.payload["cwd"] or None), target,
+    )
 
 
 def _journal_edits(edits: _EditJournal, turn_id: str = "") -> None:

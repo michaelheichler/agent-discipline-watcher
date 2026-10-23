@@ -13,7 +13,7 @@ from .shell_syntax import (
 CLI_NAME = "adw-config"
 MODULE_NAMES = frozenset({"lib.adw_config", "adw_config", "adw_config.py"})
 SUBCOMMANDS = frozenset({"tests", "family", "prose-languages"})
-READ_ONLY_ARGS = ([], ["status"])
+READ_ONLY_ARGS = ([], ["status"], ["--help"])
 COPY_VERBS = frozenset({"ln", "cp", "install", "rsync"})
 REPARSE_VERBS = frozenset({"eval", "xargs"})
 
@@ -72,7 +72,7 @@ def _reparsed(segment: list[str], index: int, cwd: Path) -> bool:
 
 
 def mutates_policy(segment: list[str], cwd: Path) -> bool:
-    """Fail closed, because only status is known to read."""
+    """Fail closed, because only status and help are known to read."""
     words = _words(segment)
     index = _command_word_index(segment)
     if index >= len(words):

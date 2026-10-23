@@ -1,10 +1,21 @@
 """Shared, because every Bash gate must read one token view."""
 from __future__ import annotations
 
+import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import partial
+from itertools import takewhile
 from typing import NamedTuple
 
+from .find_matches import find_calls
+from .folder_trees import folder_trees
+from .shell_expansion import Expansions, expansions_for
+from .shell_lines import command_lines
 from .shell_operators import REDIRECT_HEAD_RE
+from .xargs_feed import fed_calls
 from .shell_syntax import (
     CLOBBER_HEAD_RE, DYNAMIC_RE, ENV_SPLIT_STRING_FLAGS,
     INTERPRETER_CODE_FLAGS, INTERPRETERS, LEADING_REDIRECT_RE,
@@ -40,10 +51,19 @@ __all__ = [
     "_tokens", "_words", "_wrapper_consumes_value",
     "has_process_substitution", "interpreter_invocation",
     "HeredocEvent", "LiteralWrite", "executable_text", "heredoc_events", "literal_writes",
-    "write_paths", "write_targets",
+    "command_expansions", "expansion_memo", "line_segments", "write_paths", "write_targets",
 ]
 
 STDERR_DESCRIPTOR = "2"
+STDOUT_DESCRIPTOR = "1"
+DESCRIPTOR_WORD_RE = re.compile(r"[0-9]*-?")
+XARGS = "xargs"
+FIND = "find"
+FIND_WRITES = frozenset({"-delete", "-exec", "-execdir"})
+PLACEHOLDER = "{}"
+DIRECTORY_VERBS = frozenset({"cd", "pushd", "popd"})
+TREE_VERB_RE = re.compile(r"\b(?:rm|mv|rsync)\b")
+EXPANSION_MEMO: ContextVar[dict[tuple[str, str | None], Expansions] | None] = ContextVar("expansion_memo", default=None)
 HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s()<>|&;'\"]+))")
 LITERAL_PRODUCERS = frozenset({"echo", "printf"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
@@ -51,7 +71,7 @@ OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 TEE_APPEND_FLAGS = frozenset({"-a", "--append"})
 HEREDOC_SINKS = frozenset({"cat", "tee"})
 MAX_LITERAL_OUTPUT_CHARS = 1_000_000
-PRINTF_TOKEN_RE = re.compile(r"%%|%s|\\[\\abefnrtv]|[^%\\]+")
+PRINTF_TOKEN_RE = re.compile(r"%%|%s|\\[\\abefnrtv]|\\[0-7]{1,3}|[^%\\]+")
 PRINTF_ESCAPES = {
     "\\": "\\", "a": "\a", "b": "\b", "e": "\x1b", "f": "\f",
     "n": "\n", "r": "\r", "t": "\t", "v": "\v",
@@ -73,12 +93,9 @@ class HeredocEvent(NamedTuple):
 
 def write_paths(command: str) -> list[str]:
     """Because an undecidable write body is not the same as no write at all, keep the target even when its content is unreadable here."""
-    return [
-        path
-        for line, _, _ in _logical_lines(command)
-        for segment in _segments(line)
-        for path in _write_paths(segment)
-    ]
+    expansions = command_expansions(command)
+    words = [word for segment in line_segments(command) for word, _ in _write_path_words(segment)]
+    return [path for path in map(expansions.path, words) if path is not None]
 
 
 def write_targets(command: str) -> list[tuple[str, str]]:
@@ -87,10 +104,78 @@ def write_targets(command: str) -> list[tuple[str, str]]:
 
 def literal_writes(command: str) -> list[LiteralWrite]:
     """Drop a write whose text is not knowable here, because a guessed body would misreport what the command actually sends."""
-    rows: list[LiteralWrite] = []
-    for line, bodies, _ in _logical_lines(command):
-        rows.extend(_line_writes(line, bodies))
-    return rows
+    expansions = command_expansions(command)
+    rows = [write for line, bodies, _ in _logical_lines(command) for write in _line_writes(line, bodies)]
+    return [write._replace(path=path) for write in rows if (path := expansions.path(write.path)) is not None]
+
+
+@contextmanager
+def expansion_memo() -> Iterator[None]:
+    """Because one gate decision reads the same command many times, it builds each view once and drops it after."""
+    token = EXPANSION_MEMO.set({})
+    try:
+        yield
+    finally:
+        EXPANSION_MEMO.reset(token)
+
+
+def command_expansions(command: str, cwd: str | os.PathLike[str] | None = None) -> Expansions:
+    memo = EXPANSION_MEMO.get()
+    key = (command, None if cwd is None else os.fspath(cwd))
+    if memo is not None and key in memo:
+        return memo[key]
+    built = _expansions(command, cwd)
+    if memo is not None:
+        memo[key] = built
+    return built
+
+
+def _expansions(command: str, cwd: str | os.PathLike[str] | None) -> Expansions:
+    expansions = expansions_for(command, cwd)
+    feeds = _xargs_feeds(command) if XARGS in command else ()
+    feeds += _find_feeds(command, expansions, os.fspath(cwd)) if FIND in command and cwd is not None else ()
+    expansions = expansions._replace(feeds=feeds) if feeds else expansions
+    if cwd is None or not TREE_VERB_RE.search(command):
+        return expansions
+    return expansions._replace(trees=folder_trees(line_segments(command), expansions, os.fspath(cwd)))
+
+
+def _find_feeds(command: str, expansions: Expansions, cwd: str) -> tuple[tuple[tuple[str, ...], tuple[tuple[str, ...], ...]], ...]:
+    """Only before any cd, because the walk starts where the command does."""
+    segments = list(takewhile(lambda segment: _verb(segment) not in DIRECTORY_VERBS, line_segments(command)))
+    writing = [segment for segment in segments if _verb(segment) == FIND and FIND_WRITES.intersection(map(_bare, segment))]
+    found = [(tuple(segment), find_calls(segment, partial(_find_word, expansions), cwd)) for segment in writing]
+    return tuple((key, calls) for key, calls in found if calls is not None)
+
+
+def _find_word(expansions: Expansions, word: str) -> str | None:
+    """{} kept, because bash leaves a brace pair without a comma alone and find fills it."""
+    return PLACEHOLDER if word == PLACEHOLDER else expansions.path(word)
+
+
+def _verb(segment: list[str]) -> str:
+    index = _command_word_index(segment)
+    return _basename(segment[index]) if index < len(segment) else ""
+
+
+def _xargs_feeds(command: str) -> tuple[tuple[tuple[str, ...], tuple[tuple[str, ...], ...]], ...]:
+    """Adjacent pairs only, because xargs reads the stdin of the segment right before it."""
+    pairs = [
+        (producer, consumer) for line in command_lines(command)
+        for group in _pipeline_groups(line.text) for producer, consumer in zip(group, group[1:])
+    ]
+    fed = [(tuple(consumer), _fed(producer, consumer)) for producer, consumer in pairs]
+    return tuple((key, calls) for key, calls in fed if calls is not None)
+
+
+def _fed(producer: list[str], consumer: list[str]) -> tuple[tuple[str, ...], ...] | None:
+    texts = _literal_contents([producer])
+    return fed_calls(consumer, texts[0]) if len(texts) == 1 and texts[0] is not None else None
+
+
+def line_segments(command: str) -> list[list[str]]:
+    """Split where a newline ends a command, because shlex reads one as a space and would merge every later command into the first."""
+    return [segment for line in command_lines(command) for segment in _segments(line.text)]
 
 
 def _logical_lines(command: str) -> list[tuple[str, list[str | None], list[str]]]:
@@ -161,7 +246,7 @@ def _line_writes(line: str, bodies: list[str | None]) -> list[LiteralWrite]:
         heredoc_total = sum(len(_heredoc_matches(_segment_text(segment))) for segment in group)
         group_bodies = bodies[cursor:cursor + heredoc_total]
         cursor += heredoc_total
-        target_writes = [write for segment in group for write in _write_path_writes(segment)]
+        target_writes = [write for segment in group for write in _content_words(segment)]
         if not target_writes:
             continue
         contents = group_bodies if heredoc_total else _literal_contents(group)
@@ -179,42 +264,88 @@ def _paired_writes(target_writes: list[tuple[str, bool]], contents: list[str | N
     return []
 
 
-def _write_paths(segment: list[str]) -> list[str]:
-    return [path for path, _ in _write_path_writes(segment)]
-
-
 def _write_path_writes(segment: list[str]) -> list[tuple[str, bool]]:
-    writes = _redirect_writes(segment) + _tee_writes(segment)
-    return [(path, append) for path, append in writes if _is_file_target(path)]
+    return [(_bare(word), append) for word, append in _write_path_words(segment)]
+
+
+def _write_path_words(segment: list[str]) -> list[tuple[str, bool]]:
+    """Raw words of every file outside bare stderr, because a quote decides whether $M expands."""
+    opened = [(word, append) for word, append, descriptor in _descriptor_writes(segment) if descriptor != STDERR_DESCRIPTOR]
+    words = list(dict.fromkeys(_redirect_words(segment) + opened)) + _tee_words(segment)
+    return [(word, append) for word, append in words if _is_file_target(_bare(word))]
+
+
+def _journal_words(segment: list[str]) -> list[tuple[str, bool]]:
+    """Every file a descriptor opens, because the run truncates a stderr file too and the post-run scan must read it."""
+    opened = [(word, append) for word, append, _ in _descriptor_writes(segment)]
+    words = list(dict.fromkeys(_write_path_words(segment) + opened))
+    return [(word, append) for word, append in words if _is_file_target(_bare(word))]
+
+
+def _content_words(segment: list[str]) -> list[tuple[str, bool]]:
+    """Only fd 1's file and tee, because a file opened on another descriptor receives none of a producer's text."""
+    words = _redirect_words(segment) + _tee_words(segment)
+    return [(word, append) for word, append in words if _is_file_target(_bare(word))]
+
+
+def _target_words(segment: list[str]) -> list[str]:
+    """Because 2>file creates or truncates its file even when nothing reaches it, every descriptor counts."""
+    words = [word for word, _, _ in _descriptor_writes(segment)] + [word for word, _ in _tee_words(segment)]
+    return [word for word in words if _is_file_target(_bare(word))]
 
 
 def _redirect_paths(segment: list[str]) -> list[str]:
-    return [path for path, _ in _redirect_writes(segment)]
+    return [_bare(word) for word, _, _ in _descriptor_writes(segment)]
 
 
-def _redirect_writes(segment: list[str]) -> list[tuple[str, bool]]:
+def _redirect_words(segment: list[str]) -> list[tuple[str, bool]]:
+    """The file fd 1 ends on, because a literal producer prints to stdout and 2>f 1>&2 sends that into f."""
+    table: dict[str, tuple[str, bool] | None] = {}
+    for index, token in enumerate(segment):
+        match = REDIRECT_HEAD_RE.match(token)
+        if match and not _is_quoted(token):
+            word = token[match.end():] or (segment[index + 1] if index + 1 < len(segment) else "")
+            _route(table, (match.group(1) or STDOUT_DESCRIPTOR, match.group(2), word))
+    route = table.get(STDOUT_DESCRIPTOR)
+    return [route] if route is not None else []
+
+
+def _route(table: dict[str, tuple[str, bool] | None], redirect: tuple[str, str, str]) -> None:
+    """Because N>&M copies where M points now, a later redirect of M leaves N alone."""
+    descriptor, operator, word = redirect
+    source = _bare(word)
+    if operator.startswith("&") or (operator == ">&" and not DESCRIPTOR_WORD_RE.fullmatch(source) and descriptor == STDOUT_DESCRIPTOR):
+        table[STDOUT_DESCRIPTOR] = table[STDERR_DESCRIPTOR] = (word, operator.endswith(">>"))
+    elif operator != ">&" or not DESCRIPTOR_WORD_RE.fullmatch(source):
+        table[descriptor] = (word, operator == ">>")
+    else:
+        number = source.rstrip("-")
+        table[descriptor] = table.get(number) if number else None
+        table.update({number: None} if source.endswith("-") and number else {})
+
+
+def _descriptor_writes(segment: list[str]) -> list[tuple[str, bool, str]]:
     writes = []
     for index, token in enumerate(segment):
         match = REDIRECT_HEAD_RE.match(token)
-        if _is_quoted(token) or not match or match.group(1) == STDERR_DESCRIPTOR:
+        if _is_quoted(token) or not match:
             continue
-        rest = token[match.end():]
-        if not rest and index + 1 < len(segment):
-            rest = segment[index + 1]
-        target = _bare(rest)
-        if match.group(2) == ">&" and (match.group(1) or re.fullmatch(r"(?:[0-9]+-?|-)", target)):
+        word = token[match.end():]
+        if not word and index + 1 < len(segment):
+            word = segment[index + 1]
+        if match.group(2) == ">&" and (match.group(1) or re.fullmatch(r"(?:[0-9]+-?|-)", _bare(word))):
             continue
-        writes.append((target, match.group(2) in {">>", "&>>"}))
+        writes.append((word, match.group(2) in {">>", "&>>"}, match.group(1)))
     return writes
 
 
-def _tee_writes(segment: list[str]) -> list[tuple[str, bool]]:
+def _tee_words(segment: list[str]) -> list[tuple[str, bool]]:
     index = _command_word_index(segment)
     if index >= len(segment) or _basename(segment[index]) != "tee":
         return []
     args = segment[index + 1:]
     append = any(_bare(token) in TEE_APPEND_FLAGS for token in args)
-    return [(_bare(token), append) for token in args if not _bare(token).startswith("-")]
+    return [(token, append) for token in args if not _bare(token).startswith("-")]
 
 
 def _is_file_target(path: str) -> bool:
@@ -294,11 +425,14 @@ def _printf_tokens(format_string: str) -> list[str | None] | None:
     tokens = PRINTF_TOKEN_RE.findall(format_string)
     if "".join(tokens) != format_string:
         return None
-    return [
-        None if token == "%s" else "%" if token == "%%"
-        else PRINTF_ESCAPES[token[1]] if token.startswith("\\") else token
-        for token in tokens
-    ]
+    return [None if token == "%s" else "%" if token == "%%" else _printf_escape(token) for token in tokens]
+
+
+def _printf_escape(token: str) -> str:
+    """Octal by value, because printf turns \\0 into the NUL that frames xargs -0 input."""
+    if not token.startswith("\\"):
+        return token
+    return chr(int(token[1:], 8) & 0xFF) if token[1:].isdigit() else PRINTF_ESCAPES[token[1]]
 
 
 def _printf_text(words: list[str]) -> str | None:

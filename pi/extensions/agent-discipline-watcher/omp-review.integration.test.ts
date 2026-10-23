@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import type { Api, AssistantMessage, Model } from "@oh-my-pi/pi-ai";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +11,19 @@ type Handler = (event: unknown, ctx: OmpReviewContext) => Promise<unknown>;
 const directories: string[] = [];
 const MODEL = { provider: "anthropic", id: "claude-haiku", api: "anthropic-messages" } as Model<Api>;
 const COMMENT = "Returns the result because the caller needs a value.";
+const EMBEDDING_SWITCH = "ADW_EMBEDDING_DISABLED";
+const hostSwitch = process.env[EMBEDDING_SWITCH];
+
+// Because an enabled host makes each document prepare wait for the model.
+beforeAll(() => {
+  process.env[EMBEDDING_SWITCH] = "1";
+});
+
+// Restored, because every Bun test file shares this process environment.
+afterAll(() => {
+  if (hostSwitch === undefined) delete process.env[EMBEDDING_SWITCH];
+  else process.env[EMBEDDING_SWITCH] = hostSwitch;
+});
 
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -172,7 +185,7 @@ test("an ambiguous document quote drops only that note and names the cause witho
 
 test("a multi-request review prepares once and re-prepares only before a retry", async () => {
   const operations: string[] = [];
-  const request = (id: number) => ({ id, prompt: `request ${id}`, schema: {} });
+  const request = (id: number) => ({ id, prompt: `request ${id}`, schema: {}, instructions: `instructions ${id}` });
   const bridge = (call: Record<string, unknown>) => {
     operations.push(String(call.operation));
     if (call.operation === "prepare") {

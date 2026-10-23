@@ -8,11 +8,11 @@ from pathlib import PurePath
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import placed, sentence_spans, visible
+    from ._text import placed, sentence_spans, text_units, visible
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import placed, sentence_spans, visible
+    from german_rules._text import placed, sentence_spans, text_units, visible
     from prose_language import ParagraphLanguage
 
 PLACEHOLDER_TEXT = Rule(
@@ -186,18 +186,22 @@ def pattern_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Pat
     ]
 
 
-def _abrupt_ending(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
-    """Judge only the last paragraph with two sentences, because a one-line commit subject also ends without a period."""
-    if not paragraphs:
-        return []
-    last = paragraphs[-1]
-    text = visible(last.text).rstrip()
+def _abrupt_hit(paragraph: ParagraphLanguage, unit: tuple[int, str]) -> Hit | None:
+    """Require two sentences, because a one-line commit subject also ends without a period."""
+    offset, text = unit[0], unit[1].rstrip()
     if LIST_OR_BLOCK_START_RE.match(text) or TRAILING_URL_RE.search(text) or len(sentence_spans(text)) < 2:
-        return []
+        return None
     found = UNFINISHED_RE.search(text)
     if found is None:
-        return []
-    return [Hit(ABRUPT_ENDING.name, last.line, sentence_spans(text)[-1][1], found.group(0).strip(), last.end_line)]
+        return None
+    hit = Hit(ABRUPT_ENDING.name, paragraph.line, sentence_spans(text)[-1][1], found.group(0).strip())
+    return placed(paragraph, (offset, offset + len(text)), hit)
+
+
+def _abrupt_ending(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
+    """Judge each text of the last paragraph, because every table cell there ends on its own."""
+    hits = (_abrupt_hit(paragraphs[-1], unit) for unit in text_units(paragraphs[-1])) if paragraphs else ()
+    return [hit for hit in hits if hit is not None]
 
 
 def _versioned(path: str) -> bool:

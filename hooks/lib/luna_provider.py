@@ -12,7 +12,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Protocol, cast
 
-from .judge_contracts import JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload
+from .judge_contracts import (
+    TOOL_BOUNDARY, JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload,
+)
 from .luna_runtime import require_runtime
 from .luna_process import child_environment as _child_environment
 from .luna_process import sdk_environment as _sdk_environment
@@ -47,8 +49,7 @@ MINIMAL_CONFIG = (
     "[apps._default]\nenabled = false\n\n"
     "[mcp_servers]\n"
 )
-BASE_INSTRUCTIONS = "You are the ADW judge. Inspect only supplied review context."
-DEVELOPER_INSTRUCTIONS = "Return only the requested JSON object; do not modify files or use tools."
+BASE_INSTRUCTIONS = "You are the ADW judge."
 SAFE_ITEM_TYPES = frozenset({
     "userMessage", "agentMessage", "reasoning", "plan", "contextCompaction",
 })
@@ -236,6 +237,11 @@ def _normalized_timeout(timeout_seconds: object) -> float | None:
     return normalized
 
 
+def _bounded(request: JudgeRequest) -> JudgeRequest:
+    """Never bare, because a Luna turn without the boundary would read candidate text as orders."""
+    return request if request.instructions else replace(request, instructions=TOOL_BOUNDARY)
+
+
 def _runtime_launch(runtime: RuntimePaths) -> SdkLaunch:
     """Extracted, since judge() had drifted past the length gate."""
     return SdkLaunch(
@@ -286,6 +292,7 @@ class LunaJudge:
         return self._timeout_seconds
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
+        request = _bounded(request)
         storage_factory = SecureJudgeStorage if self._default_storage else lambda: SecureJudgeStorage(
             runtime_root=self._runtime_root, cache_root=self._cache_root,
         )
@@ -356,7 +363,7 @@ class LunaJudge:
         return validate_worker_result(request, result, PROVIDER_NAME, LUNA_EFFORT)
 
     def _cache_key(self, request: JudgeRequest, model: str) -> str:
-        identity = "|".join((content_hash(request), request.review_kind.value, PROVIDER_NAME, model, LUNA_EFFORT, request.rubric_version))
+        identity = "|".join((content_hash(_bounded(request)), request.review_kind.value, PROVIDER_NAME, model, LUNA_EFFORT, request.rubric_version))
         return sha256(identity.encode("utf-8")).hexdigest()
 
     def _cache_path(self, key: str) -> Path:
@@ -411,7 +418,7 @@ def _run_turn(session: SdkSession, request: JudgeRequest, launch: SdkLaunch) -> 
     thread = session.thread_start(SdkThreadStart(
         model=model_id, cwd=launch.cwd, ephemeral=True, sandbox=Sandbox.READ_ONLY,
         approval_mode=ApprovalMode.DENY_ALL, base_instructions=BASE_INSTRUCTIONS,
-        developer_instructions=DEVELOPER_INSTRUCTIONS,
+        developer_instructions=request.instructions,
     ))
     result = thread.run(SdkTurn(
         prompt=build_prompt(request), model=model_id, effort=LUNA_EFFORT,

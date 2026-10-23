@@ -10,7 +10,7 @@ import pytest
 import prompt_submit
 import stop
 from lib import hookio, journal, pending_advice, session_state
-from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, JudgeResult, ReviewKind
 
 CLOSER = "Feel free to ask me anything else."
 DOCUMENT = {"role": "document", "path": "note.md", "source_context": "A sentence.", "turn_id": "turn-1"}
@@ -38,7 +38,7 @@ def _provider() -> SimpleNamespace:
         calls.append(request)
         return JudgeResult(
             payload=VERDICTS[request.review_kind], provider="openai-codex", model="gpt-5.6-luna", effort="high",
-            rubric_version="adw-rubric-v1", usage={"total_tokens": 1},
+            rubric_version=RUBRIC_VERSION, usage={"total_tokens": 1},
         )
 
     return SimpleNamespace(calls=calls, judge=judge)

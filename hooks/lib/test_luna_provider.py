@@ -10,7 +10,7 @@ import stat
 import pytest
 
 from lib import luna_provider, luna_storage
-from lib.judge_contracts import JudgeRequest, ReviewKind
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, ReviewKind
 from lib.luna_provider import (
     ApprovalMode,
     LunaJudge,
@@ -27,6 +27,7 @@ from lib.luna_provider import (
 
 
 VALID_RESPONSE = '{"items":[{"index":0,"verdict":"violating","reason":"matches the named pattern"}]}'
+OTHER_RUBRIC_VERSION = f"{RUBRIC_VERSION}-other"
 
 
 class RetryableFakeError(RuntimeError):
@@ -124,7 +125,7 @@ def _judge(tmp_path: Path, results: tuple[SdkRunResult | BaseException, ...] = (
     return LunaJudge(sdk=sdk, runtime_root=tmp_path / "runtime", cache_root=tmp_path / "cache", auth_source=tmp_path / "codex-auth.json"), sdk
 
 
-def _request(*, rubric_version: str = "adw-rubric-v1") -> JudgeRequest:
+def _request(*, rubric_version: str = RUBRIC_VERSION) -> JudgeRequest:
     return JudgeRequest(
         review_kind=ReviewKind.PATTERN,
         candidates=("I hope this helps.",),
@@ -226,7 +227,7 @@ def test_cache_hit_skips_the_provider_and_rubric_change_misses(tmp_path: Path) -
 
     first = judge.judge(_request())
     hit = judge.judge(_request())
-    changed = judge.judge(_request(rubric_version="adw-rubric-v2"))
+    changed = judge.judge(_request(rubric_version=OTHER_RUBRIC_VERSION))
 
     assert first.cached is False
     assert hit.cached is True
@@ -240,7 +241,7 @@ def test_document_review_uses_the_same_cache_contract(tmp_path: Path) -> None:
     request = JudgeRequest(
         review_kind=ReviewKind.DOCUMENT,
         source_context="A claim.",
-        rubric_version="adw-rubric-v1",
+        rubric_version=RUBRIC_VERSION,
     )
 
     first = judge.judge(request)
@@ -256,10 +257,10 @@ def test_invalid_cache_payload_is_not_returned_as_a_judgment(tmp_path: Path) -> 
     request = _request()
     first = judge.judge(request)
     cache_path = judge._cache_path(judge._cache_key(request, first.model))
-    cache_path.write_text(
-        '{"payload":{"items":[{"index":"wrong"}]},"provider":"openai-codex","model":"gpt-5.6-luna","effort":"high","rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
-        encoding="utf-8",
-    )
+    cache_path.write_text(json.dumps({
+        "payload": {"items": [{"index": "wrong"}]}, "provider": "openai-codex", "model": "gpt-5.6-luna",
+        "effort": "high", "rubric_version": RUBRIC_VERSION, "usage": {}, "cached": False,
+    }), encoding="utf-8")
 
     result = judge.judge(request)
 
@@ -399,7 +400,7 @@ def test_each_call_uses_a_fresh_runtime_and_cleans_it_afterward(tmp_path: Path) 
     judge, sdk = _judge(tmp_path, (_result(), _result()))
 
     judge.judge(_request())
-    judge.judge(_request(rubric_version="adw-rubric-v2"))
+    judge.judge(_request(rubric_version=OTHER_RUBRIC_VERSION))
 
     homes = [launch.codex_home for launch in sdk.launches]
     cwds = [launch.cwd for launch in sdk.launches]
@@ -607,12 +608,11 @@ def test_cache_metadata_mismatch_unlinks_leaf_before_provider_execution(tmp_path
     request = _request()
     cache_path = judge._cache_path(judge._cache_key(request, luna_provider.LUNA_MODEL))
     cache_path.parent.mkdir()
-    cache_path.write_text(
-        '{"payload":{"items":[{"index":0,"verdict":"violating","reason":"stale"}]},'
-        '"provider":"wrong-provider","model":"gpt-5.6-luna","effort":"high",'
-        '"rubric_version":"adw-rubric-v1","usage":{},"cached":false}',
-        encoding="utf-8",
-    )
+    cache_path.write_text(json.dumps({
+        "payload": {"items": [{"index": 0, "verdict": "violating", "reason": "stale"}]},
+        "provider": "wrong-provider", "model": "gpt-5.6-luna", "effort": "high",
+        "rubric_version": RUBRIC_VERSION, "usage": {}, "cached": False,
+    }), encoding="utf-8")
     real_open = sdk.open
 
     def assert_cache_removed(launch) -> FakeSession:
@@ -714,7 +714,7 @@ def test_sdk_upgrade_moves_judging_off_a_remembered_older_luna(tmp_path: Path) -
     assert judge.judge(request).model == "gpt-5.6-luna"
 
     sdk.session.models_state = (_model_with("gpt-5.6-luna"), _model_with("gpt-6-luna"))
-    judge.judge(_request(rubric_version="adw-rubric-v2"))
+    judge.judge(_request(rubric_version=OTHER_RUBRIC_VERSION))
     upgraded = judge.judge(request)
 
     assert upgraded.model == "gpt-6-luna"

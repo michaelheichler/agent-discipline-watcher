@@ -6,14 +6,12 @@ from statistics import fmean, pstdev
 try:
     from .comment_rules import _finding
     from .findings import spanning
-    from .german_readability import WORD_RE, sentences, words
-    from .german_syllables import count_syllables
+    from .german_readability import sentences, words
     from .prose_language import ParagraphLanguage
 except ImportError:
     from comment_rules import _finding
     from findings import spanning
-    from german_readability import WORD_RE, sentences, words
-    from german_syllables import count_syllables
+    from german_readability import sentences, words
     from prose_language import ParagraphLanguage
 
 FAMILY = "english"
@@ -23,11 +21,12 @@ UNIFORM_PARAGRAPH_MIN_COUNT = 4
 UNIFORM_PARAGRAPH_SPREAD = 2
 CONNECTOR_OPENERS = ("darüber hinaus", "außerdem", "ferner", "ebenfalls")
 CONNECTOR_DENSITY_CAP = 1
-LONG_COMPOUND_SYLLABLES = 6
 
 
 def _sentence_word_counts(paragraph: ParagraphLanguage) -> list[int]:
-    return [len(words(sentence)) for sentence in sentences(paragraph.text)]
+    """Skip wordless sentences, because a bare number has no length to vary and would zero the mean."""
+    counts = (len(words(sentence)) for sentence in sentences(paragraph.text))
+    return [count for count in counts if count]
 
 
 def _gleichfoermiger_rhythmus_rows(path: str, paragraphs: list[ParagraphLanguage]) -> list[dict]:
@@ -76,27 +75,12 @@ def _mechanische_konjunktionen_rows(path: str, paragraph: ParagraphLanguage) -> 
     ), paragraph.end_line)]
 
 
-def _long_compound_rows(path: str, paragraph: ParagraphLanguage) -> list[dict]:
-    """Gottschling ties six syllables to one eye fixation, because past that point a compound stops reading as one word."""
-    rows = []
-    for found in WORD_RE.finditer(paragraph.text):
-        word = found.group(0)
-        if count_syllables(word) >= LONG_COMPOUND_SYLLABLES:
-            rows.append(_finding(
-                FAMILY, "de_long_compound", paragraph.line_at(found.start()),
-                "Compound runs past " + str(LONG_COMPOUND_SYLLABLES) + " syllables with no hyphen in " + path,
-                word, "Add a hyphen split or rewrite the compound as a genitive phrase.", match=word,
-            ))
-    return rows
-
-
 def scan_german_document(path: str, paragraphs: list[ParagraphLanguage], config: dict) -> list[dict]:
     """Only the German rows reach this function, because a caller already split the paragraphs by language."""
     del config
     rows = []
     for paragraph in paragraphs:
         rows.extend(_mechanische_konjunktionen_rows(path, paragraph))
-        rows.extend(_long_compound_rows(path, paragraph))
     rows.extend(_gleichfoermiger_rhythmus_rows(path, paragraphs))
     rows.extend(_isometrisches_dokument_rows(path, paragraphs))
     return rows

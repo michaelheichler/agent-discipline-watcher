@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lib.baseline import split_committed
 from lib.findings import Finding
+from lib.regular_file import open_regular
 from lib.scan_input import file_length_policy, file_line_count, is_data_file, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
@@ -142,7 +143,7 @@ def _appended_length(before: FileLength, body: str) -> FileLength:
 
 def _ends_with_newline(resolved_path: Path) -> bool:
     try:
-        with resolved_path.open("rb") as handle:
+        with open_regular(resolved_path) as handle:
             handle.seek(-1, 2)
             return handle.read(1) == b"\n"
     except OSError:

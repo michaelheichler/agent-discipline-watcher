@@ -8,10 +8,10 @@ from typing import NamedTuple
 
 try:
     from . import judge_provider
-    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions
 except ImportError:
     import judge_provider
-    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions
 
 JUDGE_MODEL = "claude-haiku-4-5"
 JUDGE_TIMEOUT_SECONDS = 120
@@ -33,7 +33,8 @@ JUDGE_SYSTEM_PROMPT = (
     "states_why: 'Kept out of the blocking path because a gate that waits stalls every write.'\n"
     "states_why: 'Resolved, because os.replace on a symlink destroys the link instead of its target.'\n"
     "Reply with a JSON array and nothing else. One object per numbered item, in order: "
-    '{"index": <number>, "verdict": "describes_code" or "states_why", "reason": "<at most 12 words>"}.'
+    '{"index": <number>, "verdict": "describes_code" or "states_why", "reason": "<at most 12 words>"}.\n'
+    + reviewer_instructions({})
 )
 JSON_ARRAY_RE = re.compile(r"\[.*]", re.DOTALL)
 

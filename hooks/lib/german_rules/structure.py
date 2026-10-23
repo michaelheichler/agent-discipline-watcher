@@ -6,11 +6,13 @@ from itertools import groupby
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import phrase_hits, placed, sentence_hits, visible
+    from ._text import phrase_hits, placed, sentence_hits, text_units
+    from ..german_verbs import is_finite, is_infinitive
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import phrase_hits, placed, sentence_hits, visible
+    from german_rules._text import phrase_hits, placed, sentence_hits, text_units
+    from german_verbs import is_finite, is_infinitive
     from prose_language import ParagraphLanguage
 
 NESTED_CLAUSES = Rule(
@@ -138,6 +140,15 @@ CASUAL_GREETING_RE = re.compile(
 )
 
 LIST_COMMA_RE = re.compile(r",(?=\s)(?!\s+(?:" + PREPOSITION + r"\s+)?(?:" + SUBORDINATOR + "|" + COORDINATOR + r")\b)")
+LIST_CLOSE_RE = re.compile(r"(\S)\s+(?:und|oder)\s+(\S)")
+CLOSE_RIGHT_RE = re.compile(r"[^,]*?(?=,|\s+" + COORDINATOR + r"\b|$)")
+DETERMINER = r"(?:der|die|das|dem|den|des|eine?[mnrs]?|keine?[mnrs]?|(?:mein|dein|sein|ihr|unser|euer|eur)(?:e[mnrs]?)?|diese?[mnrs]?|jede[mnrs]?|alle)"
+NOT_VERB_SLOT_RE = re.compile(r"(?:" + PREPOSITION + r"|am|im|vom|zum|zur|beim|ins|ans|" + DETERMINER + r")")
+DETERMINER_RE = re.compile(DETERMINER)
+SUBJECT_PRONOUN_RE = re.compile(r"(?:ich|du|er|sie|es|wir|ihr|man)")
+RIGHT_WORD_RE = re.compile(r"[^\W\d_]+")
+LAST_WORD_RE = re.compile(r"[^\W\d_]+(?=\W*\Z)")
+ADJECTIVE_ENDING_RE = re.compile(r"(?:e|en|er|es|em)\Z")
 NUMBER_RE = re.compile(r"\d+(?:[.,:/-]\d+)*")
 WHOLE_SENTENCE_RE = re.compile(r"\S(?:.*\S)?", re.DOTALL)
 CLUSTER_MAX_ITEMS = 8
@@ -163,9 +174,66 @@ def _wide_bracket(sentence: str) -> re.Match[str] | None:
     return next((match for match in found if _too_wide(match)), None)
 
 
+def _word_item_count(sentence: str) -> int:
+    """Leave items that end or start in a digit to the number count, because each item counts once."""
+    commas = list(LIST_COMMA_RE.finditer(sentence))
+    infinitives = _lists_infinitives(sentence, commas)
+    ends = [*(comma.start() for comma in commas[1:]), len(sentence)]
+    closes = (LIST_CLOSE_RE.search(sentence, comma.end(), end) for comma, end in zip(commas, ends))
+    edges = [sentence[comma.start() - 1:comma.start()] for comma in commas]
+    edges.extend(edge for close in closes if close for edge in _closure_edges(sentence, close, infinitives))
+    return sum(not edge.isdigit() for edge in edges)
+
+
+def _lists_infinitives(sentence: str, commas: list[re.Match[str]]) -> bool:
+    """Read the word before each list comma, because only a list of bare infinitives makes a closing -en form an item."""
+    befores = [LAST_WORD_RE.search(sentence, 0, comma.start()) for comma in commas]
+    return bool(befores) and all(found and found.group(0)[0].islower() and is_infinitive(found.group(0)) for found in befores)
+
+
+def _finite_here(word: str, infinitives: bool) -> bool:
+    return is_finite(word) and not (infinitives and is_infinitive(word))
+
+
+def _verb_slot(words: list[str], index: int, infinitives: bool) -> bool:
+    """Skip a word after a preposition or determiner, because a finite verb never directly follows one."""
+    word, before = words[index], words[index - 1]
+    if not word[0].islower() or NOT_VERB_SLOT_RE.fullmatch(word) or NOT_VERB_SLOT_RE.fullmatch(before):
+        return False
+    return _finite_here(word, infinitives)
+
+
+def _starts_subject(verb: str, word: str) -> bool:
+    """Accept a bare capital only after a verb without an adjective ending, because frischen Saft names one more item."""
+    if DETERMINER_RE.fullmatch(word) or SUBJECT_PRONOUN_RE.fullmatch(word):
+        return True
+    return word[0].isupper() and ADJECTIVE_ENDING_RE.search(verb) is None
+
+
+def _fronted_verb(words: list[str], infinitives: bool) -> bool:
+    """Need a subject right after a leading verb, because a bare infinitive such as bügeln stays a list item."""
+    return len(words) > 1 and words[0][0].islower() and _starts_subject(*words[:2]) and _finite_here(words[0], infinitives)
+
+
+def _opens_clause(right: str, infinitives: bool) -> bool:
+    """Need a subject pronoun or a finite verb, because und also opens a clause such as heute kommt der Fahrer."""
+    words = RIGHT_WORD_RE.findall(right)
+    if not words:
+        return False
+    if SUBJECT_PRONOUN_RE.fullmatch(words[0]) or _fronted_verb(words, infinitives):
+        return True
+    return any(_verb_slot(words, index, infinitives) for index in range(1, len(words)))
+
+
+def _closure_edges(sentence: str, close: re.Match[str], infinitives: bool) -> tuple[str, ...]:
+    """Count the side after und only when it is an item, because und also joins a new clause."""
+    right = CLOSE_RIGHT_RE.match(sentence, close.start(2)).group(0)
+    return close.groups()[:1] if _opens_clause(right, infinitives) else close.groups()
+
+
 def _information_cluster(sentence: str) -> re.Match[str] | None:
-    """Count list commas and numbers only, because German capitalizes every noun and hides proper names."""
-    items = len(LIST_COMMA_RE.findall(sentence)) + len(NUMBER_RE.findall(sentence))
+    """Count list items and numbers only, because German capitalizes every noun and hides proper names."""
+    items = _word_item_count(sentence) + len(NUMBER_RE.findall(sentence))
     return WHOLE_SENTENCE_RE.search(sentence) if items > CLUSTER_MAX_ITEMS else None
 
 
@@ -173,17 +241,22 @@ def _is_staccato(sentence: str) -> bool:
     return sentence.rstrip().endswith("!") and len(re.findall(r"\w+", sentence)) <= STACCATO_MAX_WORDS
 
 
-def _run_hit(paragraph: ParagraphLanguage, run: list[re.Match[str]]) -> Hit:
+def _run_hit(paragraph: ParagraphLanguage, offset: int, run: list[re.Match[str]]) -> Hit:
     snippet = " ".join(found.group(0).strip() for found in run)
-    span = (run[0].start(), run[-1].end())
+    span = (offset + run[0].start(), offset + run[-1].end())
     return placed(paragraph, span, Hit(EXCLAMATION_STACCATO.name, paragraph.line, snippet, run[0].group(0).strip()))
 
 
-def _staccato_runs(paragraph: ParagraphLanguage) -> list[Hit]:
-    sentences = STACCATO_SENTENCE_RE.finditer(visible(paragraph.text))
-    grouped = groupby(sentences, key=lambda found: _is_staccato(found.group(0)))
+def _unit_runs(paragraph: ParagraphLanguage, unit: tuple[int, str]) -> list[Hit]:
+    offset, text = unit
+    grouped = groupby(STACCATO_SENTENCE_RE.finditer(text), key=lambda found: _is_staccato(found.group(0)))
     runs = [list(group) for staccato, group in grouped if staccato]
-    return [_run_hit(paragraph, run) for run in runs if len(run) >= STACCATO_MIN_RUN]
+    return [_run_hit(paragraph, offset, run) for run in runs if len(run) >= STACCATO_MIN_RUN]
+
+
+def _staccato_runs(paragraph: ParagraphLanguage) -> list[Hit]:
+    """Start a run afresh in each text, because exclamations in separate cells are not one staccato."""
+    return [hit for unit in text_units(paragraph) for hit in _unit_runs(paragraph, unit)]
 
 
 def _check(path: str, paragraphs: list[ParagraphLanguage]) -> list[Hit]:

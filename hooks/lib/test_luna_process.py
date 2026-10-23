@@ -12,7 +12,7 @@ import time
 import pytest
 
 from lib import luna_provider
-from lib.judge_contracts import JudgeRequest, ReviewKind
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, ReviewKind
 from lib.luna_provider import LunaJudge, LunaProviderFailure, OpenAICodexSdk
 
 
@@ -23,7 +23,7 @@ SUCCESS = {
         "provider": "openai-codex",
         "model": "gpt-5.6-luna",
         "effort": "high",
-        "rubric_version": "adw-rubric-v1",
+        "rubric_version": RUBRIC_VERSION,
         "usage": {"total_tokens": 7},
         "cached": False,
     },

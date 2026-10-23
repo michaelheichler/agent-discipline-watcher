@@ -11,7 +11,9 @@ import session_start
 import stop
 import subagent_start
 from lib import journal, codex_luna, reporting, session_state
-from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from lib.document_hunks import changed_hunks, hunk_text
+from lib.document_review import HUNK_NOTICE
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_storage import LunaProviderFailure
 
 
@@ -81,7 +83,7 @@ class MixedProvider:
             provider="openai-codex",
             model="gpt-5.6-luna",
             effort="high",
-            rubric_version="adw-rubric-v1",
+            rubric_version=RUBRIC_VERSION,
             usage={"total_tokens": 1},
         )
 
@@ -102,7 +104,7 @@ def _result(request_kind: ReviewKind = ReviewKind.COMMENT) -> JudgeResult:
         provider="openai-codex",
         model="gpt-5.6-luna",
         effort="high",
-        rubric_version="adw-rubric-v1",
+        rubric_version=RUBRIC_VERSION,
         usage={"total_tokens": 1},
     )
 
@@ -314,15 +316,23 @@ def test_codex_reviews_document_and_comment_rows_before_finishing(tmp_path: Path
     assert session_state.read_state("mixed", state_root)[codex_luna.STATE_KEY] == ["turn-1"]
 
 
+def _new_file_hunk(path: str, text: str) -> str:
+    """One hunk per new file, because every line of a file first seen this turn changed."""
+    (hunk,) = changed_hunks(path, "", text)
+    return hunk_text(path, hunk)
+
+
 def test_codex_reviews_each_document_without_truncating_trailing_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state_root = tmp_path / "state"
+    sources = {"one.md": "one", "two.md": "two", "three.md": "three"}
     _journal_holds("all-docs", [
-        {"role": "document", "path": "one.md", "source_context": "one", "turn_id": "turn-1"},
-        {"role": "document", "path": "two.md", "source_context": "two", "turn_id": "turn-1"},
-        {"role": "document", "path": "three.md", "source_context": "three", "turn_id": "turn-1"},
+        *({"role": "document", "path": path, "source_context": text, "turn_id": "turn-1"} for path, text in sources.items()),
         {"role": "comment", "path": "code.py", "line": 4, "text": "Returns rows.", "turn_id": "turn-1"},
     ], state_root)
-    monkeypatch.setattr(codex_luna, "MAX_SOURCE_CHARS", 82)
+    hunks = [_new_file_hunk(path, text) for path, text in sources.items()]
+    header = f"Document: {codex_luna.DOCUMENT_LABEL}\n\n{HUNK_NOTICE}\n\n"
+    # Two hunks fit beside the header, so the third must open a second request.
+    monkeypatch.setattr(codex_luna, "MAX_SOURCE_CHARS", len(header) + len("\n\n".join(hunks[:2])))
     provider = MixedProvider()
 
     response = stop.run(
@@ -335,9 +345,7 @@ def test_codex_reviews_each_document_without_truncating_trailing_rows(tmp_path: 
     documents = [request for request in provider.calls if request.review_kind is ReviewKind.DOCUMENT]
     assert len(documents) == 2
     assert all(len(request.source_context) <= codex_luna.MAX_SOURCE_CHARS for request in documents)
-    assert {path for request in documents for path in ("one.md", "two.md", "three.md") if path in request.source_context} == {
-        "one.md", "two.md", "three.md",
-    }
+    assert [hunk for hunk in hunks if any(hunk in request.source_context for request in documents)] == hunks
     assert any(request.review_kind is ReviewKind.COMMENT for request in provider.calls)
 
 

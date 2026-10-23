@@ -12,7 +12,6 @@ from pathlib import PurePath
 from typing import NamedTuple
 
 try:
-    from . import german_rules, test_rules
     from .config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from .findings import BLOCK_RULES
     from .markup import MIXED_LANGUAGE_EXTS
@@ -22,8 +21,6 @@ try:
     )
     from .scanner import _is_prose
 except ImportError:
-    import german_rules
-    import test_rules
     from config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES
     from findings import BLOCK_RULES
     from markup import MIXED_LANGUAGE_EXTS
@@ -70,16 +67,15 @@ class Edit(NamedTuple):
 class _Diff(NamedTuple):
     edits: tuple[Edit, ...]
     changed: frozenset[int]
-
-
-def block_rules() -> frozenset[str]:
-    """Unioned at runtime, because the test and German registries declare spans on their own rules."""
-    spans_test = {rule.name for rule_set in test_rules.RULE_SETS for rule in rule_set.rules if rule.spans_test}
-    return BLOCK_RULES | spans_test | {rule.name for rule in german_rules.declared()}
+    regrouped: frozenset[int] = frozenset()
 
 
 def _normal(text: str) -> str:
     return " ".join(text.split())
+
+
+def _physical_keys(text: str) -> list[str]:
+    return [_normal(line) for line in text.splitlines()]
 
 
 def _prose_file(path: str, text: str) -> bool:
@@ -204,7 +200,7 @@ def _rising(pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
 def _anchors(old: Sequence[str], new: Sequence[str]) -> list[tuple[int, int]]:
     """Units unique on both sides split the middle, because one SequenceMatcher over 25k code lines took 7.6 s."""
     old_counts, new_counts = Counter(old), Counter(new)
-    # Floored like moves, because a unique "}" anchor would push a longer moved line out of its gap.
+    # Floored, because a unique } anchor would displace a longer moved line.
     old_at = {key: index for index, key in enumerate(old) if old_counts[key] == 1 and len(key) >= MOVED_KEY_FLOOR}
     return _rising([(old_at[key], index) for index, key in enumerate(new) if new_counts[key] == 1 and key in old_at])
 
@@ -284,6 +280,27 @@ def _diff(old: Sequence[str], new: Sequence[str], check: Check) -> _Diff:
     return _Diff((*matched, *forced), _unmoved(old, new, matched) | _inserted(forced))
 
 
+def _equal_pairs(edits: Sequence[Edit], old_size: int, new_size: int) -> Iterator[tuple[int, int]]:
+    new_at = old_at = 0
+    for edit in [*sorted(edits), Edit(old_size, old_size, new_size, new_size)]:
+        yield from zip(range(new_at, edit.new_start), range(old_at, edit.old_start))
+        new_at, old_at = edit.new_end, edit.old_end
+
+
+def _regrouped(edits: Sequence[Edit], old: list[Unit], new: list[Unit]) -> frozenset[int]:
+    """Lines whose unedited unit gained or lost its paragraph end, because a merge or split edits no sentence."""
+    return frozenset(
+        new[new_index].last
+        for new_index, old_index in _equal_pairs(edits, len(old), len(new))
+        if new[new_index].ending != old[old_index].ending
+    )
+
+
+def _unit_diff(old: list[Unit], new: list[Unit], check: Check) -> _Diff:
+    diff = _diff([unit.key for unit in old], [unit.key for unit in new], check)
+    return diff._replace(regrouped=_regrouped(diff.edits, old, new))
+
+
 def _span_growth(edit: Edit, low: int, high: int) -> int:
     """Surplus only for a straddling edit, because its old side may sit outside the span."""
     removed = edit.old_end - edit.old_start
@@ -297,10 +314,19 @@ def _span_growth(edit: Edit, low: int, high: int) -> int:
     return max(0, inside - removed)
 
 
+def _summed_growth(diff: _Diff, low: int, high: int) -> int:
+    return sum(_span_growth(edit, low, high) for edit in diff.edits)
+
+
 def _bounds(finding: dict) -> tuple[int, int]:
     line = int(finding.get("line") or 1)
     end_line = finding.get("end_line")
     return line, max(int(end_line), line) if end_line else line
+
+
+def _seam_range(rule: object, first: int, last: int) -> range:
+    """Block spans only, because deleting a sentence or a paragraph break can create a paragraph finding."""
+    return range(first, last + 1) if rule in BLOCK_RULES or first != last else range(0)
 
 
 def _holds(unit: Unit, line: int, column: int) -> bool:
@@ -315,6 +341,7 @@ class Provenance:
     diffs: tuple[_Diff, ...]
     prose: bool
     texts: dict[int, str] = field(default_factory=dict, repr=False)
+    physical: tuple[_Diff, ...] = ()
 
     @cached_property
     def changed(self) -> frozenset[int]:
@@ -329,7 +356,16 @@ class Provenance:
     @cached_property
     def removed_seams(self) -> frozenset[int]:
         """The line a removal follows, 0 for the top, because a removal has no changed line to show."""
-        return frozenset.intersection(*(self._seams(diff) for diff in self.diffs))
+        return frozenset.intersection(*(self._removals(diff) for diff in self.diffs))
+
+    @cached_property
+    def seams(self) -> frozenset[int]:
+        return frozenset.intersection(*self._parent_seams)
+
+    @cached_property
+    def _parent_seams(self) -> tuple[frozenset[int], ...]:
+        """Either kind, because a merged or split paragraph changes no unit."""
+        return tuple(self._removals(diff) | diff.regrouped for diff in self.diffs)
 
     @cached_property
     def _by_line(self) -> dict[int, list[int]]:
@@ -339,7 +375,7 @@ class Provenance:
                 found.setdefault(number, []).append(index)
         return found
 
-    def _seams(self, diff: _Diff) -> frozenset[int]:
+    def _removals(self, diff: _Diff) -> frozenset[int]:
         return frozenset(
             self.units[edit.new_start - 1].last if edit.new_start else 0
             for edit in diff.edits
@@ -349,12 +385,15 @@ class Provenance:
     def _touching(self, first: int, last: int) -> list[int]:
         return sorted({index for number in range(first, last + 1) for index in self._by_line.get(number, ())})
 
+    def _grown(self, parent: int, first: int, last: int) -> int:
+        """Physical lines count too in code, because the scanner counts a blank line toward function length."""
+        indices = self._touching(first, last)
+        logical = _summed_growth(self.diffs[parent], indices[0], indices[-1]) if indices else 0
+        return logical if self.prose else max(logical, _summed_growth(self.physical[parent], first - 1, last - 1))
+
     def growth(self, first: int, last: int) -> int:
         """Smallest over parents, because a merge that took a long span from one parent did not grow it."""
-        indices = self._touching(first, last)
-        if not indices:
-            return 0
-        return min(sum(_span_growth(edit, indices[0], indices[-1]) for edit in diff.edits) for diff in self.diffs)
+        return min(self._grown(parent, first, last) for parent in range(len(self.diffs)))
 
     def _narrowed(self, line: int, match: object) -> list[int]:
         """Every sentence on the line, because a missing or repeated match cannot pick one."""
@@ -366,33 +405,32 @@ class Provenance:
         return [index for index in on_line if _holds(self.units[index], line, column)] or on_line
 
     def _evidence(self, finding: dict, first: int, last: int) -> list[int]:
-        if self.prose and first == last and finding.get("rule") not in BLOCK_RULES:
+        rule = finding.get("rule")
+        if rule in ENDING_RULES:
+            return [index for index in self._touching(first, last) if self.units[index].ending]
+        if self.prose and first == last and rule not in BLOCK_RULES:
             return self._narrowed(first, finding.get("match"))
         return self._touching(first, last)
 
-    def _removed_within(self, rule: object, span: tuple[int, int]) -> bool:
-        """Block spans only, because deleting a sentence can create a paragraph finding."""
-        first, last = span
-        if rule not in BLOCK_RULES and first == last:
-            return False
-        return any(first <= seam <= last for seam in self.removed_seams)
+    def _owned_against(self, parent: int, seam_range: range, evidence: list[int]) -> bool:
+        """Owned when evidence sits on no unit and the file changed, because unplaced debt must not hide new text."""
+        changed, seams = self.diffs[parent].changed, self._parent_seams[parent]
+        if not seams.isdisjoint(seam_range):
+            return True
+        if not evidence:
+            return bool(changed or seams)
+        return not changed.isdisjoint(evidence)
 
     def owns(self, finding: dict) -> bool:
-        """Owned when evidence sits on no unit and the file changed, because unplaced debt must not hide new text."""
+        """Owned only against every parent, because a parent that explains the finding makes it inherited."""
         rule = finding.get("rule")
         if rule in OWNED_RULES:
             return True
         first, last = _bounds(finding)
         if rule in SIZE_RULES:
             return self.growth(first, last) > 0
-        if self._removed_within(rule, (first, last)):
-            return True
-        indices = self._evidence(finding, first, last)
-        if rule in ENDING_RULES:
-            indices = [index for index in indices if self.units[index].ending]
-        if not indices:
-            return bool(self.changed or self.removed_seams)
-        return not self.changed.isdisjoint(indices)
+        seam_range, evidence = _seam_range(rule, first, last), self._evidence(finding, first, last)
+        return all(self._owned_against(parent, seam_range, evidence) for parent in range(len(self.diffs)))
 
 
 def compare(path: str, before: str, after: str, check: Check = _unchecked) -> Provenance:
@@ -403,11 +441,12 @@ def compare_any(path: str, befores: list[str], after: str, check: Check = _unche
     """No parent counts as an empty one, because text with no baseline is all the agent's."""
     prose = _prose_file(path, after)
     units, texts = _units(path, after, prose)
-    keys = [unit.key for unit in units]
     check()
-    diffs = []
+    diffs, physical = [], []
     for before in befores or [""]:
-        old = keys if before == after else [unit.key for unit in _units(path, before, prose)[0]]
+        old = units if before == after else _units(path, before, prose)[0]
         check()
-        diffs.append(_diff(old, keys, check))
-    return Provenance(tuple(units), tuple(diffs), prose, texts)
+        diffs.append(_unit_diff(old, units, check))
+        if not prose:
+            physical.append(_diff(_physical_keys(before), _physical_keys(after), check))
+    return Provenance(tuple(units), tuple(diffs), prose, texts, tuple(physical))

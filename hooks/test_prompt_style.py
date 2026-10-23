@@ -10,9 +10,10 @@ import session_start
 from lib import merge_state, session_state
 
 GERMAN_PROMPT = (
-    "Bitte prüfe die Datenschutzgrundverordnungsumsetzung in diesem Modul. "
+    "Bitte prüfe die Umsetzung in diesem Modul. "
     "Außerdem sollte das Ergebnis klar sein - das ist ein zentraler Aspekt."
 )
+TYPED_ELLIPSIS_PROMPT = "Bitte prüfe die Umsetzung in diesem Modul... Das Ergebnis soll bis Freitag vorliegen."
 
 
 def _context(response: dict) -> str:
@@ -28,8 +29,13 @@ def _session(tmp_path: Path) -> dict:
 
 
 def test_a_rule_gated_off_never_reaches_the_agent() -> None:
-    response = _run(GERMAN_PROMPT)
-    assert "de_long_compound" not in json.dumps(response)
+    response = _run(TYPED_ELLIPSIS_PROMPT)
+    assert "typed_ellipsis" not in json.dumps(response)
+
+
+def test_the_same_rule_reaches_the_agent_once_enforced() -> None:
+    response = _run(TYPED_ELLIPSIS_PROMPT, {"rule_gates": {"typed_ellipsis": "enforce"}})
+    assert "typed_ellipsis" in _context(response)
 
 
 def test_a_style_hit_tells_the_agent_not_to_copy_it() -> None:

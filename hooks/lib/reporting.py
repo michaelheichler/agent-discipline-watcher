@@ -39,7 +39,6 @@ LEDGER_LOCK_FILENAME = ".ledger.lock"
 ADJUDICATION_FILENAME = "adjudications.jsonl"
 REPORT_DIRNAME = "reports"
 MAX_REPORT_FILES = 300
-MAX_REPORT_FINDINGS = 200
 MAX_COMPACT_BYTES = 4096
 MAX_COMPACT_FIELD_BYTES = 768
 MAX_CURRENT_LEDGER_BYTES = 256 * 1024
@@ -110,11 +109,8 @@ def write_full_report(findings: list[dict], config: dict | None = None) -> str:
     path = directory / f"{session_id}-{turn_id}-{uuid.uuid4().hex}.json"
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.fchmod(descriptor, 0o600)
-    kept = findings[:MAX_REPORT_FINDINGS]
-    if len(findings) > MAX_REPORT_FINDINGS:
-        kept = [*kept, {"omitted": len(findings) - MAX_REPORT_FINDINGS}]
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        json.dump(kept, handle, ensure_ascii=True, indent=2)
+        json.dump(findings, handle, ensure_ascii=True, indent=2)
     _prune_reports(directory, MAX_REPORT_FILES)
     return str(path)
 

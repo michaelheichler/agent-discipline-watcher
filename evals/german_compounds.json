@@ -1,0 +1,190 @@
+{
+  "compound_shares": {
+    "adw": {
+      "compounds": 107,
+      "non": 32
+    },
+    "ha": {
+      "compounds": 183,
+      "non": 32
+    },
+    "pi_adw": 0.7698,
+    "pi_ha": 0.8512,
+    "pi_population_weighted": 0.7708,
+    "weight_adw": 0.9875
+  },
+  "false_negatives": [
+    "Wiedervernässungen",
+    "Geostrategisch",
+    "Neurostimulation",
+    "südkontinentale",
+    "Verkehrsstockung",
+    "Cyberfeminismus",
+    "gemeinnützigen",
+    "Bolzanofunktion",
+    "Gehirnerweichung",
+    "Monochloressigsäure",
+    "Elektromagnetische",
+    "Wissenschaftsthemen",
+    "Bedecktsamigen",
+    "Verfassungsprinzipien"
+  ],
+  "false_positives": [
+    [
+      "institutionalen",
+      [
+        "Institution",
+        "Alen"
+      ]
+    ],
+    [
+      "Analphabetismus",
+      [
+        "Analphabet",
+        "Ismus"
+      ]
+    ],
+    [
+      "Parlamentarische",
+      [
+        "Parlament",
+        "Arische"
+      ]
+    ],
+    [
+      "Beschreibungen",
+      [
+        "Besch",
+        "Reibungen"
+      ]
+    ]
+  ],
+  "held_out": {
+    "counts": {
+      "fn": 14,
+      "fp": 4,
+      "precision": 0.9783,
+      "precision_ci95": [
+        0.9454,
+        0.9915
+      ],
+      "recall": 0.9278,
+      "recall_ci95": [
+        0.8825,
+        0.9565
+      ],
+      "tn": 89,
+      "tp": 180
+    },
+    "projected_precision": {
+      "ci95": [
+        0.9637,
+        0.9946
+      ],
+      "median": 0.9843
+    },
+    "projected_precision_point": 0.9864,
+    "specificity": 0.957,
+    "specificity_ci95": [
+      0.8946,
+      0.9831
+    ]
+  },
+  "held_out_main_sample_only": {
+    "counts": {
+      "fn": 14,
+      "fp": 3,
+      "precision": 0.9836,
+      "precision_ci95": [
+        0.9529,
+        0.9944
+      ],
+      "recall": 0.9278,
+      "recall_ci95": [
+        0.8825,
+        0.9565
+      ],
+      "tn": 50,
+      "tp": 180
+    },
+    "projected_precision": {
+      "ci95": [
+        0.948,
+        0.9937
+      ],
+      "median": 0.9786
+    },
+    "projected_precision_point": 0.9822,
+    "specificity": 0.9434,
+    "specificity_ci95": [
+      0.8463,
+      0.9806
+    ]
+  },
+  "kappa_binary": {
+    "items": 292,
+    "kappa": 0.9611
+  },
+  "kappa_three_way": 0.8765,
+  "label_counts": {
+    "rater1": {
+      "0": 93,
+      "1": 206,
+      "?": 21
+    },
+    "rater2": {
+      "0": 103,
+      "1": 197,
+      "?": 20
+    }
+  },
+  "lexicon_plain_md5": "b026b35eacc273d4f34c24eefc270984",
+  "precision_natural_general_pool": {
+    "fn": 2,
+    "fp": 1,
+    "precision": 0.9677,
+    "precision_ci95": [
+      0.8381,
+      0.9943
+    ],
+    "recall": 0.9375,
+    "recall_ci95": [
+      0.7985,
+      0.9827
+    ],
+    "tn": 3,
+    "tp": 30
+  },
+  "rater1_alone": {
+    "fn": 15,
+    "fp": 4,
+    "precision": 0.9795,
+    "precision_ci95": [
+      0.9485,
+      0.992
+    ],
+    "recall": 0.9272,
+    "recall_ci95": [
+      0.8833,
+      0.9554
+    ],
+    "tn": 89,
+    "tp": 191
+  },
+  "rater2_alone": {
+    "fn": 16,
+    "fp": 10,
+    "precision": 0.9476,
+    "precision_ci95": [
+      0.9063,
+      0.9713
+    ],
+    "recall": 0.9188,
+    "recall_ci95": [
+      0.8722,
+      0.9494
+    ],
+    "tn": 93,
+    "tp": 181
+  }
+}

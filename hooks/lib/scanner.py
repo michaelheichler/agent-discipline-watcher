@@ -35,6 +35,7 @@ try:
     from .markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
+        TEMPLATE_EXPRESSION_RE,
         CommentSource,
         RegionKind,
         _blank_keep_newlines,
@@ -83,6 +84,7 @@ except ImportError:
     from markup import (
         MARKDOWN_EXTS,
         MIXED_LANGUAGE_EXTS,
+        TEMPLATE_EXPRESSION_RE,
         CommentSource,
         RegionKind,
         _blank_keep_newlines,
@@ -105,6 +107,7 @@ _int_setting = scan_input.int_setting
 
 
 BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212)) + "]")
+PROSE_DASH_RE = re.compile(r"(?:(?<=\s)|(?<=[^\W\d_]))" + BAD_DASH_RE.pattern + r"(?=\s|[^\W\d_])")
 PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
@@ -244,6 +247,7 @@ def _scan_context(path: str, text: str, config: dict | None) -> _ScanContext:
 
 class _LineSources(NamedTuple):
     punctuation: list[str]
+    prose_dash: list[str]
     english: list[str]
     comment: list[str]
     languages: list[str]
@@ -256,10 +260,17 @@ class _SourceLine(NamedTuple):
     text: str
 
 
+def _template_free(path: str, text: str) -> str:
+    """Blank whole Jinja spans in config, because a template minus may span lines and is arithmetic, not a dash."""
+    return TEMPLATE_EXPRESSION_RE.sub(_blank_keep_newlines, text) if _is_config(path) else text
+
+
 def _line_sources(context: _ScanContext, masked: str, comment_source: str) -> _LineSources:
     paragraphs = _prose_paragraphs(context, masked)
+    punctuation = _strip_punctuation_blocks(context.path, masked, context.prose)
     return _LineSources(
-        _strip_punctuation_blocks(context.path, masked, context.prose).splitlines() or [""],
+        punctuation.splitlines() or [""],
+        _template_free(context.path, punctuation).splitlines() or [""],
         _strip_english_hidden(masked).splitlines() or [""],
         comment_source.splitlines() or [""],
         _line_languages(context, paragraphs),
@@ -311,8 +322,9 @@ def _mask_hidden_ranges(text: str, hidden_ranges: tuple[tuple[int, int], ...]) -
 def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context: _ScanContext) -> list[dict]:
     findings: list[dict] = []
     if "punctuation" in context.active_families:
-        scan_line = _line_or_blank(sources.punctuation, source_line.number)
-        language = _line_or_blank(sources.languages, source_line.number) or ENGLISH
+        number = source_line.number
+        scan_line = _PunctuationLine(_line_or_blank(sources.punctuation, number), _line_or_blank(sources.prose_dash, number))
+        language = _line_or_blank(sources.languages, number) or ENGLISH
         findings.extend(_scan_punctuation(source_line, scan_line, context.prose, language))
     german = _line_or_blank(sources.languages, source_line.number) == GERMAN
     if "english" in context.active_families and context.prose and not german:
@@ -437,18 +449,40 @@ PUNCTUATION_RULES = (
 GERMAN_PUNCTUATION_RULES = german_punctuation.german_rules(PUNCTUATION_RULES)
 
 
-def _punctuation_texts(path: str, clean: str, prose: bool) -> dict[str, str]:
-    prose_part = _punctuation_prose_part(path, clean, prose)
+class _PunctuationLine(NamedTuple):
+    whole: str
+    prose_dash: str
+
+
+def _config_quoted_view(text: str) -> str:
+    """Keep a quoted dash that sits between words, because a quoted config value is content and a dash between digits is glyph data."""
+    masked = list(mask_quoted(text))
+    for found in PROSE_DASH_RE.finditer(text):
+        masked[found.start()] = found.group(0)
+    return "".join(masked)
+
+
+def _clean_view(line: str, language: str, config: bool = False) -> str:
+    stripped = _strip_inline_code(line)
+    clean = _config_quoted_view(stripped) if config else mask_quoted(stripped)
+    return german_punctuation.german_view(clean) if language == GERMAN else clean
+
+
+def _punctuation_views(path: str, scan_line: _PunctuationLine, language: str) -> _PunctuationLine:
+    config = _is_config(path)
+    whole = _clean_view(scan_line.whole, language, config)
+    return _PunctuationLine(whole, _clean_view(scan_line.prose_dash, language) if config else whole)
+
+
+def _punctuation_texts(path: str, views: _PunctuationLine, prose: bool) -> dict[str, str]:
+    prose_part = _punctuation_prose_part(path, views.prose_dash, prose)
     semicolon = "" if _is_config(path) else URL_RE.sub("", prose_part)
-    return {"clean": clean, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
+    return {"clean": views.whole, "prose": prose_part, "semicolon": semicolon, "colon": semicolon}
 
 
-def _scan_punctuation(source_line: _SourceLine, scan_line: str, prose: bool, language: str = ENGLISH) -> list[dict]:
-    clean = mask_quoted(_strip_inline_code(scan_line))
-    rules = PUNCTUATION_RULES
-    if language == GERMAN:
-        clean, rules = german_punctuation.german_view(clean), GERMAN_PUNCTUATION_RULES
-    texts = _punctuation_texts(source_line.path, clean, prose)
+def _scan_punctuation(source_line: _SourceLine, scan_line: _PunctuationLine, prose: bool, language: str = ENGLISH) -> list[dict]:
+    rules = GERMAN_PUNCTUATION_RULES if language == GERMAN else PUNCTUATION_RULES
+    texts = _punctuation_texts(source_line.path, _punctuation_views(source_line.path, scan_line, language), prose)
     rows = []
     for target, regexes, rule, detail, action in rules:
         found = _first_match(regexes, texts[target])

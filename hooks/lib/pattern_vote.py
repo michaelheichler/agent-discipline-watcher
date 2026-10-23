@@ -19,6 +19,7 @@ class VoteTurn(NamedTuple):
     session_id: str
     turn_id: str
     config: dict | None
+    project: str | None = None
 
 
 class Voter(NamedTuple):
@@ -38,7 +39,7 @@ def turn_for(payload: object, config: dict | None) -> VoteTurn:
     session_id = payloads.session_id(payload)
     stored = session_state.read_state(session_id, _state_root(config)).get("turn_id")
     turn_id = payloads.turn_id(payload) or (stored if isinstance(stored, str) else "")
-    return VoteTurn(session_id, turn_id, config)
+    return VoteTurn(session_id, turn_id, config, payloads.cwd(payload) or None)
 
 
 def warm(session_id: str, config: dict | None, voter: Voter = Voter()) -> None:
@@ -76,4 +77,5 @@ def vote(turn: VoteTurn, path: Path, voter: Voter = Voter()) -> list[dict]:
         return []
     return journal.record_patterns(
         turn.session_id, turn.turn_id, path, rows, content_hash=digest, state_root=_state_root(turn.config),
+        project=turn.project,
     )

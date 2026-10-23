@@ -13,6 +13,7 @@ try:
     from .findings import Finding
     from .markup import MARKDOWN_EXTS
     from .protected import authorized
+    from .regular_file import read_regular_text
 except ImportError:
     import host
     import payloads
@@ -20,6 +21,7 @@ except ImportError:
     from findings import Finding
     from markup import MARKDOWN_EXTS
     from protected import authorized
+    from regular_file import read_regular_text
 
 TEST_WRITER = "adw-test-writer"
 # Both, because Claude Code scopes a plugin agent by its plugin name.
@@ -131,7 +133,7 @@ def gate_open(gate: Gate) -> bool:
 def read_before(path: Path) -> str | None:
     """Treat unreadable as absent, since the path still counts."""
     try:
-        return path.read_text(encoding="utf-8")
+        return read_regular_text(path)
     except (OSError, UnicodeError):
         return None
 

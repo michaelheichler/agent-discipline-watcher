@@ -8,7 +8,7 @@ import pytest
 import stop
 from lib import codex_luna, journal, session_state
 from lib.judge import Candidate
-from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, JudgeResult, ReviewKind
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ class Provider:
             provider="openai-codex",
             model="gpt-5.6-luna",
             effort="high",
-            rubric_version="adw-rubric-v1",
+            rubric_version=RUBRIC_VERSION,
             usage={"total_tokens": 1},
         )
 

@@ -7,11 +7,11 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import SentenceFinder, phrase_hits, placed, sentence_hits, sentence_spans, visible
+    from ._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import SentenceFinder, phrase_hits, placed, sentence_hits, sentence_spans, visible
+    from german_rules._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits
     from prose_language import ParagraphLanguage
 
 SYMBOLISM = Rule(
@@ -133,16 +133,15 @@ def _counted(hits: list[Hit], minimum: int) -> list[Hit]:
 
 
 def _closing_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Pattern[str]) -> list[Hit]:
-    """Read only the last sentence, because the catalog flags these phrases as a closing line."""
-    hits = []
-    for paragraph in paragraphs:
-        spans = sentence_spans(visible(paragraph.text))
-        offset, sentence = spans[-1] if spans else (0, "")
-        found = pattern.search(sentence)
-        if found is not None:
-            span = (offset + found.start(), offset + found.end())
-            hits.append(placed(paragraph, span, Hit(rule, paragraph.line, sentence, found.group(0))))
-    return hits
+    """Read only the last sentence of each text, because the catalog flags these phrases as a closing line."""
+    found = (
+        (paragraph, offset, sentence, pattern.search(sentence))
+        for paragraph in paragraphs for offset, sentence in closing_sentences(paragraph)
+    )
+    return [
+        placed(paragraph, (offset + match.start(), offset + match.end()), Hit(rule, paragraph.line, sentence, match.group(0)))
+        for paragraph, offset, sentence, match in found if match is not None
+    ]
 
 
 def _check(path: str, paragraphs: list[ParagraphLanguage]) -> list[Hit]:

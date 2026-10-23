@@ -7,7 +7,7 @@ from pathlib import Path
 import stat
 from typing import Any, NamedTuple
 
-from . import imported_baseline, session_state
+from . import held_verdicts, imported_baseline, review_scope, session_state
 from .baseline import committed_text
 from .imported_baseline import Snapshot
 from .document_hunks import changed_hunks, hunk_chars
@@ -313,7 +313,17 @@ def _merged(rows: list, fresh: list, added: list) -> list:
         rows.append(row)
         added.append(row)
         keys.add(candidate_key(row))
-    return rows[-MAX_ROWS:]
+    return rows
+
+
+def _trimmed(rows: list, held: set[str]) -> list:
+    """Because evicting a held row would release its block unreviewed, only unheld rows go, oldest first."""
+    excess = len(rows) - MAX_ROWS
+    if excess <= 0:
+        return rows
+    unheld = [index for index, row in enumerate(rows) if not (isinstance(row, dict) and _reviewed_key(row) in held)]
+    evicted = set(unheld[:excess])
+    return [row for index, row in enumerate(rows) if index not in evicted]
 
 
 def _overflow_counts(rows: list) -> tuple[dict[str, int], dict[str, str], dict[str, str]]:
@@ -413,8 +423,9 @@ def _overflow_markers(
 def _refresher(target: str, digest: str, turn_id: str, fresh: list, added: list):
     """Close over the edit because update_state accepts a single-argument callable."""
     def update(state: dict) -> dict:
+        held = held_verdicts.held_keys(state)
         kept = [row for row in _stored_rows(state) if not _superseded(row, target, digest)]
-        retained = _merged(kept, fresh, added)
+        retained = _trimmed(_merged(kept, fresh, added), held)
         markers = _overflow_markers(state, target, digest, turn_id, kept, retained)
         return _set_overflow({**state, STATE_KEY: retained}, markers)
 
@@ -449,10 +460,15 @@ def _before_text(session_id: str, turn_id: str, target: Path, state_root: str | 
     return _turn_before(prior, turn_id, target, first_seen, text)
 
 
-def record_edit(session_id: str, turn_id: str, tool_use_id: str, path: str | Path, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+def record_edit(
+    session_id: str, turn_id: str, tool_use_id: str, path: str | Path, *,
+    state_root: str | Path | None = None, project: str | Path | None = None,
+) -> list[dict[str, Any]]:
     if not isinstance(session_id, str) or not session_id:
         return []
     target = _canonical_path(path)
+    if not review_scope.is_project_file(target, project):
+        return []
     outcome = _read_content(target)
     if outcome.status == "transient":
         return []
@@ -489,13 +505,13 @@ def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, 
 
 def record_patterns(
     session_id: str, turn_id: str, path: str | Path, rows: list[dict[str, Any]], *,
-    content_hash: str, state_root: str | Path | None = None,
+    content_hash: str, state_root: str | Path | None = None, project: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Hash compared, because the vote may have read older text."""
     if not isinstance(session_id, str) or not session_id:
         return []
     target = _canonical_path(path)
-    source = current_source(target)
+    source = current_source(target) if review_scope.is_project_file(target, project) else None
     if source is None or source[0] != content_hash:
         return []
     fresh = _pattern_rows(target, content_hash, turn_id, rows)
@@ -531,9 +547,12 @@ def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> l
 
 
 def _reviewed_key(row: dict[str, Any]) -> str:
-    """Pattern keys apart, because a vote can land after its review."""
+    """Pattern keys apart and per candidate, because a vote can land after its review and one file can hold an answered and a skipped run."""
     key = f"{row.get('path', '')}\n{row.get('content_hash', '')}"
-    return f"pattern\n{key}" if row.get("role") == "pattern" else key
+    if row.get("role") != "pattern":
+        return key
+    text = hashlib.sha256(str(row.get("text", "")).encode("utf-8")).hexdigest()[:16]
+    return f"pattern\n{key}\n{row.get('rule', '')}\n{row.get('line', '')}\n{text}"
 
 
 def _reviewed(state: dict) -> list[str]:
@@ -608,18 +627,22 @@ def _rounds_left(row: dict[str, Any], reviewed: set[str], turns: dict[str, str])
     return key in reviewed or rounds < MAX_DOCUMENT_ROUNDS
 
 
-def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+def read_stop(
+    session_id: str, *, turn_id: str | None = None, state_root: str | Path | None = None,
+    project: str | Path | None = None,
+) -> list[dict[str, Any]]:
     """Current turn or unreviewed, because a failed Stop must not drop work."""
     state = session_state.read_state(session_id, state_root)
     reviewed = set(_reviewed(state))
     turns = _review_turns(state)
     current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
-    rows = read(session_id, state_root=state_root)
+    rows = _project_rows(read(session_id, state_root=state_root), project)
 
     def due(row: dict[str, Any]) -> bool:
         return (bool(current) and row.get("turn_id") == current) or _reviewed_key(row) not in reviewed
 
-    patterns = [_stop_row(row) for row in rows if row.get("role") == "pattern" and due(row)]
+    # Because a pattern key holds its exact text, one answer serves the turn.
+    patterns = [_stop_row(row) for row in rows if row.get("role") == "pattern" and _reviewed_key(row) not in reviewed]
     documents = [
         _stop_row(row) for row in _latest_documents(rows) if due(row) and _rounds_left(row, reviewed, turns)
     ]
@@ -630,9 +653,41 @@ def read_stop(session_id: str, *, turn_id: str | None = None, state_root: str | 
     return _within_budget(patterns + changed[:MAX_STOP_ROWS])
 
 
+def _project_rows(rows: list[dict[str, Any]], project: str | Path | None) -> list[dict[str, Any]]:
+    """Before the budget, because a queued row outside the project must not crowd out a project row."""
+    return [row for row in rows if review_scope.is_project_file(str(row.get("path", "")), project)]
+
+
 def _adds_text(row: dict[str, Any]) -> bool:
     """Because a removal leaves no line to judge, sending it would only pay for the call."""
     return any(hunk["changed"] for hunk in row["hunks"])
+
+
+def uphold(session_id: str, entries: list[tuple[list[str], str]], *, state_root: str | Path | None = None) -> None:
+    if entries:
+        session_state.update_state(session_id, lambda state: held_verdicts.with_upheld(state, entries, _live_keys(state)), state_root)
+
+
+def upheld(session_id: str, *, state_root: str | Path | None = None) -> list[str]:
+    state = session_state.read_state(session_id, state_root)
+    unchanged, unverifiable = _held_liveness(state)
+    texts = held_verdicts.upheld_texts(state, unchanged | unverifiable, MAX_ROWS)
+    return [*texts, held_verdicts.UPHELD_UNVERIFIABLE] if unverifiable and texts else texts
+
+
+def _held_liveness(state: dict) -> tuple[set[str], set[str]]:
+    """Read from disk as raw bytes, because an edit, a deletion, or a non-UTF-8 rewrite outside the journal still ends the held text."""
+    held = held_verdicts.held_keys(state)
+    rows = [row for row in _stored_rows(state) if isinstance(row, dict) and _reviewed_key(row) in held]
+    # Because a row only hashes a file within the cap, a larger file has changed.
+    prints = {identity: held_verdicts.fingerprint(identity, MAX_FILE_BYTES) for identity in {_row_identity(row) for row in rows}}
+    unchanged = {_reviewed_key(row) for row in rows if prints[_row_identity(row)] == ("read", row.get("content_hash"))}
+    unverifiable = {_reviewed_key(row) for row in rows if prints[_row_identity(row)] == held_verdicts.UNVERIFIABLE}
+    return unchanged, unverifiable
+
+
+def _live_keys(state: dict) -> set[str]:
+    return {_reviewed_key(row) for row in _stored_rows(state) if isinstance(row, dict)}
 
 
 def mark_reviewed(session_id: str, rows: list[dict[str, Any]], *, state_root: str | Path | None = None) -> None:

@@ -133,6 +133,7 @@ sentence it judges.
   evals/german_static_labels_sonnet.jsonl
   evals/german_static_labels_luna.jsonl
   evals/german_static_labels_adjudicated.jsonl
+  evals/german_compound_labels.jsonl, which stores single words and labels
 
 Git ignores the corpora themselves, and they rebuild from their sources.
 evals/README.md describes the rebuild.
@@ -151,3 +152,31 @@ them.
   programming-principles, https://github.com/webpro/programming-principles
   at commit a0c299c981cc31f4d4bd5c265cba80d3e9471429. The repository carries
   no license file. See upstream.
+
+
+9. gambolputty/german-nouns
+
+hooks/lib/german_compound_lexicon.txt.gz takes its nouns from
+german_nouns/nouns.csv of https://github.com/gambolputty/german-nouns. The
+LICENSE file of that repository names CC BY-SA 4.0, and its README says the
+data comes from German Wiktionary. The lexicon stores the bare lemmas, one
+per line, and no definitions or other text from the source.
+evals/build_german_compound_lexicon.py rebuilds it, and
+hooks/lib/german_short_nouns.json holds 55 three-letter nouns that we picked
+by hand from it.
+
+
+10. kaikki.org German extraction from Wiktionary
+
+hooks/lib/german_compound_lexicon.txt.gz takes its verbs, verb stems,
+adjectives, adverbs, prepositions, and particles from
+https://kaikki.org/dictionary/German/kaikki.org-dictionary-German.jsonl,
+which Wiktextract built from the German entries of English Wiktionary. The
+page https://kaikki.org/dictionary/ makes this data available under the same
+licenses as Wiktionary, CC BY-SA and GFDL. The lexicon stores the bare base
+forms and no definitions or other text from the source.
+
+hooks/lib/german_verbs.json.gz takes its verb stems from the same extraction,
+together with the few adverbs, prepositions, and other function words that
+look like a verb stem with a regular ending. It stores bare words only, and
+evals/build_german_compound_lexicon.py rebuilds it.

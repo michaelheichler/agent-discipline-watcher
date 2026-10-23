@@ -12,8 +12,10 @@ from typing import BinaryIO
 
 try:
     from . import session_state
+    from .regular_file import open_regular
 except ImportError:
     import session_state
+    from regular_file import open_regular
 
 STATE_KEY = "imported_baseline"
 STORE_DIRNAME = "imported"
@@ -68,7 +70,7 @@ def _stream_digest(handle: BinaryIO, check: Check) -> str:
 
 def file_digest(path: str | os.PathLike[str], check: Check = _unchecked) -> str | None:
     try:
-        with open(path, "rb") as handle:
+        with open_regular(path) as handle:
             return _stream_digest(handle, check)
     except OSError:
         return None
@@ -170,9 +172,7 @@ def _copied_blob(source: BinaryIO, store: Path) -> str:
 
 def _captured(path: Path, store: Path) -> str | None:
     try:
-        if not path.is_file():
-            return None
-        source = path.open("rb")
+        source = open_regular(path)
     except OSError:
         return None
     with source:

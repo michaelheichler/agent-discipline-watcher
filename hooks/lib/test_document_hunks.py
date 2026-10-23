@@ -7,6 +7,11 @@ from lib import document_hunks
 
 DOC = "notes.md"
 INTRO = "Intro line here.\n\n"
+FIRST_PAIR = "The hook reads each file. The scan checks every rule."
+SECOND_PAIR = "The gate blocks bad writes. The ledger keeps each row."
+ONE_PARAGRAPH = f"{FIRST_PAIR}\n{SECOND_PAIR}\n"
+TWO_PARAGRAPHS = f"{FIRST_PAIR}\n\n{SECOND_PAIR}\n"
+PARAGRAPH_DELETED = f"{FIRST_PAIR}\n\nAn extra paragraph sat here for a while.\n\n{SECOND_PAIR}\n"
 
 
 def _sentences(first: int, last: int) -> list[str]:
@@ -25,6 +30,12 @@ def _edited(count: int, *replaced: int) -> tuple[str, str]:
     before = _lines(count)
     after = [f"Edited sentence {number} here." if number in replaced else line for number, line in enumerate(before, 1)]
     return _text(before), _text(after)
+
+
+def _header_after(before: str) -> str:
+    """Two paragraphs after every edit, so the window is the whole file and only the cause can differ."""
+    (hunk,) = document_hunks.changed_hunks(DOC, before, TWO_PARAGRAPHS)
+    return document_hunks.hunk_header(DOC, hunk)
 
 
 def test_two_adjacent_changed_lines_show_three_context_lines_each_side() -> None:
@@ -99,6 +110,28 @@ def test_an_edit_inside_a_wrapped_sentence_marks_every_line_it_covers() -> None:
 ])
 def test_a_layout_only_change_has_no_hunk(path: str, before: str, after: str) -> None:
     assert document_hunks.changed_hunks(path, before, after) == []
+
+
+def test_merging_two_paragraphs_gives_the_reviewer_a_hunk() -> None:
+    hunks = document_hunks.changed_hunks(DOC, TWO_PARAGRAPHS, ONE_PARAGRAPH)
+
+    assert [line for hunk in hunks for line in hunk["lines"]] == [FIRST_PAIR, SECOND_PAIR]
+
+
+def test_splitting_a_paragraph_with_a_blank_line_does_not_read_as_a_removal() -> None:
+    removal = _header_after(PARAGRAPH_DELETED)
+
+    split = _header_after(ONE_PARAGRAPH)
+
+    assert split != removal
+
+
+def test_deleting_the_closing_line_of_a_paragraph_still_reads_as_a_removal() -> None:
+    removal = _header_after(PARAGRAPH_DELETED)
+
+    closing_line_deleted = _header_after(f"{FIRST_PAIR}\nAn extra sentence sat here.\n\n{SECOND_PAIR}\n")
+
+    assert closing_line_deleted == removal
 
 
 def test_identical_text_has_no_hunk() -> None:

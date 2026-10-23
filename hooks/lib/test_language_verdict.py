@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from lib.judge_contracts import JudgeRequest, ReviewKind
+from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, ReviewKind
 from lib.language_verdict import apply_cached, cached_language, classify
 from lib.luna_storage import LunaProviderFailure
 from lib.luna_validation import validate_worker_result
@@ -105,7 +105,7 @@ def _worker_row(language: str) -> dict[str, object]:
     return {
         "payload": {"items": [{"index": 0, "language": language}]},
         "provider": "openai-codex", "model": "gpt-5.6-luna", "effort": "high",
-        "rubric_version": "adw-rubric-v1", "usage": {}, "cached": False,
+        "rubric_version": RUBRIC_VERSION, "usage": {}, "cached": False,
     }
 
 

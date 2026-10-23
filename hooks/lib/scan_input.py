@@ -9,9 +9,11 @@ from typing import BinaryIO
 try:
     from .config import effective_config
     from .findings import Finding
+    from .regular_file import open_regular
 except ImportError:
     from config import effective_config
     from findings import Finding
+    from regular_file import open_regular
 
 LEGACY_ENV_NAMES = {
     "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
@@ -140,7 +142,7 @@ def _count_open_file_lines(handle: BinaryIO) -> tuple[int, bool] | None:
 
 def file_line_count(path: Path) -> tuple[int, bool] | None:
     try:
-        with path.open("rb") as handle:
+        with open_regular(path) as handle:
             if is_binary_content(path, handle.read(CONTENT_SAMPLE_BYTES)):
                 return None
             handle.seek(0)

@@ -6,9 +6,9 @@ from typing import NamedTuple
 import pytest
 
 from lib import provenance
-from lib.findings import spanning
+from lib.findings import BLOCK_RULES, spanning
 from lib.prose_structure import sentence_spans
-from lib.provenance import block_rules, compare, compare_any
+from lib.provenance import compare, compare_any
 from lib.scanner import scan_all
 from lib.test_finding_spans import Case, _every_case
 
@@ -22,6 +22,14 @@ FIVE_WORD_SENTENCES = (
     "The gate blocks bad writes.",
     "The ledger keeps each row.",
 )
+SENTENCE_PAIRS = (" ".join(FIVE_WORD_SENTENCES[:2]), " ".join(FIVE_WORD_SENTENCES[2:]))
+ONE_LINE_PARAGRAPH = " ".join(FIVE_WORD_SENTENCES) + "\n"
+SENTENCE_REMOVED_PARENT = " ".join((*FIVE_WORD_SENTENCES[:2], "Yes.", *FIVE_WORD_SENTENCES[2:])) + "\n"
+PARAGRAPH_BREAK_PARENT = "\n\n".join(SENTENCE_PAIRS) + "\n"
+TWO_LINE_PARAGRAPH = "\n".join(SENTENCE_PAIRS) + "\n"
+EDITED_PARENT = TWO_LINE_PARAGRAPH.replace("blocks", "stops")
+LINE_REMOVED_PARENT = "\n".join((SENTENCE_PAIRS[0], "Yes.", SENTENCE_PAIRS[1])) + "\n"
+GERMAN = {"prose_languages": ["de"], "rule_gates": {"de_exclamation_staccato": "enforce"}}
 FIRST_PARAGRAPH = "The report was written by the team before lunch."
 SECOND_PARAGRAPH = "Our second paragraph talks about something else."
 THIRD_PARAGRAPH = "A third paragraph closes the short document here."
@@ -149,11 +157,33 @@ def test_a_shared_line_judges_a_match_by_the_sentence_that_holds_it(change: Chan
     assert _verdicts(change, "passive_voice") == expected
 
 
+@pytest.mark.parametrize(("change", "rule", "expected"), [
+    pytest.param(
+        Change("doc.md", "Los jetzt! Weiter gehts! Ende hier.\n", "Los jetzt! Weiter gehts! Ende hier!\n", GERMAN),
+        "de_exclamation_staccato", [(1, True)], id="staccato-completed-by-the-last-sentence"),
+    pytest.param(
+        Change(
+            "doc.md", "Er war sehr müde. Der Hund schlief lange im Garten.\n",
+            "Er war sehr müde. Der Hund schlief kurz im Garten.\n", GERMAN),
+        "de_empty_intensifier", [(1, False)], id="intensifier-in-the-unchanged-sentence"),
+])
+def test_a_german_finding_on_a_shared_line_is_owned_by_the_sentences_its_rule_reads(change: Change, rule: str, expected: list) -> None:
+    assert _verdicts(change, rule) == expected
+
+
 def test_an_edit_to_a_later_sentence_of_a_low_variance_paragraph_owns_the_finding() -> None:
     before = _variance_paragraph(*FIVE_WORD_SENTENCES)
     change = _prose(before, before.replace("The gate blocks bad writes.", "The gate stops bad writes."))
 
     assert _verdicts(change, "low_sentence_variance") == [(3, True)]
+
+
+@pytest.mark.parametrize(("change", "expected"), [
+    pytest.param(_prose(_paragraphs(*SENTENCE_PAIRS), _joined(list(SENTENCE_PAIRS))), [(1, True)], id="blank-line-deleted"),
+    pytest.param(_prose(_joined(list(SENTENCE_PAIRS)), _joined(list(FIVE_WORD_SENTENCES))), [(1, False)], id="sentences-reflowed"),
+])
+def test_merging_two_paragraphs_owns_the_new_paragraph_finding_but_a_reflow_inside_one_does_not(change: Change, expected: list) -> None:
+    assert _verdicts(change, "low_sentence_variance") == expected
 
 
 @pytest.mark.parametrize(("after", "expected"), [
@@ -206,14 +236,30 @@ def test_a_lone_brace_cannot_displace_a_longer_moved_line() -> None:
     assert [result.owns(_finding("what_comment", line)) for line in (2, 3)] == [False, True]
 
 
-@pytest.mark.parametrize(("after", "expected"), [
-    pytest.param(_long_function().replace("    v5 = 5\n", "    v5 = 55\n"), [(3, False)], id="one-line-edit"),
-    pytest.param(_long_function("    extra = 1\n"), [(3, True)], id="grown-by-one-line"),
+@pytest.mark.parametrize(("before", "after", "expected"), [
+    pytest.param(_long_function(), _long_function().replace("    v5 = 5\n", "    v5 = 55\n"), [(3, False)], id="one-line-edit"),
+    pytest.param(_long_function(), _long_function("    extra = 1\n"), [(3, True)], id="grown-by-one-line"),
+    pytest.param(_long_function(), _long_function("\n"), [(3, True)], id="grown-by-a-blank-line"),
+    pytest.param(_long_function("\n"), _long_function("    extra = 1\n"), [(3, True)], id="blank-line-replaced-by-code"),
 ])
-def test_a_long_function_is_owned_only_when_it_grew(after: str, expected: list) -> None:
-    change = Change("src/mod.py", _long_function(), after, LONG_FUNCTION)
+def test_a_long_function_is_owned_only_when_it_grew(before: str, after: str, expected: list) -> None:
+    change = Change("src/mod.py", before, after, LONG_FUNCTION)
 
     assert _verdicts(change, "function_too_long") == expected
+
+
+@pytest.mark.parametrize("parents", [
+    pytest.param([_long_function("\n", "\n")], id="code-replaced-a-blank-line-parent-alone"),
+    pytest.param([_long_function("    extra = 1\n")], id="blank-line-added-parent-alone"),
+    pytest.param([_long_function("\n", "\n"), _long_function("    extra = 1\n")], id="code-and-blank-line-parents"),
+])
+def test_a_long_function_each_parent_saw_grow_is_owned_by_the_merge(parents: list[str]) -> None:
+    after = _long_function("\n", "    extra = 1\n")
+    result = compare_any("src/mod.py", parents, after)
+
+    verdicts = [(row["line"], result.owns(row)) for row in scan_all("src/mod.py", after, LONG_FUNCTION) if row["rule"] == "function_too_long"]
+
+    assert verdicts == [(3, True)]
 
 
 @pytest.mark.parametrize(("before", "expected"), [
@@ -268,6 +314,33 @@ def test_a_merge_inherits_lines_from_either_parent_and_owns_lines_from_neither()
     assert verdicts == [(3, False), (5, False), (7, True)]
 
 
+def _merge_verdicts(parents: list[str], after: str) -> list[tuple[int, bool]]:
+    result = compare_any("doc.md", parents, after)
+    return [(row["line"], result.owns(row)) for row in scan_all("doc.md", after, ENGLISH) if row["rule"] == "low_sentence_variance"]
+
+
+@pytest.mark.parametrize(("parents", "after"), [
+    pytest.param([SENTENCE_REMOVED_PARENT], ONE_LINE_PARAGRAPH, id="sentence-removed-parent-alone"),
+    pytest.param([PARAGRAPH_BREAK_PARENT], ONE_LINE_PARAGRAPH, id="paragraph-break-parent-alone"),
+    pytest.param([SENTENCE_REMOVED_PARENT, PARAGRAPH_BREAK_PARENT], ONE_LINE_PARAGRAPH, id="removal-and-paragraph-break-parents"),
+    pytest.param([EDITED_PARENT], TWO_LINE_PARAGRAPH, id="edited-parent-alone"),
+    pytest.param([EDITED_PARENT, PARAGRAPH_BREAK_PARENT], TWO_LINE_PARAGRAPH, id="edit-and-paragraph-break-parents"),
+    pytest.param([LINE_REMOVED_PARENT], TWO_LINE_PARAGRAPH, id="line-removed-parent-alone"),
+    pytest.param([EDITED_PARENT, LINE_REMOVED_PARENT], TWO_LINE_PARAGRAPH, id="edit-and-removal-parents"),
+])
+def test_a_finding_each_parent_owns_for_a_different_reason_is_owned_by_the_merge(parents: list[str], after: str) -> None:
+    assert _merge_verdicts(parents, after) == [(1, True)]
+
+
+@pytest.mark.parametrize("explaining", [
+    pytest.param(EDITED_PARENT, id="edited-parent"),
+    pytest.param(PARAGRAPH_BREAK_PARENT, id="paragraph-break-parent"),
+    pytest.param(LINE_REMOVED_PARENT, id="line-removed-parent"),
+])
+def test_a_finding_a_parent_already_holds_stays_inherited_by_the_merge(explaining: str) -> None:
+    assert _merge_verdicts([explaining, TWO_LINE_PARAGRAPH], TWO_LINE_PARAGRAPH) == [(1, False)]
+
+
 def test_no_parent_owns_every_finding() -> None:
     after = _counter_function()
     result = compare_any("src/mod.py", [], after)
@@ -307,7 +380,7 @@ def test_spanning_rejects_a_rule_not_declared_as_a_block_rule() -> None:
 def test_every_rule_that_emits_an_end_line_is_a_block_rule(case: Case) -> None:
     rows = scan_all(case.path, case.text, case.config)
 
-    assert {row["rule"] for row in rows if row.get("end_line") is not None} - block_rules() == set()
+    assert {row["rule"] for row in rows if row.get("end_line") is not None} - BLOCK_RULES == set()
 
 
 @pytest.mark.parametrize(("paragraph", "expected"), [
@@ -341,9 +414,7 @@ def test_sentence_spans_split_like_the_released_splitter(paragraph: list, expect
     pytest.param(12, frozenset(), id="a-later-number-continues-the-paragraph"),
     pytest.param(1, frozenset({3, 4}), id="one-starts-a-list"),
 ])
-def test_a_reflow_that_puts_a_number_at_a_line_start_counts_only_when_it_starts_a_list(
-    number: int, expected: frozenset[int],
-) -> None:
+def test_a_reflow_that_puts_a_number_at_a_line_start_counts_only_when_it_starts_a_list(number: int, expected: frozenset[int]) -> None:
     before = INTRO + f"The upgrade moved everyone to version {number}. The old servers went offline.\n"
     after = INTRO + f"The upgrade moved everyone to version\n{number}. The old servers went offline.\n"
 

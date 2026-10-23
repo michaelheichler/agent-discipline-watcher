@@ -8,9 +8,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 try:
-    from .judge_contracts import PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from .judge_contracts import (
+        PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions,
+    )
 except ImportError:
-    from judge_contracts import PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from judge_contracts import (
+        PATTERN_RUBRIC_VERSIONS, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions,
+    )
 
 try:
     from . import judge_provider
@@ -33,7 +37,8 @@ SYSTEM_PROMPT = (
     "You are given the pattern name, the fix the pattern asks for, and real examples of both sides.\n"
     "Judge only the named pattern. A sentence may be poor for other reasons and still not instantiate this one.\n"
     "Reply with a JSON array and nothing else. One object per numbered item, in order: "
-    '{"index": <number>, "verdict": "violating" or "clean"}.'
+    '{"index": <number>, "verdict": "violating" or "clean", "reason": "<at most 12 words>"}.\n'
+    + reviewer_instructions({})
 )
 
 
@@ -118,7 +123,7 @@ def _batch_verdicts(rule: PatternRule, batch: tuple[PatternCandidate, ...], mode
 
 
 def confirm(rule: PatternRule, candidates: tuple[PatternCandidate, ...], model: str, *, ready: Callable[[], bool] = available, complete: Completion = _run) -> tuple[PatternCandidate, ...]:
-    """Nothing survives an absent judge, because the candidate stage alone measured 0.62."""
+    """Because the candidate stage alone measured 0.62, nothing survives an absent judge."""
     if not candidates or not ready():
         return ()
     kept: list[PatternCandidate] = []

@@ -11,6 +11,7 @@ from typing import NoReturn
 import pytest
 
 from lib import luna_worker
+from lib.judge_contracts import RUBRIC_VERSION
 from lib.luna_provider import CONFIG_OVERRIDES
 
 
@@ -23,7 +24,7 @@ def _request_payload(tmp_path: Path) -> dict[str, object]:
         "rule_action": "remove it",
         "violating_examples": [],
         "clean_examples": [],
-        "rubric_version": "adw-rubric-v1",
+        "rubric_version": RUBRIC_VERSION,
         "codex_home": str(tmp_path / "home"),
         "cwd": str(tmp_path / "cwd"),
         "config_overrides": list(CONFIG_OVERRIDES),

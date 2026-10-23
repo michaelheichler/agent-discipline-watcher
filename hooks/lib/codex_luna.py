@@ -5,16 +5,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import journal, payloads, pending_advice, session_state
+from . import journal, payloads, pending_advice, review_scope, session_state
 from .codex_luna_documents import feedback_sources
 from .config import effective_hook_config
-from .document_review import data_boundary_enabled, document_work
+from .document_hunks import changed_hunks
+from .document_review import changed_document_work, data_boundary_enabled
 from .luna_feedback import comment_feedback as _comment_feedback
 from .luna_feedback import document_feedback as _document_feedback
 from .luna_feedback import pattern_feedback as _pattern_feedback
 from .hookio import stop_block, system_message
 from .judge import Candidate, request_for as comment_request
-from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind, instructed
 from .pattern_judge import PatternCandidate, request_for as pattern_request
 from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
 from .luna_provider import JUDGE_TIMEOUT_SECONDS, LunaJudge
@@ -250,8 +251,18 @@ def _journal_rows(
         overflow = journal.read_overflow(session_id, state_root=state_root)
     except (OSError, ValueError, TypeError) as exc:
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
-    _reject_overflow(overflow)
-    return _unique_turn_rows(rows, turn_id)
+    project = payloads.cwd(payload) or None
+    _reject_overflow([marker for marker in overflow if not _hidden_marker(marker, project)])
+    project_rows = [row for row in rows if review_scope.is_project_file(str(row.get("path", "")), project)]
+    return _unique_turn_rows(project_rows, turn_id)
+
+
+def _hidden_marker(marker: dict[str, Any], project: str | None) -> bool:
+    """Only a well-formed marker for a path outside review, because a sentinel or malformed marker must still fail closed."""
+    identity = marker.get("path_identity")
+    if not isinstance(identity, str) or identity == journal.OVERFLOW_SENTINEL or not isinstance(marker.get("turn_id"), str):
+        return False
+    return not review_scope.is_project_file(identity, project)
 
 
 def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:
@@ -272,8 +283,19 @@ def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[A
     ]
 
 
+def _changed_documents(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Because a one-line edit must not re-bill the whole file, only hunks go out, as in the Claude preset."""
+    documents = []
+    for row in rows:
+        if row.get("role") == "document":
+            before = row.get("before_context")
+            hunks = changed_hunks(str(row["path"]), before if isinstance(before, str) else "", str(row["source_context"]))
+            documents.append({**row, "hunks": hunks})
+    return [row for row in documents if any(hunk["changed"] for hunk in row["hunks"])]
+
+
 def request_for_rows(rows: list[dict[str, Any]]) -> tuple[tuple[JudgeRequest, list[Any]], ...] | None:
-    work = document_work(rows, MAX_SOURCE_CHARS, DOCUMENT_LABEL)
+    work = changed_document_work(_changed_documents(rows), MAX_SOURCE_CHARS, DOCUMENT_LABEL)
     comments = [
         Candidate(
             str(row.get("path", ""))[:512],
@@ -400,9 +422,7 @@ def _verdict(feedback: str, reported: str, session_id: str, state_root: str | Pa
     return {**notice, **stop_block(_bounded(feedback))} if feedback else notice
 
 
-def _observed_rules(payload: object, work: tuple[tuple[JudgeRequest, list[Any]], ...]) -> frozenset[str]:
-    """Read per turn, because rule gates live in project config."""
-    config = effective_hook_config({}, payloads.cwd(payload) or None)
+def _observed_rules(work: tuple[tuple[JudgeRequest, list[Any]], ...], config: dict) -> frozenset[str]:
     manifest = load_manifest()
     return frozenset(
         request.rule_name for request, _sources in work
@@ -503,8 +523,10 @@ def _reviewed(payload: object, session_id: str, turn_id: str, state_root: str | 
     work, empty_reason = _review_work(payload, turn_id, state_root)
     if work is None:
         return _failure_block(previous_failure.get("reason", empty_reason), attempts) if previous_failure else {}
+    config = effective_hook_config({}, payloads.cwd(payload) or None)
+    briefed = tuple((instructed(request, config), sources) for request, sources in work)
     return _perform_review(
-        session_id, turn_id, state_root, previous_failure, attempts, work, provider, _observed_rules(payload, work),
+        session_id, turn_id, state_root, previous_failure, attempts, briefed, provider, _observed_rules(work, config),
     )
 
 

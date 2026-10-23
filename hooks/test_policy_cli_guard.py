@@ -52,6 +52,8 @@ def decision(command: str) -> dict:
     "{ adw-config tests allow; }",
     "if true; then adw-config tests allow; fi",
     "x=$(adw-config tests allow)",
+    "adw-config tests allow --for 30m",
+    "adw-config --help; adw-config tests allow",
 ])
 def test_a_mutating_route_to_adw_config_is_blocked(command: str) -> None:
     result = decision(command)
@@ -74,9 +76,15 @@ def test_a_renamed_symlink_to_the_launcher_is_blocked(tmp_path: Path) -> None:
     "echo 'adw-config tests allow'",
     "grep -n adw-config README.md",
     "PYTHONPATH=hooks python3 -m lib.adw_config status",
+    "adw-config --help",
+    "which adw-config; adw-config --help",
 ])
 def test_status_and_mentions_pass(command: str) -> None:
     assert "config_seal" not in decision(command).get("reason", "")
+
+
+def test_help_output_redirected_onto_the_config_still_blocks() -> None:
+    assert decision("adw-config --help > .agent-discipline.json").get("decision") == "block"
 
 
 def write_rules(path: Path, content: str) -> list[str]:

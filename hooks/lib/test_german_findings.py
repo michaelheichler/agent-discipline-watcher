@@ -58,7 +58,7 @@ def test_an_observed_german_report_uses_the_german_observe_lead() -> None:
     """Translate the observe lead too because it carries the instruction the agent acts on."""
     _kind, message = reporting.verdict_message([(_row(GERMAN_RULE, "de", 1), Outcome.WOULD_BLOCK)], {})
 
-    assert message.split("\n")[0] == catalog_de.OBSERVE_LEAD
+    assert message.split("\n", maxsplit=1)[0] == catalog_de.OBSERVE_LEAD
 
 
 def test_the_full_report_carries_the_german_detail_and_action() -> None:

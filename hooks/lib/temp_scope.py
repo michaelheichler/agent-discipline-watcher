@@ -4,7 +4,9 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 from lib.shell_syntax import _bare, _basename, _command_word_index, _is_literal_token, _segments, _tokens
 
@@ -12,6 +14,14 @@ FIXED_TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folder
 DIRECTORY_VERBS = frozenset({"cd", "pushd", "popd"})
 LEADING_CD_SEPARATORS = frozenset({"&&", ";"})
 EXPANDING_RE = re.compile(r"[*?\[{\\$`]")
+MAX_DIRECTORY_CANDIDATES = 16
+Directories = tuple[str, ...] | None
+Resolve = Callable[[str], "str | None"]
+
+
+class _Walk(NamedTuple):
+    cwd: Path | None
+    resolve: Resolve | None
 
 
 def _absolute(path: str | os.PathLike[str], cwd: str | os.PathLike[str] | None) -> Path:
@@ -82,6 +92,62 @@ def scratch_target(path: str, command: str, cwd: str | os.PathLike[str] | None) 
         return outside_project_temp(path, cwd)
     directory = trusted_directory(command, cwd)
     return directory is not None and outside_project_temp(_absolute(directory, cwd) / path, cwd)
+
+
+def segment_directories(segments: list[list[str]], start: Directories, resolve: Resolve | None = None) -> list[Directories]:
+    """Every folder each segment may run in, because a failed cd leaves the shell where it was."""
+    return _walked_directories(segments, start, _Walk(None, resolve))
+
+
+def landing_directories(segments: list[list[str]], cwd: str | os.PathLike[str] | None, resolve: Resolve | None = None) -> list[Directories]:
+    """Pruned to the folder a cd reaches when it exists, because a cd into an existing folder does not fail."""
+    return _walked_directories(segments, (".",), _Walk(Path(cwd or ".").absolute(), resolve))
+
+
+def joined_paths(paths: list[str], folders: Directories) -> list[str]:
+    """Relative paths dropped under an unknown folder, because naming them against the session cwd points at the wrong file."""
+    anchored = [path for path in paths if path.startswith("~") or os.path.isabs(path)]
+    relative = [path for path in paths if path not in anchored]
+    return anchored + [os.path.normpath(os.path.join(folder, path)) for path in relative for folder in folders or ()]
+
+
+def _walked_directories(segments: list[list[str]], start: Directories, walk: _Walk) -> list[Directories]:
+    current = start
+    found: list[Directories] = []
+    for segment in segments:
+        found.append(current)
+        current = _after_directory_change(segment, current, walk)
+    return found
+
+
+def _after_directory_change(segment: list[str], current: Directories, walk: _Walk) -> Directories:
+    index = _command_word_index(segment)
+    if index < len(segment) and _bare(segment[index]) == "builtin":
+        return None
+    if current is None or not _changes_directory(segment):
+        return current
+    target = _cd_target(segment[index:], walk.resolve)
+    if target is None:
+        return None
+    moved = {os.path.normpath(os.path.join(folder, target)) for folder in current}
+    kept = set() if walk.cwd is not None and all(_searchable(walk.cwd / folder) for folder in moved) else set(current)
+    reached = tuple(sorted(kept | moved))
+    return reached if len(reached) <= MAX_DIRECTORY_CANDIDATES else None
+
+
+def _searchable(folder: Path) -> bool:
+    return folder.is_dir() and os.access(folder, os.X_OK)
+
+
+def _cd_target(words: list[str], resolve: Resolve | None) -> str | None:
+    """None for pushd, popd, cd -, or a computed folder, because only the shell knows where those land."""
+    operands = [word for word in words[1:] if not _bare(word).startswith("-")]
+    if _basename(words[0]) != "cd" or len(operands) > 1 or "-" in map(_bare, words[1:]):
+        return None
+    if not operands:
+        return os.path.expanduser("~")
+    folder = resolve(operands[0]) if resolve is not None else (_bare(operands[0]) if _plain_path(operands[0]) else None)
+    return None if folder is None else os.path.expanduser(folder)
 
 
 def _plain_path(token: str) -> bool:

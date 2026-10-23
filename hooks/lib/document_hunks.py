@@ -41,15 +41,23 @@ def _windows(edits: list[tuple[int, int]], count: int) -> list[tuple[int, int, s
     return found
 
 
+def _holds_seam(low: int, high: int, seams: frozenset[int]) -> bool:
+    """From low - 1, because a seam sits after its line and 0 is the top."""
+    return any(low - 1 <= seam <= high for seam in seams)
+
+
 def changed_hunks(path: str, before: str, after: str) -> list[dict[str, Any]]:
     """Plain dicts, because the Stop row crosses the journal boundary as JSON-shaped data."""
     lines = after.splitlines()
     if not lines:
         return []
     provenance = compare(path, before, after)
-    edits = _edits(provenance.changed_lines, provenance.removed_seams)
+    edits = _edits(provenance.changed_lines, provenance.seams)
     return [
-        {"start": low, "lines": lines[low - 1:high], "changed": sorted(changed)}
+        {
+            "start": low, "lines": lines[low - 1:high], "changed": sorted(changed),
+            "removal": _holds_seam(low, high, provenance.removed_seams),
+        }
         for low, high, changed in _windows(edits, len(lines))
     ]
 
@@ -71,7 +79,9 @@ def _runs(numbers: list[int]) -> list[str]:
 def hunk_header(path: str, hunk: dict[str, Any]) -> str:
     """Because the order and bridge questions need a place, the header names the line range."""
     end = hunk["start"] + len(hunk["lines"]) - 1
-    changed = ", ".join(_runs(hunk["changed"])) or "none (text was removed between these lines)"
+    # Removal by default, because rows written before the flag held only removals.
+    cause = "text was removed" if hunk.get("removal", True) else "a paragraph break changed"
+    changed = ", ".join(_runs(hunk["changed"])) or f"none ({cause} between these lines)"
     return f"{path} lines {hunk['start']}-{end}, changed lines: {changed}"
 
 

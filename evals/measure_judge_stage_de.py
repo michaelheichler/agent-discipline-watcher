@@ -32,11 +32,12 @@ class Row(NamedTuple):
 def _hook() -> SimpleNamespace:
     """Imported from the hook, because a measurement of another prompt would gate a judge nobody runs."""
     sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
-    from lib import pattern_judge, pattern_semantic
+    from lib import config, judge_contracts, pattern_judge, pattern_semantic
     return SimpleNamespace(
         exemplars=pattern_semantic.load_exemplars(), manifest=pattern_semantic.load_manifest(),
         rule_prompt=pattern_semantic.rule_prompt, rule_trigger=pattern_semantic.rule_trigger,
         candidate=pattern_judge.PatternCandidate, request_for=pattern_judge.request_for,
+        instructed=functools.partial(judge_contracts.instructed, config=config.DEFAULTS),
     )
 
 
@@ -76,7 +77,7 @@ def judged(rule: str, rows: list[Row], judge: Judge) -> list[bool]:
     for start in range(0, len(rows), BATCH):
         batch = rows[start : start + BATCH]
         candidates = tuple(hook.candidate(SAMPLE_NAME, row.line, row.text) for row in batch)
-        verdicts.extend(_verdicts(judge(hook.request_for(prompt, candidates)), len(batch)))
+        verdicts.extend(_verdicts(judge(hook.instructed(hook.request_for(prompt, candidates))), len(batch)))
     return verdicts
 
 

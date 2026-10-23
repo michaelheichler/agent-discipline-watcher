@@ -36,11 +36,14 @@ const CONFIG_VALUE_KEYS = [
 const FAMILY_SWITCH_KEYS = ["prose", "comment", "code", "punctuation", "english", "clean_code"] as const;
 export const FAMILY_STATES = ["off", "observe", "enforce"] as const;
 export const RULE_STATES = ["off", "observe", "enforce", "judged"] as const;
+export const RULE_SURFACES = ["prose", "commit", "all"] as const;
 export const BASELINE_MODES = ["git", "report", "none"] as const;
 
 type ConfigValueKey = (typeof CONFIG_VALUE_KEYS)[number];
 export type GateState = (typeof FAMILY_STATES)[number];
 export type RuleState = (typeof RULE_STATES)[number];
+export type RuleSurface = (typeof RULE_SURFACES)[number];
+export type RuleGate = RuleState | Partial<Record<RuleSurface, RuleState>>;
 export type BaselineMode = (typeof BASELINE_MODES)[number];
 
 export type AdwBridgeOperation = "describe" | "read" | "validate" | "write";
@@ -80,7 +83,7 @@ export interface AdwPolicyState {
   values: Record<string, unknown>;
   effective: Record<string, unknown>;
   familyStates: Record<string, GateState>;
-  ruleStates: Record<string, RuleState>;
+  ruleStates: Record<string, RuleGate>;
   runtime: AdwRuntimeStatus;
   families: AdwFamilyMetadata[];
   rules: AdwRuleMetadata[];
@@ -131,6 +134,18 @@ export function allowedRuleState(value: unknown): RuleState | undefined {
   return typeof value === "string" && (RULE_STATES as readonly string[]).includes(value)
     ? (value as RuleState)
     : undefined;
+}
+
+/** Both shapes, because Python accepts one state or one per surface. */
+export function allowedRuleGate(value: unknown): RuleGate | undefined {
+  const single = allowedRuleState(value);
+  if (single !== undefined || !isRecord(value)) return single;
+  const surfaces: Partial<Record<RuleSurface, RuleState>> = {};
+  for (const surface of RULE_SURFACES) {
+    const state = allowedRuleState(value[surface]);
+    if (state !== undefined) surfaces[surface] = state;
+  }
+  return Object.keys(surfaces).length > 0 ? surfaces : undefined;
 }
 
 /** Parse a supported baseline mode from bridge data. */
@@ -191,14 +206,14 @@ function readRuleMetadata(response: Record<string, unknown>, names: readonly str
   });
 }
 
-/** Filter a bridge state map to the names supported by the response. */
-function readStateMap(
+/** Known names only, so an unknown rule never reaches the editor. */
+function readStateMap<State>(
   source: unknown,
   names: readonly string[],
-  parser: (value: unknown) => GateState | RuleState | undefined,
-): Record<string, GateState | RuleState> {
+  parser: (value: unknown) => State | undefined,
+): Record<string, State> {
   const input = isRecord(source) ? source : {};
-  const output: Record<string, GateState | RuleState> = {};
+  const output: Record<string, State> = {};
   for (const name of names) {
     const value = parser(input[name]);
     if (value !== undefined) output[name] = value;
@@ -264,7 +279,7 @@ function copyKnownValues(
       continue;
     }
     if (key === "rule_gates") {
-      output[key] = readStateMap(value, ruleNames, allowedRuleState);
+      output[key] = readStateMap(value, ruleNames, allowedRuleGate);
       continue;
     }
     if (key === "kill_switches") {
@@ -318,7 +333,7 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     throw new AdwBridgeError("invalid_response", "ADW bridge returned an invalid project digest");
   }
   const alwaysBlockingRules = uniqueNames(response.always_blocking_rules).filter(name => ruleNames.includes(name));
-  const ruleStates = readStateMap(response.rule_states, ruleNames, allowedRuleState) as Record<string, RuleState>;
+  const ruleStates = readStateMap(response.rule_states, ruleNames, allowedRuleGate);
   for (const rule of alwaysBlockingRules) ruleStates[rule] = "enforce";
   return {
     projectPath: adwConfig.sanitizeDisplay(response.project_path, 1024),
@@ -327,7 +342,7 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     exists: response.exists === true,
     values: copyKnownValues(response.values, valueFamilies, ruleNames),
     effective: copyKnownValues(response.effective, valueFamilies, ruleNames),
-    familyStates: readStateMap(response.family_states, familyNames, allowedFamilyState) as Record<string, GateState>,
+    familyStates: readStateMap(response.family_states, familyNames, allowedFamilyState),
     ruleStates,
     runtime: readRuntime(response),
     families: readFamilyMetadata(response, familyNames),

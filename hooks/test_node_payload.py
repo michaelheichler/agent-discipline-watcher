@@ -116,6 +116,26 @@ def test_a_reflective_name_spelled_with_a_unicode_escape_blocks(command: str) ->
     "node -p process.version",
     """node -p "process.versions['node']\"""",
     "node -e 'console.log([1, 2][0])'",
+    """node -e 'console.log(/[a-z]/.test("x"))'""",
+    """node -e '/[a-z]/.test("x")'""",
+    """node -e 'console.log(/^[a-z]+$/.test("x"))'""",
+    """node -e 'console.log(/[a-z]/.test("x")); // note'""",
+    """node -e 'console.log(/[a-z]/.test("https://example.org"))'""",
+    """node -e 'console.log(/[#a-z]/.test("x"))'""",
+    """node -e 'if (true) /[a-z]/.test("x")'""",
 ])
 def test_a_read_only_node_payload_passes(command: str) -> None:
     assert verdict(command) == {}
+
+
+@pytest.mark.parametrize("command", [
+    """node -e '/[a-z]/.test("x"); require("fs").writeFileSync("a", "b")'""",
+    """node -e '/[a-z]/.test("x"); globalThis[k]("fs")'""",
+    """node -e 'const h = 1 / 2; globalThis[k]("fs"); const q = 3 / 4'""",
+    """node -e 'console.log("https://example.org"); globalThis[k]("fs")'""",
+])
+def test_a_regex_or_string_literal_does_not_hide_a_node_write(command: str) -> None:
+    result = verdict(command)
+
+    assert result.get("decision") == "block"
+    assert "inline_interpreter_write" in result["reason"]

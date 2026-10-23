@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pre_bash
-from . import embedding_session, payloads, pattern_vote
+from . import embedding_session, payloads, pattern_vote, review_scope
 from .config import payload_hook_config
 from .document_review import data_boundary_enabled
 from .journal import _read_regular_content
@@ -83,6 +83,16 @@ def _nested_payloads(source: str) -> list[str]:
     return nested
 
 
+def _collect_targets(source: str, depth: int, paths: list[str]) -> None:
+    """Fail closed on an unknown destination, because write_paths drops it and the bridge would report no target."""
+    if pre_bash.unresolved_write_destinations(source):
+        raise ValueError("OMP target bridge returned invalid paths: a Bash write destination is unknown before the run")
+    if depth > 0:
+        paths.extend(pre_bash.write_paths(source))
+        if len(paths) > MAX_TARGET_PATHS:
+            raise ValueError("OMP target bridge returned too many Bash targets")
+
+
 def _walk_bash(command: str, paths: list[str]) -> bool:
     """Bounded by depth and bytes, because nested shells can recurse."""
     queue: list[tuple[str, int]] = [(command, 0)]
@@ -95,10 +105,7 @@ def _walk_bash(command: str, paths: list[str]) -> bool:
             continue
         seen.add(source)
         directory_changed = directory_changed or _bash_changes_directory(source)
-        if depth > 0:
-            paths.extend(pre_bash.write_paths(source))
-            if len(paths) > MAX_TARGET_PATHS:
-                raise ValueError("OMP target bridge returned too many Bash targets")
+        _collect_targets(source, depth, paths)
         nested = _nested_payloads(source)
         if nested and depth >= MAX_TARGET_DEPTH:
             raise ValueError("OMP target bridge cannot prove a nested Bash write")
@@ -155,7 +162,7 @@ def _review(request: dict, payload: dict, config: dict | None, voter: pattern_vo
     if not data_boundary_enabled(cfg):
         return {"enabled": False, "requests": []}
     target = _target(payload)
-    if target.suffix.lower() not in REVIEW_SUFFIXES:
+    if target.suffix.lower() not in REVIEW_SUFFIXES or not review_scope.is_project_file(target, payloads.cwd(payload)):
         return {"enabled": True, "requests": []}
     source = read(target)
     if request.get("operation") == "prepare":

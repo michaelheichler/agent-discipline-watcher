@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from lib import heartbeat_marks, reporting
@@ -41,11 +42,27 @@ def test_a_slow_call_always_gets_a_heartbeat(tmp_path: Path) -> None:
     assert not heartbeat_marks.worth_a_row("s1", "record", "turn-1", tmp_path / "state", 0)
 
 
-def test_a_full_report_keeps_the_first_findings_and_counts_the_rest(tmp_path: Path) -> None:
-    findings = [{"path": "a.py", "rule": "what_comment", "line": line} for line in range(1, 251)]
+def _spread(count: int, paths: int) -> list[dict]:
+    return [
+        {"path": f"module_{index * paths // count}.py", "family": "clean_code", "rule": "what_comment",
+         "line": index + 1, "action": "fix", "snippet": f"line {index}"}
+        for index in range(count)
+    ]
 
-    report = json.loads(Path(reporting.write_full_report(findings, {})).read_text(encoding="utf-8"))
 
-    assert len(report) == reporting.MAX_REPORT_FINDINGS + 1
-    assert report[0]["line"] == 1
-    assert report[-1] == {"omitted": 50}
+def test_the_linked_full_report_keeps_every_finding_on_every_path() -> None:
+    _message, report = reporting.compact_block(_spread(1681, 117), {})
+
+    saved = [row for row in json.loads(Path(report).read_text(encoding="utf-8")) if "rule" in row]
+
+    assert (len(saved), len({row["path"] for row in saved})) == (1681, 117)
+
+
+def test_the_compact_response_stays_bounded_and_accounts_for_every_finding() -> None:
+    message, _report = reporting.compact_block(_spread(1681, 117), {}, report_path="report.json")
+
+    lines = message.splitlines()
+    listed = sum("module_" in line for line in lines)
+    remainder = int(re.match(r"\d+", lines[-1]).group())
+    assert len(message.encode("utf-8")) <= reporting.MAX_COMPACT_BYTES
+    assert listed + remainder == 1681

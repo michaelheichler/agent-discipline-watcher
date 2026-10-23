@@ -100,6 +100,7 @@ def _decode_judge_request(row: dict) -> JudgeRequest:
         violating_examples=tuple(row["violating_examples"]),
         clean_examples=tuple(row["clean_examples"]),
         rubric_version=row["rubric_version"],
+        instructions=str(row.get("instructions") or ""),
     )
 
 

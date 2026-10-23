@@ -50,10 +50,6 @@ RULES: dict[str, Entry] = {
         "Pile of German dashes",
         "Reports German prose that leans on the spaced Gedankenstrich past the density limit",
     ),
-    "de_long_compound": Entry(
-        "Long German compound",
-        "Flags a German compound word of six or more syllables with no hyphen",
-    ),
     "de_repeated_connector": Entry(
         "Repeated German connector",
         "Flags a paragraph opening more than one sentence on the same connector",
@@ -233,6 +229,10 @@ RULES: dict[str, Entry] = {
     "dynamic_heredoc_write": Entry(
         "Dynamic heredoc writes a file",
         "Aims an expanded or unterminated heredoc at a file the scanner cannot read",
+    ),
+    "dynamic_write_target": Entry(
+        "Write destination unknown before the run",
+        "Writes to a path that a variable, substitution, glob, or unknown folder decides only at run time",
     ),
     "file_too_long": Entry(
         "File past the hard limit",

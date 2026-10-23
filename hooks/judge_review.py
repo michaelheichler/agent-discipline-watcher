@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from lib import embedding_session, language_route, payloads, pattern_vote
+from lib import embedding_session, language_route, payloads, pattern_vote, review_scope
 from lib.config import effective_hook_config
 from lib.hookio import PARSE_FAILURE, read_payload
 from lib.host import CODEX_ENV
@@ -27,6 +27,7 @@ def _prose_paths(payload: object) -> list[Path]:
     return [
         path for path in resolved
         if path.suffix.lower() in PROSE_EXTS and not outside_project_temp(path, cwd)
+        and review_scope.is_project_file(path, cwd)
     ]
 
 

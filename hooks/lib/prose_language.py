@@ -59,8 +59,13 @@ class ParagraphLanguage:
             return self.line + self.text.count("\n", 0, index)
         return self.line + bisect_right(self.line_starts, index) - 1
 
+    def line_spans(self) -> list[tuple[int, int]]:
+        """Bound each source line the way line_at counts them, because the text may join lines with spaces."""
+        starts = self.line_starts or (0, *(found.end() for found in re.finditer("\n", self.text)))
+        return list(zip(starts, [*(start - 1 for start in starts[1:]), len(self.text)], strict=True))
+
     def lines_of(self, start: int, end: int) -> tuple[int, int | None]:
-        """Name an end line only past a break, as English prose hits do."""
+        """Name an end line only past a break, because English prose hits report their spans the same way."""
         first, last = self.line_at(start), self.line_at(max(start, end - 1))
         return first, last if last > first else None
 

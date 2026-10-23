@@ -7,9 +7,13 @@ from collections.abc import Callable
 from typing import Any, NamedTuple
 
 try:
-    from .judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from .judge_contracts import (
+        MAX_DOCUMENT_NOTES, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions,
+    )
 except ImportError:
-    from judge_contracts import JudgeRequest, ReviewKind, build_prompt as build_judge_prompt
+    from judge_contracts import (
+        MAX_DOCUMENT_NOTES, JudgeRequest, ReviewKind, build_prompt as build_judge_prompt, reviewer_instructions,
+    )
 
 try:
     from . import judge_provider
@@ -36,24 +40,21 @@ HUNK_NOTICE = (
     "Use the other lines only to understand them, and never flag them. "
     "Quote a sentence without its leading marker."
 )
-MAX_NOTES = 6
 TRUNCATED_MARKER = " [line truncated]"
 WHITESPACE_RE = re.compile(r"\s+")
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+")
 # Two named axes to prevent the model grading subject matter.
 SYSTEM_PROMPT = (
     "You review one finished document for coherence and style.\n"
-    "Name only problems a reader can check against the text you were given.\n"
-    "Never score the document, never say whether a model wrote it, and never judge whether its claims are true.\n"
+    "Never say whether a model wrote it, and never judge whether its claims are true.\n"
     "Coherence: an order that hides the argument, a missing bridge between paragraphs, "
     "a referent used before it is introduced, a claim the document later contradicts.\n"
     "Style: a paragraph shape repeated until it reads as a tic, a register that shifts without reason, "
     "a sentence whose subordination buries its subject, a row of short telegram-style main clauses "
     "that one joined sentence would carry, a stock opener or closer. Never ask to split a clear sentence.\n"
-    "Quote the sentence you mean, exactly as it appears.\n"
-    "Reply with a JSON array and nothing else, at most six objects, most serious first: "
+    "Reply with a JSON array and nothing else, most serious first: "
     '[{"quote": "<exact sentence>", "problem": "<at most 20 words>", "fix": "<at most 20 words>"}].\n'
-    "Reply with [] when the document carries none of these."
+    + reviewer_instructions({})
 )
 
 
@@ -94,7 +95,7 @@ def parse_notes(raw: str, text: str) -> tuple[Note, ...]:
     return tuple(
         Note(_line_of(text, str(row.get("quote", ""))), str(row.get("quote", "")),
              str(row.get("problem", "")), str(row.get("fix", "")))
-        for row in rows[:MAX_NOTES]
+        for row in rows[:MAX_DOCUMENT_NOTES]
         if isinstance(row, dict) and row.get("problem")
     )
 
@@ -159,8 +160,8 @@ def _halves(hunk: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     middle = len(hunk["lines"]) // 2
     split = hunk["start"] + middle
     return (
-        {"start": hunk["start"], "lines": hunk["lines"][:middle], "changed": [n for n in hunk["changed"] if n < split]},
-        {"start": split, "lines": hunk["lines"][middle:], "changed": [n for n in hunk["changed"] if n >= split]},
+        {**hunk, "lines": hunk["lines"][:middle], "changed": [n for n in hunk["changed"] if n < split]},
+        {**hunk, "start": split, "lines": hunk["lines"][middle:], "changed": [n for n in hunk["changed"] if n >= split]},
     )
 
 

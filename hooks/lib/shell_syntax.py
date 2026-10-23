@@ -16,6 +16,7 @@ INTERPRETERS = frozenset({
     "nice", "timeout",
 })
 WRAPPER_COMMANDS = frozenset({"env", "sudo", "nohup", "time", "command", "exec", "nice", "timeout"})
+RESERVED_PREFIXES = frozenset({"!", "{", "if", "then", "else", "elif", "while", "until", "do", "coproc"})
 WRAPPER_OPERANDS = {"timeout": 1}
 WRAPPER_VALUE_FLAGS: dict[str, frozenset[str]] = {
     "nice": frozenset({"-n", "--adjustment"}),
@@ -64,7 +65,7 @@ def _payload_command_index(segment: list[str]) -> int:
 
 
 def _skip_prefixes(segment: list[str], names: frozenset[str]) -> int:
-    """Walk past redirects, assignments, and named wrappers, including their flags, because a leading redirect or an inserted env -i must not hide the verb."""
+    """Walk past redirects, assignments, reserved words, and named wrappers, including their flags, because a leading redirect, a then, or an inserted env -i must not hide the verb."""
     index = 0
     while index < len(segment):
         redirect_index = _skip_leading_redirect(segment, index)
@@ -72,6 +73,9 @@ def _skip_prefixes(segment: list[str], names: frozenset[str]) -> int:
             index = redirect_index
             continue
         token = segment[index]
+        if token in RESERVED_PREFIXES:
+            index += 1
+            continue
         if not _is_quoted(token):
             name, separator, _ = token.partition("=")
             if separator and name:
@@ -101,6 +105,17 @@ def _skip_leading_redirect(segment: list[str], index: int) -> int | None:
     if not rest and index < len(segment):
         index += 1
     return index
+
+
+def _without_redirects(args: list[str]) -> list[str]:
+    kept = []
+    position = 0
+    while position < len(args):
+        skipped = _skip_leading_redirect(args, position)
+        if skipped is None:
+            kept.append(args[position])
+        position = position + 1 if skipped is None else skipped
+    return kept
 
 
 def _skip_wrapper_options(segment: list[str], index: int) -> int:
@@ -464,7 +479,8 @@ def _segment_text(segment: list[str]) -> str:
 
 def _leading_assignments(segment: list[str]) -> list[str]:
     names = []
-    for token in segment:
+    start = next((index for index, token in enumerate(segment) if token not in RESERVED_PREFIXES), len(segment))
+    for token in segment[start:]:
         if _is_quoted(token):
             break
         name, separator, _ = token.partition("=")

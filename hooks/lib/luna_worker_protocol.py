@@ -18,6 +18,7 @@ def request_payload(request: JudgeRequest, launch: Any) -> dict[str, Any]:
         "violating_examples": request.violating_examples,
         "clean_examples": request.clean_examples,
         "rubric_version": request.rubric_version,
+        "instructions": request.instructions,
         "call_fd": launch.call_fd,
         "codex_home_fd": launch.codex_home_fd,
         "cwd_fd": launch.cwd_fd,

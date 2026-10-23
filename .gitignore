@@ -85,3 +85,6 @@ WATCHDOG.yml
 
 # Restored by bun install from the committed lockfile.
 node_modules/
+
+# Caliber local state
+.caliber/

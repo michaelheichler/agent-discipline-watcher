@@ -178,10 +178,10 @@ def test_a_stream_transform_between_two_files_is_a_documented_residual_gap():
     assert pre_bash.run({"tool_input": {"command": command}}) == {}
 
 
-def test_xargs_feeding_tee_is_a_documented_residual_gap():
-    command = "xargs tee out.md"
-    assert pre_bash.write_targets(command) == []
-    assert pre_bash.run({"tool_input": {"command": command}}) == {}
+def test_xargs_feeding_tee_is_denied_as_an_unknown_write_target() -> None:
+    result = pre_bash.run({"tool_input": {"command": "xargs tee out.md"}})
+    assert result.get("decision") == "block"
+    assert "dynamic_write_target" in result["reason"]
 
 
 def test_a_module_run_is_a_documented_residual_gap():

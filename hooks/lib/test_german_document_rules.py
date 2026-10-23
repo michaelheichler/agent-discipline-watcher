@@ -5,6 +5,7 @@ import pytest
 
 from lib.german_document_rules import scan_german_document
 from lib.prose_language import ParagraphLanguage
+from lib.scanner import scan_all
 
 LONG_REAL_SENTENCE = (
     "Der Bericht zeigt, dass die Messung auf dem deutschen Korpus noch nicht abgeschlossen ist "
@@ -85,20 +86,9 @@ def test_a_single_connector_opener_is_allowed(text: str) -> None:
     assert _rule_ids([_text_paragraph(1, text)]) == []
 
 
-def test_a_compound_of_six_or_more_syllables_is_reported_by_the_word() -> None:
-    rows = _scan([_text_paragraph(1, "Die Tapeziertischoberfläche glänzt.")])
-
-    assert [(row["rule"], row["snippet"]) for row in rows] == [("de_long_compound", "Tapeziertischoberfläche")]
-
-
-def test_a_hyphenated_compound_is_not_reported() -> None:
-    assert _rule_ids([_text_paragraph(1, "Die Tapeziertisch-Oberfläche glänzt.")]) == []
-
-
 def test_one_document_can_raise_several_german_rules_at_once() -> None:
-    paragraphs = [
-        _text_paragraph(1, "Außerdem kam der Hund. Außerdem lief die Katze zur Tapeziertischoberfläche."),
-        _text_paragraph(3, LONG_REAL_SENTENCE),
-    ]
+    text = "Außerdem kam der Hund. Außerdem prüfte er die Datenbankverbindung.\n\n" + LONG_REAL_SENTENCE + "\n"
 
-    assert sorted(_rule_ids(paragraphs)) == ["de_long_compound", "de_repeated_connector"]
+    rules = {row["rule"] for row in scan_all("doc.md", text, {"prose_languages": ["de"]})}
+
+    assert {"de_compound_hint", "de_repeated_connector"} <= rules

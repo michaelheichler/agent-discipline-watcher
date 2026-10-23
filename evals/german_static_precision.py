@@ -12,6 +12,8 @@ from measure_german_hit_rate import EVALS, OUTPUT_PATH as HIT_RATE_PATH
 from second_rater_de import kappa
 
 OUTPUT_PATH = EVALS / "german_static_precision.json"
+COMPOUND_PATH = EVALS / "german_compounds.json"
+LEXICON_RULES = ("de_long_compound", "de_compound_hint")
 BAR = 0.85
 WILSON_Z = 1.96
 LOW_PRECISION = 0.5
@@ -68,6 +70,20 @@ def rule_record(rule: str, rows: list[dict], inputs: Inputs) -> dict[str, object
     }
 
 
+def lexicon_record() -> dict[str, object]:
+    """Read the lexicon split's own held-out labels, because the sampled hits came from the retired syllable counter."""
+    measured = json.loads(COMPOUND_PATH.read_text(encoding="utf-8"))
+    counts = measured["held_out"]["counts"]
+    flagged = counts["tp"] + counts["fp"]
+    lower, upper = wilson(counts["tp"], flagged)
+    verdict, reason = recommend(lower, counts["precision"], None)
+    return {
+        "n": flagged, "violating": counts["tp"], "precision": counts["precision"], "wilson_95": [lower, upper],
+        "kappa": measured["kappa_binary"]["kappa"], "sampled_from": COMPOUND_PATH.name,
+        "recommendation": verdict, "reason": reason,
+    }
+
+
 def build_report() -> dict[str, object]:
     adjudicated = read_jsonl(labels_path(ADJUDICATED))
     raters = {name: {row["id"]: row["label"] for row in read_jsonl(labels_path(name))} for name in (FIRST, SECOND)}
@@ -85,7 +101,10 @@ def build_report() -> dict[str, object]:
         "labels": len(adjudicated), "kappa": kappa(all_pairs),
         "rater_agreement": sum(one == other for one, other in all_pairs),
         "third_rater_rows": sum(row[THIRD] is not None for row in adjudicated),
-        "rules": {rule: rule_record(rule, rows, Inputs(raters, hit_rates)) for rule, rows in sorted(by_rule.items())},
+        "rules": {
+            **{rule: rule_record(rule, rows, Inputs(raters, hit_rates)) for rule, rows in sorted(by_rule.items())},
+            **dict.fromkeys(LEXICON_RULES, lexicon_record()),
+        },
         "silent_rules": sorted(rule for rule in hit_rates["rules"] if rule not in by_rule),
     }
 
@@ -96,7 +115,7 @@ def main() -> None:
                            encoding="utf-8", newline="\n")
     for rule, record in report["rules"].items():
         print(f"{rule:<28} n={record['n']:>2} p={record['precision']:.2f} lo={record['wilson_95'][0]:.2f} "
-              f"human={record['per_1000']['human']} {record['recommendation']}")
+              f"human={record.get('per_1000', {}).get('human')} {record['recommendation']}")
     print(f"kappa {report['kappa']} over {report['labels']} labels")
 
 

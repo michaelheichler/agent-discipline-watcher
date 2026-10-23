@@ -104,11 +104,6 @@ RULES: dict[str, GermanEntry] = {
         "Meldet einen Absatz, der mehr als einen Satz mit außerdem, ferner oder einem ähnlichen Wort beginnt",
         "Beginn höchstens einen Satz im Absatz mit einem Wort wie „außerdem“.",
     ),
-    "de_long_compound": GermanEntry(
-        "Langes Kompositum",
-        "Meldet ein deutsches Kompositum ab sechs Silben ohne Bindestrich",
-        "Gliedere das Wort mit Bindestrich oder löse es in eine Genitivgruppe auf.",
-    ),
     "dead_metaphor": GermanEntry(
         "Abgegriffenes Bild",
         "Streicht ein Standardbild, das nichts Konkretes benennt",

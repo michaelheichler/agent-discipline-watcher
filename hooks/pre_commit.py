@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -10,6 +9,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lib.baseline import split_against
+from lib.commit_command import UnreadableCommit, git_calls
+from lib.commit_index_source import takes_content_outside_index
 from lib.config import SURFACE_COMMIT, StorageRoots, effective_config
 from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
@@ -18,7 +19,7 @@ from lib.merge_state import incoming_commits, revision_text, session_started
 from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
-from lib.shell_parse import SEPARATORS
+from lib.shell_text import decode_ansi_c_value
 
 # Suffixed .md because prose rules key off the suffix.
 COMMIT_MESSAGE_PATH = "commit_message.md"
@@ -29,12 +30,14 @@ TRAILER_PREFIX_RE = re.compile(
     r"^(?P<prefix>(?:BREAKING CHANGE|[^\s:]+)[ \t]*:[ \t]*)"
 )
 
+COMMIT_REFUSED = "agent-discipline-watcher blocked this commit rather than letting it through. Cause: "
+STAGE_SEPARATELY = (
+    "The commit gate scans the index before this command runs, so it cannot judge content the same command stages "
+    "or reads from the worktree. Stage in its own tool call, then commit without paths, -a, -i, -o, or -p."
+)
+
 # Named because git exits 128 when it finds no repository.
 NOT_A_REPOSITORY_EXIT_CODE = 128
-
-
-class _UnresolvableRepoLocation(Exception):
-    """Raised because a probe run without GIT_DIR or GIT_WORK_TREE cannot see the repository the real commit would use."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,22 +72,29 @@ def _run(context: _CommitRunContext) -> dict:
     return run_with_ledger(
         hook="pre_commit",
         payload=context.payload,
-        gate=lambda turn_id: _gate(context, turn_id),
+        gate=lambda turn_id: _index_checked_gate(context, turn_id),
         ledger_root=context.roots.ledger,
         state_root=context.roots.state,
     )
 
 
-def _gate(context: _CommitRunContext, turn_id: str) -> dict:
+def _index_checked_gate(context: _CommitRunContext, turn_id: str) -> dict:
+    try:
+        calls = git_calls(_bash_command(context.payload), _payload_cwd(context.payload))
+    except UnreadableCommit as exc:
+        return deny(f"{COMMIT_REFUSED}{exc}")
+    if takes_content_outside_index(calls):
+        return deny(STAGE_SEPARATELY)
+    commit_cwds = [call.cwd for call in calls if call.verb == "commit"]
+    return _gate(context, turn_id, commit_cwds) if commit_cwds else allow()
+
+
+def _gate(context: _CommitRunContext, turn_id: str, commit_cwds: list[Path]) -> dict:
     started = time.monotonic()
-    command = _bash_command(context.payload)
-    cwd = Path(context.payload.get("cwd") or os.getcwd())
-    commit_cwds = _commit_cwds(command, cwd)
-    if not commit_cwds:
-        return allow()
+    cwd = _payload_cwd(context.payload)
     repo_rows = _repo_findings_by_repo(commit_cwds, context.config, _session_start(context))
     outer_cfg = effective_config(context.config, cwd)
-    message_findings = _message_findings(command, outer_cfg)
+    message_findings = _message_findings(_bash_command(context.payload), outer_cfg, cwd)
     stamp = _RecordStamp(
         session_id=str(context.payload.get("session_id") or ""),
         tool_use_id=str(context.payload.get("tool_use_id") or ""),
@@ -189,10 +199,10 @@ def _repo_findings(repo: Path, cfg: dict, started_at: float | None) -> tuple[lis
     return findings, inherited
 
 
-def _message_findings(command: str | list[str], cfg: dict) -> list[dict]:
+def _message_findings(command: str | list[str], cfg: dict, cwd: Path | None = None) -> list[dict]:
     """Scan the message the agent typed, because a commit's prose ships with the same authority as its code."""
     # Because git joins repeated -m values as paragraphs.
-    text = "\n\n".join(_commit_messages(command))
+    text = "\n\n".join(_commit_messages(command, cwd))
     if not text:
         return []
     return [
@@ -234,18 +244,9 @@ def _trailer_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(ranges)
 
 
-def _commit_messages(command: str | list[str]) -> list[str]:
-    messages: list[str] = []
-    for segment in _segments(command):
-        tokens = _unwrap_command(_strip_group_tokens(segment))
-        messages.extend(_messages_after_commit(tokens))
-    return messages
-
-
-def _messages_after_commit(tokens: list[str]) -> list[str]:
-    if len(tokens) < 2 or tokens[0] != "git" or "commit" not in tokens:
-        return []
-    return _message_values(tokens[tokens.index("commit") + 1:])
+def _commit_messages(command: str | list[str], cwd: Path | None = None) -> list[str]:
+    calls = git_calls(command, cwd or Path.cwd())
+    return [value for call in calls if call.verb == "commit" for value in _message_values(call.args)]
 
 
 def _message_value_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
@@ -254,12 +255,12 @@ def _message_value_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
         next_cursor = cursor + 2
         if cursor + 1 >= len(tokens):
             return None, next_cursor
-        return _decode_ansi_c_value(tokens[cursor + 1]), next_cursor
+        return decode_ansi_c_value(tokens[cursor + 1]), next_cursor
     name, separator, inline = token.partition("=")
     if separator and name == "--message":
-        return _decode_ansi_c_value(inline), cursor + 1
+        return decode_ansi_c_value(inline), cursor + 1
     if token.startswith("-m") and len(token) > 2:
-        return _decode_ansi_c_value(token[2:]), cursor + 1
+        return decode_ansi_c_value(token[2:]), cursor + 1
     return None, cursor + 1
 
 
@@ -284,16 +285,6 @@ def _is_message_bundle(token: str) -> bool:
     return all(char in _BOOLEAN_BUNDLE_CHARS for char in token[1:-1])
 
 
-def _decode_ansi_c_value(value: str) -> str:
-    if not value.startswith("$'"):
-        return value
-    end, decoded = _ansi_c_quote(value, 2)
-    return decoded if end == len(value) - 1 else value
-
-
-PATH_FLAGS = frozenset({"-C", "--work-tree", "--git-dir"})
-
-
 def _bash_command(payload: dict) -> str | list[str]:
     tool_input = payload.get("tool_input") or payload.get("toolInput") or payload.get("input") or {}
     for key in ("command", "cmd", "input"):
@@ -303,203 +294,8 @@ def _bash_command(payload: dict) -> str | list[str]:
     return ""
 
 
-def _commit_cwds(command: str | list[str], cwd: Path) -> list[Path]:
-    current = cwd
-    stack: list[Path] = []
-    commits: list[Path] = []
-    for segment in _segments(command):
-        if not segment:
-            continue
-        if segment == ["("]:
-            stack.append(current)
-            continue
-        if segment == [")"]:
-            current = stack.pop() if stack else current
-            continue
-        segment = _strip_group_tokens(segment)
-        if not segment:
-            continue
-        if segment[0] == "cd" and len(segment) >= 2:
-            current = _resolve_cwd(current, segment[1])
-            continue
-        git_cwd = _git_commit_cwd(segment, current)
-        if git_cwd is not None:
-            commits.append(git_cwd)
-    return commits
-
-
-def _segments(command: str | list[str]) -> list[list[str]]:
-    if isinstance(command, list):
-        return _split_segments(command)
-    try:
-        lexer = shlex.shlex(_normalize_ansi_c_quotes(command), posix=True, punctuation_chars=";&|()")
-        lexer.whitespace_split = True
-        parts = list(lexer)
-    except ValueError:
-        return []
-    return _split_segments(parts)
-
-
-def _split_segments(tokens: list[str]) -> list[list[str]]:
-    segments: list[list[str]] = []
-    current: list[str] = []
-    for token in tokens:
-        if token in SEPARATORS:
-            segments.append(current)
-            segments.append([token])
-            current = []
-            continue
-        current.append(token)
-    segments.append(current)
-    return segments
-
-
-def _normalize_ansi_c_quotes(command: str) -> str:
-    parts: list[str] = []
-    cursor = 0
-    while cursor < len(command):
-        start = command.find("$'", cursor)
-        if start < 0:
-            parts.append(command[cursor:])
-            break
-        parts.append(command[cursor:start])
-        end, value = _ansi_c_quote(command, start + 2)
-        if end < 0:
-            return command
-        parts.append(shlex.quote(value))
-        cursor = end + 1
-    return "".join(parts)
-
-
-def _ansi_c_quote(command: str, cursor: int) -> tuple[int, str]:
-    chars: list[str] = []
-    while cursor < len(command):
-        char = command[cursor]
-        if char == "'":
-            return cursor, "".join(chars)
-        if char == "\\" and cursor + 1 < len(command):
-            chars.append(command[cursor + 1])
-            cursor += 2
-            continue
-        chars.append(char)
-        cursor += 1
-    return -1, ""
-
-
-def _flag_cwd(flag: str, current: Path, value: str) -> Path:
-    resolved = _resolve_cwd(current, value)
-    if flag == "--git-dir" and resolved.name == ".git":
-        return resolved.parent
-    return resolved
-
-
-def _skip_git_flag(segment: list[str], cursor: int, current: Path) -> tuple[int, Path, bool] | None:
-    token = segment[cursor]
-    if token.startswith("-C") and len(token) > 2:
-        return cursor + 1, _resolve_cwd(current, token[2:]), False
-    name, separator, inline = token.partition("=")
-    if separator and name in PATH_FLAGS:
-        return cursor + 1, _flag_cwd(name, current, inline), name == "--work-tree"
-    if token in PATH_FLAGS:
-        if cursor + 1 >= len(segment):
-            return None
-        return cursor + 2, _flag_cwd(token, current, segment[cursor + 1]), token == "--work-tree"
-    if token == "-c":
-        return cursor + 2, current, False
-    return cursor + 1, current, False
-
-
-GIT_LOCATION_ENV_VARS = frozenset({"GIT_DIR", "GIT_WORK_TREE"})
-
-
-def _names_git_location_override(assignments: list[str]) -> bool:
-    return any(token.partition("=")[0] in GIT_LOCATION_ENV_VARS for token in assignments)
-
-
-def _commit_cwd_for_verb(
-    token: str, assignments: list[str], current: Path
-) -> Path | None:
-    if token != "commit":
-        return None
-    if _names_git_location_override(assignments):
-        raise _UnresolvableRepoLocation(
-            "GIT_DIR or GIT_WORK_TREE overrides the commit's repository location"
-        )
-    return current
-
-
-def _git_commit_cwd(segment: list[str], cwd: Path) -> Path | None:
-    start = _unwrap_start(segment)
-    unwrapped = segment[start:]
-    if not unwrapped or unwrapped[0] != "git":
-        return None
-    current = cwd
-    pinned = False
-    cursor = 1
-    while cursor < len(unwrapped):
-        token = unwrapped[cursor]
-        if not token.startswith("-"):
-            return _commit_cwd_for_verb(token, segment[:start], current)
-        step = _skip_git_flag(unwrapped, cursor, current)
-        if step is None:
-            return None
-        cursor, candidate, pins = step
-        if pins or not pinned:
-            current = candidate
-        pinned = pinned or pins
-    return None
-
-
-def _strip_group_tokens(segment: list[str]) -> list[str]:
-    return [token for token in segment if token not in {"(", ")"}]
-
-
-def _unwrap_command(segment: list[str]) -> list[str]:
-    return segment[_unwrap_start(segment):]
-
-
-def _unwrap_start(segment: list[str]) -> int:
-    cursor = 0
-    while cursor < len(segment):
-        token = segment[cursor]
-        if token == "command" or _is_assignment(token):
-            cursor += 1
-            continue
-        if token != "env":
-            break
-        cursor = _skip_env_prefix(segment, cursor + 1)
-    return cursor
-
-
-def _skip_env_prefix(segment: list[str], cursor: int) -> int:
-    while cursor < len(segment):
-        current = segment[cursor]
-        if current in {"-i", "--ignore-environment"}:
-            cursor += 1
-            continue
-        if current in {"-u", "--unset"}:
-            cursor += 2
-            continue
-        if current == "--":
-            cursor += 1
-            continue
-        if "=" in current and not current.startswith("="):
-            cursor += 1
-            continue
-        break
-    return cursor
-
-
-def _is_assignment(token: str) -> bool:
-    name, separator, _value = token.partition("=")
-    return bool(separator and name and name.isidentifier())
-
-
-def _resolve_cwd(cwd: Path, raw: str) -> Path:
-    path = Path(raw).expanduser()
-    if not path.is_absolute():
-        path = cwd / path
-    return path
+def _payload_cwd(payload: dict) -> Path:
+    return Path(payload.get("cwd") or os.getcwd())
 
 
 # Because a bad revision also exits 128.

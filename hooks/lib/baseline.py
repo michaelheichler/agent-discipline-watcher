@@ -10,11 +10,13 @@ try:
     from . import imported_baseline
     from .imported_baseline import Check, Snapshot, text_digest
     from .provenance import OWNED_RULES, Provenance, compare_any
+    from .regular_file import open_regular, read_regular_text
     from .scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
 except ImportError:
     import imported_baseline
     from imported_baseline import Check, Snapshot, text_digest
     from provenance import OWNED_RULES, Provenance, compare_any
+    from regular_file import open_regular, read_regular_text
     from scan_input import CONTENT_SAMPLE_BYTES, has_generated_marker
 
 
@@ -128,7 +130,7 @@ def _current(path: Path, text: str | None) -> str | None:
     if text is not None:
         return text
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
+        return read_regular_text(path, errors="replace")
     except OSError:
         return None
 
@@ -191,7 +193,7 @@ def split_with_snapshot(
 
 def _head(path: Path) -> str:
     try:
-        with path.open("rb") as handle:
+        with open_regular(path) as handle:
             return handle.read(CONTENT_SAMPLE_BYTES).decode("utf-8", errors="replace")
     except OSError:
         return ""

@@ -3,13 +3,13 @@ from __future__ import annotations
 import ast
 import hashlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import journal
 from .config import gate_state
 from .judge import Candidate, request_for as comment_request
-from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, output_schema
+from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, instructed, output_schema
 from .narration_candidates import candidates
 from .pattern_judge import PatternCandidate, request_for as pattern_request
 from .pattern_semantic import load_exemplars, load_manifest, rule_blocks, rule_prompt
@@ -139,7 +139,7 @@ def build_work(path: Path, text: str, config: dict, *, exemplar_source: Callable
         work.extend(_pattern_work(str(path), text, config, exemplar_source))
     if len(work) > MAX_REQUESTS:
         raise ValueError(f"review needs {len(work)} requests, above the limit of {MAX_REQUESTS}; split the file")
-    return tuple(work)
+    return tuple(replace(item, request=instructed(item.request, config)) for item in work)
 
 
 def wire_request(index: int, work: ReviewWork) -> dict:
@@ -148,4 +148,5 @@ def wire_request(index: int, work: ReviewWork) -> dict:
         "id": index, "kind": request.review_kind.value,
         "candidate_count": len(request.candidates),
         "prompt": build_prompt(request), "schema": output_schema(request),
+        "instructions": request.instructions,
     }

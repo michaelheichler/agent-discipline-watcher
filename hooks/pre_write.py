@@ -13,6 +13,7 @@ from lib.hookio import (
 )
 from lib.protected import path_findings
 from lib.provenance import compare
+from lib.regular_file import read_regular_text, special_file
 from lib.patch_content import projected_content
 from lib.reporting import (
     inherited_advice, record_findings, run_with_ledger, verdict_message,
@@ -21,6 +22,10 @@ from lib.scanner import file_length_findings, scan_all
 from lib.temp_scope import outside_project_temp
 
 PATCH_FILE = re.compile(r"^\*\*\*\s+(?:Add|Update|Delete)\s+File:\s+(.+)$", re.MULTILINE)
+SPECIAL_TARGET = (
+    "Write target {path} is a named pipe, device, or socket, so the text reaches a reader that no scan sees. "
+    "Write to a regular file instead."
+)
 
 
 def _tool_input(payload: dict) -> dict:
@@ -145,6 +150,11 @@ def _note_first_seen(payload: dict, cwd: Path, cfg: dict) -> None:
     )
 
 
+def _special_target_refusal(payload: dict, cwd: Path) -> str:
+    special = [str(path) for path in (_resolved_path(raw, cwd) for raw in payloads.edited_paths(payload)) if special_file(path)]
+    return SPECIAL_TARGET.format(path=special[0]) if special else ""
+
+
 def _scratch_refusal(payload: dict, cwd: Path, cfg: dict) -> str:
     paths = [str(_resolved_path(raw, cwd)) for raw in payloads.edited_paths(payload)]
     return temp_authorship.scratch_refusal(payloads.session_id(payload), paths, cwd, cfg.get("state_root"))
@@ -154,7 +164,7 @@ def _gate(payload: dict, cfg: dict, turn_id: str) -> dict:
     started = time.monotonic()
     decoded = _decode(_tool_input(payload))
     cwd = Path(payload.get("cwd") or ".")
-    refusal = _scratch_refusal(payload, cwd, cfg)
+    refusal = _special_target_refusal(payload, cwd) or _scratch_refusal(payload, cwd, cfg)
     if refusal:
         return deny(refusal)
     _note_first_seen(payload, cwd, cfg)
@@ -195,11 +205,8 @@ def _pending_edit_text(decoded: PendingWrite) -> str:
 def _apply_edits(decoded: PendingWrite, path: str) -> tuple[str, str] | None:
     if not decoded.edits:
         return None
-    target = Path(path)
-    if not target.is_file():
-        return None
     try:
-        before = target.read_text(encoding="utf-8")
+        before = read_regular_text(path)
     except (OSError, UnicodeError):
         return None
     after = before

@@ -243,7 +243,7 @@ class _ExpressionKinds:
 
     def lambda_body(self, node: ast.Lambda, kind: Kind) -> bool:
         args = node.args
-        if args.posonlyargs or args.kwonlyargs or args.vararg or args.kwarg or args.defaults or len(args.args) != 1:
+        if len(args.args) != 1 or any((args.posonlyargs, args.kwonlyargs, args.vararg, args.kwarg, args.defaults)):
             return False
         previous, containers = self.bindings.copy(), self.containers.copy()
         try:
@@ -283,9 +283,7 @@ class _ExpressionKinds:
         return "json" if source_kind in {"text", "bytes", "value"} else None
 
     def attribute_call(self, node: ast.Call) -> Kind | None:
-        if not isinstance(node.func, ast.Attribute):
-            return None
-        method = self.attribute(node.func)
+        method = self.attribute(node.func) if isinstance(node.func, ast.Attribute) else None
         if not isinstance(method, str):
             return None
         if method in {"json_dumps", "json_load", "json_loads"}:

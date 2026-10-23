@@ -14,13 +14,15 @@ import {
   RULE_STATES,
   allowedBaseline,
   allowedFamilyState,
-  allowedRuleState,
+  allowedRuleGate,
 } from "./adw-bridge";
 import type {
   AdwPolicyState,
   BaselineMode,
   GateState,
+  RuleGate,
   RuleState,
+  RuleSurface,
 } from "./adw-bridge";
 
 export {
@@ -80,6 +82,22 @@ interface Row {
   label: string;
   detail?: string;
   locked?: boolean;
+}
+
+// Strictest first, so Enter on a per-surface map never loosens a surface.
+const STRICTEST_FIRST: readonly RuleState[] = ["enforce", "judged", "observe", "off"];
+
+function strictestState(surfaces: Partial<Record<RuleSurface, RuleState>>): RuleState {
+  const covered = surfaces.all !== undefined || (surfaces.prose !== undefined && surfaces.commit !== undefined);
+  // Enforce for an unlisted surface, because it falls back to the family gate.
+  if (!covered) return "enforce";
+  const held: unknown[] = Object.values(surfaces);
+  return STRICTEST_FIRST.find(state => held.includes(state)) ?? "enforce";
+}
+
+function ruleGateLabel(gate: RuleGate): string {
+  if (typeof gate === "string") return gate;
+  return `per surface (${Object.entries(gate).map(([surface, state]) => `${surface} ${state}`).join(", ")})`;
 }
 
 function copyValues(values: Record<string, unknown>): Record<string, unknown> {
@@ -270,7 +288,7 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
     }
     if (this.#screen === "rules") {
       return [
-        ...this.#state.rules.map(rule => ({ id: `rule:${rule.name}`, label: rule.name, detail: this.#ruleState(rule.name), locked: rule.locked })),
+        ...this.#state.rules.map(rule => ({ id: `rule:${rule.name}`, label: rule.name, detail: ruleGateLabel(this.#ruleState(rule.name)), locked: rule.locked })),
         { id: "back", label: "Back" },
       ];
     }
@@ -398,9 +416,9 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
     this.#setNested("gates", name, next);
   }
 
-  #ruleState(name: string): RuleState {
+  #ruleState(name: string): RuleGate {
     const gates = isRecord(this.#draft.rule_gates) ? this.#draft.rule_gates : {};
-    return allowedRuleState(gates[name]) ?? this.#state.ruleStates[name] ?? "observe";
+    return allowedRuleGate(gates[name]) ?? this.#state.ruleStates[name] ?? "observe";
   }
 
   #cycleRule(name: string): void {
@@ -408,7 +426,9 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
     if (!metadata || metadata.locked) return;
     const states = metadata.states.length > 0 ? metadata.states : [...RULE_STATES];
     const current = this.#ruleState(name);
-    const next = states[(states.indexOf(current) + 1) % states.length] ?? states[0] ?? "observe";
+    const next = typeof current === "string"
+      ? states[(states.indexOf(current) + 1) % states.length] ?? states[0] ?? "observe"
+      : strictestState(current);
     this.#setNested("rule_gates", name, next);
   }
 

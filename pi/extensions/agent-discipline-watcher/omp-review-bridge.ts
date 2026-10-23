@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { resolveRunner, type WatcherResult } from "./watcher";
 
-export type ReviewRequest = { id: number; prompt: string; schema: Record<string, unknown> };
+export type ReviewRequest = { id: number; prompt: string; schema: Record<string, unknown>; instructions: string };
 export type PreparedReview = {
   enabled: boolean;
   model?: string;
@@ -36,10 +36,11 @@ export function prepareReview(value: unknown): PreparedReview {
     throw new Error("OMP review bridge returned an invalid request count");
   }
   const requests = value.requests.map((request, index) => {
-    if (!record(request) || request.id !== index || typeof request.prompt !== "string" || !request.prompt.trim() || !record(request.schema)) {
+    if (!record(request) || request.id !== index || typeof request.prompt !== "string" || !request.prompt.trim() || !record(request.schema) ||
+        typeof request.instructions !== "string" || !request.instructions.trim()) {
       throw new Error("OMP review bridge returned an invalid model request");
     }
-    return { id: index, prompt: request.prompt, schema: request.schema };
+    return { id: index, prompt: request.prompt, schema: request.schema, instructions: request.instructions };
   });
   if (requests.length && [value.model, value.path, value.digest].some(item => typeof item !== "string")) {
     throw new Error("OMP review bridge omitted the model or source identity");

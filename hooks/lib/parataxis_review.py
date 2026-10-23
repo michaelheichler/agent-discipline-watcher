@@ -71,6 +71,7 @@ class EditTurn(NamedTuple):
     turn_id: str
     config: dict
     state_root: str | Path | None
+    project: str | Path | None = None
 
 
 def record(turn: EditTurn, path: str | Path) -> list[dict]:
@@ -86,7 +87,7 @@ def record(turn: EditTurn, path: str | Path) -> list[dict]:
         if not rows:
             return []
         return journal.record_patterns(
-            turn.session_id, turn.turn_id, path, rows, content_hash=digest, state_root=turn.state_root,
+            turn.session_id, turn.turn_id, path, rows, content_hash=digest, state_root=turn.state_root, project=turn.project,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught
         sys.stderr.write(f"agent-discipline-watcher: parataxis candidates skipped: {exc}\n")

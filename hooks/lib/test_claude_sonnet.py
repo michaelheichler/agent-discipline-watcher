@@ -1,6 +1,7 @@
 """Split from the Luna tests, because this handler makes one batch call through a CLI."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -196,9 +197,7 @@ def test_a_reviewed_document_is_not_sent_again(tmp_path: Path) -> None:
     json.dumps({"is_error": True, "result": "API Error: 404"}),
     json.dumps({"is_error": False}),
     _cli({"items": "nope", "notes": []}),
-    _cli({"items": [{"section": 0, "index": 1, "verdict": "clean", "reason": "x"}], "notes": []}),
     _cli({"items": [{"section": 0, "index": 0, "verdict": "maybe", "reason": "x"}], "notes": []}),
-    _cli({"items": [{"section": 9, "index": 0, "verdict": "clean", "reason": "x"}], "notes": []}),
 ))
 def test_an_unusable_verdict_says_the_review_did_not_run_and_keeps_the_rows(tmp_path: Path, stdout: str) -> None:
     state_root = _journal(tmp_path, [PATTERN])
@@ -209,6 +208,147 @@ def test_an_unusable_verdict_says_the_review_did_not_run_and_keeps_the_rows(tmp_
     assert response["systemMessage"].startswith("ADW Sonnet review did not run this turn:")
     assert "stay queued" in response["systemMessage"]
     assert _unreviewed(state_root) == 1
+
+
+@pytest.mark.parametrize("item", [
+    {"section": 0, "index": 1, "verdict": "clean", "reason": "x"},
+    {"section": 9, "index": 0, "verdict": "clean", "reason": "x"},
+], ids=["missing-candidate", "missing-section"])
+def test_a_verdict_item_that_names_no_candidate_leaves_the_candidate_queued(tmp_path: Path, item: dict) -> None:
+    state_root = _journal(tmp_path, [PATTERN])
+
+    response = _stop(tmp_path, state_root, Judge(_cli({"items": [item], "notes": []})))
+
+    assert "decision" not in response
+    assert _unreviewed(state_root) == 1
+
+
+UTILIZE = {**PATTERN, "rule": "utilize", "path": "other.md", "text": "We utilize the cache on every request."}
+MIXED = {
+    "items": [
+        {"section": 0, "index": 0, "verdict": "violating", "reason": "Not a pattern."},
+        {"section": 1, "index": 0, "verdict": "violating", "reason": "Stock closer."},
+    ],
+    "notes": [NOTE],
+}
+
+
+def _document_and_two_patterns(tmp_path: Path) -> Path:
+    """Sections come out as document 0, ai_closer 1, utilize 2, because documents lead and rules sort by name."""
+    policy = {"rule_gates": {"ai_closer": "enforce", "utilize": "enforce"}}
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps(policy), encoding="utf-8")
+    state_root = tmp_path / "state"
+    journal.record_edit("sonnet", "turn-1", "tool", _document(tmp_path), state_root=state_root)
+    session_state.update_state(
+        "sonnet",
+        lambda state: {**state, journal.STATE_KEY: [*state[journal.STATE_KEY], PATTERN, UTILIZE], "turn_id": "turn-1"},
+        state_root,
+    )
+    return state_root
+
+
+def _next_turn(state_root: Path) -> None:
+    session_state.update_state("sonnet", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+
+
+def test_an_item_naming_the_document_section_voids_only_itself(tmp_path: Path) -> None:
+    state_root = _document_and_two_patterns(tmp_path)
+
+    response = _stop(tmp_path, state_root, Judge(_cli(MIXED)))
+
+    _next_turn(state_root)
+    queued = [row.get("rule") or row["role"] for row in journal.read_for_stop("sonnet", state_root=state_root)]
+    assert response.get("decision") == "block"
+    assert CLOSER in response["reason"]
+    assert NOTE["problem"] in response["reason"]
+    assert queued == ["utilize"]
+
+
+def test_the_next_stop_resends_only_the_unanswered_pattern(tmp_path: Path) -> None:
+    state_root = _document_and_two_patterns(tmp_path)
+    _stop(tmp_path, state_root, Judge(_cli(MIXED)))
+    _next_turn(state_root)
+    retry = Judge(_cli({"items": [], "notes": []}))
+
+    _stop(tmp_path, state_root, retry)
+
+    sent = [(UTILIZE["text"] in prompt, CLOSER in prompt, "A paragraph with enough text" in prompt) for prompt in retry.prompts]
+    assert sent == [(True, False, False)]
+
+
+SAME_FILE = {**PATTERN, "line": 5, "text": "I hope this helps with your project."}
+
+
+def test_the_next_stop_resends_only_the_skipped_candidate_of_a_file(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, [PATTERN, SAME_FILE])
+    _stop(tmp_path, state_root, Judge(_cli(VIOLATING)))
+    _next_turn(state_root)
+    retry = Judge(_cli({"items": [], "notes": []}))
+
+    _stop(tmp_path, state_root, retry)
+
+    assert [(SAME_FILE["text"] in prompt, CLOSER in prompt) for prompt in retry.prompts] == [(True, False)]
+
+
+def test_a_retry_in_the_same_turn_resends_only_the_skipped_candidate(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, [PATTERN, SAME_FILE])
+    _stop(tmp_path, state_root, Judge(_cli(VIOLATING)))
+    retry = Judge(_cli({"items": [], "notes": []}))
+
+    _stop(tmp_path, state_root, retry)
+
+    assert [(SAME_FILE["text"] in prompt, CLOSER in prompt) for prompt in retry.prompts] == [(True, False)]
+
+
+def _on_disk(tmp_path: Path, rows: list[dict]) -> list[dict]:
+    """Written with a matching hash, because a held row whose file is gone releases its block."""
+    lines = {row["line"]: row["text"] for row in rows}
+    note = tmp_path / "note.md"
+    note.write_text("".join(f"{lines.get(number, 'Plain line.')}\n" for number in range(1, max(lines) + 1)), encoding="utf-8")
+    digest = hashlib.sha256(note.read_bytes()).hexdigest()
+    return [{**row, "path": str(note), "content_hash": digest} for row in rows]
+
+
+def test_a_retry_in_the_same_turn_keeps_the_upheld_block(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, _on_disk(tmp_path, [PATTERN, SAME_FILE]))
+    _stop(tmp_path, state_root, Judge(_cli(VIOLATING)))
+
+    response = _stop(tmp_path, state_root, Judge(_cli({"items": [], "notes": []})))
+
+    assert response.get("decision") == "block"
+    assert CLOSER in response["reason"]
+
+
+RUN = {**PATTERN, "rule": "choppy_sentences", "path": "run.md", "line": 1, "text": "The hook reads the file. It checks every rule. It writes a report."}
+CLOSER_ONLY = {"items": [{"section": 0, "index": 0, "verdict": "violating", "reason": "Stock closer."}], "notes": []}
+
+
+def _closer_and_run(tmp_path: Path) -> Path:
+    """Sections come out as ai_closer 0 and choppy_sentences 1, because rules sort by name."""
+    return _journal(tmp_path, [PATTERN, RUN])
+
+
+def test_a_skipped_parataxis_run_leaves_the_other_verdicts_standing(tmp_path: Path) -> None:
+    state_root = _closer_and_run(tmp_path)
+
+    response = _stop(tmp_path, state_root, Judge(_cli(CLOSER_ONLY)))
+
+    _next_turn(state_root)
+    queued = [row["rule"] for row in journal.read_for_stop("sonnet", state_root=state_root)]
+    assert response.get("decision") == "block"
+    assert CLOSER in response["reason"]
+    assert queued == ["choppy_sentences"]
+
+
+def test_the_next_stop_resends_only_the_skipped_parataxis_run(tmp_path: Path) -> None:
+    state_root = _closer_and_run(tmp_path)
+    _stop(tmp_path, state_root, Judge(_cli(CLOSER_ONLY)))
+    _next_turn(state_root)
+    retry = Judge(_cli({"items": [], "notes": []}))
+
+    _stop(tmp_path, state_root, retry)
+
+    assert [(RUN["text"] in prompt, CLOSER in prompt) for prompt in retry.prompts] == [(True, False)]
 
 
 @pytest.mark.parametrize("reason", ("the claude CLI is not on PATH", "the claude CLI timed out after 90 seconds"))

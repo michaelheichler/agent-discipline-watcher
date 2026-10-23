@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import sys
 import time
 from collections import Counter, defaultdict
-from itertools import zip_longest
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
-from typing import NamedTuple
+from types import ModuleType
+from typing import Any, NamedTuple
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+HOOKS = str(REPOSITORY_ROOT / "hooks")
 STATE_ROOT = Path.home() / ".adw" / "state"
 OUTPUT_PATH = REPOSITORY_ROOT / "evals" / "provenance_replay_result.json"
 HOME = str(Path.home())
@@ -26,6 +30,28 @@ UNITS_SHOWN = 3
 DIRECTIONS = ("both_owned", "both_inherited", "inherited_to_owned", "owned_to_inherited")
 
 
+@dataclass(frozen=True, slots=True)
+class _HooksModule:
+    """Imported on first use, because importing this script must not change sys.path."""
+    name: str
+
+    def __getattr__(self, attribute: str) -> Any:
+        return getattr(self.loaded(), attribute)
+
+    def loaded(self) -> ModuleType:
+        if HOOKS not in sys.path:
+            sys.path.insert(0, HOOKS)
+        return importlib.import_module("lib." + self.name)
+
+
+provenance = _HooksModule("provenance")
+scan_input = _HooksModule("scan_input")
+scanner = _HooksModule("scanner")
+config = _HooksModule("config")
+baseline_module = _HooksModule("baseline")
+HOOKS_MODULES = (provenance, scan_input, scanner, config, baseline_module)
+
+
 class Pair(NamedTuple):
     source: str
     session: str
@@ -34,7 +60,7 @@ class Pair(NamedTuple):
     after: str
 
 
-# Legacy classifier, copied from 7ecc72a:hooks/lib/baseline.py so the replay keeps it after hooks/ dropped it.
+# Kept from 7ecc72a because hooks/ no longer ships the legacy classifier.
 def finding_key(finding: dict) -> tuple[str, str, str]:
     return (
         str(finding.get("family", "")),
@@ -62,7 +88,7 @@ def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
     exact = Counter(
         finding_key(row)
         for row in baseline
-        if row.get("rule") not in SCANNER_ALWAYS_BLOCKING_RULES | FIXED_OBSERVE_RULES
+        if row.get("rule") not in config.SCANNER_ALWAYS_BLOCKING_RULES | config.FIXED_OBSERVE_RULES
     )
     survivors = _consume(findings, exact, finding_key)
     if not survivors:
@@ -74,8 +100,8 @@ def subtract(findings: list[dict], baseline: list[dict]) -> list[dict]:
 
 
 def legacy_match(findings: list[dict], baseline: list[dict]) -> dict[int, str]:
-    """Labels each inherited row exact or loose, because the loose pass is the ISS-006 hole."""
-    exact = Counter(finding_key(row) for row in baseline if row.get("rule") not in SCANNER_ALWAYS_BLOCKING_RULES | FIXED_OBSERVE_RULES)
+    """Exact or loose, because the loose pass is the ISS-006 hole."""
+    exact = Counter(finding_key(row) for row in baseline if row.get("rule") not in config.SCANNER_ALWAYS_BLOCKING_RULES | config.FIXED_OBSERVE_RULES)
     survivors = {id(row) for row in _consume(findings, exact.copy(), finding_key)}
     return {id(row): "loose" if id(row) in survivors else "exact" for row in findings}
 
@@ -122,7 +148,7 @@ def _digest(text: str) -> str:
 
 
 def path_table(states: list[tuple[str, dict]]) -> dict[str, str]:
-    """Hashes every absolute path any session state names, because the index files a snapshot under sha256 of its real path."""
+    """Real paths too, because the index files a snapshot under sha256 of its real path."""
     found = {text for _session, data in states for text in _strings(data) if text.startswith("/") and "\n" not in text and len(text) < 1024}
     table: dict[str, str] = {}
     for path in found:
@@ -132,7 +158,7 @@ def path_table(states: list[tuple[str, dict]]) -> dict[str, str]:
 
 
 def read_current(path: Path, cfg: dict) -> tuple[str | None, str]:
-    """Same gates as scan_input.read_scannable, with the reason kept."""
+    """Gated like scan_input.read_scannable, because the replay reports why it skipped a file."""
     try:
         if not path.is_file():
             return None, "current_missing"
@@ -148,7 +174,7 @@ def read_current(path: Path, cfg: dict) -> tuple[str | None, str]:
 
 def config_for(path: str) -> dict:
     parent = Path(path).parent
-    return effective_config(None, parent if parent.is_dir() else None)
+    return config.effective_config(None, parent if parent.is_dir() else None)
 
 
 def _index_marks(session_dir: Path) -> Iterator[tuple[str, str]]:
@@ -227,7 +253,7 @@ def journal_pairs(states: list[tuple[str, dict]], skipped: Counter) -> list[Pair
 
 
 def _shift(edits: list, index: int) -> int | None:
-    """Old index for an unchanged new unit, or None when an edit covers it."""
+    """None under an edit, because an edited unit has no single old index."""
     shift = 0
     for edit in edits:
         if edit.new_start <= index < edit.new_end:
@@ -249,7 +275,7 @@ def _clip(text: str, size: int) -> str:
     return text if len(text) <= size else text[:size] + "..."
 
 
-def unit_context(prov: Provenance, old_units: list, finding: dict) -> dict:
+def unit_context(prov: provenance.Provenance, old_units: list, finding: dict) -> dict:
     """Changed units first, because the first units of a long span are usually the unchanged ones."""
     first, last = provenance._bounds(finding)
     evidence = prov._evidence(finding, first, last)
@@ -268,21 +294,19 @@ def unit_context(prov: Provenance, old_units: list, finding: dict) -> dict:
     }
 
 
-def engine_reason(prov: Provenance, finding: dict) -> str:
-    """Mirrors the branches of Provenance.owns, so each flip names the rule that decided it."""
+def engine_reason(prov: provenance.Provenance, finding: dict) -> str:
+    """In step with Provenance.owns, so each flip names the branch that decided it."""
     rule = finding.get("rule")
     first, last = provenance._bounds(finding)
     if rule in provenance.OWNED_RULES:
         return "always_owned_rule"
     if rule in provenance.SIZE_RULES:
         return "span_grew" if prov.growth(first, last) > 0 else "span_did_not_grow"
-    if prov._removed_within(rule, (first, last)):
-        return "removal_seam_in_span"
+    if not prov.seams.isdisjoint(provenance._seam_range(rule, first, last)):
+        return "seam_in_span"
     indices = prov._evidence(finding, first, last)
-    if rule in provenance.ENDING_RULES:
-        indices = [index for index in indices if prov.units[index].ending]
     if not indices:
-        return "no_unit_file_changed" if prov.changed or prov.removed_seams else "no_unit_file_unchanged"
+        return "no_unit_file_changed" if prov.changed or prov.seams else "no_unit_file_unchanged"
     if not prov.changed.isdisjoint(indices):
         return "changed_unit"
     edited = {index for edit in prov.diffs[0].edits for index in range(edit.new_start, edit.new_end)}
@@ -292,7 +316,7 @@ def engine_reason(prov: Provenance, finding: dict) -> str:
 def _halves(findings: list[dict], owned_ids: set[int], pair: Pair) -> set[int]:
     owned = [row for row in findings if id(row) in owned_ids]
     inherited = [row for row in findings if id(row) not in owned_ids]
-    return {id(row) for row in _length_relief((owned, inherited), pair.before, pair.after)[0]}
+    return {id(row) for row in baseline_module._length_relief((owned, inherited), pair.before, pair.after)[0]}
 
 
 def _direction(legacy: bool, engine: bool) -> str:
@@ -302,7 +326,7 @@ def _direction(legacy: bool, engine: bool) -> str:
 
 
 class Judged(NamedTuple):
-    prov: Provenance
+    prov: provenance.Provenance
     old_units: list
     labels: dict[int, str]
 
@@ -426,6 +450,9 @@ def summary(report: dict) -> str:
 
 
 def main() -> None:
+    # Loaded first, because a first import inside replay would count as diff time.
+    for module in HOOKS_MODULES:
+        module.loaded()
     states = list(_states())
     skipped: Counter = Counter()
     pairs = snapshot_pairs(path_table(states), skipped) + journal_pairs(states, skipped)
@@ -436,9 +463,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Imported here, because hooks/ joins sys.path only when the replay runs.
-    sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
-    from lib import provenance, scan_input, scanner
-    from lib.baseline import _length_relief
-    from lib.config import FIXED_OBSERVE_RULES, SCANNER_ALWAYS_BLOCKING_RULES, effective_config
     main()

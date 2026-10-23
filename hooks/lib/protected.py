@@ -13,11 +13,13 @@ try:
     from .config import ALWAYS_BLOCKING_RULES, flatten_settings
     from .findings import Finding
     from .payloads import exact_string_dict
+    from .regular_file import read_regular_text
 except ImportError:
     import families
     from config import ALWAYS_BLOCKING_RULES, flatten_settings
     from findings import Finding
     from payloads import exact_string_dict
+    from regular_file import read_regular_text
 
 CONFIG_SEAL_BASENAME = ".agent-discipline.json"
 TESTS_POLICY_KEYS = ("tests", "tests_allow_until")
@@ -363,7 +365,7 @@ def _switches_watcher_off(paths: tuple[Path | None, Path], content: str | None) 
 def _has_watcher_wiring(path: Path) -> bool:
     """Treats an unreadable file as wired, because a write that cannot be compared against the current wiring cannot be cleared."""
     try:
-        return bool(WATCHER_WIRING_RE.search(path.read_text(encoding="utf-8")))
+        return bool(WATCHER_WIRING_RE.search(read_regular_text(path)))
     except FileNotFoundError:
         return False
     except (OSError, UnicodeDecodeError):
@@ -383,7 +385,7 @@ def _changes_tests_policy(path: Path, content: str | None) -> bool:
     if content is None:
         return False
     try:
-        current = path.read_text(encoding="utf-8")
+        current = read_regular_text(path)
     except FileNotFoundError:
         current = None
     except (OSError, UnicodeDecodeError):
@@ -405,7 +407,7 @@ def _is_test_writer_definition(path: Path | None, content: str | None) -> bool:
 def _declares_test_writer_on_disk(path: Path) -> bool:
     """Unreadable counts as declared, since it cannot be cleared."""
     try:
-        return bool(TEST_WRITER_NAME_RE.search(path.read_text(encoding="utf-8")))
+        return bool(TEST_WRITER_NAME_RE.search(read_regular_text(path)))
     except (FileNotFoundError, NotADirectoryError):
         return False
     except (OSError, UnicodeDecodeError):

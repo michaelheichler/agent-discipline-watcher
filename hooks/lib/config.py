@@ -53,7 +53,7 @@ SELF_PROTECTION_RULES = frozenset({
     "commit_gate_bypass", "cap_override", "state_deletion", "state_mutation",
     # Joined here so that an observed agent cannot gate these open through project config to smuggle a write around the scanner.
     "inline_interpreter_write", "shell_payload_block", "interpreter_heredoc_write",
-    "dynamic_heredoc_write", "decode_pipe_write", "inplace_edit_write", "opaque_source_write",
+    "dynamic_heredoc_write", "decode_pipe_write", "inplace_edit_write", "opaque_source_write", "dynamic_write_target",
     # Joined because only the user may open the test gate.
     "test_write_gate", "test_writer_definition",
 })
@@ -118,8 +118,6 @@ DEFAULTS = {
         "de_uniform_paragraphs": "off",
         # Observe because German hits (n=17) yielded 1.0000 precision.
         "de_repeated_connector": "observe",
-        # Off because German hits (n=20) yielded 0.0000 precision.
-        "de_long_compound": "off",
         # Judged because 278 of 60000 human sentences carry an ordinary three-item series.
         "three_item_list": "judged",
         # Advisory because reviewed human runs held 5/10 (Sonnet), 5/9 (Luna).
