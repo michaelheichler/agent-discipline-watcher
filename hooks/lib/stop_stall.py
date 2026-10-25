@@ -30,6 +30,7 @@ class StopCall:
     hook: str
     event: str
     turn_id: str
+    stall_key: str = blocker_state.STALL_KEY
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +105,8 @@ def _allowed(cfg: dict, blocking: BlockingSet) -> int:
 
 def guarded(call: StopCall, blocking: BlockingSet, build: ReasonBuilder) -> StopOutcome:
     """Released once with a notice, then silent, so no finding traps a turn."""
-    previous = blocker_state.stall(call.scope)
+    key = call.stall_key
+    previous = blocker_state.stall(call.scope, key)
     current = fingerprint(blocking)
     stored = previous.get("count")
     same = previous.get("fp") == current and isinstance(stored, int)
@@ -114,9 +116,9 @@ def guarded(call: StopCall, blocking: BlockingSet, build: ReasonBuilder) -> Stop
     if count > allowed + 1:
         return StopOutcome("", "")
     if count == allowed + 1:
-        blocker_state.note_stall(call.scope, {"fp": current, "count": count, "report": report})
+        blocker_state.note_stall(call.scope, {"fp": current, "count": count, "report": report}, key)
         _record_release(call, blocking.owned)
         return StopOutcome("", notice(blocking, allowed, report))
     reason, written = build(report or None)
-    blocker_state.note_stall(call.scope, {"fp": current, "count": count, "report": written})
+    blocker_state.note_stall(call.scope, {"fp": current, "count": count, "report": written}, key)
     return StopOutcome(reason, "")

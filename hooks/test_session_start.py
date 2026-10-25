@@ -362,5 +362,17 @@ def test_a_claude_start_leaves_the_model_to_the_async_route(cold_worker, monkeyp
     assert _leases(config, time.time()) == ()
 
 
+@pytest.mark.parametrize(("drift", "shown"), [
+    pytest.param("An older ADW copy runs beside this one.", "An older ADW copy runs beside this one.", id="stale-copy"),
+    pytest.param("", None, id="no-stale-copy"),
+])
+def test_session_start_tells_the_user_about_a_stale_copy_only_when_one_exists(tmp_path: Path, drift: str, shown: str | None) -> None:
+    config = {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")}
+
+    output = session_start.run({"session_id": "s1", "source": "startup"}, config, drift=lambda: drift)
+
+    assert output.get("systemMessage") == shown
+
+
 if __name__ == "__main__":
     unittest.main()

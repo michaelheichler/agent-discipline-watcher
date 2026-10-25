@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.30.1 (2026-10-25)
+
+### Fixed in Stop
+
+- **A held reviewer block releases after five identical Stops.** Since 0.30.0 a Sonnet or Claude Luna verdict on unchanged text blocked every Stop of its turn, also a Stop that continued after a block, and only an edit or a new turn ended it. An agent that could not change the flagged text never ended its turn. The held block now passes the same stall breaker as the Stop rescan, with its own count and the own-finding limit of five. The sixth identical Stop releases with a notice and a `stop_stall` ledger row. A retry still cannot clear the block early.
+
+### Added
+
+- **ADW names an older copy of itself.** Claude Desktop also loads ADW as a claude.ai account plugin, and that copy can lag many releases behind and run every hook a second time. On one machine it ran 0.17.1 beside 0.30.0 and blocked one HA turn 17 times. SessionStart now tells the user about each older copy with its version and path, and `adw-config status` lists every ADW copy on the machine.
+
 ## 0.30.0 (2026-10-22)
 
 ### Security in the shell gates

@@ -127,16 +127,21 @@ def test_codex_snippet_wires_only_documented_stop_and_session_end_command_fields
                 assert event in hook["command"]
 
 
-def test_session_and_subagent_start_use_one_short_model_channel_without_readable_skill() -> None:
-    for event, output in (("SessionStart", session_start.run({})), ("SubagentStart", subagent_start.run({}))):
-        assert "systemMessage" not in output
-        specific = output["hookSpecificOutput"]
-        assert specific["hookEventName"] == event
-        assert set(specific) == {"hookEventName", "additionalContext"}
-        context = specific["additionalContext"]
-        assert "READABLE OUTPUT RULES ACTIVE" not in context
-        assert "### 1. Lead with the next action" not in context
-        assert len(context.encode("utf-8")) <= 4096
+@pytest.mark.parametrize(("event", "start"), [
+    pytest.param("SessionStart", lambda: session_start.run({}, drift=lambda: ""), id="session-start"),
+    pytest.param("SubagentStart", lambda: subagent_start.run({}), id="subagent-start"),
+])
+def test_session_and_subagent_start_use_one_short_model_channel_without_readable_skill(event: str, start) -> None:
+    output = start()
+
+    assert "systemMessage" not in output
+    specific = output["hookSpecificOutput"]
+    assert specific["hookEventName"] == event
+    assert set(specific) == {"hookEventName", "additionalContext"}
+    context = specific["additionalContext"]
+    assert "READABLE OUTPUT RULES ACTIVE" not in context
+    assert "### 1. Lead with the next action" not in context
+    assert len(context.encode("utf-8")) <= 4096
 
 
 def test_codex_stop_judges_current_session_journal_once_and_session_end_releases_lease(tmp_path: Path) -> None:

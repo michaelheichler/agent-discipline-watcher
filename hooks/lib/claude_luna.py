@@ -7,9 +7,10 @@ import re
 import stat
 from typing import Any
 
-from . import journal, claude_native, payloads, reporting, review_scope
+from . import journal, claude_native, held_release, payloads, reporting, review_scope
 from .config import effective_hook_config
 from .document_review import changed_document_work
+from .held_release import NONE_HELD, Held
 from .held_verdicts import UPHELD_UNREADABLE
 from .hookio import advise, context, read_payload, stop_block, write_payload
 from .judge import Candidate, request_for as comment_request
@@ -386,19 +387,23 @@ def remember_blocks(payload: object, judged: list[Judged], config: dict | None, 
         pass
 
 
-def held_blocks(payload: object, state_root: str | Path | None) -> list[str]:
-    """Kept on an active Stop too, because a held verdict needs no new model call and only an edit or a new turn ends it."""
+def held_blocks(payload: object, state_root: str | Path | None, config: dict | None = None) -> Held:
+    """Kept on an active Stop too, because a held verdict needs no new model call and only an edit, a new turn, or the stall breaker ends it."""
     try:
-        return journal.upheld(payloads.session_id(payload), state_root=state_root)
+        texts = journal.upheld(payloads.session_id(payload), state_root=state_root)
     except (OSError, RuntimeError, TypeError, ValueError):
-        return [UPHELD_UNREADABLE]
+        texts = [UPHELD_UNREADABLE]
+    try:
+        return held_release.guard(payload, texts, {**(config or {}), "state_root": state_root})
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return Held(texts)
 
 
-def keep_held(response: dict, held: list[str]) -> dict:
+def keep_held(response: dict, held: Held) -> dict:
     """Joined into a block, because an upheld verdict on unchanged text must keep the turn from ending."""
-    if not held:
-        return response
-    block = bounded_feedback(held)
+    if not held.texts:
+        return held_release.with_notice(response, held.notice)
+    block = bounded_feedback(held.texts)
     if response.get("decision") == "block":
         return {**response, "reason": f"{block}\n\n{response.get('reason', '')}"}
     notice = response.get("systemMessage") or response.get("hookSpecificOutput", {}).get("additionalContext", "")
@@ -482,7 +487,7 @@ def run(
     if event not in {"PostToolUse", "Stop"}:
         return {}
     root = state_root if state_root is not None else cfg.get("state_root")
-    held = held_blocks(payload, root) if event == "Stop" else []
+    held = held_blocks(payload, root, cfg) if event == "Stop" else NONE_HELD
     work = _built(event, payload, root, cfg)
     if work is None:
         return keep_held({}, held)

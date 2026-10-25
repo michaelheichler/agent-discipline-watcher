@@ -4,12 +4,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from lib import claude_luna, claude_sonnet, journal, session_state
+import stop
+from lib import blocker_state, claude_luna, claude_sonnet, journal, reporting, session_state, stop_stall
 
 SESSION = "held"
 CLOSER = "Feel free to ask me anything else."
@@ -78,7 +80,7 @@ def _uphold_each_time(tmp_path: Path, state_root: Path, times: int) -> None:
 
 
 def _held(tmp_path: Path, state_root: Path) -> list[str]:
-    return claude_luna.held_blocks(_payload(tmp_path), state_root)
+    return claude_luna.held_blocks(_payload(tmp_path), state_root).texts
 
 
 def _stop(tmp_path: Path, state_root: Path) -> dict:
@@ -266,3 +268,106 @@ def test_an_edited_held_file_gets_a_fresh_review_on_the_next_regular_stop(tmp_pa
 
     assert "decision" not in response
     assert [EDITED in prompt for prompt in prompts] == [True]
+
+
+HELD_LIMIT = stop_stall.OWN_FINDING_LIMIT
+NARRATED_SCRIPT = "# Increment the counter.\nx = 1\n"
+HeldStop = Callable[[Path, Path], dict]
+
+
+@pytest.fixture(name="ledger_home")
+def _ledger_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirected, because a Claude reviewer has no ledger root of its own and writes under the home folder."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+def _sonnet_held_stop(tmp_path: Path, state_root: Path) -> dict:
+    return _sonnet_active_stop(tmp_path, state_root, [])
+
+
+def _luna_held_stop(tmp_path: Path, state_root: Path) -> dict:
+    return claude_luna.keep_held({}, claude_luna.held_blocks(_payload(tmp_path, active=True), state_root, GATES))
+
+
+HELD_STOPS = [pytest.param(_sonnet_held_stop, id="sonnet"), pytest.param(_luna_held_stop, id="luna")]
+
+
+def _past_the_release(held_stop: HeldStop, tmp_path: Path, state_root: Path) -> list[dict]:
+    """One Stop past the release, so the run shows the silence that follows it."""
+    return [held_stop(tmp_path, state_root) for _ in range(HELD_LIMIT + 2)]
+
+
+def _shape(responses: list[dict]) -> list[tuple[str | None, bool]]:
+    return [(response.get("decision"), "systemMessage" in response) for response in responses]
+
+
+@pytest.mark.usefixtures("ledger_home")
+@pytest.mark.parametrize("held_stop", HELD_STOPS)
+def test_an_unchanged_held_verdict_blocks_to_the_own_finding_limit_then_releases_once(tmp_path: Path, held_stop: HeldStop) -> None:
+    _, state_root = _held_by_a_review(tmp_path)
+
+    responses = _past_the_release(held_stop, tmp_path, state_root)
+
+    assert _shape(responses) == [("block", False)] * HELD_LIMIT + [(None, True), (None, False)]
+    assert "Not blocking again" in responses[HELD_LIMIT]["systemMessage"]
+    assert responses[-1] == {}
+
+
+@pytest.mark.usefixtures("ledger_home")
+@pytest.mark.parametrize("held_stop", HELD_STOPS)
+def test_a_held_release_writes_one_stall_release_row_to_the_ledger(tmp_path: Path, held_stop: HeldStop) -> None:
+    _, state_root = _held_by_a_review(tmp_path)
+
+    _past_the_release(held_stop, tmp_path, state_root)
+
+    rows = reporting.read_jsonl(reporting.LEDGER_FILENAME)
+    assert [row["outcome"] for row in rows if row.get("rule") == stop_stall.STALL_RULE] == ["release"]
+
+
+@pytest.mark.usefixtures("ledger_home")
+@pytest.mark.parametrize("held_stop", HELD_STOPS)
+def test_an_edit_after_a_held_release_lets_a_fresh_held_verdict_block_again(tmp_path: Path, held_stop: HeldStop) -> None:
+    target, state_root = _held_by_a_review(tmp_path)
+    _past_the_release(held_stop, tmp_path, state_root)
+    target.write_text(f"{EDITED}\n", encoding="utf-8")
+    _vote(state_root, target, [{"rule": "ai_closer", "line": 1, "text": EDITED}])
+    claude_sonnet.run(_payload(tmp_path), state_root=state_root, judge=lambda _prompt: VIOLATING)
+
+    response = held_stop(tmp_path, state_root)
+
+    assert response.get("decision") == "block"
+
+
+@pytest.mark.usefixtures("ledger_home")
+@pytest.mark.parametrize("held_stop", HELD_STOPS)
+def test_a_new_turn_after_a_held_release_lets_the_same_verdict_block_again(tmp_path: Path, held_stop: HeldStop) -> None:
+    state_root = _queued(tmp_path, [CLOSER_VOTE])
+    request, rows = _requests(tmp_path, state_root)["ai_closer"]
+    _uphold(tmp_path, state_root, [(request, "Closer verdict", rows)])
+    _past_the_release(held_stop, tmp_path, state_root)
+    session_state.update_state(SESSION, lambda state: {**state, "turn_id": "turn-2"}, state_root)
+    _uphold(tmp_path, state_root, [(request, "Closer verdict", rows)])
+
+    response = held_stop(tmp_path, state_root)
+
+    assert response.get("decision") == "block"
+
+
+@pytest.mark.usefixtures("ledger_home")
+def test_the_rescan_breaker_and_the_held_breaker_keep_separate_counts_in_one_session(tmp_path: Path) -> None:
+    _, state_root = _held_by_a_review(tmp_path)
+    script = tmp_path / "counter.py"
+    script.write_text(NARRATED_SCRIPT, encoding="utf-8")
+    blocker_state.touch_paths(SESSION, "", [str(script)], str(state_root))
+    config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
+    payload = _payload(tmp_path, active=True)
+
+    responses = [
+        response for _ in range(HELD_LIMIT + 1)
+        for response in (stop.run(payload, config), _sonnet_held_stop(tmp_path, state_root))
+    ]
+
+    assert _shape(responses) == [("block", False)] * (2 * HELD_LIMIT) + [(None, True)] * 2
+    assert "Not blocking again" in responses[-1]["systemMessage"]

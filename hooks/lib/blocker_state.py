@@ -188,14 +188,15 @@ def take_dropped(scope: BlockerScope) -> int:
     return claimed[0] if claimed else 0
 
 
-def stall(scope: BlockerScope) -> dict:
+def stall(scope: BlockerScope, key: str = STALL_KEY) -> dict:
     """Read apart from details, because only Stop needs to know what it blocked on last time."""
-    stored = _bucket(session_state.read_state_strict(scope.session_id, scope.root), scope.agent_id).get(STALL_KEY)
+    stored = _bucket(session_state.read_state_strict(scope.session_id, scope.root), scope.agent_id).get(key)
     return dict(stored) if isinstance(stored, dict) else {}
 
 
-def note_stall(scope: BlockerScope, record: dict) -> None:
-    _update(scope, lambda bucket: {**bucket, STALL_KEY: record})
+def note_stall(scope: BlockerScope, record: dict, key: str = STALL_KEY) -> None:
+    """Keyed, because the deterministic rescan and the held reviewer verdicts block apart and each needs its own count."""
+    _update(scope, lambda bucket: {**bucket, key: record})
 
 
 def _unscanned_paths(payload: dict) -> list[str]:

@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import config, configure_policy, configure_store, families, prose_language, tests_policy
+from . import adw_copies, config, configure_policy, configure_store, families, prose_language, tests_policy
 
 USAGE = (
     "usage: adw-config status | tests allow|deny | tests allow --for 30m|2h | family NAME on|off"
@@ -54,7 +54,7 @@ def status_lines(target: Path, settings: dict, now: float) -> list[str]:
         lines.append(f"  {name}: {'off' if state == 'off' else 'on'} ({state})")
     changed = _changed_rules(settings)
     lines.append("rule gates changed from defaults:" if changed else "rule gates changed from defaults: none")
-    return lines + changed
+    return lines + changed + adw_copies.status_lines()
 
 
 def window_seconds(text: str) -> int:

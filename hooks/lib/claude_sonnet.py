@@ -308,7 +308,7 @@ def run(payload: object, *, state_root: str | Path | None = None, judge: Judge |
     config = claude_luna.hook_config(payload)
     root = state_root if state_root is not None else config.get("state_root")
     stop = StopContext(payloads.session_id(payload), payload, root, config.get("ledger_root"))
-    held = claude_luna.held_blocks(payload, stop.root)
+    held = claude_luna.held_blocks(payload, stop.root, config)
     return claude_luna.keep_held(_review(stop, config, judge), held)
 
 
