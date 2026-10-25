@@ -1,4 +1,7 @@
+import pytest
+
 from lib.prose_structure import _markdown_prose_lines
+from lib.scanner import scan_all
 from lib.slop_structure import (
     OMITTED_STRUCTURE_RULES,
     STRUCTURE_CANDIDATES,
@@ -41,11 +44,11 @@ CORPUS_EXAMPLES = (
 )
 
 
-def test_candidate_patterns_are_general_not_corpus_phrases() -> None:
+@pytest.mark.parametrize(("rule_name", "text"), [pytest.param(*example, id=example[0]) for example in CORPUS_EXAMPLES])
+def test_candidate_patterns_are_general_not_corpus_phrases(rule_name: str, text: str) -> None:
     candidates = {candidate.name: candidate for candidate in STRUCTURE_CANDIDATES}
 
-    for rule_name, text in CORPUS_EXAMPLES:
-        assert candidates[rule_name].pattern.search(text)
+    assert candidates[rule_name].pattern.search(text)
 
 
 def test_structure_candidates_are_shipped_or_omitted() -> None:
@@ -58,7 +61,7 @@ def test_structure_candidates_are_shipped_or_omitted() -> None:
     assert omitted_candidates <= omitted_names
 
 
-def test_structure_candidates_use_the_markdown_prose_contract() -> None:
+def _masked_example_lines() -> tuple[tuple[int, str], ...]:
     examples = dict(CORPUS_EXAMPLES)
     fenced_lines = tuple(examples.values())
     table_lines = tuple(f"| {text} |" for text in examples.values())
@@ -74,11 +77,15 @@ def test_structure_candidates_use_the_markdown_prose_contract() -> None:
             *quote_lines,
         )
     )
-    prose_lines = tuple(_markdown_prose_lines(text))
+    return tuple(_markdown_prose_lines(text))
 
-    for candidate in STRUCTURE_CANDIDATES:
-        assert candidate.pattern.search(examples[candidate.name])
-        assert all(not candidate.pattern.search(line) for _number, line in prose_lines)
+
+@pytest.mark.parametrize("candidate", [pytest.param(candidate, id=candidate.name) for candidate in STRUCTURE_CANDIDATES])
+def test_structure_candidates_use_the_markdown_prose_contract(candidate) -> None:
+    prose_lines = _masked_example_lines()
+
+    assert candidate.pattern.search(dict(CORPUS_EXAMPLES)[candidate.name])
+    assert [line for _number, line in prose_lines if candidate.pattern.search(line)] == []
 
 
 def test_passive_voice_catches_irregular_participles() -> None:
@@ -95,6 +102,33 @@ def test_passive_voice_leaves_read_only_prose_alone() -> None:
         "The mounted volumes are read only until the lock clears.",
     )
     assert all(not _PASSIVE_VOICE_RE.search(text) for text in prose)
+
+
+def _passive_lines(sentence: str) -> list[int]:
+    rows = scan_all("doc.md", f"Intro line here.\n\n{sentence}\n", {"prose_languages": ["en"]})
+    return [row["line"] for row in rows if row["rule"] == "passive_voice"]
+
+
+@pytest.mark.parametrize("sentence", [
+    pytest.param("Its shelf is open.", id="open"),
+    pytest.param("The fix is often slow.", id="often"),
+    pytest.param("The plan is even simpler.", id="even"),
+    pytest.param("The light is green.", id="green"),
+    pytest.param("The light was red.", id="red"),
+    pytest.param("The gap is between two halls.", id="between"),
+])
+def test_an_adjective_ending_in_ed_or_en_after_a_form_of_be_is_no_passive(sentence: str) -> None:
+    assert _passive_lines(sentence) == []
+
+
+@pytest.mark.parametrize("sentence", [
+    pytest.param("The shelf was opened.", id="opened"),
+    pytest.param("The tears were shed.", id="shed"),
+    pytest.param("The rooms were needed.", id="needed"),
+    pytest.param("The data was screened.", id="screened"),
+])
+def test_a_participle_built_on_an_excluded_word_still_reports_a_passive(sentence: str) -> None:
+    assert _passive_lines(sentence) == [3]
 
 
 def test_omitted_categories_record_their_measurement_reason() -> None:

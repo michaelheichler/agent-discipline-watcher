@@ -70,9 +70,17 @@ _IRREGULAR_PARTICIPLES = (
     "hit", "let", "left", "found", "met", "paid", "said", "sold", "spent", "won",
     "hurt", "felt", "dealt", "meant", "heard", "led", "fed", "run", "understood",
 )
+# Because these words end in ed or en without being participles.
+_NOT_PARTICIPLES = (
+    "open", "often", "even", "seven", "eleven", "golden", "wooden", "woolen", "sudden", "heaven", "token",
+    "garden", "kitchen", "chicken", "children", "women", "men", "ten", "then", "when", "queen", "green",
+    "keen", "screen", "between", "citizen", "oxygen", "specimen", "red", "bed", "need", "speed", "seed",
+    "feed", "sacred", "wicked", "naked", "rugged", "ragged", "hundred", "kindred",
+)
 _PASSIVE_VOICE_RE = re.compile(
     r"\b(?:am|is|are|was|were|be|been|being)\s+(?:being\s+)?"
-    r"(?:[a-z]+(?:ed|en)|(?:re|un|over|under|mis|out)?(?:" + "|".join(_IRREGULAR_PARTICIPLES) + r"))\b"
+    r"(?:(?!(?:" + "|".join(_NOT_PARTICIPLES) + r")\b)[a-z]+(?:ed|en)"
+    r"|(?:re|un|over|under|mis|out)?(?:" + "|".join(_IRREGULAR_PARTICIPLES) + r"))\b"
     r"|\b(?:mistakes|errors|decisions|choices|changes|promises)\s+(?:were|was)\s+made\b"
     r"|\bit\s+is\s+believed\s+that\b",
     re.IGNORECASE,

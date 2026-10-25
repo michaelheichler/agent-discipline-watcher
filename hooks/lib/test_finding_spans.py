@@ -83,9 +83,9 @@ def _english_cases() -> dict[str, Case]:
             "doc.md", _short_endings(), dict(ENGLISH_ONLY), "uniform_paragraph_endings", (1, 8)),
         "oversized_list-with-continuation": Case(
             "doc.md", INTRO + _long_list(), {**ENGLISH_ONLY, "list_item_cap": 8}, "oversized_list", (3, 13)),
-        "three_item_list-markdown-with-continuation": Case(
-            "doc.md", INTRO + "- Apples are red\n- Pears are green\n  still about pears\n- Plums are dark\n",
-            dict(ENGLISH_ONLY), "three_item_list", (3, 6)),
+        "three_item_list-markdown-loose": Case(
+            "doc.md", INTRO + "- Apples are red\n\n- Pears are green\n\n- Plums are dark\n",
+            dict(ENGLISH_ONLY), "three_item_list", (3, 7)),
         "choppy_sentences": Case(
             "doc.md", INTRO + "The hook reads the file.\nIt checks every rule.\nIt writes a report.\n",
             dict(ENGLISH_ONLY), "choppy_sentences", (3, 5)),

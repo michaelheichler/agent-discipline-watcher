@@ -13,7 +13,7 @@ from .prose_language import GERMAN, allowed_languages
 from .scan_input import int_setting
 
 
-RUBRIC_VERSION = "adw-rubric-v2"
+RUBRIC_VERSION = "adw-rubric-v3"
 COMMENT_RUBRIC = (
     "A comment may state why code is the way it is, but may not describe what code does. "
     "The opening clause decides it. Use describes_code when code is the subject and its behaviour is named; "
@@ -23,7 +23,7 @@ PATTERN_RUBRIC = (
     "Judge only the named pattern. A sentence may be poor for another reason and still be clean for this pattern. "
     "Use the rule, requested fix, and both example sides to decide each candidate."
 )
-GERMAN_RUBRIC_VERSION = "adw-rubric-de-v2"
+GERMAN_RUBRIC_VERSION = "adw-rubric-de-v3"
 GERMAN_PATTERN_RUBRIC = (
     "Beurteile nur das genannte Muster. Ein Satz kann aus einem anderen Grund schwach sein "
     "und für dieses Muster trotzdem sauber sein. "
@@ -55,6 +55,7 @@ def reviewer_instructions(config: dict) -> str:
         f"Add at most {MAX_DOCUMENT_NOTES} notes in one reply, and return no notes when the text is fine.",
         "When the supplied text alone cannot decide a case, give the passing verdict "
         "(clean, or states_why for a comment) and add no note.",
+        "A marker such as c. or 2) at the start of a line opens a new list item, so it is no part of the sentence above it.",
         TOOL_BOUNDARY,
     ]
     if GERMAN in allowed_languages(config):

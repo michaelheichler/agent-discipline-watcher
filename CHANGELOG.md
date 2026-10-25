@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.30.3 (2026-10-25)
+
+### Fixed in prose rules
+
+- **A minus sign is no dash.** `banned_dash` flagged the minus sign U+2212 in a negative temperature and on a stepper button. A minus before a number or alone as a glyph now passes, and a minus between two words still blocks like any other dash.
+- **`passive_voice` skips words that only end like participles.** "its shelf is open", "is often", and "was then" read as passives, because the rule took any word ending in ed or en for a participle. A list of 41 such words now stays out. On the 9,256 document corpus this removes 1,258 of 39,613 hits, and none of them is a real passive (`evals/passive_voice_exclusions.json`).
+- **Saved tool output is no authored prose.** A `.log` file, a plain-text file that holds one JSON document, and the diff, `rg` match, and timestamped log lines of a plain-text file no longer feed the prose and punctuation rules. Markdown and other authored prose stay fully checked.
+- **`three_item_list` reads a list of three as a triad only when it looks like one.** It now needs three single-sentence entries of at most ten words, without a checkbox, an id, code, or a path, with consecutive numbers, similar length, and one capitalization. A queue, a bug list, or an inventory of three no longer counts.
+- **The `de_modal_verb` action keeps a requirement a requirement.** It used to push agents to rewrite "muss" sentences as statements of fact.
+
+### Fixed in finding ownership
+
+- **Downloads, extractions, and clones into ignored scratch arrive as imported files.** A `curl` or `wget` download from a remote URL, a `tar` or `unzip` extraction from an archive the session did not build, and a `git clone` of a remote repository now land as imported copies when git ignores their destination, like a copy from temp already did. Their findings report as inherited until the agent edits them. A download into a tracked file, a `file:` URL, and a clone of a local repository stay the agent's own, so no fetched text reaches a commit unchecked.
+
+### Changed
+
+- **The shared reviewer prompt names list markers.** A marker such as `c.` at the start of a line opens a new item and is no part of the sentence above it. The rubric versions move to `adw-rubric-v3` and `adw-rubric-de-v3`, so Luna cache entries from the old prompt no longer match.
+
 ## 0.30.2 (2026-10-25)
 
 ### Security in the shell gates

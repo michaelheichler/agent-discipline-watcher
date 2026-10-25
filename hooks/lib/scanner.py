@@ -106,8 +106,10 @@ scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
 
 
-BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212)) + "]")
-PROSE_DASH_RE = re.compile(r"(?:(?<=\s)|(?<=[^\W\d_]))" + BAD_DASH_RE.pattern + r"(?=\s|[^\W\d_])")
+BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015)) + "]")
+# Because a minus before a number or on a button is no clause break.
+MINUS_AS_DASH_RE = re.compile(r"(?<=[^\W\d_])[ \t]*" + chr(0x2212) + r"[ \t]*(?=[^\W\d_])")
+PROSE_DASH_RE = re.compile(r"(?:(?<=\s)|(?<=[^\W\d_]))" + BAD_DASH_RE.pattern[:-1] + chr(0x2212) + r"](?=\s|[^\W\d_])")
 PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
@@ -431,7 +433,7 @@ def _code_file(path: str, text: str) -> bool:
 
 
 PUNCTUATION_RULES = (
-    ("clean", (BAD_DASH_RE,), "banned_dash",
+    ("clean", (BAD_DASH_RE, MINUS_AS_DASH_RE), "banned_dash",
      "Banned dash character in ", "Use ASCII hyphen or rewrite the sentence."),
     ("prose", (DASH_BREAK_RE,), "dash_break",
      "Double hyphen clause break in ", "Use a comma, period, or parentheses."),

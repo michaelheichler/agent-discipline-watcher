@@ -248,18 +248,30 @@ def split_edited_paths(payload: object, authored: frozenset[str] | None = None) 
     found = patch_file_paths(text)
     if _exact_string(fields, "tool_name").lower() != "bash":
         return found, ()
+    written, imported = _bash_split(text, _exact_string(fields, "cwd") or None, authored)
+    return (*found, *written), imported
+
+
+def _bash_split(text: str, cwd: str | None, authored: frozenset[str] | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         from . import pre_bash
     except ImportError:
         import pre_bash
-    from lib import temp_copies
-    cwd = _exact_string(fields, "cwd") or None
+    from lib import import_landings, temp_copies
     writes = tuple(pre_bash.write_paths(text, cwd))
     if authored is None:
-        return (*found, *writes, *temp_copies.temp_copy_destinations(text, cwd)), ()
+        return (*writes, *temp_copies.temp_copy_destinations(text, cwd)), ()
     own = authored | {temp_copies.source_key(write, cwd) for write in writes}
     copies, imported = temp_copies.copy_landings(text, cwd, frozenset(own))
-    return (*found, *writes, *copies), tuple(imported)
+    written, external = _external_split(writes, import_landings.external_landings(text, cwd, frozenset(authored)), cwd)
+    return (*written, *copies), tuple(dict.fromkeys([*imported, *external]))
+
+
+def _external_split(writes: tuple[str, ...], external: list[str], cwd: str | None) -> tuple[tuple[str, ...], list[str]]:
+    """Because a downloaded file holds text from outside the session, it leaves the written list."""
+    from lib import temp_copies
+    landed = {temp_copies.source_key(path, cwd) for path in external}
+    return tuple(write for write in writes if temp_copies.source_key(write, cwd) not in landed), external
 
 
 def removed_paths(payload: object) -> tuple[str, ...]:

@@ -70,6 +70,12 @@ Status on 2026-10-25, release 0.30.2:
 7. Low. The shared reviewer prompt lacks the list marker sentence from stream F item 4 (12a).
 8. 0.30.0 fixed entries 1 (Jinja), 3, 4, 5, 6, 7, 9, 10, 12, 13a, and 13b, and the replay confirms each fix.
 
+Status on 2026-10-25, release 0.30.3:
+
+- All seven items landed. The passive exclusion removes 1,258 of 39,613 corpus hits, and each removed phrase is an adjective, adverb, or noun (`evals/passive_voice_exclusions.json`).
+- A remote download, extraction, or clone into a git-ignored path now lands as an imported file. Review found that a `file:` URL laundered agent text into tracked code, and 42 R2-3 tests guard downloads into code, so tracked destinations stay owned and the commit gate keeps its parents. A verbatim upstream copy in tracked code (8d) therefore still owns its findings, which stays a decision for Michael in phase 3.
+- The triad detector follows the stream F shape. The stream F count of 86 to 11 findings on 154 documents was not measured again.
+
 ## Phase 3, decisions for Michael
 
 1. 13e and 13s. A verbatim design file and the castle placeholder U+2013 hold an en dash that the build must match. Either the file arrives as an imported baseline (phase 2 item 4), or the design gets a different glyph. The rule stays as it is.

@@ -1,6 +1,7 @@
 """Masks source in place here because every downstream scan and hook needs the original path:line coordinates to stay intact."""
 
 import io
+import json
 import re
 import tokenize
 from dataclasses import dataclass
@@ -70,6 +71,17 @@ BLOCK_TAG_RE = re.compile(
 TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 TEMPLATE_EXPRESSION_RE = re.compile(r"{{.*?}}|{%.*?%}|{#.*?#}", re.DOTALL)
 SCRIPT_STRING_RE = re.compile(r'''(?P<quote>["'`])(?:\\.|(?!\1).)*\1''', re.DOTALL)
+
+
+LOG_EXTS = frozenset({".log"})
+PLAIN_TEXT_EXTS = frozenset({".txt", ".text", ".out", ""})
+_BLANK_ALL_RE = re.compile(r"[^\n]")
+_MATCH_LINE = r"^[^\s:]+[:-]\d+[:-].*$"
+_LOG_LINE = r"^[ \t]*\[?(?:\d{4}-\d{2}-\d{2}[T ])?\d{2}:\d{2}:\d{2}.*$"
+_DIFF_LINE = r"^(?:diff --git |index |--- |\+\+\+ |@@ |[ +-]).*$"
+TOOL_LINE_RE = re.compile(f"{_MATCH_LINE}|{_LOG_LINE}", re.MULTILINE)
+TOOL_LINE_WITH_DIFF_RE = re.compile(f"{_MATCH_LINE}|{_LOG_LINE}|{_DIFF_LINE}", re.MULTILINE)
+DIFF_HEADER_RES = tuple(re.compile(marker, re.MULTILINE) for marker in (r"^--- ", r"^\+\+\+ ", r"^@@ "))
 
 
 def _blank_keep_newlines(match: re.Match) -> str:
@@ -288,9 +300,35 @@ def _mask_frontmatter(suffix: str, text: str) -> str:
     return FRONTMATTER_RE.sub(_blank_keep_newlines, text, count=1)
 
 
+def _mask_tool_output(suffix: str, text: str) -> str:
+    """Because saved command output repeats what a tool printed, its log, diff, match and JSON lines are no sentences the agent wrote."""
+    if suffix in LOG_EXTS or (suffix in PLAIN_TEXT_EXTS and _json_document(text)):
+        return _BLANK_ALL_RE.sub(" ", text)
+    if suffix not in PLAIN_TEXT_EXTS:
+        return text
+    pattern = TOOL_LINE_WITH_DIFF_RE if _unified_diff(text) else TOOL_LINE_RE
+    return pattern.sub(_blank_keep_newlines, text)
+
+
+def _json_document(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith(("{", "[")):
+        return False
+    try:
+        json.loads(stripped)
+    except ValueError:
+        return False
+    return True
+
+
+def _unified_diff(text: str) -> bool:
+    return all(marker.search(text) for marker in DIFF_HEADER_RES)
+
+
 def _mask_markup(path: str, text: str) -> str:
     """Mask non-prose syntax because its tokens are not sentences."""
     suffix = PurePath(path.lower()).suffix
+    text = _mask_tool_output(suffix, text)
     text = _mask_frontmatter(suffix, text)
     if suffix == ".tex":
         text = re.sub(

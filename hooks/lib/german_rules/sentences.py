@@ -31,12 +31,12 @@ MODAL_VERB = Rule(
     Wording(
         "German modal verb padding",
         "Flags a German modal verb like möchten or könnte that pushes the real verb to the end",
-        "Say what happens with the main verb.",
+        "Say what happens with the main verb. Keep a requirement a requirement, as a condition or an imperative, not as a fact.",
     ),
     Wording(
         "Modalverb schiebt das Verb ans Ende",
         "Meldet Modalverben wie möchten oder könnte, die das Vollverb ans Satzende schieben",
-        "Sag mit dem Vollverb, was passiert.",
+        "Sag mit dem Vollverb, was passiert. Behalte bei einer Anforderung den Sinn und schreib sie als Bedingung oder Imperativ, nicht als Tatsache.",
     ),
     state="off",
 )

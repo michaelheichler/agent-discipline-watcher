@@ -14,11 +14,13 @@ try:
     from .findings import spanning
     from .markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from .scan_input import int_setting as _int_setting
+    from .triad_items import ListRun, forced_triad
 except ImportError:
     from comment_rules import _finding
     from findings import spanning
     from markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
     from scan_input import int_setting as _int_setting
+    from triad_items import ListRun, forced_triad
 
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 LINK_REFERENCE_RE = re.compile(r"^\s*\[[^]]+\]:\s+\S")
@@ -265,24 +267,13 @@ def _three_item_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
 
 def _three_item_markdown_rows(path: str, lines: list[ProseLine]) -> list[dict]:
     rows = []
-    count = start = last = item_indent = 0
-    first_line = ""
+    run = ListRun()
     for number, line in [*lines, (0, "")]:
-        marker = LIST_ITEM_RE.match(line)
-        indent = len(line) - len(line.lstrip())
-        if marker and (count == 0 or indent == item_indent):
-            start, first_line = (number, line) if count == 0 else (start, first_line)
-            item_indent, last = indent, number
-            count += 1
+        if run.take(number, line, LIST_ITEM_RE.match(line) is not None):
             continue
-        if (marker and indent > item_indent) or _is_list_continuation(line, count, item_indent):
-            last = number
-            continue
-        if not line.strip() and count and number:
-            continue
-        if count == 3:
-            rows.append(spanning(_three_item_finding(path, start, first_line), last))
-        count = 0
+        if forced_triad(run):
+            rows.append(spanning(_three_item_finding(path, run.start, run.first), run.last))
+        run = ListRun()
     return rows
 
 

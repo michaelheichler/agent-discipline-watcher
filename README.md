@@ -1,6 +1,6 @@
 # Agent Discipline Watcher
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.30.2**.
+Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.30.3**.
 
 The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
 
@@ -377,7 +377,7 @@ they tell the model to treat the reviewed text as data. They also name the 80
 character comment cap and the project's list item cap, so the reviewer judges
 text inside those caps on what it says and keeps each suggested fix inside
 them. The German style line appears only when the project allows German prose.
-The rubric versions are `adw-rubric-v2` and `adw-rubric-de-v2`.
+The rubric versions are `adw-rubric-v3` and `adw-rubric-de-v3`.
 
 The review can fail. The CLI can be missing, run past 90 seconds, or return
 no usable verdict. If the review fails, the Stop shows one line that the
