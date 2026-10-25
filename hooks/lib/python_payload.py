@@ -24,9 +24,15 @@ SORT_HELPERS = frozenset({"max", "min", "sorted"})
 CONTAINER_LITERALS = (ast.Dict, ast.DictComp, ast.List, ast.ListComp)
 UNASSIGNED_HINT = ", which is never assigned in this payload. Define it or inline the value"
 SAFE_BUILTINS = frozenset({
-    "all", "any", "bool", "bytes", "dict", "enumerate", "float", "int", "len", "list", "max", "min",
-    "print", "range", "repr", "set", "sorted", "str", "sum", "tuple", "zip",
+    "abs", "all", "any", "bool", "bytes", "dict", "enumerate", "float", "int", "isinstance", "iter", "len", "list", "max",
+    "min", "next", "print", "range", "repr", "round", "set", "sorted", "str", "sum", "tuple", "type", "zip",
 })
+SAFE_EXCEPTIONS = frozenset({
+    "ArithmeticError", "AttributeError", "Exception", "FileNotFoundError", "IndexError", "KeyError",
+    "LookupError", "OSError", "StopIteration", "TypeError", "UnicodeDecodeError", "ValueError", "ZeroDivisionError",
+})
+JSON_ERROR = "JSONDecodeError"
+FIXED_BUILTIN_KINDS: dict[str, Kind] = {"str": "text", "repr": "text", "bytes": "bytes", "range": ("sequence", ("value",))}
 SAFE_LITERAL_TYPES = (str, bytes, int, float, complex, bool, type(None))
 ASSIGNABLE_KINDS = frozenset({"bytes", "file", "json", "path", "text", "value"}) | OBJECT_KINDS
 
@@ -255,10 +261,10 @@ class _ExpressionKinds:
         return [item_kind(self.expression(arg)) for arg in args]
 
     def builtin_call(self, name: str, node: ast.Call) -> Kind | None:
-        if name in {"str", "repr", "bytes"}:
-            return "bytes" if name == "bytes" else "text"
-        if name == "range":
-            return ("sequence", ("value",))
+        if name in FIXED_BUILTIN_KINDS:
+            return FIXED_BUILTIN_KINDS[name]
+        if name in {"iter", "next", "type"}:
+            return self.lookup_call(name, node)
         if name == "zip":
             kinds = tuple(item_kind(self.expression(arg)) for arg in node.args)
             return ("sequence", (("tuple", kinds),)) if None not in kinds else None
@@ -270,6 +276,18 @@ class _ExpressionKinds:
                 kind = ("tuple", ("value", kind))
             return ("sequence", (kind,))
         return "value"
+
+    def lookup_call(self, name: str, node: ast.Call) -> Kind | None:
+        """Because type with three arguments builds a class, only the one-argument type lookup passes."""
+        if name == "type":
+            return "value" if len(node.args) == 1 and not node.keywords else None
+        if name == "iter":
+            # Because iter with a sentinel calls its first argument.
+            return self.expression(node.args[0]) if len(node.args) == 1 and not node.keywords else None
+        kinds = self.item_kinds(node.args[:1])
+        if len(node.args) == 1 and kinds:
+            return kinds[0]
+        return "value" if len(node.args) == 2 else None
 
     def json_call(self, kind: str, node: ast.Call) -> str | None:
         if kind == "json_dumps":
@@ -379,6 +397,9 @@ class _ReadOnlyChecker(_ExpressionKinds):
             (ast.Import, self.imports),
             (ast.ImportFrom, self.import_from),
             (ast.Pass, self.pass_statement),
+            (ast.Continue, self.pass_statement),
+            (ast.Break, self.pass_statement),
+            (ast.Try, self.try_statement),
             (ast.Assign, self.assignment),
             (ast.AugAssign, self.augmented_assignment),
             (ast.If, self.if_statement),
@@ -398,6 +419,29 @@ class _ReadOnlyChecker(_ExpressionKinds):
 
     def pass_statement(self, _node: ast.Pass) -> bool:
         return True
+
+    def try_statement(self, node: ast.Try) -> bool:
+        return (
+            self.statements(node.body) and all(self.handler(handler) for handler in node.handlers)
+            and self.statements(node.orelse) and self.statements(node.finalbody)
+        )
+
+    def handler(self, node: ast.ExceptHandler) -> bool:
+        """Because the clause evaluates its type at run time, only builtin exceptions the payload never rebinds pass."""
+        if node.type is not None and not self.exception_type(node.type):
+            return False
+        if node.name is not None:
+            if node.name in self.protected_names:
+                return False
+            self.bindings[node.name] = "value"
+        return self.statements(node.body)
+
+    def exception_type(self, node: ast.expr) -> bool:
+        if isinstance(node, ast.Tuple):
+            return all(self.exception_type(item) for item in node.elts)
+        if isinstance(node, ast.Attribute):
+            return node.attr == JSON_ERROR and self.expression(node.value) == "json_module"
+        return isinstance(node, ast.Name) and node.id in SAFE_EXCEPTIONS and node.id not in self.bindings
 
     def if_statement(self, node: ast.If) -> bool:
         return self.expression(node.test) is not None and self.statements(node.body) and self.statements(node.orelse)

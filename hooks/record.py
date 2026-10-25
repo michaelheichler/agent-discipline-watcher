@@ -31,6 +31,7 @@ from lib.scanner import scan_all
 from lib.temp_scope import outside_project_temp
 
 UNDECIDABLE_KEY = blocker_state.RECORD_ERROR_KEY
+SHELL_TOOL = "bash"
 MAX_IMPORTED_SCANS = 200
 
 
@@ -58,6 +59,7 @@ class _RecordGateContext:
     cwd: Path
     config: dict
     blocker_scope: blocker_state.BlockerScope
+    shell: bool = False
 
 
 def edited_paths(payload: object) -> list[str]:
@@ -194,13 +196,16 @@ def _scan_open_file(
         _close_quietly(descriptor)
 
 
-def _scan_paths(paths: list[str], cwd: Path, cfg: dict) -> tuple[list[dict], list[dict]]:
+def _scan_paths(paths: list[str], cwd: Path, cfg: dict, *, allow_absent: bool = False) -> tuple[list[dict], list[dict]]:
+    """Absent shell targets pass, because a command may delete its own scratch, while a Write or patch that never landed stays unchecked."""
     owned_rows: list[dict] = []
     inherited_rows: list[dict] = []
     for raw_path in paths:
         if outside_project_temp(raw_path, cwd):
             continue
         approved = _approved_path(raw_path, cwd)
+        if approved is None and (scan_input.sink_device(raw_path) or (allow_absent and scan_input.nothing_landed(raw_path, cwd))):
+            continue
         if approved is None:
             owned_rows.extend(_stamped(scan_input.fallback_findings_from_count(Path(raw_path), 0, capped=False), Path(raw_path)))
             continue
@@ -294,7 +299,7 @@ def _gate_for(context: _RecordGateContext) -> Callable[[str], dict]:
         projected = context.journal.payload
         if projected["session_id"]:
             _journal_edits(context.journal, turn_id)
-        owned, inherited = _scan_paths(context.scan_paths, context.cwd, context.config)
+        owned, inherited = _scan_paths(context.scan_paths, context.cwd, context.config, allow_absent=context.shell)
         decisions = _ledger_decisions(context, owned, turn_id, started)
         report_cfg = {**context.config, "session_id": projected["session_id"], "turn_id": turn_id}
         kind, reason = verdict_message(decisions, report_cfg)
@@ -368,6 +373,7 @@ def _gate_context_for(
         blocker_scope=blocker_state.BlockerScope(
             projected["session_id"], payloads.agent_id(payload), state_root
         ),
+        shell=projected["tool_name"].lower() == SHELL_TOOL,
     )
 
 

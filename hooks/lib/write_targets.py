@@ -5,7 +5,10 @@ import os
 from pathlib import PurePosixPath
 from typing import NamedTuple
 
+from lib.archive_commands import git_apply_read, patch_plan, stdin_source, tar_read, unzip_read
+from lib.archive_members import ArchiveRead
 from lib.flag_outputs import FLAG_WRITERS, flag_targets
+from lib.inplace_targets import sed_reads_only, sed_script_known
 from lib.shell_expansion import Expansions
 from lib.shell_parse import _bare, _basename, _command_word_index, _expand_home, _is_file_target, _target_words
 from lib.shell_syntax import _without_redirects
@@ -36,7 +39,14 @@ MERGE_PRINT_FLAGS = frozenset({"-p", "--stdout", "--object-id"})
 MERGE_VALUE_FLAGS = frozenset({"-L"})
 GIT_DRY_APPLY_FLAGS =frozenset({"--check", "--stat", "--numstat", "--summary"})
 UNZIP_READ_FLAGS = frozenset({"-l", "-t", "-p", "-v", "-Z", "-z"})
+UNZIP_READ_LETTERS = frozenset("ltpvZz")
 TAR_EXTRACT_FLAGS = frozenset({"--extract", "--get"})
+TAR_STDOUT_FLAG = "--to-stdout"
+TAR_COMMAND_FLAG = "--to-command"
+RESTORE_STAGED = frozenset({"--staged", "-S"})
+RESTORE_WORKTREE = frozenset({"--worktree", "-W", "-SW", "-WS"})
+RESTORE_PLAIN_FLAGS = frozenset({"--staged", "-S", "-q", "--quiet"})
+SED_SCRIPT_TARGET = "sed script"
 Slot = tuple[int, str]
 
 
@@ -56,6 +66,14 @@ class GatedTargets(NamedTuple):
     unresolved: bool
     lookup: GitLookup | None = None
     indexable: bool = False
+    archive: ArchiveRead | None = None
+
+
+class _GitSource(NamedTuple):
+    """Kept with the call, because git apply may read its patch from a stdin redirect."""
+
+    plain_call: bool
+    stdin: str | None
 
 
 class _GitCall(NamedTuple):
@@ -85,6 +103,8 @@ def writes_by_verb(segment: list[str]) -> bool:
         return bool(_find_writes(args, READER_HAZARDS))
     if verb == "git":
         return _merged_file(segment[index + 1:]) is not None
+    if verb == "sed":
+        return not sed_reads_only(segment)
     if verb == "xargs":
         call = _xargs_call(args)
         verb = _basename(call[0]) if call else ""
@@ -124,9 +144,12 @@ def _verb_words(segment: list[str], expansions: Expansions) -> list[tuple[str, s
     if verb in FLAG_WRITERS:
         flagged = flag_targets(verb, _without_redirects(segment[index + 1:]), expansions.path)
         return [(path, path) for path in flagged.paths] + [(word, None) for word in flagged.unknown]
-    args = _without_redirects(segment[index + 1:]) if verb in ARGUMENT_VERBS else []
+    reading_sed = verb == "sed" and sed_reads_only(segment)
+    args = _without_redirects(segment[index + 1:]) if verb in ARGUMENT_VERBS and not reading_sed else []
     words = [expansions.pattern(token) for token in args]
     found: list[tuple[str, str | None]] = [(token, None) for token, word in zip(args, words) if word is None]
+    if verb == "sed" and not sed_script_known(segment):
+        found.append((SED_SCRIPT_TARGET, None))
     for position, prefix in [] if None in words else _destination_slots(verb, words):
         value = words[position] if verb in DESTINATION_ALL_ARGS_VERBS else expansions.path(args[position])
         found.append((args[position], None if value is None else value[len(prefix):]))
@@ -295,8 +318,8 @@ def gated_test_targets(segment: list[str], expansions: Expansions) -> GatedTarge
     if verb in COPY_VERBS or verb == "git":
         return _copy_or_git(segment, index, expansions)
     if verb in {"tar", "unzip"}:
-        return _archive_targets(verb, _without_redirects(segment[index + 1:]))
-    return UNRESOLVED if verb == "patch" else NO_TARGETS
+        return _archive_targets(verb, segment[index + 1:])
+    return _patch_targets(segment[index + 1:]) if verb == "patch" else NO_TARGETS
 
 
 def _copy_or_git(segment: list[str], index: int, expansions: Expansions) -> GatedTargets:
@@ -305,7 +328,9 @@ def _copy_or_git(segment: list[str], index: int, expansions: Expansions) -> Gate
     words = [expansions.pattern(token) for token in args]
     if None in words:
         return UNRESOLVED if verb in COPY_VERBS or _git_changes_paths(args, expansions) else NO_TARGETS
-    return _git_targets(words, plain_call=index == 0) if verb == "git" else _copy_gate(verb, args, expansions)
+    if verb == "git":
+        return _git_targets(words, _GitSource(plain_call=index == 0, stdin=stdin_source(segment[index + 1:])))
+    return _copy_gate(verb, args, expansions)
 
 
 def _git_changes_paths(args: list[str], expansions: Expansions) -> bool:
@@ -363,17 +388,35 @@ def _base_value(flag: str, following: list[str]) -> str:
     return following[0] if flag in GIT_BASE_FLAGS and following else ""
 
 
-def _git_targets(words: list[str], plain_call: bool) -> GatedTargets:
+def _git_targets(words: list[str], source: _GitSource) -> GatedTargets:
     base, position = _git_base(words)
     command, rest = (words[position], words[position + 1:]) if position < len(words) else ("", [])
     if command in GIT_PATH_COMMANDS:
-        return _pathspec_targets(_GitCall(command, base, rest, plain_call and _directory_flags_only(words[:position])))
+        return _pathspec_targets(_GitCall(command, base, rest, source.plain_call and _directory_flags_only(words[:position])))
     if command == "mv":
         return GatedTargets(tuple(_expand_home(os.path.join(base, path)) for path in _copy_targets("mv", rest, None)), False)
     dry_apply = bool(GIT_DRY_APPLY_FLAGS.intersection(rest)) and "--apply" not in rest
-    if (command == "apply" and not dry_apply) or (command == "stash" and rest[:1] in (["pop"], ["apply"])):
+    if command == "apply" and not dry_apply:
+        return _read_targets(_based(git_apply_read(rest, source.stdin), base))
+    if command == "stash" and rest[:1] in (["pop"], ["apply"]):
         return UNRESOLVED
     return NO_TARGETS
+
+
+def _based(read: ArchiveRead | None, base: str) -> ArchiveRead | None:
+    """Joined under -C, because git reads the patch and lands its files below that folder."""
+    if read is None or not base:
+        return read
+    return read._replace(source=os.path.join(base, read.source), directory=os.path.join(base, read.directory))
+
+
+def _read_targets(read: ArchiveRead | None) -> GatedTargets:
+    return UNRESOLVED if read is None else GatedTargets((), False, archive=read)
+
+
+def _patch_targets(raw: list[str]) -> GatedTargets:
+    plan = patch_plan([_bare(token) for token in _without_redirects(raw)], stdin_source(raw))
+    return UNRESOLVED if plan is None else GatedTargets(plan.paths, False, archive=plan.read)
 
 
 def _directory_flags_only(flags: list[str]) -> bool:
@@ -384,6 +427,8 @@ def _directory_flags_only(flags: list[str]) -> bool:
 def _pathspec_targets(call: _GitCall) -> GatedTargets:
     """Because only git knows which tracked files a folder or glob names, those go through a lookup."""
     options = call.rest[:call.rest.index("--")] if "--" in call.rest else call.rest
+    if _unstages_only(call, options):
+        return NO_TARGETS
     paths = call.rest[call.rest.index("--") + 1:] if "--" in call.rest else _positional(call.rest)
     tree = _source_tree(call, options)
     wide = [path for path in paths if GLOB_CHARS.intersection(path) or _is_directory_pathspec(path)]
@@ -395,6 +440,15 @@ def _pathspec_targets(call: _GitCall) -> GatedTargets:
     named = tuple(_expand_home(os.path.join(call.base, path)) for path in paths if path not in wide)
     lookup = GitLookup(call.base, tuple(paths), tree, call.command == "rm" or bool(wide))
     return GatedTargets(named, False, lookup, call.indexable)
+
+
+def _unstages_only(call: _GitCall, options: list[str]) -> bool:
+    """Because restore --staged from HEAD only drops staged changes, it writes no file and adds no content a commit could carry."""
+    if call.command != "restore" or not RESTORE_STAGED.intersection(options):
+        return False
+    worktree = RESTORE_WORKTREE.intersection(options)
+    sourced = _option_value(options, ("-s", "--source")) is not None
+    return not worktree and not sourced and all(option in RESTORE_PLAIN_FLAGS for option in options if option.startswith("-"))
 
 
 def _source_tree(call: _GitCall, options: list[str]) -> str | None:
@@ -420,12 +474,29 @@ def _is_directory_pathspec(path: str) -> bool:
     return path in {"", ".", ".."} or path.endswith(("/", "/.", "/..")) or path.startswith(":")
 
 
-def _archive_targets(verb: str, args: list[str]) -> GatedTargets:
-    """Unresolved, because an archive member may be a test."""
-    words = [_bare(token) for token in args]
+def _archive_targets(verb: str, raw: list[str]) -> GatedTargets:
+    """Members listed before the run, because an archive member may be a test."""
+    words = [_bare(token) for token in _without_redirects(raw)]
     if verb == "tar":
-        return UNRESOLVED if _tar_extracts(words) else NO_TARGETS
-    return NO_TARGETS if UNZIP_READ_FLAGS.intersection(words) else UNRESOLVED
+        if not _tar_extracts(words) or _tar_to_stdout(words):
+            return NO_TARGETS
+        return _read_targets(tar_read(words, stdin_source(raw)))
+    return NO_TARGETS if _unzip_reads(words) else _read_targets(unzip_read(words))
+
+
+def _unzip_reads(words: list[str]) -> bool:
+    """Read letters inside a cluster count too, because unzip -lq lists exactly like unzip -l."""
+    clusters = [word[1:] for word in words if word.startswith("-") and not word.startswith("--")]
+    return bool(UNZIP_READ_FLAGS.intersection(words)) or any(UNZIP_READ_LETTERS.intersection(cluster) for cluster in clusters)
+
+
+def _tar_to_stdout(words: list[str]) -> bool:
+    """Because -O sends every member to stdout, it creates no file, while --to-command runs a program per member."""
+    if any(word.startswith(TAR_COMMAND_FLAG) for word in words):
+        return False
+    clusters = [word[1:] for word in words if word.startswith("-") and not word.startswith("--")]
+    old_style = [words[0]] if words and not words[0].startswith("-") else []
+    return TAR_STDOUT_FLAG in words or any("O" in cluster for cluster in clusters + old_style)
 
 
 def _tar_extracts(words: list[str]) -> bool:

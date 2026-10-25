@@ -18,6 +18,8 @@ NODE_JSON_READ_RE = re.compile(
     rf"\s*(?:{NODE_JSON_READ}|{NODE_JSON_ONCE}|{NODE_JSON_WRAPPED.format(inner=NODE_JSON_ONCE)})\s*;?\s*"
 )
 JSON_REQUIRE_PATH_RE = re.compile(r"""require\(\s*(['"])([^'"]*)\1""")
+JSON_REQUIRE_CALL_RE = re.compile(rf"""require\(\s*(['"])({NODE_JSON_PATH})\1\s*\)""")
+JSON_STAND_IN = "0"
 NODE_REFLECTION_RE = re.compile(
     r"\b(?:getBuiltinModule|_load|_linkedBinding|binding|dlopen|mainModule|constructor|prototype|getPrototypeOf|"
     r"getOwnProperty\w*|require|import|Function|eval|Reflect|module|global|globalThis|this|arguments|WebAssembly)\b|"
@@ -51,6 +53,17 @@ def node_json_read(name: str, payload: str, directories: Sequence[str]) -> bool:
     return bool(directories) and required is not None and all(
         _plain_json_file(os.path.join(directory, required.group(2))) for directory in directories
     )
+
+
+def without_json_requires(payload: str, directories: Sequence[str]) -> str | None:
+    """None unless every literal JSON require names a plain JSON file, because node runs a .js target or index.js as code."""
+    found = list(JSON_REQUIRE_CALL_RE.finditer(payload))
+    if not found or not directories:
+        return None
+    paths = {match.group(2) for match in found}
+    if not all(_plain_json_file(os.path.join(directory, path)) for directory in directories for path in paths):
+        return None
+    return JSON_REQUIRE_CALL_RE.sub(JSON_STAND_IN, payload)
 
 
 def _plain_json_file(path: str) -> bool:

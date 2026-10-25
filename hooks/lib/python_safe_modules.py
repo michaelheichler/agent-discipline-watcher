@@ -53,8 +53,9 @@ MATH_FUNCTIONS = (
 HASH_FUNCTIONS = ("blake2b", "blake2s", "file_digest", "md5", "sha1", "sha224", "sha256", "sha384", "sha512")
 DATETIME_FACTORIES = ("fromisoformat", "fromtimestamp", "now", "strptime", "today", "utcnow")
 
+# Because yaml.load can run code from its input, only safe loaders resolve.
 IMPORTABLE = frozenset({
-    "ast", "collections", "datetime", "hashlib", "html", "itertools", "math", "os.path", "re", "tomllib",
+    "ast", "collections", "datetime", "hashlib", "html", "itertools", "math", "os.path", "re", "tomllib", "yaml",
 })
 NAMESPACES = IMPORTABLE | {"datetime.date", "datetime.datetime", "datetime.timezone"}
 FUNCTIONS: dict[str, Kind] = {
@@ -65,6 +66,7 @@ FUNCTIONS: dict[str, Kind] = {
     "collections.Counter": "counter", "collections.OrderedDict": "dict",
     **{f"hashlib.{name}": "hash" for name in HASH_FUNCTIONS},
     "tomllib.load": "json", "tomllib.loads": "json",
+    "yaml.safe_load": "json", "yaml.safe_load_all": ("sequence", ("json",)),
     "ast.parse": "ast_tree", "ast.dump": "text", "ast.literal_eval": "json",
     **{f"os.path.{name}": "value" for name in ("exists", "getsize", "isdir", "isfile")},
     **{f"os.path.{name}": "text" for name in ("abspath", "basename", "dirname", "expanduser", "join")},
@@ -78,6 +80,7 @@ CONSTANTS: dict[str, Kind] = {
     **{f"re.{name}": "value" for name in RE_FLAGS},
     **{f"math.{name}": "value" for name in ("e", "inf", "nan", "pi", "tau")},
     "datetime.timezone.utc": "value",
+    "yaml.__version__": "text",
 }
 METHODS: dict[str, dict[str, Kind]] = {
     "re_pattern": RE_FUNCTIONS,

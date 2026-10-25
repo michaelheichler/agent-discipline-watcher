@@ -364,14 +364,28 @@ def test_inplace_edit_write_blocks(command):
     "ruby -Ilib -e 'puts 1'",
     "sed -E 's/a/b/' file.txt",
     "sed -nE 's/a/b/' file.txt",
-    "sed -fi edits.sed file.txt",
-    "sed -f edits.sed file.txt",
     "awk '{print $1}' f.txt",
     "gawk -i somelib '{print $1}' f.txt",
     "gawk --include somelib '{print $1}' f.txt",
 ])
 def test_include_path_flag_is_not_an_inplace_flag(command):
     assert allowed(command) == {}
+
+
+SED_SCRIPT_FILES = pytest.mark.parametrize("command", [
+    pytest.param("sed -fi edits.sed file.txt", id="clustered"),
+    pytest.param("sed -f edits.sed file.txt", id="separate"),
+])
+
+
+@SED_SCRIPT_FILES
+def test_a_sed_script_file_flag_is_not_an_inplace_flag(command: str) -> None:
+    assert "inplace_edit_write" not in allowed(command).get("reason", "")
+
+
+@SED_SCRIPT_FILES
+def test_a_sed_script_file_blocks_because_it_may_hold_a_write_command(command: str) -> None:
+    assert "dynamic_write_target" in blocked(command)
 
 
 @pytest.mark.parametrize("command", [
@@ -395,7 +409,7 @@ def test_grouped_python_keeps_sequential_literal_writes_independent(separator, g
 
 
 @pytest.mark.parametrize("group", ["({body})", "{{ {body}; }}", "( {{ {body}; }} )"])
-@pytest.mark.parametrize("destination", ["> x.txt", "| tee x.txt", "| (tee x.txt)"])
+@pytest.mark.parametrize("destination", ["> x.md", "| tee x.md", "| (tee x.md)"])
 def test_compound_python_output_keeps_its_enclosing_write_destination(group, destination):
     body = "python3 -I -S -c 'print(1)'; echo literal"
     command = f"{group.format(body=body)} {destination}"
@@ -404,10 +418,10 @@ def test_compound_python_output_keeps_its_enclosing_write_destination(group, des
 
 
 @pytest.mark.parametrize("command", [
-    "(python3 -I -S -c 'print(1)' > x.txt; echo literal)",
-    "{ echo literal; (python3 -I -S -c 'print(1)' | tee x.txt); }",
-    "python3 -I -S -c 'print(1)' | { cat > x.txt; echo literal; }",
-    "(python3 -I -S -c 'print(1)'; (echo literal)) > x.txt",
+    "(python3 -I -S -c 'print(1)' > x.md; echo literal)",
+    "{ echo literal; (python3 -I -S -c 'print(1)' | tee x.md); }",
+    "python3 -I -S -c 'print(1)' | { cat > x.md; echo literal; }",
+    "(python3 -I -S -c 'print(1)'; (echo literal)) > x.md",
 ])
 def test_compound_commands_keep_internal_python_output_writes_blocked(command):
     assert "opaque_source_write" in blocked(command)
@@ -420,14 +434,14 @@ def test_excessive_compound_nesting_blocks_without_a_hook_error():
 
 
 @pytest.mark.parametrize("command", [
-    "(exec > x.txt; python3 -I -S -c 'print(1)')",
-    "( { exec > x.txt; }; python3 -I -S -c 'print(1)')",
-    "( { exec > x.txt; } 3> err.txt; python3 -I -S -c 'print(1)')",
-    "( { exec 3> x.txt; } > err.txt; python3 -I -S -c 'print(1)' >&3)",
-    "(\npython3 -I -S -c 'print(1)'\n) > x.txt",
-    "{\npython3 -I -S -c 'print(1)'\n} | tee x.txt",
-    "python3 -I -S -c 'print(1)' |\n(tee x.txt)",
-    "(python3 -I -S -c 'print(1)'; (echo literal))|tee x.txt",
+    "(exec > x.md; python3 -I -S -c 'print(1)')",
+    "( { exec > x.md; }; python3 -I -S -c 'print(1)')",
+    "( { exec > x.md; } 3> err.txt; python3 -I -S -c 'print(1)')",
+    "( { exec 3> x.md; } > err.txt; python3 -I -S -c 'print(1)' >&3)",
+    "(\npython3 -I -S -c 'print(1)'\n) > x.md",
+    "{\npython3 -I -S -c 'print(1)'\n} | tee x.md",
+    "python3 -I -S -c 'print(1)' |\n(tee x.md)",
+    "(python3 -I -S -c 'print(1)'; (echo literal))|tee x.md",
 ])
 def test_compound_output_follows_persistent_redirects_and_newlines(command):
     assert "opaque_source_write" in blocked(command)

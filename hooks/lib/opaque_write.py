@@ -12,7 +12,7 @@ from lib.shell_parse import (
     _segments, _write_path_writes, has_process_substitution, heredoc_events, interpreter_invocation,
 )
 from lib.inplace_targets import inplace_edit, scratch_inplace_edit
-from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection
+from lib.node_payload import NODE_INTERPRETERS, node_json_read, node_reflection, without_json_requires
 from lib.script_payload import SCRIPT_INTERPRETERS, script_write
 from lib.shell_output import PYTHON_INTERPRETER_RE, python_output_write as _python_output_write
 from lib.python_payload import python_rejection
@@ -116,11 +116,20 @@ def _payload_is_write_capable(name: str, payload: str) -> bool:
     return bool(WRITE_CAPABLE_TOKEN_RE.search(payload) or _inline_open_calls_write_capable(payload))
 
 
+def _judged_node_payload(run: InterpreterRun) -> str | None:
+    """JSON requires stand in as values, because node only parses a plain .json file and the rest still faces the token list."""
+    if run.payload is None or run.name not in NODE_INTERPRETERS:
+        return run.payload
+    stripped = without_json_requires(run.payload, run.directories)
+    return run.payload if stripped is None else stripped
+
+
 def _run_findings(run: InterpreterRun, make_finding: FindingFactory, rule: str) -> list[dict]:
     if not PYTHON_INTERPRETER_RE.fullmatch(run.name):
         if run.payload is not None and node_json_read(run.name, run.payload, run.directories):
             return []
-        return [make_finding(rule)] if run.payload is None or _payload_is_write_capable(run.name, run.payload) else []
+        payload = _judged_node_payload(run)
+        return [make_finding(rule)] if payload is None or _payload_is_write_capable(run.name, payload) else []
     rejection = "" if run.payload is None else python_rejection(run.payload, isolated=True)
     if rejection:
         return [rejection_finding(make_finding, rule, rejection, run.trusted_startup)]

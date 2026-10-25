@@ -6,7 +6,7 @@ import re
 from typing import NamedTuple
 
 from lib.script_payload import perl_substitution
-from lib.shell_syntax import _bare, _basename, _command_word_index, interpreter_invocation
+from lib.shell_syntax import _bare, _basename, _command_word_index, _without_redirects, interpreter_invocation
 from lib.temp_scope import scratch_target
 
 PERL_SWITCHES_RE = re.compile(r"-[pnlw]*(?:i[\w.~-]*)?")
@@ -15,8 +15,12 @@ SCRIPT_LETTERS = {"sed": frozenset("e"), "perl": frozenset("eE"), "ruby": frozen
 SED_LONG_VALUES = {"--expression": "e", "--file": "f"}
 SED_ADDRESS = r"(?:\d+|\$|/(?:\\.|[^/\\\n])*/)"
 SED_SUBSTITUTE = r"s([^\w\s\\])(?:\\.|(?!\1)[^\\\n])*\1(?:\\.|(?!\1)[^\\\n])*\1[gpiImM\d]*"
+SED_TRANSLITERATE = r"y([^\w\s\\])(?:\\.|(?!\2)[^\\\n])*\2(?:\\.|(?!\2)[^\\\n])*\2"
+# Because w, W, e, r, R and s///w reach other files, none appears here.
+SED_LINE_COMMANDS = r"[dDpP=nNgGhHxz{}]|[qQl]\d*"
 SED_COMMAND_RE = re.compile(
-    rf"\s*(?:{SED_ADDRESS}(?:\s*,\s*{SED_ADDRESS})?\s*!?\s*)?(?:{SED_SUBSTITUTE}|[dpP=])[ \t]*(?:[;\n]|$)"
+    rf"\s*(?:{SED_ADDRESS}(?:\s*,\s*{SED_ADDRESS})?\s*!?\s*)?"
+    rf"(?:{SED_SUBSTITUTE}|{SED_TRANSLITERATE}|{SED_LINE_COMMANDS})[ \t]*(?:[;\n]|$)"
 )
 
 
@@ -39,6 +43,33 @@ def inplace_edit(segment: list[str]) -> InplaceEdit | None:
     if verb == "sed" and _bsd_backup(words):
         return edit._replace(backup=True)
     return edit
+
+
+def sed_reads_only(segment: list[str]) -> bool:
+    """Because sed writes a file only through -i or a script command, a known script without -i leaves every file unchanged."""
+    values, _operands = _values_and_operands("sed", _sed_words(segment)[1], separate_suffix=False)
+    return not any(letter == "i" for letter, _value in values) and sed_script_known(segment)
+
+
+def sed_script_known(segment: list[str]) -> bool:
+    """False for a script file, a run-time expansion, or any command beyond the line commands, because those can write a file no word names."""
+    raw, words = _sed_words(segment)
+    edit = _reading("sed", words, separate_suffix=False)
+    if edit.script_file:
+        return False
+    # Because $ and backticks expand at run time, they can add a w command.
+    dynamic = {_bare(token) for token in raw if _expands(token)}
+    return bool(edit.scripts) and all(script not in dynamic and _safe_sed_script(script) for script in edit.scripts)
+
+
+def _sed_words(segment: list[str]) -> tuple[list[str], list[str]]:
+    raw = _without_redirects(segment[_command_word_index(segment) + 1:])
+    return raw, [_bare(token) for token in raw]
+
+
+def _expands(token: str) -> bool:
+    single_quoted = len(token) >= 2 and token.startswith("'") and token.endswith("'")
+    return not single_quoted and ("$" in token or "`" in token)
 
 
 def _bsd_backup(words: list[str]) -> bool:

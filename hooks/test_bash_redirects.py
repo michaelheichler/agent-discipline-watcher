@@ -6,7 +6,7 @@ import pre_bash
 from lib import shell_parse
 
 
-@pytest.mark.parametrize("redirect", ["&> x.txt", "&>x.txt", ">& x.txt", ">&x.txt", "&>> x.txt", "&>>x.txt"])
+@pytest.mark.parametrize("redirect", ["&> x.md", "&>x.md", ">& x.md", ">&x.md", "&>> x.md", "&>>x.md"])
 @pytest.mark.parametrize("command", [
     "python3 -I -S -c 'print(1)' {redirect}",
     "python3 -I -S -c 'print(1)'{redirect}",
@@ -15,6 +15,22 @@ from lib import shell_parse
 ])
 def test_combined_stream_redirects_block_python_output(command, redirect):
     result = pre_bash.run({"tool_input": {"command": command.format(redirect=redirect)}})
+
+    assert result.get("decision") == "block", result
+    assert "opaque_source_write" in result["reason"]
+
+
+@pytest.mark.parametrize("extension", [".csv", ".json", ".jsonl", ".log", ".out", ".tsv", ".txt"])
+def test_python_output_into_a_data_file_passes_for_the_post_run_scan(extension: str) -> None:
+    command = f"python3 -I -S -c 'print(1)' > x{extension}"
+
+    assert pre_bash.run({"tool_input": {"command": command}}) == {}
+
+
+@pytest.mark.parametrize("extension", [".md", ".py", ".ts"])
+def test_python_output_into_a_source_file_blocks(extension: str) -> None:
+    command = f"python3 -I -S -c 'print(1)' > x{extension}"
+    result = pre_bash.run({"tool_input": {"command": command}})
 
     assert result.get("decision") == "block", result
     assert "opaque_source_write" in result["reason"]
@@ -49,7 +65,7 @@ def test_ampersand_first_redirects_keep_numeric_and_dash_filenames(target):
 
 
 @pytest.mark.parametrize("operator", [">&", "&>", "&>>"])
-@pytest.mark.parametrize("target", ["'١'", "'&report.txt'"])
+@pytest.mark.parametrize("target", ["'١'", "'&report.md'"])
 def test_combined_redirects_preserve_non_descriptor_filenames(operator, target):
     command = f"python3 -I -S -c 'print(1)' {operator} {target}"
     result = pre_bash.run({"tool_input": {"command": command}})

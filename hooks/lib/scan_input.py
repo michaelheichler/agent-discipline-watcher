@@ -22,6 +22,8 @@ FILE_LENGTH_WARNING = 500
 FILE_LENGTH_CRITICAL = 750
 FILE_LENGTH_BLOCK = 1000
 CONTENT_SAMPLE_BYTES = 8192
+SINK_DEVICES = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"})
+FD_DEVICE_RE = re.compile(r"/dev/fd/\d+")
 
 # Content is checked too, because text can hide under these.
 BINARY_ASSET_EXTS = frozenset({
@@ -173,6 +175,30 @@ def fallback_findings_from_count(path: Path, count: int, capped: bool = True) ->
         severity=None,
         tool_use_id=None,
     ).to_dict()]
+
+
+def sink_device(raw_path: str) -> bool:
+    """Because a sink device keeps no text, writing to it leaves no content a scan could owe."""
+    text = raw_path.strip()
+    return text in SINK_DEVICES or FD_DEVICE_RE.fullmatch(text) is not None
+
+
+def nothing_landed(raw_path: str, cwd: Path) -> bool:
+    """Because a missing file holds no text, a shell target that is gone after the run leaves no content a scan could owe."""
+    text = raw_path.strip()
+    if sink_device(text):
+        return True
+    # Because an unexpanded name may stand for a file that landed elsewhere.
+    if "$" in text or "`" in text:
+        return False
+    try:
+        candidate = Path(text).expanduser()
+        os.lstat(candidate if candidate.is_absolute() else cwd / candidate)
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
 
 
 def fallback_findings(path: Path) -> list[dict]:

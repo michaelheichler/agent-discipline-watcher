@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import NamedTuple
 
+from lib.archive_members import ArchiveRead, landed_paths
 from lib.git_globs import removed_paths, tree_paths
 from lib.shell_expansion import Tree
 from lib.shell_parse import command_expansions, line_segments
@@ -46,10 +47,26 @@ def gated_paths(command: str, scope: Scope) -> tuple[list[str], list[str]]:
         named = _in_folders([*gated.paths, *mutation_targets(segment, expansions)], folders)
         looked_up = _lookup_paths(gated._replace(indexable=gated.indexable and lookups), folders, scope.cwd)
         inside = _tree_tests(expansions.tree(segment))
-        paths.extend([*(named or []), *(looked_up or []), *(inside or [])])
-        if gated.unresolved or named is None or looked_up is None or inside is None:
+        landed = _archive_paths(gated.archive, folders, scope.cwd)
+        paths.extend([*(named or []), *(looked_up or []), *(inside or []), *(landed or [])])
+        if gated.unresolved or named is None or looked_up is None or inside is None or landed is None:
             unresolved.append(" ".join(segment))
     return paths, unresolved
+
+
+def _archive_paths(read: ArchiveRead | None, folders: Directories, cwd: Path) -> list[str] | None:
+    """Listed under every folder the segment may run in, because the archive and its landing folder resolve from there."""
+    if read is None:
+        return []
+    if folders is None:
+        return None
+    found: list[str] = []
+    for folder in folders:
+        landed = landed_paths(read, cwd / folder)
+        if landed is None:
+            return None
+        found.extend(os.path.normpath(os.path.join(folder, path)) for path in landed)
+    return found
 
 
 def _tree_tests(tree: Tree | None) -> list[str] | None:

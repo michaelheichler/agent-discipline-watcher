@@ -170,6 +170,7 @@ def test_stdlib_read_probe_runs_without_writing_and_passes_the_gate(source, read
     "import fontTools, brotli",
     "import json; d = json.load(open(p)); print(d)",
     "import os.path; os.remove('target.txt')",
+    "print(next(iter([1, 2], 0)))",
 ])
 def test_unprovable_python_reads_still_block(source, read_tree) -> None:
     response = pre_tool.run({
@@ -183,6 +184,7 @@ def test_unprovable_python_reads_still_block(source, read_tree) -> None:
 @pytest.mark.parametrize("command", [
     "printf 'print(1)' | python3",
     "python3 -c 'value = 1\nprint(value)'",
+    "python3 -c 'print(next(iter([1, 2])))'",
     "(\npython3 -c 'print(1)'\n)",
     "sh -c \"python3 -c 'print(1)'\"",
 ])

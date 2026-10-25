@@ -51,6 +51,25 @@ def test_missing_write_targets_still_block(tmp_path: Path, operation: str) -> No
     assert "missing.py:1" in response["reason"]
 
 
+@pytest.mark.parametrize("tool_name, tool_input, unscannable", [
+    pytest.param("Bash", {"command": "printf hello > scratch.md && rm scratch.md"}, False, id="bash-deletes-its-own-scratch"),
+    pytest.param("Write", {"file_path": "scratch.md", "content": "hello"}, True, id="write-that-never-landed"),
+])
+def test_a_missing_target_is_excused_only_for_a_shell_command(
+    tmp_path: Path, tool_name: str, tool_input: dict, unscannable: bool,
+) -> None:
+    payload = {
+        "session_id": "removed", "cwd": str(tmp_path), "tool_name": tool_name,
+        "turn_id": "host-turn", "tool_use_id": "call", "tool_input": tool_input,
+        "tool_response": {"stdout": "", "stderr": "", "exit_code": 0},
+    }
+    config = {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")}
+
+    response = record.run(payload, config)
+
+    assert ("unscannable_file" in response.get("reason", "")) is unscannable
+
+
 def test_unfinished_delete_still_scans_existing_content(tmp_path: Path) -> None:
     (tmp_path / "remaining.py").write_text("value = 1\n" * 1000, encoding="utf-8")
     payload, config = _payload(tmp_path, "*** Begin Patch\n*** Delete File: remaining.py\n*** End Patch\n")

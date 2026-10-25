@@ -9,12 +9,13 @@ from pathlib import Path, PurePath
 from typing import NamedTuple
 
 try:
-    from . import host, payloads, test_units
+    from . import agent_types, host, payloads, test_units
     from .findings import Finding
     from .markup import MARKDOWN_EXTS
     from .protected import authorized
     from .regular_file import read_regular_text
 except ImportError:
+    import agent_types
     import host
     import payloads
     import test_units
@@ -34,6 +35,7 @@ TEST_DIRS = frozenset({"tests", "__tests__", "test", "spec"})
 DOC_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".adoc"}
 PROJECT_MARKER = ".git"
 UNRESOLVED_DETAIL = "Shell command may change tests it does not name: "
+UNTYPED_DETAIL = "Test write by a subagent whose hook payload names no agent type, in "
 _TEST_NAME_RE = re.compile(
     r"^(?:test_.+\.py|.+_test\.py|conftest\.py|.+_test\.go|.+_spec\.rb"
     r"|.+\.(?:test|spec)\.[cm]?[jt]sx?)$"
@@ -125,7 +127,7 @@ def gate_open(gate: Gate) -> bool:
     """Few exits, because each one is a way around the gate."""
     if gate.settings.get("tests") != "deny" or authorized():
         return True
-    if payloads.agent_type(gate.payload) in TEST_WRITER_TYPES:
+    if agent_types.type_of(gate.payload, gate.settings.get("state_root")) in TEST_WRITER_TYPES:
         return True
     return window_seconds_left(gate.settings, gate.now) > 0
 
@@ -153,8 +155,11 @@ def findings(gate: Gate, changes: Iterable[PendingChange], unresolved: Iterable[
         return []
     cwd = Path(payloads.cwd(gate.payload) or ".")
     root = project_root(str(cwd))
+    # Because an untyped subagent cannot prove it is the test writer.
+    untyped = bool(payloads.agent_id(gate.payload)) and not payloads.agent_type(gate.payload)
+    detail = UNTYPED_DETAIL if untyped else "Test write in "
     rows = [
-        _finding(change.path) for change in changes
+        _finding(change.path, detail) for change in changes
         if touches_tests(change._replace(path=str(payloads.resolved_path(change.path, cwd))), root)
     ]
     return rows + [_finding(command, UNRESOLVED_DETAIL) for command in unresolved]

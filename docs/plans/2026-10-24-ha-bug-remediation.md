@@ -51,6 +51,14 @@ Each item keeps the gate closed for every real write. The fix teaches the parser
 9. Medium. `unscannable_file` fires on `/dev/null`, `/dev/stdout`, unexpanded `$O/...` paths, NumPy subscripts in a `-c` string, files on a remote host behind `ssh`, files the same command deleted, and a background log that was still empty (8, 8h, 8i, 8l, 8m, 8o, 8r, 13h, 13m). 0.30.0 reports from 2026-10-24 confirm the `/dev/null` and empty log cases. A device, an unresolved name, or a vanished file is no written file, and a background log gets its scan when the command ends.
 10. Medium. `test_write_gate` blocked `adw-test-writer` when it ran as a named teammate (13r). `tests_policy.gate_open` reads only `agent_type` from the payload. The fix maps `agent_id` to the type that `SubagentStart` recorded. Capture one teammate payload first to confirm that the field is missing.
 
+Status on 2026-10-25, release 0.30.2:
+
+- Items 1, 2, 4, 5, 6, 7, 8 and 9 landed. A replay of 60 commands matches the expected verdict on each, 24 of them writes that must keep blocking.
+- Item 3 stays blocked by design. A run-time expansion in a sed script and a fed `xargs sed` can both gain a `w` command, so the gate cannot prove them read-only.
+- Item 6 keeps `curl | tar` and an unzip pattern that also matches a test member blocked, because the gate cannot list a piped archive and unzip lets `*` cross `/`.
+- Item 10 got a fallback record and a clearer block row. A named subagent and a main-thread agent both carried `agent_type` in a captured payload, so the in-process teammate case of 13r stays unreproduced.
+- Review found a hole while fixing item 1. A sed `w` command wrote any file unseen, and 0.30.2 closes it.
+
 ## Phase 2, prose and code rules (0.30.0, reproduced)
 
 1. Medium. `banned_dash` flags the minus sign U+2212 in prose and UI code (13c, 13d). U+2212 is a minus, not a dash. The en dash and em dash stay banned.

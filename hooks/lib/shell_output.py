@@ -3,15 +3,19 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 
 from lib.shell_parse import (
     PIPE_OPERATORS, SHELL_C_INTERPRETERS, WRAPPER_COMMANDS,
-    _basename, _logical_lines, _payload_command_index,
-    _skip_prefixes, _tokens, _write_path_writes, interpreter_invocation,
+    _bare, _basename, _logical_lines, _payload_command_index,
+    _skip_prefixes, _tokens, _write_path_words, _write_path_writes, interpreter_invocation,
 )
+from lib.shell_syntax import _is_literal_token
 
 PYTHON_INTERPRETER_RE = re.compile(r"python(?:2|3)?(?:\.\d+)?$")
 MAX_OUTPUT_GROUP_DEPTH = 64
+STAGE_SEPARATORS = frozenset({";", "&&", "||", "&", *PIPE_OPERATORS})
+DATA_OUTPUT_EXTENSIONS = frozenset({".csv", ".json", ".jsonl", ".log", ".out", ".tsv", ".txt"})
 
 
 @dataclass(slots=True)
@@ -29,6 +33,49 @@ class OutputPipeline:
 
 class OutputNestingError(ValueError):
     pass
+
+
+@dataclass(slots=True)
+class _GroupBuilder:
+    """Because a separator closes the open stage, the open pipeline, or both, the walk keeps them together."""
+
+    depth: int
+    groups: list[OutputPipeline] = field(default_factory=list)
+    group: OutputPipeline = field(default_factory=OutputPipeline)
+    stage: OutputStage = field(default_factory=OutputStage)
+
+    def at_command_start(self) -> bool:
+        return not self.stage.tokens and not self.stage.groups
+
+    def take(self, token: str, tokens: Iterator[str]) -> None:
+        if token == "(" or (token == "{" and self.at_command_start()):
+            self.stage.subshell = token == "("
+            self.stage.groups = _output_token_groups(tokens, ")" if self.stage.subshell else "}", self.depth + 1)
+        elif token in STAGE_SEPARATORS:
+            self._separate(token)
+        else:
+            self.stage.tokens.append(token)
+
+    def _separate(self, token: str) -> None:
+        self._close_stage()
+        if token not in PIPE_OPERATORS:
+            self._close_group(token == "&")
+
+    def finish(self) -> list[OutputPipeline]:
+        self._close_stage()
+        self._close_group(False)
+        return self.groups
+
+    def _close_stage(self) -> None:
+        if self.stage.tokens or self.stage.groups:
+            self.group.stages.append(self.stage)
+        self.stage = OutputStage()
+
+    def _close_group(self, background: bool) -> None:
+        if self.group.stages:
+            self.group.background = background
+            self.groups.append(self.group)
+            self.group = OutputPipeline()
 
 
 def _has_python_source(stage: OutputStage, depth: int = 0) -> bool:
@@ -65,31 +112,12 @@ def _output_pipeline_groups(command: str) -> list[OutputPipeline]:
 def _output_token_groups(tokens: Iterator[str], closing: str | None = None, depth: int = 0) -> list[OutputPipeline]:
     if depth >= MAX_OUTPUT_GROUP_DEPTH:
         raise OutputNestingError
-    groups: list[OutputPipeline] = []
-    group = OutputPipeline()
-    stage = OutputStage()
+    built = _GroupBuilder(depth)
     for token in tokens:
-        command_start = not stage.tokens and not stage.groups
-        if token == closing and (token == ")" or command_start):
+        if token == closing and (token == ")" or built.at_command_start()):
             break
-        if token == "(" or (token == "{" and command_start):
-            stage.subshell = token == "("
-            stage.groups = _output_token_groups(tokens, ")" if stage.subshell else "}", depth + 1)
-        elif token in {";", "&&", "||", "&", *PIPE_OPERATORS}:
-            if stage.tokens or stage.groups:
-                group.stages.append(stage)
-            stage = OutputStage()
-            if token not in PIPE_OPERATORS and group.stages:
-                group.background = token == "&"
-                groups.append(group)
-                group = OutputPipeline()
-        else:
-            stage.tokens.append(token)
-    if stage.tokens or stage.groups:
-        group.stages.append(stage)
-    if group.stages:
-        groups.append(group)
-    return groups
+        built.take(token, tokens)
+    return built.finish()
 
 
 def _persistent_file_output(stage: OutputStage) -> bool:
@@ -104,6 +132,15 @@ def _persistent_file_output(stage: OutputStage) -> bool:
     )
 
 
+def _source_output(tokens: list[str]) -> bool:
+    """A literal data file passes, because the post-run scan reads it like any redirect target and no gate reads it as code."""
+    return any(not _data_output(word) for word, _append in _write_path_words(tokens))
+
+
+def _data_output(raw: str) -> bool:
+    return _is_literal_token(raw) and PurePosixPath(_bare(raw)).suffix.lower() in DATA_OUTPUT_EXTENSIONS
+
+
 def python_output_write(command: str) -> bool:
     try:
         return _python_group_output_write(_output_pipeline_groups(command))
@@ -114,13 +151,19 @@ def python_output_write(command: str) -> bool:
 def _python_group_output_write(groups: list[OutputPipeline], incoming_python: bool = False) -> bool:
     file_output = False
     for group in groups:
-        python_output = incoming_python
-        for stage in group.stages:
-            if _python_group_output_write(stage.groups, python_output):
-                return True
-            python_output = python_output or _has_python_source(stage)
-            if python_output and (file_output or _write_path_writes(stage.tokens)):
-                return True
+        if _python_stages_write(group.stages, incoming_python, file_output):
+            return True
         if not group.background and len(group.stages) == 1:
             file_output = file_output or _persistent_file_output(group.stages[0])
+    return False
+
+
+def _python_stages_write(stages: list[OutputStage], python_output: bool, file_output: bool) -> bool:
+    """Python output carries down the pipeline, because a later stage that writes a file stores what Python printed."""
+    for stage in stages:
+        if _python_group_output_write(stage.groups, python_output):
+            return True
+        python_output = python_output or _has_python_source(stage)
+        if python_output and (file_output or _source_output(stage.tokens)):
+            return True
     return False

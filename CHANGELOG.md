@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.30.2 (2026-10-25)
+
+### Security in the shell gates
+
+- **A sed script that can write a file blocks (security fix).** `sed -n 'w tests/x.py' notes.md` wrote a test the gates never saw, because ADW judged only the last argument of a sed. A sed script that holds `w`, `W`, `e`, `r`, `R`, the `s///w` flag, a script file, or a shell expansion now blocks as `dynamic_write_target`. So `sed -f edits.sed file` blocks too, since its script file can hold a `w` command.
+
+### Fixed in the shell gates
+
+- **A read-only sed passes.** `sed -n 1,200p e2e/rooms.spec.ts` blocked as a test write, and `sed -n '1,65p' "skills/$name/SKILL.md"` blocked as an unknown destination. A sed without `-i` whose script holds only substitutions and line commands writes no file, so it now passes.
+- **Archives and patches name their files before the run.** `tar -x`, `unzip -d`, `git apply`, and `patch` blocked every extraction as a possible test write. ADW now lists the members or the patch headers within a bound and judges each landing file, so an archive or patch without a test passes. A link member, an absolute or `..` name, a renaming patch, a binary patch, a piped archive, `--transform`, and `--to-command` still block. `tar -xO` and `unzip -lq` write no file and pass.
+- **`git restore --staged` from HEAD passes.** It only drops staged changes, so it writes no file and carries no new content.
+- **Read-only inline Python and Node pass.** The checker now accepts `continue`, `break`, `try` with builtin exceptions, `next`, one-argument `iter` and `type`, `isinstance`, `abs`, `round`, and `yaml.safe_load`. `yaml.load` stays blocked, since an unsafe loader runs code from its input. `node -e` may read a plain JSON file through `require("./x.json")` beside other read-only code.
+- **Python output into a data file passes.** `python3 tool.py > .build/scan.txt` blocked as `opaque_source_write`, while the same redirect from `node` or `jq` passed. Output into a literal `.txt`, `.json`, `.jsonl`, `.log`, `.csv`, `.tsv`, or `.out` file now gets the post-run scan like any redirect. Python output into a source file still blocks.
+
+### Fixed in the post-run scan
+
+- **No `unscannable_file` for a shell write that left no file.** `/dev/null`, `/dev/stdout`, a file the same command deleted, and a file on a remote host drew the finding. A shell target that does not exist after the run holds no text, so it gets none, and the Stop rescan still reads it if it appears later. A Write or patch whose file never landed still draws the finding.
+- **The test writer keeps its rights when a payload omits its type.** SubagentStart now records each subagent type by its id, and the test gate falls back to that record. A block for a subagent without a type says so in its row.
+
 ## 0.30.1 (2026-10-25)
 
 ### Fixed in Stop

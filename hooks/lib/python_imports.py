@@ -6,7 +6,8 @@ import sysconfig
 from importlib.machinery import PathFinder
 from pathlib import Path
 
-STDLIB_NAMES = frozenset(sys.stdlib_module_names) | {"sitecustomize", "usercustomize"}
+# Because a payload may import yaml, a project yaml.py must not shadow it.
+STDLIB_NAMES = frozenset(sys.stdlib_module_names) | {"sitecustomize", "usercustomize", "yaml"}
 
 
 def _search_roots(cwd: str | None) -> tuple[Path, ...]:
