@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass, field
+from itertools import takewhile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -39,6 +40,9 @@ READ_ONLY_COMMANDS = frozenset({
     "popd", "printf", "pushd", "pwd", "readlink", "realpath", "rg", "sleep", "sort", "stat", "tail", "test", "tr",
     "true", "type", "uniq", "wc", "which",
 })
+SYNTAX_CHECK_SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
+NODE_NAMES = frozenset({"node", "nodejs"})
+NODE_CHECK_FLAGS = frozenset({"--check", "-c"})
 WORKTREE_SAFE_GIT = frozenset({
     "add", "blame", "branch", "commit", "config", "describe", "diff", "fetch", "grep", "log", "ls-files", "push",
     "reflog", "remote", "rev-parse", "shortlog", "show", "stage", "status", "tag",
@@ -247,7 +251,15 @@ def _changes_files(words: list[str]) -> bool:
     name = _basename(words[index])
     if name == "git":
         return next((word for word in words[index + 1:] if not word.startswith("-")), "") not in WORKTREE_SAFE_GIT
-    return name not in READ_ONLY_COMMANDS
+    return name not in READ_ONLY_COMMANDS and not _syntax_check(name, words[index + 1:])
+
+
+def _syntax_check(name: str, args: list[str]) -> bool:
+    """Because a parse-only run executes nothing, the script it names stays as it was."""
+    options = list(takewhile(lambda arg: arg.startswith("-") and arg != "-", args))
+    if name in SYNTAX_CHECK_SHELLS:
+        return any(not option.startswith("--") and "n" in option[1:] for option in options)
+    return name in NODE_NAMES and any(option in NODE_CHECK_FLAGS for option in options)
 
 
 def _git_payloads(call: GitCall) -> list[str]:

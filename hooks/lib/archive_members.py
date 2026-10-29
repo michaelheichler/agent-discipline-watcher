@@ -56,7 +56,23 @@ def _names(read: ArchiveRead, source: Path) -> list[str] | None:
     names = _tar_names(source) if read.kind == TAR else _zip_names(source)
     if names is None or not read.patterns:
         return names
+    if read.kind == TAR:
+        return [name for name in names if _tar_selects(name, read.patterns)]
     return [name for name in names if any(fnmatch.fnmatchcase(name, pattern) for pattern in read.patterns)]
+
+
+def _tar_selects(name: str, operands: tuple[str, ...]) -> bool:
+    """Exact names, wildcards, and every folder above the member, because GNU tar, bsdtar, and --wildcards each pick a superset of what the others pick."""
+    parts = PurePosixPath(_trimmed(name)).parts
+    spellings = ["/".join(parts[:end]) for end in range(1, len(parts) + 1)]
+    wanted = [_trimmed(operand) for operand in operands]
+    return any(spelling == operand or fnmatch.fnmatchcase(spelling, operand) for spelling in spellings for operand in wanted)
+
+
+def _trimmed(name: str) -> str:
+    while name.startswith("./"):
+        name = name[2:]
+    return name.rstrip("/") or name
 
 
 def _placed(read: ArchiveRead, name: str) -> list[str] | None:

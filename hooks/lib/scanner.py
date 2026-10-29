@@ -110,6 +110,8 @@ BAD_DASH_RE = re.compile("[" + "".join(chr(code_point) for code_point in (0x2010
 # Because a minus before a number or on a button is no clause break.
 MINUS_AS_DASH_RE = re.compile(r"(?<=[^\W\d_])[ \t]*" + chr(0x2212) + r"[ \t]*(?=[^\W\d_])")
 PROSE_DASH_RE = re.compile(r"(?:(?<=\s)|(?<=[^\W\d_]))" + BAD_DASH_RE.pattern[:-1] + chr(0x2212) + r"](?=\s|[^\W\d_])")
+# Because a non-breaking hyphen inside a word joins a compound.
+WORD_JOIN_HYPHEN_RE = re.compile(r"(?<=\w)" + chr(0x2011) + r"(?=\w)")
 PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
 CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
@@ -147,7 +149,7 @@ ENGLISH_RULES = (
     (re.compile(r"\b(very|really|quite|extremely)\s+\w+", re.IGNORECASE), "empty_intensifier", "Drop the modifier or choose a stronger word."),
     (re.compile(r"\bgame[- ]chang(er|ing)\b", re.IGNORECASE), "dead_metaphor", "State the concrete effect."),
 ) + READABILITY_RULES
-ASSERT_RE = re.compile(r"\bassert\b|\.assert|expect\(|raises\(|warns\(|should\b|\.to\b|require\.|verify\(", re.IGNORECASE)
+ASSERT_RE = re.compile(r"\bassert\b|\.assert|expect\(|\bexpect\.(?:poll|soft)\(|raises\(|warns\(|should\b|\.to\b|require\.|verify\(", re.IGNORECASE)
 TEST_START_RE = re.compile(r"^(\s*)(?:async\s+)?def\s+test\w*\s*\([^)]*\):|^(\s*)(?:it|test|describe)\s*\(", re.IGNORECASE)
 PASS_WORD_RE = re.compile(r"\bpass\b", re.IGNORECASE)
 SHELL_IN_CONFIG_RE = re.compile(
@@ -465,7 +467,7 @@ def _config_quoted_view(text: str) -> str:
 
 
 def _clean_view(line: str, language: str, config: bool = False) -> str:
-    stripped = _strip_inline_code(line)
+    stripped = WORD_JOIN_HYPHEN_RE.sub("-", _strip_inline_code(line))
     clean = _config_quoted_view(stripped) if config else mask_quoted(stripped)
     return german_punctuation.german_view(clean) if language == GERMAN else clean
 

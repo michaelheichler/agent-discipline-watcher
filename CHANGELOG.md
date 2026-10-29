@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.31.0 (2026-10-29)
+
+### Fixed in the Stop hook
+
+- **A TypeScript regex literal no longer hangs the scan.** The string mask in `markup.py` tried two ways to match each backslash, so a quote without a partner followed by many backslashes took exponential time. A 2.6 KB file with three regex literals never finished, and every Stop ran out of time on it. The mask now reads a backslash one way only, and the same file scans in 2 ms.
+- **A Stop cut short by the deadline makes progress.** Each Stop used to rescan the tracked files from the first one and keep every file until all of them came back clean. One slow file therefore cut off the same tail on every Stop. Now the files that scanned clean leave the list, and the file the deadline cut moves to the end. The block message names the skipped files in sorted order, so moving the cut file does not change the message, and an unchanged block still releases after the usual repeat limit.
+- **German structure rules run in linear time.** `de_exclamation_staccato` and the list count in `de_information_cluster` rescanned the text for every start position or comma. 45 KB of German prose without a sentence mark took 6.75 s, nearly the whole Stop budget for one file. The same text now takes 0.08 s, and 178 KB takes 0.32 s.
+
+### Fixed in the shell gates
+
+- **Literal brace lists and for loops resolve before the run.** `cp src/{a.html,b.js} dest/` and `for f in a.js b.js; do ln -sf ../src/$f out/$f; done` blocked as unknown destinations and then as test writes. ADW now expands braces and one-line loops over plain words the way bash does, and it judges each real name, so a list that names a test still blocks. Braces or loops that hold a variable, a glob, a sequence, or a reassignment stay unknown.
+- **tar judges only the members a command names.** `tar -xzf pkg.tgz -C out package/dist/a.js` blocked on a test file elsewhere in the package. Naming the test, its folder, or a matching pattern still blocks. `-T`, `--files-from`, and a member spelled with an empty, `.`, or `..` segment such as `tests//x.py` fall back to every member, because tar collapses those spellings itself.
+- **A second `-C` in tar blocks (security fix).** `tar -xf a.tar -C tests x.py -C out y.py` lands both files in `tests/`, but the gate judged only the last folder. 0.30.3 let it through as well.
+- **Syntax checks write nothing.** `bash -n x.sh && ./x.sh` blocked because the commit gate read `bash -n` as a change to the script, and `find ... -exec node --check {} \;` blocked as an unknown destination. `bash -n`, `sh -n`, `node --check`, and `node -c` now count as reads.
+- **`node -e` may read files.** `fs.readFileSync`, `existsSync`, `statSync`, and `readdirSync` pass beside other read-only code. A write call, an alias, `fs.promises`, `child_process`, a dynamic `require`, and `readFileSync` with a flag object still block, since `{flag: "w"}` truncates the file.
+
+### Fixed in finding ownership and prose rules
+
+- **ADW imports captured tool output in ignored scratch.** Output that `ssh` to a remote host, `ffmpeg`, `journalctl`, a test runner, or a committed and unchanged script redirects into a git-ignored file now lands as an imported copy, so its findings report as inherited. Text the agent can steer stays its own. That covers echo, printf, heredocs, inline `-c` or `-e` code, a `<` input, appends, a stage that reads a local file, a remote command that is not a plain reader, `docker run`, `gh api` with fields, and a script, Makefile, or `package.json` the agent wrote or changed. A tracked destination stays owned. A security review reproduced each of these laundering routes before the fix.
+- **A non-breaking hyphen inside a word is a hyphen.** `rock‑wall` with U+2011 no longer draws `banned_dash`.
+- **`expect.poll` and `expect.soft` count as assertions.** `hollow_test` flagged Playwright tests that assert through `expect.poll(...).toMatchObject(...)`.
+- **`business_jargon` reads a physical landscape as plain prose.** A line about a surveyed hill drew the rule. It now needs an abstract qualifier such as competitive, market, or AI before the word. On the paragraph corpus, human hits fell from 18, all geographic, to 1.
+
+### Fixed in MCP health
+
+- **A successful MCP call clears the server backoff.** Only `record.py` recorded successes, and it never saw an MCP call, so Serena stayed blocked "after 7 failures" although its last calls had worked. A new async `McpSuccess` route on `^mcp__` clears the count, so the next failure counts as one.
+
 ## 0.30.3 (2026-10-25)
 
 ### Fixed in prose rules

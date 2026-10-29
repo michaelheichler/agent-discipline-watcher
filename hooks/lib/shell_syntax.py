@@ -9,6 +9,7 @@ from .shell_operators import (
     LEADING_REDIRECT_RE, PIPE_OPERATORS, SEPARATORS,
     _merge_adjacent_fragments, _split_punctuation_runs,
 )
+from .shell_unfold import unfolded
 
 DYNAMIC_RE = re.compile(r"[$`]")
 INTERPRETERS = frozenset({
@@ -276,7 +277,7 @@ def _tokens(command: str) -> list[str]:
     except ValueError:
         raw = command.split()
     raw = _merge_adjacent_fragments(command, _split_punctuation_runs(raw))
-    return _expand_env_split_strings(_merge_clobber_operator(raw))
+    return _expand_env_split_strings(unfolded(_merge_clobber_operator(raw)))
 
 
 def _separate_quoted_fragments(command: str) -> str:

@@ -169,6 +169,7 @@ def test_a_commit_run_through_a_script_is_denied(tmp_path: Path, command: str) -
     pytest.param("cp action.sh fresh.sh; bash fresh.sh", id="copied-script"),
     pytest.param(f"printf 'git commit -a -m \"{MESSAGE}\"\\n' > new.sh; bash new.sh", id="created-script"),
     pytest.param("ln -sf action.sh stale-link.sh; bash stale-link.sh", id="retargeted-symlink"),
+    pytest.param("printf 'x' >> safe.sh && bash safe.sh", id="appended-script"),
 ])
 def test_a_script_changed_earlier_in_the_same_command_is_denied(tmp_path: Path, command: str) -> None:
     repo = _scripted_repo(tmp_path)
@@ -176,6 +177,36 @@ def test_a_script_changed_earlier_in_the_same_command_is_denied(tmp_path: Path, 
     result = _gate(tmp_path, repo, command)
 
     assert result.get("decision") == "block"
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("bash -x safe.sh; bash safe.sh", id="traced-run"),
+    pytest.param("bash --norc safe.sh; bash safe.sh", id="long-option-holding-an-n"),
+    pytest.param("node safe.sh; bash safe.sh", id="node-run-without-check"),
+])
+def test_a_script_executed_earlier_in_the_same_command_is_denied(tmp_path: Path, command: str) -> None:
+    repo = _scripted_repo(tmp_path)
+
+    result = _gate(tmp_path, repo, command)
+
+    assert result.get("decision") == "block"
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("bash -n safe.sh && bash safe.sh", id="bash-n"),
+    pytest.param("sh -xn safe.sh; bash safe.sh", id="n-in-a-short-option-cluster"),
+    pytest.param("zsh -n safe.sh && bash safe.sh", id="zsh-n"),
+    pytest.param("dash -n safe.sh && bash safe.sh", id="dash-n"),
+    pytest.param("ksh -n safe.sh && bash safe.sh", id="ksh-n"),
+    pytest.param("node --check safe.sh && bash safe.sh", id="node-check"),
+    pytest.param("node -c safe.sh && bash safe.sh", id="node-c"),
+])
+def test_a_parse_only_check_before_running_the_script_passes(tmp_path: Path, command: str) -> None:
+    repo = _scripted_repo(tmp_path)
+
+    result = _gate(tmp_path, repo, command)
+
+    assert result.get("decision") is None
 
 
 @pytest.mark.parametrize("command", [

@@ -24,6 +24,7 @@ DISPATCH = {
     "PostToolUse": "record.py",
     "PostToolBatch": "batch.py",
     "PostToolUseFailure": "failure.py",
+    "McpSuccess": "mcp_success.py",
     "SubagentStart": "subagent_start.py",
     "SubagentStop": "subagent_stop.py",
     "Stop": "stop.py",

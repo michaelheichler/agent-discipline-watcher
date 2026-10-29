@@ -70,7 +70,7 @@ BLOCK_TAG_RE = re.compile(
 )
 TAG_RE = re.compile(r"<[^>]*>", re.DOTALL)
 TEMPLATE_EXPRESSION_RE = re.compile(r"{{.*?}}|{%.*?%}|{#.*?#}", re.DOTALL)
-SCRIPT_STRING_RE = re.compile(r'''(?P<quote>["'`])(?:\\.|(?!\1).)*\1''', re.DOTALL)
+SCRIPT_STRING_RE = re.compile(r'''(?P<quote>["'`])(?:\\.|(?!\1)[^\\])*\1''', re.DOTALL)
 
 
 LOG_EXTS = frozenset({".log"})

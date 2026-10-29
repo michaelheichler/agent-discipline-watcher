@@ -90,6 +90,8 @@ def _scope_outcome(payload: dict, call: StopCall) -> StopOutcome:
     scanned = stop_scan.rescan(paths, Path(cwd or "."), cfg, until)
     request = BatchScanRequest(scope.session_id, cwd, tuple(scanned.existing), cfg, until)
     blocking = _blocking_set(scanned, _batch_findings(request, pending), _residual_reasons(pending, paths))
+    if scanned.skipped and blocker_state.BATCH_KEY not in pending:
+        blocker_state.settle_partial(scope, revision, blocker_state.PartialScan(scanned.clean, scanned.cut))
     if blocking is not None:
         return guarded(call, blocking, _finding_reason(blocking, cfg))
     path_keys = set(paths)

@@ -1,10 +1,18 @@
 """Each German structure and rhetoric rule fires on its bad example and stays quiet on its good one, because a rule that fires on clean text trains writers to ignore it."""
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from lib import german_rules
 from lib.prose_language import ParagraphLanguage
+from lib.scanner import scan_all
+
+UNMARKED_CLAUSE = "Die Heizung im Wohnzimmer läuft weiter und die Pumpe bleibt an, solange der Raum kalt bleibt und keiner da ist "
+UNMARKED_REPEATS = 800
+SCAN_BOUND_SECONDS = 2.0
+UNMARKED_TAIL = "und dann läuft der Text ohne jedes Satzzeichen weiter bis zum Ende des Absatzes " * 3
 
 VIOLATING = [
     ("de_nested_clauses", "Der Bericht, der von der Abteilung, die für die Auswertung zuständig ist, vor zwei Wochen fertiggestellt wurde, liegt jetzt vor."),
@@ -65,3 +73,16 @@ def test_a_staccato_run_reports_the_line_it_starts_on() -> None:
     assert [(row["line"], row["snippet"]) for row in rows if row["rule"] == "de_exclamation_staccato"] == [
         (5, "Endlich da! Neu! Jetzt kaufen!"),
     ]
+
+
+def test_a_long_german_paragraph_without_a_sentence_mark_scans_quickly() -> None:
+    text = UNMARKED_CLAUSE * UNMARKED_REPEATS + "\n"
+    started = time.monotonic()
+
+    scan_all("notes.md", text, {})
+
+    assert time.monotonic() - started < SCAN_BOUND_SECONDS
+
+
+def test_a_staccato_run_before_an_unmarked_tail_still_raises_its_rule() -> None:
+    assert "de_exclamation_staccato" in _fired("Endlich da! Neu! Jetzt kaufen! " + UNMARKED_TAIL)

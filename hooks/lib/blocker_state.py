@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from . import payloads, session_state
 
@@ -257,6 +257,27 @@ def reconcile(scope: BlockerScope | str, *values: object) -> None:
             pending.pop(key, None)
         removed = set(paths)
         return {**bucket, "pending": pending, "paths": [path for path in existing if path not in removed]}
+
+    _update(scope, mutate)
+
+
+class PartialScan(NamedTuple):
+    clean: list[str]
+    cut: str
+
+
+def settle_partial(scope: BlockerScope, revision: int, partial: PartialScan) -> None:
+    """Because a cut-short Stop must still make progress, the next one skips what came back clean and tries the cut file last."""
+
+    def mutate(bucket: dict) -> dict:
+        if bucket.get("revision") != revision:
+            return bucket
+        pending, existing, _revision = _normalized_bucket(bucket)
+        gone = {*partial.clean, partial.cut}
+        for key in partial.clean:
+            pending.pop(key, None)
+        kept = [path for path in existing if path not in gone]
+        return {**bucket, "pending": pending, "paths": kept + ([partial.cut] if partial.cut in existing else [])}
 
     _update(scope, mutate)
 

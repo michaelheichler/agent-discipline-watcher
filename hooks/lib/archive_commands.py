@@ -23,6 +23,8 @@ PATCH_BACKUP_FLAGS = frozenset({"-B", "--prefix", "-Y", "--basename-prefix", "-z
 PATCH_VALUE_FLAGS = frozenset({"-p", "--strip", "-D", "--ifdef", "-F", "--fuzz", "-V", "--version-control", "-g", "--get"})
 PATCH_SIDE_FILES = ("", ".rej", ".orig")
 UNSAFE_CHARS = frozenset("$`*?[~{")
+MEMBER_UNKNOWN_CHARS = frozenset("$`~{\\")
+TAR_LOOSE_MATCHING = ("--files-from", "--no-anchored", "--ignore-case", "--null", "--exclude-from")
 GIT_APPLY_VALUE_FLAGS = frozenset({"--directory", "--include", "--exclude", "-p", "-C"})
 
 
@@ -50,8 +52,9 @@ def _plain(word: str) -> str | None:
 
 def tar_read(words: list[str], stdin: str | None) -> ArchiveRead | None:
     fields: dict[str, str] = {}
+    members: list[str] = []
     rest = _tar_old_style(words, fields)
-    if rest is None or not _tar_options(rest, fields):
+    if rest is None or _directory_count(rest) > 1 or not _tar_options(rest, fields, members):
         return None
     source = fields.get("f", STDIN)
     source = stdin if source == STDIN else _plain(source)
@@ -59,7 +62,29 @@ def tar_read(words: list[str], stdin: str | None) -> ArchiveRead | None:
     strip = fields.get("strip", "0")
     if source is None or directory is None or not strip.isdigit():
         return None
-    return ArchiveRead(TAR, source, directory, int(strip))
+    return ArchiveRead(TAR, source, directory, int(strip), _tar_selection(rest, fields, members))
+
+
+def _tar_selection(words: list[str], fields: dict[str, str], members: list[str]) -> tuple[str, ...]:
+    """Every member when a list file, loose matching, or an unreadable name hides which ones tar picks, because a missed member could be a test."""
+    loose = "T" in fields or "--" in words or any(word.startswith(TAR_LOOSE_MATCHING) for word in words)
+    if loose or any(MEMBER_UNKNOWN_CHARS.intersection(member) or not _canonical(member) for member in members):
+        return ()
+    return tuple(members)
+
+
+def _canonical(member: str) -> bool:
+    """Because tar collapses tests//x.py and tests/./x.py itself, only a name with plain segments can be matched as written."""
+    name = member[2:] if member.startswith("./") else member
+    segments = name.removesuffix("/").split("/")
+    return all(segment not in {"", ".", ".."} for segment in segments)
+
+
+def _directory_count(words: list[str]) -> int:
+    """Because tar switches folders at each -C, a second one lands earlier members where the last -C does not point."""
+    long_form = sum(word == "--directory" or word.startswith("--directory=") for word in words)
+    short_form = sum(word.startswith("-") and not word.startswith("--") and "C" in word[1:] for word in words)
+    return long_form + short_form
 
 
 def _tar_old_style(words: list[str], fields: dict[str, str]) -> list[str] | None:
@@ -75,11 +100,14 @@ def _tar_old_style(words: list[str], fields: dict[str, str]) -> list[str] | None
     return rest
 
 
-def _tar_options(words: list[str], fields: dict[str, str]) -> bool:
+def _tar_options(words: list[str], fields: dict[str, str], members: list[str]) -> bool:
     position = 0
     while position < len(words):
         word = words[position]
         position += 1
+        if not word.startswith("-"):
+            members.append(word)
+            continue
         taken = _tar_long(word, words[position:], fields) if word.startswith("--") else _tar_short(word, words[position:], fields)
         if taken is None:
             return False

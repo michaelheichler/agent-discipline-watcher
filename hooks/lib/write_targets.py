@@ -23,6 +23,10 @@ FIND_CALLBACKS = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILE_OUTPUTS = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
 RIPGREP_CONFIG = "RIPGREP_CONFIG_PATH"
 FIND_CALL_ENDS = frozenset({";", "+"})
+SYNTAX_CHECK_FLAGS = {
+    **dict.fromkeys(("node", "nodejs"), frozenset({"--check", "-c"})),
+    **dict.fromkeys(("sh", "bash", "zsh", "dash", "ksh"), frozenset({"-n"})),
+}
 TARGET_DIR_FLAGS = frozenset({"-t", "--target-directory"})
 TARGET_DIR_PREFIX = "--target-directory="
 DD_OUTPUT_PREFIX = "of="
@@ -242,12 +246,23 @@ def _find_writes(args: list[str], hazards: dict[str, tuple[str, ...] | None]) ->
 def _reads_only(call: list[str], hazards: dict[str, tuple[str, ...] | None], fed: bool) -> bool:
     """Because stdin can add flags to an xargs reader, one with a writing flag needs -- before them."""
     name = _basename(call[0])
+    if _checks_only(name, call):
+        return not fed or "--" in call
     if name not in CALLBACK_READERS or name not in hazards:
         return name in CALLBACK_READERS
     flags = hazards[name]
     options = call[1:call.index("--")] if "--" in call else call[1:]
     flagged = flags is None or any(_flagged(word, flags) for word in options)
     return not flagged and (not fed or "--" in call)
+
+
+def _checks_only(name: str, call: list[str]) -> bool:
+    """Because a syntax check parses without running and a known sed script without -i prints only, neither can write a file."""
+    if name == "sed":
+        return sed_reads_only(call)
+    flags = SYNTAX_CHECK_FLAGS.get(name)
+    operands = call[2:]
+    return flags is not None and len(call) > 2 and call[1] in flags and not any(word.startswith("-") and word != "--" for word in operands)
 
 
 def _flagged(word: str, flags: tuple[str, ...]) -> bool:

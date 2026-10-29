@@ -43,6 +43,16 @@ EXPRESSION_KEYWORDS = frozenset({
 })
 REGEX, DIVISION = "regex", "division"
 REGEX_STAND_IN = "0"
+FS_READERS = ("readFileSync", "existsSync", "statSync", "readdirSync")
+FS_READER = "|".join(FS_READERS)
+FS_MODULE = r"""require\(\s*(?P<quote>['"])(?:node:)?fs(?P=quote)\s*\)"""
+FS_BINDING_RE = re.compile(rf"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*{FS_MODULE}\s*;?")
+FS_DESTRUCTURE_RE = re.compile(rf"\b(?:const|let|var)\s*\{{([\w$\s,]*)\}}\s*=\s*{FS_MODULE}\s*;?")
+FS_DIRECT_RE = re.compile(rf"{FS_MODULE}\s*\.\s*({FS_READER})\s*\(")
+FS_READER_USE_RE = re.compile(rf"(?<![\w$.])({FS_READER})(?![\w$])(\s*\()?")
+ENCODING_RE = re.compile(r"""(['"])[\w-]+\1""")
+# Because a comment can hide a close paren from the argument count.
+COMMENT_MARKS = ("/*", "//", *HTML_COMMENT_MARKS)
 
 
 def node_json_read(name: str, payload: str, directories: Sequence[str]) -> bool:
@@ -74,6 +84,54 @@ def _plain_json_file(path: str) -> bool:
         return False
     real = os.path.realpath(path)
     return stat.S_ISREG(metadata.st_mode) and real.endswith(".json") and os.path.isfile(real)
+
+
+def without_fs_reads(payload: str) -> str | None:
+    """None unless the fs module is bound only to reach the four read calls, because any other use can write, and readFileSync opens for writing when an options object names a flag."""
+    if any(mark in payload for mark in COMMENT_MARKS):
+        return None
+    text = FS_DIRECT_RE.sub(lambda match: match.group(2) + "(", payload)
+    names = [match.group(1) for match in FS_BINDING_RE.finditer(text)]
+    picked = [name.strip() for match in FS_DESTRUCTURE_RE.finditer(text) for name in match.group(1).split(",")]
+    if not set(filter(None, picked)) <= set(FS_READERS):
+        return None
+    text = FS_DESTRUCTURE_RE.sub(" ", FS_BINDING_RE.sub(" ", text))
+    for name in names:
+        text = re.sub(rf"(?<![\w$.]){re.escape(name)}\s*\.\s*({FS_READER})(?=\s*\()", r"\1", text)
+        if re.search(rf"(?<![\w$]){re.escape(name)}(?![\w$])", text):
+            return None
+    if text == payload or not all(_plain_read_call(text, match) for match in FS_READER_USE_RE.finditer(text)):
+        return None
+    return text
+
+
+def _plain_read_call(text: str, use: re.Match[str]) -> bool:
+    """Because only a call shows its arguments, and a second readFileSync argument other than an encoding name may carry a write flag."""
+    if use.group(2) is None:
+        return False
+    if use.group(1) != "readFileSync":
+        return True
+    arguments = _call_arguments(text, use.end())
+    return arguments is not None and len(arguments) <= 2 and all(ENCODING_RE.fullmatch(part) for part in arguments[1:])
+
+
+def _call_arguments(text: str, start: int) -> list[str] | None:
+    """None on an unclear or unclosed list, because a misread argument would hide an options object."""
+    depth, parts, current, position = 1, [], [], start
+    while position < len(text):
+        match = TOKEN_RE.match(text, position)
+        if match is None:
+            return None
+        token, position = match.group(), match.end()
+        depth += {"(": 1, "[": 1, "{": 1, ")": -1, "]": -1, "}": -1}.get(token, 0)
+        if depth == 0:
+            return parts + ["".join(current).strip()] if current or parts else []
+        if token == "," and depth == 1:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(token)
+    return None
 
 
 def node_reflection(payload: str) -> bool:

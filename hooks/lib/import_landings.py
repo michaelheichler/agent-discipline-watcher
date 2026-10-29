@@ -1,4 +1,4 @@
-"""Because a download, an extraction or a clone into ignored scratch lands text nobody in this session wrote, those files enter as imported copies."""
+"""Because a download, an extraction, a clone or a captured tool output in ignored scratch lands text nobody in this session wrote, those files enter as imported copies."""
 from __future__ import annotations
 
 import os
@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lib.archive_commands import stdin_source, tar_read, unzip_read
 from lib.archive_members import ArchiveRead, landed_paths
+from lib.captured_output import captured_outputs
 from lib.flag_outputs import FLAG_WRITERS, flag_targets
 from lib.shell_parse import _write_path_writes
 from lib.shell_syntax import _bare, _basename, _command_word_index, _is_literal_token, _segments, _without_redirects
@@ -35,6 +36,7 @@ def external_landings(command: str, cwd: Cwd, authored: frozenset[str]) -> list[
     found: list[str] = []
     for segment in _segments(command):
         found.extend(_segment_landings(segment, base, authored))
+    found.extend(captured_outputs(command, base))
     present = [path for path in dict.fromkeys(found) if Path(path).is_file()]
     return ignored_paths(present, base)
 

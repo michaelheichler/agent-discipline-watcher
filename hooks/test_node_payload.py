@@ -139,3 +139,40 @@ def test_a_regex_or_string_literal_does_not_hide_a_node_write(command: str) -> N
 
     assert result.get("decision") == "block"
     assert "inline_interpreter_write" in result["reason"]
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("""node -e 'const fs=require("fs"); console.log(fs.readFileSync("a.json","utf8").length)'""",
+                 id="entry-36-bound-module"),
+    pytest.param("""node -e 'const {readFileSync}=require("fs"); console.log(readFileSync("a.json"))'""",
+                 id="destructured-reader"),
+    pytest.param("""node -p 'require("node:fs").existsSync("a.json")'""", id="direct-call-on-node-prefix"),
+])
+def test_an_fs_read_of_a_file_passes(tmp_path: Path, command: str) -> None:
+    project = _project(tmp_path)
+
+    assert verdict(command, project) == {}
+
+
+READ = 'fs.readFileSync("a.json","utf8")'
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("""node -e 'const fs=require("fs"); fs.readFileSync("a.json", {flag:"w"})'""",
+                 id="read-with-write-flag-truncates"),
+    pytest.param(f"""node -e 'const fs=require("fs"); console.log({READ}); fs.writeFileSync("b.txt","x")'""",
+                 id="write-beside-read"),
+    pytest.param(f"""node -e 'const fs=require("fs"); const r=fs.writeFileSync; r("b.txt", {READ})'""",
+                 id="aliased-writer"),
+    pytest.param(f"""node -e 'const fs=require("fs"); fs["writeFileSync"]("b.txt", {READ})'""", id="bracket-writer"),
+    pytest.param(f"""node -e 'const fs=require("fs"); fs.promises.writeFile("b.txt", {READ})'""", id="fs-promises"),
+    pytest.param(f"""node -e 'const fs=require("fs"); require("child_process").execSync("touch b"); {READ}'""",
+                 id="child-process"),
+    pytest.param(f"""node -e 'const m="fs"; const fs=require("fs"); require(m).writeFileSync("b.txt", {READ})'""",
+                 id="dynamic-require"),
+    pytest.param(f"""node -e 'const fs=require("fs"); eval("fs.writeFile" + "Sync(1,2)"); {READ}'""", id="eval"),
+])
+def test_an_fs_read_does_not_hide_a_write_beside_it(tmp_path: Path, command: str) -> None:
+    result = verdict(command, _project(tmp_path))
+
+    assert (result.get("decision"), "inline_interpreter_write" in result.get("reason", "")) == ("block", True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import signal
 import time
@@ -27,6 +28,7 @@ OUTER_ALARM_SECONDS = 0.05
 OUTER_ALARM_SLACK_SECONDS = 0.05
 LARGE_PROSE = "The hook reads the file. It scans each line and records what it finds for the agent.\n\n"
 DASHED_LINE = "The scan ends here — and the agent sees it.\n"
+CutRule = Callable[[str, int], bool]
 
 
 def _config(root: Path) -> dict[str, str]:
@@ -49,7 +51,7 @@ def test_a_rescan_past_its_deadline_blocks_with_the_unscanned_count(tmp_path: Pa
 
     assert response["decision"] == "block"
     assert "2 files not scanned: a.py, b.py" in response["reason"]
-    assert blocker_state.details("s1", "", _config(tmp_path)["state_root"])[1] == paths
+    assert blocker_state.details("s1", "", _config(tmp_path)["state_root"])[1] == [paths[1], paths[0]]
 
 
 def test_a_slow_baseline_git_call_ends_at_the_deadline_as_unscanned(tmp_path: Path, monkeypatch) -> None:
@@ -79,6 +81,77 @@ def test_an_edit_to_an_unscanned_file_blocks_again_after_a_release(tmp_path: Pat
     target.write_text("x = 2\ny = 3\n", encoding="utf-8")
 
     assert _stop(tmp_path)["decision"] == "block"
+
+
+def _tracked(tmp_path: Path, count: int) -> list[str]:
+    paths = [str(tmp_path / f"f{index}.py") for index in range(count)]
+    for index, path in enumerate(paths):
+        Path(path).write_text(f"x = {index}\n", encoding="utf-8")
+    blocker_state.touch_paths("s1", "", paths, _config(tmp_path)["state_root"])
+    return paths
+
+
+def _stops(tmp_path: Path, count: int, stall_limit: int) -> list[dict]:
+    cfg = {**_config(tmp_path), "stop_stall_limit": stall_limit}
+    payload = {"session_id": "s1", "cwd": str(tmp_path), "hook_event_name": "Stop"}
+    return [stop.run(payload, cfg) for _ in range(count)]
+
+
+def _cut_scans(monkeypatch, cut: CutRule) -> None:
+    """Raised from scan_all, because that is where the alarm cuts a real rescan."""
+    original = stop_scan.scan_all
+    calls = itertools.count(1)
+
+    def deadline_scan(path: str, text: str, config: dict) -> list[dict]:
+        if cut(path, next(calls)):
+            raise baseline.OutOfTime
+        return original(path, text, config)
+
+    monkeypatch.setattr(stop_scan, "scan_all", deadline_scan)
+
+
+def _two_scans_per_stop(_path: str, call: int) -> bool:
+    return call % 3 == 0
+
+
+def test_cut_short_stops_work_through_the_tracked_files_until_the_block_lifts(tmp_path: Path, monkeypatch) -> None:
+    _tracked(tmp_path, 6)
+    _cut_scans(monkeypatch, _two_scans_per_stop)
+
+    responses = _stops(tmp_path, 3, stall_limit=5)
+
+    assert [response.get("decision") for response in responses] == ["block", "block", None]
+
+
+def test_a_file_that_never_fits_the_budget_does_not_starve_the_files_behind_it(tmp_path: Path, monkeypatch) -> None:
+    paths = _tracked(tmp_path, 3)
+    _cut_scans(monkeypatch, lambda path, _call: path == paths[0])
+
+    _stops(tmp_path, 2, stall_limit=5)
+
+    assert blocker_state.details("s1", "", _config(tmp_path)["state_root"])[1] == [paths[0]]
+
+
+def test_a_cut_short_stop_with_a_pending_batch_block_keeps_every_tracked_path(tmp_path: Path, monkeypatch) -> None:
+    root = _config(tmp_path)["state_root"]
+    paths = _tracked(tmp_path, 6)
+    blocker_state.set_pending("s1", "", blocker_state.BATCH_KEY, "Duplicate content", root)
+    _cut_scans(monkeypatch, _two_scans_per_stop)
+
+    _stops(tmp_path, 1, stall_limit=5)
+
+    assert blocker_state.details("s1", "", root)[1] == paths
+
+
+def test_an_unchanged_rotating_timeout_block_releases_at_the_stall_limit(tmp_path: Path, monkeypatch) -> None:
+    _tracked(tmp_path, 3)
+    monkeypatch.setattr(stop_scan, "STOP_SCAN_SECONDS", -1.0)
+
+    responses = _stops(tmp_path, 3, stall_limit=2)
+
+    assert [(response.get("decision"), bool(response.get("systemMessage"))) for response in responses] == [
+        ("block", False), ("block", False), (None, True),
+    ]
 
 
 def test_a_duplicate_check_cut_off_by_the_deadline_keeps_the_batch_block(tmp_path: Path, monkeypatch) -> None:

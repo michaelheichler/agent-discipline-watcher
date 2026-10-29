@@ -187,8 +187,14 @@ def _word_item_count(sentence: str) -> int:
 
 def _lists_infinitives(sentence: str, commas: list[re.Match[str]]) -> bool:
     """Read the word before each list comma, because only a list of bare infinitives makes a closing -en form an item."""
-    befores = [LAST_WORD_RE.search(sentence, 0, comma.start()) for comma in commas]
+    starts = [0, *(comma.end() for comma in commas[:-1])]
+    befores = [_word_before(sentence, start, comma.start()) for start, comma in zip(starts, commas)]
     return bool(befores) and all(found and found.group(0)[0].islower() and is_infinitive(found.group(0)) for found in befores)
+
+
+def _word_before(sentence: str, start: int, end: int) -> re.Match[str] | None:
+    """From the previous comma first, because a search from 0 for every comma grows with the square of the text."""
+    return LAST_WORD_RE.search(sentence, start, end) or LAST_WORD_RE.search(sentence, 0, start)
 
 
 def _finite_here(word: str, infinitives: bool) -> bool:
@@ -249,7 +255,9 @@ def _run_hit(paragraph: ParagraphLanguage, offset: int, run: list[re.Match[str]]
 
 def _unit_runs(paragraph: ParagraphLanguage, unit: tuple[int, str]) -> list[Hit]:
     offset, text = unit
-    grouped = groupby(STACCATO_SENTENCE_RE.finditer(text), key=lambda found: _is_staccato(found.group(0)))
+    # Ends at the last mark, because a tail without one makes every start rescan it.
+    end = max(text.rfind(mark) for mark in ".!?") + 1
+    grouped = groupby(STACCATO_SENTENCE_RE.finditer(text, 0, end), key=lambda found: _is_staccato(found.group(0)))
     runs = [list(group) for staccato, group in grouped if staccato]
     return [_run_hit(paragraph, offset, run) for run in runs if len(run) >= STACCATO_MIN_RUN]
 

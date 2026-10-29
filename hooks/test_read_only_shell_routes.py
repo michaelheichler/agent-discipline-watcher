@@ -57,6 +57,10 @@ def denied_repo(tmp_path: Path) -> Path:
     write_tar(repo / "plain.tgz", ("pkg/docs/readme.md", "pkg/src/b.py"))
     write_tar(repo / "tested.tgz", ("pkg/tests/test_y.py",))
     write_tar(repo / "linked.tgz", ("pkg/a.md",), link="pkg/link")
+    write_tar(repo / "named.tgz", ("package/dist/a.js", "package/dist/b.js", "package/src/aabb.test.ts"))
+    (repo / "members.txt").write_text("package/src/aabb.test.ts\n", encoding="utf-8")
+    write_tar(repo / "mixed.tgz", ("tests/x.py", "docs/a.md", "ok.txt"))
+    write_tar(repo / "flat.tgz", ("x.py", "y.py"))
     write_zip(repo / "plain.zip", ("docs/a.md",))
     write_zip(repo / "tested.zip", ("tests/test_z.py",))
     (repo / "source.patch").write_text(SOURCE_PATCH, encoding="utf-8")
@@ -73,6 +77,11 @@ READ_ONLY_COMMANDS = [
     pytest.param("tar -xOf plain.tgz", id="tar-to-stdout-cluster"),
     pytest.param("tar -xzf plain.tgz -C scratch --strip-components=1", id="tar-plain-members-stripped"),
     pytest.param("tar xz -C scratch < plain.tgz", id="tar-old-style-stdin"),
+    pytest.param("tar -xzf named.tgz -C scratch package/dist/a.js package/dist/b.js", id="tar-named-plain-members"),
+    pytest.param("tar -xzf mixed.tgz ./ok.txt", id="tar-named-member-with-leading-dot-slash"),
+    pytest.param("tar -xzf mixed.tgz docs/", id="tar-named-folder-with-trailing-slash"),
+    pytest.param("find src -name '*.js' -exec node --check {} \\;", id="find-exec-node-check"),
+    pytest.param("find src -name '*.sh' -exec bash -n {} \\;", id="find-exec-bash-syntax-check"),
     pytest.param("unzip -lq plain.zip", id="unzip-list-cluster"),
     pytest.param("unzip plain.zip -d scratch", id="unzip-plain-members"),
     pytest.param("git apply source.patch", id="git-apply-source"),
@@ -112,6 +121,25 @@ WRITING_COMMANDS = [
     pytest.param("tar -xzf linked.tgz -C scratch", tests_policy.RULE, id="tar-symlink-member"),
     pytest.param("curl -sL https://example.test/a.tgz | tar xz", tests_policy.RULE, id="tar-from-pipe"),
     pytest.param("tar --to-command=cat -xzf plain.tgz", tests_policy.RULE, id="tar-to-command"),
+    pytest.param("tar -xzf named.tgz -C scratch package/src/aabb.test.ts", tests_policy.RULE, id="tar-named-test-member"),
+    pytest.param("tar -xzf named.tgz -C scratch package/src", tests_policy.RULE, id="tar-named-test-folder"),
+    pytest.param("tar -xzf named.tgz -C scratch package", tests_policy.RULE, id="tar-named-top-folder"),
+    pytest.param("tar -xzf named.tgz -C scratch 'package/s*'", tests_policy.RULE, id="tar-named-wildcard"),
+    pytest.param("tar -xzf named.tgz -C scratch -T members.txt package/dist/a.js", tests_policy.RULE,
+                 id="tar-member-list-file"),
+    pytest.param("tar -xzf named.tgz -C scratch --files-from=members.txt package/dist/a.js", tests_policy.RULE,
+                 id="tar-files-from"),
+    pytest.param("tar -xzf mixed.tgz tests//x.py", tests_policy.RULE, id="tar-operand-empty-segment"),
+    pytest.param("tar -xzf mixed.tgz tests/./x.py", tests_policy.RULE, id="tar-operand-dot-segment"),
+    pytest.param("tar -xzf mixed.tgz tests/.", tests_policy.RULE, id="tar-operand-trailing-dot"),
+    pytest.param("tar -xzf mixed.tgz tests/x.py/.", tests_policy.RULE, id="tar-operand-member-then-dot"),
+    pytest.param("tar -xzf mixed.tgz .//tests/x.py", tests_policy.RULE, id="tar-operand-dot-then-empty-segment"),
+    pytest.param("tar -xzf flat.tgz -C tests x.py -C scratch y.py", tests_policy.RULE, id="tar-second-short-directory"),
+    pytest.param("tar -xzf flat.tgz --directory=tests x.py -C scratch y.py", tests_policy.RULE,
+                 id="tar-long-then-short-directory"),
+    pytest.param("find src -name '*.js' -exec node {} \\;", "dynamic_write_target", id="find-exec-node-runs"),
+    pytest.param("find src -exec bash -c 'echo x > out.txt' \\;", "dynamic_write_target", id="find-exec-bash-c"),
+    pytest.param("find web -name '*.ts' -exec sed -i 's/x/y/' {} \\;", "dynamic_write_target", id="find-exec-sed-in-place"),
     pytest.param("unzip tested.zip -d scratch", tests_policy.RULE, id="unzip-test-member"),
     pytest.param("git apply test.patch", tests_policy.RULE, id="git-apply-test"),
     pytest.param("patch -p1 < test.patch", tests_policy.RULE, id="patch-test"),

@@ -206,8 +206,13 @@ JARGON_PATTERNS = (
     r"\bnavigat(?:e|ing|es) the\b",
     r"\b(?:let me |to )?unpack (?:the|this|that)\b",
     r"\blean(?:s|ing)? into\b",
-    r"\bthe \w+ landscape\b",
-    r"\bthe landscape (?:has|is|shifted|changed)\b",
+    r"\b(?:competitive|market|business|digital|regulatory|technology|tech|threat|security|cybersecurity|vendor"
+    r"|industry|political|media|funding|startup|investment|product|talent|economic|financial|corporate"
+    r"|enterprise|software|ai|data|cloud|crypto|compliance|policy|geopolitical|entertainment|retail|healthcare"
+    r"|marketing|cultural|social|educational|legal|moral|cryptocurrency|television|streaming|gaming) landscape\b",
+    r"\bthe (?:current|changing|evolving|shifting|ever-changing|modern|broader|wider) landscape\b",
+    r"\btoday'?s landscape\b",
+    r"\bthe landscape (?:(?:has|is) (?:been )?(?:chang|shift|evolv)\w*|shifted|changed|evolved)\b",
     r"\bdoubl(?:e|ing) down on\b",
     r"\ba deep dive\b",
     r"\btake a step back\b",

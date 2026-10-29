@@ -54,6 +54,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "^mcp__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ADW_CODEX_HOOK=1 \"__SKILL_DIR__/hooks/run.sh\" McpSuccess",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SubagentStart": [

@@ -1,3 +1,5 @@
+import pytest
+
 from lib.corpus_gate import requires_corpora
 from lib.slop_harness import (
     Measurement,
@@ -58,6 +60,17 @@ def test_formulaic_categories_report_one_finding_per_phrase() -> None:
         ("formulaic_filler", 4),
         ("formulaic_filler", 5),
     )
+
+
+@pytest.mark.parametrize(("text", "rules"), [
+    pytest.param("The surveyed landscape slopes north.\n", (), id="entry-18-terrain"),
+    pytest.param("The landscape is hilly.\n", (), id="terrain-description"),
+    pytest.param("We studied the competitive landscape before launch.\n", (("business_jargon", 1),), id="competitive"),
+    pytest.param("The current landscape favours small teams.\n", (("business_jargon", 1),), id="current"),
+    pytest.param("The AI landscape moves fast.\n", (("business_jargon", 1),), id="ai-field"),
+])
+def test_landscape_is_jargon_only_as_a_figure_for_a_field(text: str, rules: tuple[tuple[str, int], ...]) -> None:
+    assert _rules_for(text) == rules
 
 
 def test_multiline_and_unmatched_code_keep_phrase_line_coordinates() -> None:

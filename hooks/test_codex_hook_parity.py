@@ -66,6 +66,22 @@ def test_codex_pretool_routes_supported_mutations(tool: str) -> None:
     assert len(matching) == 1
 
 
+@pytest.mark.parametrize("manifest", [
+    pytest.param("hooks.json", id="claude"),
+    pytest.param("codex-hooks.json", id="codex"),
+])
+def test_an_mcp_success_reaches_the_mcp_success_hook(manifest: str) -> None:
+    config = json.loads((HOOKS / manifest).read_text(encoding="utf-8"))
+    events = [
+        hook["command"].split()[-1]
+        for group in _command_groups(config, "PostToolUse")
+        if re.search(group.get("matcher", ""), "mcp__serena__find_symbol")
+        for hook in group["hooks"]
+    ]
+
+    assert events == ["McpSuccess"]
+
+
 def test_post_write_candidates_reach_stop_with_the_host_turn_id(tmp_path: Path) -> None:
     source = tmp_path / "note.md"
     source.write_text("The archive contains seven records.\n", encoding="utf-8")

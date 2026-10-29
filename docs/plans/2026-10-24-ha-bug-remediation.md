@@ -76,9 +76,20 @@ Status on 2026-10-25, release 0.30.3:
 - A remote download, extraction, or clone into a git-ignored path now lands as an imported file. Review found that a `file:` URL laundered agent text into tracked code, and 42 R2-3 tests guard downloads into code, so tracked destinations stay owned and the commit gate keeps its parents. A verbatim upstream copy in tracked code (8d) therefore still owns its findings, which stays a decision for Michael in phase 3.
 - The triad detector follows the stream F shape. The stream F count of 86 to 11 findings on 154 documents was not measured again.
 
+Status on 2026-10-29, release 0.31.0, covering entries 16 to 42 and the MQTT section added after 0.30.3:
+
+- A Stop loop in a Leverframe session traced to the string mask in `markup.py`, which backtracked exponentially on a TypeScript regex literal. The fix also makes a cut-short Stop retire clean files and rotate the cut file, and the German structure rules now run in linear time.
+- Entries 8u, 13w, 16, 29, 32, 35, 36, 38, and 42 landed in the shell gates and MCP health. Entries 8s, 18, 19, and the captured-output part of 17, 21, 33, 37, 39, 40, and the MQTT section landed in the rules and in finding ownership.
+- A security review reproduced laundering routes in the first captured-output version and two tar operand bypasses. 0.31.0 closes all of them before release.
+- 42b keeps blocking, because a loop variable next to a glob resolves only at run time.
+- Entry 24 stays open. Its reports carry the `session-turn-*` names of the 0.17.1 Desktop copy. A disk check before the Stop review broke 52 journal tests that use synthetic hashes, so the guard waits for a test redesign.
+- Entry 20 stays open. Masking quoted text would let an agent hide its own prose in quotation marks, so a fix needs a match against the quoted source.
+- Entries 27, 30, and 31 join item 1 of phase 3. They hold verbatim licence texts and vendor bundles in tracked folders, so they stay owned until Michael decides.
+- A known gap stays accepted. The review found that `NODE_OPTIONS=--require=x.js node --check y.js` runs the code in `x.js`. The gates still treat `node --check` as a read of `y.js`, because a plain `node x.js` runs the same code and the gates allow it. They judge writes, not runs.
+
 ## Phase 3, decisions for Michael
 
-1. 13e and 13s. A verbatim design file and the castle placeholder U+2013 hold an en dash that the build must match. Either the file arrives as an imported baseline (phase 2 item 4), or the design gets a different glyph. The rule stays as it is.
+1. 13e and 13s. Decided on 2026-10-25. The castle placeholder U+2013 inside a JS string draws no finding under 0.30.3, so 13s needs nothing. Verbatim Claude Design copies stay off disk, and agents read the DesignSync response from stdout. ADW does not change.
 2. Entry 2. The 80 character comment cap stays. The 0.30.0 reviewer prompt names the cap, so the Sonnet review no longer asks for longer comments.
 
 ## Test hygiene

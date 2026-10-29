@@ -56,6 +56,17 @@
             "timeout": 180
           }
         ]
+      },
+      {
+        "matcher": "^mcp__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run.sh McpSuccess",
+            "async": true,
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolBatch": [

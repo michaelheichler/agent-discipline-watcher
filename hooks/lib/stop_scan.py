@@ -31,6 +31,8 @@ class Rescan:
     findings: list[dict] = field(default_factory=list)
     existing: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    clean: list[str] = field(default_factory=list)
+    cut: str = ""
 
 
 def deadline() -> float:
@@ -114,10 +116,13 @@ def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
             rows = _owned_rows(path, cwd, cfg, until)
         except OutOfTime:
             result.skipped = [str(_resolved(raw, cwd)) for raw in paths[index:]]
+            result.cut = raw_path
             break
         if rows is not None:
             result.existing.append(str(path))
             result.findings.extend(rows)
+        if rows == []:
+            result.clean.append(raw_path)
     return result
 
 
@@ -135,8 +140,8 @@ def stamps(paths: list[str]) -> tuple[str, ...]:
 
 
 def skipped_reason(skipped: list[str]) -> str:
-    """Kept as a block, because a file the deadline cut off is unchecked, not clean."""
-    names = ", ".join(Path(path).name for path in skipped[:MAX_NAMED_SKIPPED])
+    """Sorted names in a block, because a cut file is unchecked and the scan order must not reset the breaker."""
+    names = ", ".join(sorted(Path(path).name for path in skipped)[:MAX_NAMED_SKIPPED])
     more = f" and {len(skipped) - MAX_NAMED_SKIPPED} more" if len(skipped) > MAX_NAMED_SKIPPED else ""
     return (
         f"agent-discipline-watcher: Stop ran out of time. {len(skipped)} files not scanned: {names}{more}. "
