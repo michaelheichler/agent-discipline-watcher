@@ -52,6 +52,7 @@ class _ShellArgs(NamedTuple):
     from_stdin: bool
     operand: str | None
     rest: list[str]
+    parse_only: bool = False
 
 
 def shell_input(command: Command, scope: InputScope) -> str | None:
@@ -87,16 +88,21 @@ def is_dynamic(word: str) -> bool:
 
 
 def _shell_args(args: list[str]) -> _ShellArgs:
-    index, reads_command, from_stdin = 0, False, False
+    index, reads_command, from_stdin, parse_only = 0, False, False, False
     while index < len(args) and args[index].startswith(("-", "+")) and args[index] not in {"-", "--"}:
         letters = "" if args[index].startswith("--") else args[index][1:]
         reads_command, from_stdin = reads_command or "c" in letters, from_stdin or "s" in letters
+        parse_only = parse_only or (args[index].startswith("-") and "n" in letters)
         index += 2 if args[index] in SHELL_VALUE_OPTIONS else 1
     index += 1 if index < len(args) and args[index] == "--" else 0
-    return _ShellArgs(reads_command, from_stdin, args[index] if index < len(args) else None, args[index + 1:])
+    operand = args[index] if index < len(args) else None
+    return _ShellArgs(reads_command, from_stdin, operand, args[index + 1:], parse_only)
 
 
 def _shell_script(shell: _ShellArgs, command: Command, scope: InputScope) -> str | None:
+    """None for a parse-only run, because bash -n executes no line of its script."""
+    if shell.parse_only:
+        return None
     if shell.reads_command:
         return _with_positional(shell.operand or "", shell.rest[1:])
     if shell.from_stdin or shell.operand is None:

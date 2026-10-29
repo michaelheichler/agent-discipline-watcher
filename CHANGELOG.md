@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.31.1 (2026-10-29)
+
+### Fixed in the Codex install
+
+- **Codex can spawn the test writer again.** The installer linked `~/.codex/agents/adw-test-writer.toml` into the ADW install. Codex lists a linked role, but at spawn it opens the role file without following links, so every `spawn_agent` call for `adw-test-writer` failed with "agent type is currently not available", and no agent in Codex could write a test. The installer now copies the role file, replaces an old ADW link in place, and refuses a role file it did not write.
+- **`adw-nuke` removes the Codex role file, and `adw update` backs it up.** The file was missing from the paths both commands manage, so a nuke left the old link behind.
+
+### Fixed in the commit gate
+
+- **A parse-only shell passes.** `bash -n "$script"` in a loop blocked as a script the gate cannot resolve, although `bash -n` runs no line of it. The documented syntax check of this repo hit that block. `bash "$script"`, `bash -x`, and `bash +n` still block.
+
 ## 0.31.0 (2026-10-29)
 
 ### Fixed in the Stop hook

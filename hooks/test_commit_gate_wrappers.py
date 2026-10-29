@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import pre_commit
+import pre_tool
 from lib import reporting
 from testing import make_repo, run_git as git
 
@@ -207,6 +208,37 @@ def test_a_parse_only_check_before_running_the_script_passes(tmp_path: Path, com
     result = _gate(tmp_path, repo, command)
 
     assert result.get("decision") is None
+
+
+def _pre_tool(repo: Path, command: str) -> dict:
+    return pre_tool.run({"session_id": "parse-only", "cwd": str(repo), "tool_name": "Bash", "tool_input": {"command": command}})
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param('for s in safe.sh action.sh; do bash -n "$s"; done', id="documented-syntax-loop"),
+    pytest.param('bash -n "$S"', id="bash-n"),
+    pytest.param("sh -n $S", id="sh-n-unquoted"),
+    pytest.param('sh -xn "$S"', id="n-in-a-short-option-cluster"),
+])
+def test_a_parse_only_run_of_a_script_path_held_in_a_variable_passes(tmp_path: Path, command: str) -> None:
+    repo = _scripted_repo(tmp_path)
+
+    response = _pre_tool(repo, command)
+
+    assert response.get("decision") is None, response.get("reason")
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param('bash "$S"', id="plain-run"),
+    pytest.param('bash -x "$S"', id="traced-run"),
+    pytest.param('bash +n "$S"', id="plus-n-turns-parse-only-off"),
+])
+def test_a_run_of_a_script_path_held_in_a_variable_still_blocks(tmp_path: Path, command: str) -> None:
+    repo = _scripted_repo(tmp_path)
+
+    response = _pre_tool(repo, command)
+
+    assert response.get("decision") == "block"
 
 
 @pytest.mark.parametrize("command", [

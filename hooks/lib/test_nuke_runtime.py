@@ -136,6 +136,25 @@ def test_dry_run_lists_every_artifact_and_writes_nothing(home, capsys) -> None:
     assert _tree(home) == before
 
 
+def _role_copy(role: Path, _installed: Path) -> None:
+    _write(role, 'name = "adw-test-writer"\n')
+
+
+def _role_link(role: Path, installed: Path) -> None:
+    _link(role, installed / "hosts/codex/agents/adw-test-writer.toml")
+
+
+@pytest.mark.parametrize("place_role", [
+    pytest.param(_role_copy, id="copied-role"),
+    pytest.param(_role_link, id="older-linked-role"),
+])
+def test_dry_run_lists_the_codex_role_file_for_removal(home, capsys, place_role) -> None:
+    role = home / ".codex/agents/adw-test-writer.toml"
+    place_role(role, home / ".adw/install" / NAME)
+    assert nuke_runtime.main(["--dry-run"], steps=_steps(home)) == 0
+    assert f"remove {role}" in capsys.readouterr().out.splitlines()
+
+
 def test_without_yes_prints_the_list_and_refuses(home, capsys) -> None:
     before = _tree(home)
     assert nuke_runtime.main([], steps=_steps(home)) == 2

@@ -36,6 +36,7 @@ MANAGED_LINKS = frozenset({
     ".codex/skills/agent-discipline-watcher", ".claude/skills/agent-discipline-watcher",
     ".config/claude-code/skills/agent-discipline-watcher",
     ".omp/agent/extensions/agent-discipline-watcher", ".agents/skills/agent-discipline-watcher",
+    ".codex/agents/adw-test-writer.toml",
 })
 
 
@@ -148,7 +149,10 @@ def _selected_paths(home: Path, hosts: tuple[str, ...], claude_root: Path | None
         Path(".local/bin/agent-discipline"), Path(".local/bin/adw-cli"),
     ]
     if "codex" in hosts:
-        paths.extend(map(Path, (".codex/config.toml", ".codex/hooks.json", ".codex/skills/agent-discipline-watcher", ".adw/runtime/codex")))
+        paths.extend(map(Path, (
+            ".codex/config.toml", ".codex/hooks.json", ".codex/skills/agent-discipline-watcher", ".adw/runtime/codex",
+            ".codex/agents/adw-test-writer.toml",
+        )))
     if "omp" in hosts:
         paths.extend(map(Path, (".omp/agent/settings.json", ".omp/agent/extensions/agent-discipline-watcher", ".agents/skills/agent-discipline-watcher")))
     if "claude" in hosts:
