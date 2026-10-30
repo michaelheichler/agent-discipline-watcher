@@ -172,7 +172,7 @@ def _scan_descriptor(descriptor: int, path: Path, cfg: dict) -> tuple[list[dict]
     raw = os.read(descriptor, max(scan_input.CONTENT_SAMPLE_BYTES, limit + 1))
     if scan_input.is_binary_content(path, raw):
         return [], []
-    if len(raw) > limit or b"\0" in raw[:8192]:
+    if len(raw) > limit or b"\0" in raw[:scan_input.CONTENT_SAMPLE_BYTES]:
         return split_fallback(path, _held_fallback(descriptor, path), cfg)
     text = raw.decode("utf-8", errors="replace")
     return split_committed(path, scan_all(str(path), text, cfg), cfg, text)

@@ -33,8 +33,9 @@ try:
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from .findings import spanning
     from .markup import (
-        MARKDOWN_EXTS,
+        CONFIG_EXTS,
         MIXED_LANGUAGE_EXTS,
+        PROSE_EXTS,
         TEMPLATE_EXPRESSION_RE,
         CommentSource,
         RegionKind,
@@ -82,8 +83,9 @@ except ImportError:
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
     from findings import spanning
     from markup import (
-        MARKDOWN_EXTS,
+        CONFIG_EXTS,
         MIXED_LANGUAGE_EXTS,
+        PROSE_EXTS,
         TEMPLATE_EXPRESSION_RE,
         CommentSource,
         RegionKind,
@@ -112,8 +114,6 @@ MINUS_AS_DASH_RE = re.compile(r"(?<=[^\W\d_])[ \t]*" + chr(0x2212) + r"[ \t]*(?=
 PROSE_DASH_RE = re.compile(r"(?:(?<=\s)|(?<=[^\W\d_]))" + BAD_DASH_RE.pattern[:-1] + chr(0x2212) + r"](?=\s|[^\W\d_])")
 # Because a non-breaking hyphen inside a word joins a compound.
 WORD_JOIN_HYPHEN_RE = re.compile(r"(?<=\w)" + chr(0x2011) + r"(?=\w)")
-PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
-CONFIG_EXTS = {".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"}
 CONFIG_BASENAMES = frozenset({
     ".pylintrc", ".editorconfig", ".npmrc", ".yarnrc", ".gitignore", ".gitattributes",
     ".dockerignore", ".flake8", ".coveragerc", ".prettierrc", ".eslintrc", ".babelrc",

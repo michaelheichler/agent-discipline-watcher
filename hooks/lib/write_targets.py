@@ -5,7 +5,7 @@ import os
 from pathlib import PurePosixPath
 from typing import NamedTuple
 
-from lib.archive_commands import git_apply_read, patch_plan, stdin_source, tar_read, unzip_read
+from lib.archive_commands import git_apply_read, home_expanded, patch_plan, stdin_source, tar_read, unzip_read
 from lib.archive_members import ArchiveRead
 from lib.flag_outputs import FLAG_WRITERS, flag_targets
 from lib.inplace_targets import sed_reads_only, sed_script_known
@@ -430,7 +430,7 @@ def _read_targets(read: ArchiveRead | None) -> GatedTargets:
 
 
 def _patch_targets(raw: list[str]) -> GatedTargets:
-    plan = patch_plan([_bare(token) for token in _without_redirects(raw)], stdin_source(raw))
+    plan = patch_plan([_bare(home_expanded(token)) for token in _without_redirects(raw)], stdin_source(raw))
     return UNRESOLVED if plan is None else GatedTargets(plan.paths, False, archive=plan.read)
 
 
@@ -491,7 +491,7 @@ def _is_directory_pathspec(path: str) -> bool:
 
 def _archive_targets(verb: str, raw: list[str]) -> GatedTargets:
     """Members listed before the run, because an archive member may be a test."""
-    words = [_bare(token) for token in _without_redirects(raw)]
+    words = [_bare(home_expanded(token)) for token in _without_redirects(raw)]
     if verb == "tar":
         if not _tar_extracts(words) or _tar_to_stdout(words):
             return NO_TARGETS

@@ -122,7 +122,7 @@ def test_text_is_not_exempted_by_an_asset_name(
     }, config)["decision"] == "block"
 
 
-@pytest.mark.parametrize("name", ["module.py", "notes.md", "page.svg", "module.newlang"])
+@pytest.mark.parametrize("name", ["module.py", "notes.md", "page.svg", "module.newlang", "README"])
 def test_binary_bytes_do_not_exempt_text_paths(
     tmp_path: Path, config: dict, name: str,
 ) -> None:
@@ -147,14 +147,14 @@ def test_missing_asset_does_not_become_a_success(tmp_path: Path, config: dict) -
 
 
 @pytest.mark.parametrize("name, content", [
-    ("photo.JPG", b"\xff\xd8\xff\xe0\0\x10JFIF\0"),
-    ("baseline.gif", b"GIF89a"),
-    ("document.pdf", b"%PDF-1.7\n"),
-    ("archive.zip", b"PK\x03\x04"),
-    ("font.woff2", b"wOF2"),
-    ("sound.wav", b"RIFF\0\0\0\0WAVE"),
-    ("video.mp4", b"\0\0\0\x18ftypmp42"),
-    ("data.bin", b"\0\xff\x01"),
+    pytest.param("photo.JPG", b"\xff\xd8\xff\xe0\0\x10JFIF\0", id="jpeg"),
+    pytest.param("baseline.gif", b"GIF89a", id="gif"),
+    pytest.param("document.pdf", b"%PDF-1.7\n", id="pdf"),
+    pytest.param("archive.zip", b"PK\x03\x04", id="zip"),
+    pytest.param("font.woff2", b"wOF2", id="woff2"),
+    pytest.param("sound.wav", b"RIFF\0\0\0\0WAVE", id="wav"),
+    pytest.param("video.mp4", b"\0\0\0\x18ftypmp42", id="mp4"),
+    pytest.param("data.bin", bytes(range(256)) * 32, id="dense-bytes-without-signature"),
 ])
 def test_binary_formats_skip_all_file_scan_paths(
     tmp_path: Path, config: dict, name: str, content: bytes,
@@ -172,6 +172,23 @@ def test_binary_formats_skip_all_file_scan_paths(
         "cwd": str(repo), "tool_name": "Write",
         "tool_input": {"file_path": name},
     }, config) == {}
+
+
+EXECUTABLE_SIGNATURES = {"claude": b"\xcf\xfa\xed\xfe\x0c\x00\x00\x01", "2.1.312": b"\xcf\xfa\xed\xfe\x0c\x00\x00\x01",
+                         "codex": b"\x7fELF\x02\x01\x01\0"}
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param("claude", id="extensionless-macho"),
+    pytest.param("2.1.312", id="version-named-macho"),
+    pytest.param("codex", id="extensionless-elf"),
+])
+def test_an_installed_executable_skips_the_post_write_scan(tmp_path: Path, config: dict, name: str) -> None:
+    (tmp_path / name).write_bytes(EXECUTABLE_SIGNATURES[name] + bytes(range(256)) * 32)
+    payload = {"cwd": str(tmp_path), "tool_name": "Write", "tool_input": {"file_path": name}}
+
+    assert record.run(payload, config) == {}
+    assert scan_input.fallback_findings(tmp_path / name) == []
 
 
 def test_append_does_not_count_binary_newlines(tmp_path: Path, config: dict) -> None:

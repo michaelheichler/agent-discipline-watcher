@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.32.0 (2026-10-30)
+
+### Changed in the test gate
+
+- **A file name alone no longer decides.** The gate used to block any write to a file named like `test_*.py`, `*.spec.ts`, or `*_test.go`, even an empty file or a production module such as `hooks/lib/test_units.py`. ADW now reads the text that lands. `hooks/lib/declared_tests.py` knows the test syntax of Python, JavaScript and TypeScript, Go, Rust, Ruby, Java, Kotlin, Scala, Groovy, C#, PHP, Swift, Elixir, C and C++, Dart, Bats, shunit2, Lua busted, and Jest snapshots. A test-named file without a declared test passes, and a test written into it blocks. In Python, a test framework import, a `Test` class, a fixture, a pytest hook, a star import, a pytest setting, or a `test_` function with an assert counts as a declaration.
+- **A test under an innocent name now blocks (stricter).** `src/checks.ts` with `describe(...)` or `pkg/util.go` with `func TestX(t *testing.T)` passed before, because neither name looked like a test. Python and Rust source with inline tests keeps the unit by unit check, so an edit beside an unchanged inline test still passes.
+- **A test folder stays evidence.** Any file with text under `tests/`, `test/`, `spec/`, `__tests__/`, `testdata/`, `__snapshots__/`, `__fixtures__/`, or `__mocks__/` still blocks, because a helper or fixture there serves tests without declaring one. `conftest.py` blocks by name, because pytest loads it as a plugin. An empty `__init__.py` passes. Documents stay exempt, except a `.txt` file in `testdata/`, `__snapshots__/`, `__fixtures__/`, or `__mocks__/`, because there it holds expected output.
+- **Shell text counts only when it is what lands.** For `printf 'x=1' > test_b.py; cat real_test >> test_b.py`, the gate used to read only the first literal. A literal now counts only when no other part of the command writes or names its path, so `ed` and `ex` on the same file count too, and an append counts as the old text plus the new text. In every other case the name and folder rule decides, as for a delete or a copy.
+
+### Fixed in the shell gates
+
+- **An archive under `~` resolves.** `tar -xzf ~/x/pkg.tgz -C ~/x/out` blocked as "Shell command may change tests it does not name", also with every member named, because the archive reader treated any `~` as unknown. An unquoted leading `~`, `$HOME`, or `${HOME}` and a double-quoted `"$HOME/..."` now expand to the home folder before the gate lists the members, as bash does. A single-quoted `'~/x'`, `--file=~/x`, `~user`, other variables, and globs stay unknown, because bash does not expand them either.
+
+### Fixed in file classification
+
+- **ADW reads binaries by their content.** A file counted as binary only when its suffix stood on a list of 70 asset suffixes, so the Claude executable `versions/2.1.312` read as text, and its NUL bytes drew `unscannable_file` with the demand to make it UTF-8. ADW now reads format signatures (ELF, Mach-O, PE, wasm, PNG, JPEG, zip, gzip, xz, zstd, 7z, rar, SQLite, and more, plus RIFF and MP4 containers). Without a signature, a file counts as binary only when more than a third of its content is strange characters, the cut that `perldoc -f -X` documents for Perl's `-B` test. An extensionless file needs an executable signature (ELF, Mach-O, or PE) and that share, and the Claude, Codex, bun, and `ls` executables measure between 0.64 and 0.99. A source, prose, config, or script suffix and a `#!` script never count as binary, as in 0.31.1, so a forged header with padding cannot make agent text skippable, and a NUL byte in text still blocks as unscannable.
+- **Wrong and duplicated values are gone.** `.kotlin`, which no Kotlin file uses, became `.kt` and `.kts`, so Kotlin comments now reach the narration check. The text suffix sets live once in `markup.py`, and the bare `8192` in two places reads `CONTENT_SAMPLE_BYTES`.
+
 ## 0.31.1 (2026-10-29)
 
 ### Fixed in the Codex install

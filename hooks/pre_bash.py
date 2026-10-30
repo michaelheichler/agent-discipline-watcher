@@ -5,6 +5,7 @@ import operator
 import os
 import re
 import time
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from lib.shell_parse import (
     _bare, _basename, _command_word_index, _content_words, _is_quoted,
     _leading_assignments, _literal_contents, _logical_lines, _pipeline_groups, _redirect_paths,
     _segment_text, _segments, _words, _journal_words, command_expansions, executable_text, expansion_memo,
-    heredoc_events, interpreter_invocation, line_segments, write_targets,
+    heredoc_events, interpreter_invocation, line_segments, literal_writes, write_targets,
 )
 from lib.shell_expansion import Expansions
 from lib.shell_lines import shell_pass
@@ -58,6 +59,8 @@ CAP_VARS = frozenset({
 NO_VERIFY_FLAGS = frozenset({"--no-verify", "-n"})
 STATE_DELETE_VERBS = frozenset({"rm", "unlink", "shred"})
 STATE_TARGET_RE = re.compile(r"\.adw\b|\.agent-discipline\b|agent-discipline/(?:state|ledger)")
+# Because a redirect can sit glued to a name, as in f<<<w.
+REDIRECT_SPLIT_RE = re.compile(r"[<>&|]+")
 
 WRITE_OR_EDIT_ACTION = "Use the Write or Edit tool for file content."
 SAVE_THEN_RUN_ACTION = "Save the script with Write or Edit, then run the file."
@@ -200,20 +203,48 @@ def _test_findings(payload: dict, cfg: dict) -> list[dict]:
         return []
     cwd = Path(payload.get("cwd") or ".")
     command = _command(payload)
-    payload_start = reachable_directories(command, cwd)
+    targets = _scan_targets(command)
+    texts, unresolved, seen = _gathered(targets, cwd, reachable_directories(command, cwd))
+    appended = {write.path for target in targets for write in literal_writes(target) if write.append}
+    changes = [_landing(path, text, cwd, seen, path in appended) for path, text in texts.items()]
+    return tests_policy.findings(gate, changes, unresolved)
+
+
+def _gathered(targets: list[str], cwd: Path, payload_start: Directories) -> tuple[dict[str, str | None], list[str], Counter[Path]]:
+    """Writes and names counted apart, because a literal lands only when neither sees its path twice."""
     texts: dict[str, str | None] = {}
     unresolved: list[str] = []
-    for position, target in enumerate(_scan_targets(command)):
+    writes: Counter[Path] = Counter()
+    named: Counter[Path] = Counter()
+    for position, target in enumerate(targets):
         texts.update(_shell_targets(target, cwd))
         scope = Scope(cwd, OUTER_START if position == 0 else payload_start, outer=position == 0)
         paths, unnamed = gated_paths(target, scope)
+        writes.update(payloads.resolved_path(path, cwd) for path in paths)
+        named.update(_named_paths(target, scope))
         texts.update({path: texts.get(path) for path in paths})
         unresolved.extend(unnamed)
-    changes = [
-        tests_policy.PendingChange(path, tests_policy.read_before(payloads.resolved_path(path, cwd)), text)
-        for path, text in texts.items()
-    ]
-    return tests_policy.findings(gate, changes, unresolved)
+    return texts, unresolved, writes | named
+
+
+def _named_paths(command: str, scope: Scope) -> Counter[Path]:
+    """Under every folder a segment may run in, because ed or a generator rewrites a file it only names."""
+    named: Counter[Path] = Counter()
+    segments = line_segments(command)
+    folders = segment_directories(segments, scope.directories, command_expansions(command, scope.cwd).path)
+    for segment, places in zip(segments, folders):
+        words = sorted({part for word in segment for part in REDIRECT_SPLIT_RE.split(_bare(word)) if part})
+        named.update({payloads.resolved_path(path, scope.cwd) for path in joined_paths(words, places or OUTER_START)})
+    return named
+
+
+def _landing(path: str, text: str | None, cwd: Path, writes: Counter[Path], append: bool) -> tests_policy.PendingChange:
+    """Text kept for a lone write only, because a later append, copy, or edit lands other bytes than the literal."""
+    resolved = payloads.resolved_path(path, cwd)
+    before = tests_policy.read_before(resolved)
+    if text is None or writes[resolved] > 1:
+        return tests_policy.PendingChange(path, before, None)
+    return tests_policy.PendingChange(path, before, (before or "") + text if append else text)
 
 
 def _scan_targets(command: str) -> list[str]:

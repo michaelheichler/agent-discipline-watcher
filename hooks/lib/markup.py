@@ -290,6 +290,16 @@ def _blank_token_span(lines: list[str], span: TokenSpan) -> None:
 
 
 MARKDOWN_EXTS = frozenset({".md", ".markdown", ".mdx", ".mdc"})
+PROSE_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".text", ".html", ".htm", ".xml", ".svg", ".tex", ".adoc", ".asciidoc", ".org", ".typ"}
+CONFIG_EXTS = frozenset({".json", ".jsonc", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf", ".env", ".properties"})
+DATA_TEXT_EXTS = frozenset({".json", ".jsonl", ".csv", ".tsv", ".lock", ".map", ".svg", ".xml", ".sql"})
+COMMENTABLE_EXTS = frozenset({
+    ".c", ".cc", ".cpp", ".cxx", ".cs", ".go", ".h", ".hpp", ".java", ".js",
+    ".jsx", ".kt", ".kts", ".mjs", ".php", ".rb", ".rs", ".sh", ".swift", ".ts",
+    ".tsx", ".vue", ".svelte",
+})
+# Because a host runs these as source, a stray byte must not make them skippable.
+SCRIPT_EXTS = frozenset({".py", ".pyi", ".bash", ".zsh", ".ksh", ".fish", ".pl", ".pm", ".lua", ".ps1", ".css", ".scss"})
 FRONTMATTER_RE = re.compile(r"\A-{3}[ \t]*\n.*?^(?:-{3}|\.{3})[ \t]*$", re.DOTALL | re.MULTILINE)
 
 

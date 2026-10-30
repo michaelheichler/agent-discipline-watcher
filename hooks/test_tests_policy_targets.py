@@ -113,10 +113,8 @@ def test_a_tests_dir_outside_the_project_blocks(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("relative", [
-    "pkg/foo_test.go",
     "test/foo.js",
     "src/test/java/FooTest.java",
-    "src/BarTests.java",
     "spec/foo_spec.rb",
     "conftest.py",
     "tests/fixture.json",
@@ -124,6 +122,26 @@ def test_a_tests_dir_outside_the_project_blocks(tmp_path: Path) -> None:
 def test_deny_blocks_a_test_file_of_another_layout(tmp_path: Path, relative: str) -> None:
     cwd = project(tmp_path, tests="deny")
     assert blocked_by(write_from(cwd, cwd / relative, NEUTRAL), tests_policy.RULE)
+
+
+@pytest.mark.parametrize(("relative", "content"), [
+    pytest.param("pkg/foo_test.go", 'package foo\n\nimport "testing"\n\nfunc TestValue(t *testing.T) {}\n', id="go"),
+    pytest.param("src/BarTests.java", "import org.junit.jupiter.api.Test;\n\nclass BarTests {\n    @Test\n    void adds() {}\n}\n",
+                 id="java"),
+])
+def test_deny_blocks_a_declared_test_under_a_test_name(tmp_path: Path, relative: str, content: str) -> None:
+    cwd = project(tmp_path, tests="deny")
+    assert blocked_by(write_from(cwd, cwd / relative, content), tests_policy.RULE)
+
+
+@pytest.mark.parametrize(("relative", "content"), [
+    pytest.param("pkg/foo_test.go", "package foo\n\nconst Value = 1\n", id="go"),
+    pytest.param("src/BarTests.java", "class BarTests {\n    static final int VALUE = 1;\n}\n", id="java"),
+    pytest.param("hooks/lib/test_source.py", "import re\nPATTERN = re.compile('x')\n", id="python-module"),
+])
+def test_deny_passes_code_without_a_test_under_a_test_name(tmp_path: Path, relative: str, content: str) -> None:
+    cwd = project(tmp_path, tests="deny")
+    assert not blocked_by(write_from(cwd, cwd / relative, content), tests_policy.RULE)
 
 
 @pytest.mark.parametrize("relative", [

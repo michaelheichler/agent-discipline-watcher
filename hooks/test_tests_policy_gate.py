@@ -66,15 +66,24 @@ def test_deny_blocks_an_edit_that_removes_a_test(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(("path", "text"), [
-    ("tests/helpers.py", "VALUE = 1\n"),
-    ("pkg/total_test.py", ""),
-    ("web/cart.spec.ts", ""),
-    ("web/cart.test.tsx", ""),
-    ("src/lib.rs", "#[cfg(test)]\nmod checks {}\n"),
-    ("src/lib.rs", "#[test]\nfn adds() { assert_eq!(2, 1 + 1); }\n"),
+    pytest.param("tests/helpers.py", "VALUE = 1\n", id="helper-in-tests"),
+    pytest.param("pkg/total_test.py", TEST_BODY, id="python-test-name"),
+    pytest.param("web/cart.spec.ts", "describe('cart', () => {})\n", id="spec-ts-name"),
+    pytest.param("web/cart.test.tsx", "import { test } from 'vitest'\n", id="test-tsx-name"),
+    pytest.param("src/lib.rs", "#[cfg(test)]\nmod checks {}\n", id="rust-cfg-test-module"),
+    pytest.param("src/lib.rs", "#[test]\nfn adds() { assert_eq!(2, 1 + 1); }\n", id="rust-loose-test"),
 ])
 def test_common_test_shapes_count_as_tests(path: str, text: str) -> None:
     assert tests_policy.touches_tests(tests_policy.PendingChange(path, None, text))
+
+
+@pytest.mark.parametrize("path", [
+    pytest.param("pkg/total_test.py", id="python-test-name"),
+    pytest.param("web/cart.spec.ts", id="spec-ts-name"),
+    pytest.param("web/cart.test.tsx", id="test-tsx-name"),
+])
+def test_an_empty_file_under_a_test_name_is_no_test(path: str) -> None:
+    assert not tests_policy.touches_tests(tests_policy.PendingChange(path, None, ""))
 
 
 def test_a_rust_module_without_tests_is_production_code() -> None:
@@ -138,6 +147,36 @@ def test_a_shell_delete_of_a_test_file_is_blocked(tmp_path: Path) -> None:
     cwd = project(tmp_path, tests="deny")
     (cwd / "test_total.py").write_text(TEST_BODY, encoding="utf-8")
     assert blocked_by(shell(cwd, "rm test_total.py"), tests_policy.RULE)
+
+
+def shell_project(tmp_path: Path) -> Path:
+    cwd = project(tmp_path, tests="deny")
+    (cwd / "other").write_text(TEST_BODY, encoding="utf-8")
+    (cwd / "test_open.py").write_text("def test_total():\n", encoding="utf-8")
+    (cwd / "test_plain.py").write_text("x = 1\n", encoding="utf-8")
+    return cwd
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("printf 'x=1' > test_b.py; cat other >> test_b.py", id="later-append"),
+    pytest.param("printf 'x=1' > test_c.py; cp other test_c.py", id="later-copy"),
+    pytest.param("printf 'x=1' > test_a.py; ed -s test_a.py <<< w", id="later-ed"),
+    pytest.param("printf 'x=1' > test_m.py; ex -s test_m.py<<<w", id="later-ex-with-glued-redirect"),
+    pytest.param("mkdir -p sub; printf 'x=1' > sub/test_k.py; cd sub && ed -s test_k.py <<< w", id="later-ed-in-subfolder"),
+    pytest.param("printf 'def helper(a,b): pass' > tests/helpers.py", id="helper-into-tests"),
+    pytest.param("echo '    assert total([1]) == 1' >> test_open.py", id="append-completes-a-test"),
+])
+def test_deny_blocks_a_shell_write_whose_landing_text_may_be_a_test(tmp_path: Path, command: str) -> None:
+    assert blocked_by(shell(shell_project(tmp_path), command), tests_policy.RULE)
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("printf 'x=1' > test_d.py", id="lone-literal"),
+    pytest.param("printf 'x=1' > test_j.py && echo done", id="lone-literal-then-echo"),
+    pytest.param("echo 'y = 2' >> test_plain.py", id="append-to-plain-code"),
+])
+def test_deny_passes_a_lone_shell_literal_that_declares_no_test(tmp_path: Path, command: str) -> None:
+    assert not blocked_by(shell(shell_project(tmp_path), command), tests_policy.RULE)
 
 
 def test_the_test_writer_agent_passes_the_shell_gate(tmp_path: Path) -> None:

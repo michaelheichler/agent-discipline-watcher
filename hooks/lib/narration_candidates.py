@@ -13,7 +13,7 @@ try:
         opens_with_narration,
     )
     from .judge import Candidate
-    from .markup import CommentSource, comment_scan_source, extract_regions
+    from .markup import COMMENTABLE_EXTS, MIXED_LANGUAGE_EXTS, CommentSource, comment_scan_source, extract_regions
 except ImportError:
     from comment_rules import (
         _comment_body_lines,
@@ -24,14 +24,7 @@ except ImportError:
         opens_with_narration,
     )
     from judge import Candidate
-    from markup import CommentSource, comment_scan_source, extract_regions
-
-
-COMMENTABLE_EXTS = frozenset({
-    ".c", ".cc", ".cpp", ".cxx", ".cs", ".go", ".h", ".hpp", ".java", ".js",
-    ".jsx", ".kotlin", ".mjs", ".php", ".rb", ".rs", ".sh", ".swift", ".ts",
-    ".tsx", ".vue", ".svelte",
-})
+    from markup import COMMENTABLE_EXTS, MIXED_LANGUAGE_EXTS, CommentSource, comment_scan_source, extract_regions
 
 
 def _is_candidate(text: str) -> bool:
@@ -40,8 +33,8 @@ def _is_candidate(text: str) -> bool:
 
 
 def _comment_candidates(path: str, text: str) -> list[Candidate]:
-    """Extract judge candidates from masked non-Python comments without treating strings as comments."""
-    source = CommentSource(path, text, extract_regions(path, text), PurePath(path.lower()).suffix in {".html", ".htm", ".xml", ".svg", ".vue", ".svelte"})
+    """Masked first, because a comment marker inside a string is no comment."""
+    source = CommentSource(path, text, extract_regions(path, text), PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS)
     comment_text = _normalize_block_comments(comment_scan_source(source), path)
     return [
         Candidate(path, number, comment)

@@ -174,6 +174,35 @@ def test_deny_blocks_a_command_that_may_write(tmp_path: Path, command: str, rule
     assert blocked_by(shell(denied_repo(tmp_path), command), rule)
 
 
+@pytest.fixture
+def home_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    (home / "out").mkdir(parents=True)
+    write_tar(home / "pkg.tgz", ("package/a.js", "package/b.js"))
+    write_tar(home / "tested.tgz", ("tests/test_x.py",))
+    monkeypatch.setenv("HOME", str(home))
+    return denied_repo(tmp_path)
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("tar -xzf ~/pkg.tgz -C ~/out", id="tilde"),
+    pytest.param('tar -xzf "$HOME/pkg.tgz" -C "$HOME/out"', id="double-quoted-home-variable"),
+    pytest.param("tar -xzf ${HOME}/pkg.tgz -C ${HOME}/out", id="braced-home-variable"),
+    pytest.param("tar -xzf ~/pkg.tgz -C ~/out package/a.js", id="tilde-with-named-member"),
+])
+def test_deny_passes_a_home_archive_of_plain_members(home_repo: Path, command: str) -> None:
+    assert not blocked_by(shell(home_repo, command), tests_policy.RULE)
+
+
+@pytest.mark.parametrize("command", [
+    pytest.param("tar -xzf ~/tested.tgz -C ~/out", id="tilde-test-member"),
+    pytest.param("tar -xzf '~/pkg.tgz' -C scratch", id="single-quoted-tilde"),
+    pytest.param("tar --file=~/pkg.tgz -x -C scratch", id="tilde-after-equals"),
+])
+def test_deny_blocks_a_home_archive_with_a_test_or_a_kept_tilde(home_repo: Path, command: str) -> None:
+    assert blocked_by(shell(home_repo, command), tests_policy.RULE)
+
+
 def test_a_project_yaml_module_makes_a_yaml_import_untrusted(tmp_path: Path) -> None:
     cwd = denied_repo(tmp_path)
     (cwd / "yaml.py").write_text("__version__ = 1\n", encoding="utf-8")

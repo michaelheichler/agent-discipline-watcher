@@ -9,13 +9,14 @@ from pathlib import Path, PurePath
 from typing import NamedTuple
 
 try:
-    from . import agent_types, host, payloads, test_units
+    from . import agent_types, declared_tests, host, payloads, test_units
     from .findings import Finding
     from .markup import MARKDOWN_EXTS
     from .protected import authorized
     from .regular_file import read_regular_text
 except ImportError:
     import agent_types
+    import declared_tests
     import host
     import payloads
     import test_units
@@ -30,7 +31,11 @@ TEST_WRITER_TYPES = frozenset({TEST_WRITER, "agent-discipline-watcher:" + TEST_W
 RULE = "test_write_gate"
 WINDOW_KEY = "tests_allow_until"
 WINDOW_HINT = "adw-config tests allow --for 30m"
-TEST_DIRS = frozenset({"tests", "__tests__", "test", "spec"})
+# Because a .txt here is expected output, the document exemption stops at these.
+FIXTURE_DIRS = frozenset({"testdata", "__snapshots__", "__fixtures__", "__mocks__"})
+TEST_DIRS = frozenset({"tests", "__tests__", "test", "spec"}) | FIXTURE_DIRS
+# Kept by name, because pytest loads every conftest.py as a plugin.
+CONFTEST = "conftest.py"
 # Exempt, because docs/spec/design.md is a document, not a test.
 DOC_EXTS = MARKDOWN_EXTS | {".rst", ".txt", ".adoc"}
 PROJECT_MARKER = ".git"
@@ -40,7 +45,7 @@ _TEST_NAME_RE = re.compile(
     r"^(?:test_.+\.py|.+_test\.py|conftest\.py|.+_test\.go|.+_spec\.rb"
     r"|.+\.(?:test|spec)\.[cm]?[jt]sx?)$"
 )
-_JAVA_TEST_RE = re.compile(r"^.+Tests?\.java$")
+_JAVA_TEST_RE = re.compile(r"^.+(?:Tests?|IT|Spec)\.(?:java|kt|kts|groovy|scala)$")
 AGENT_ACTION = (
     f"Delegate this test change to the {TEST_WRITER} agent. If the user wants it"
     f" done here, ask them to run `{WINDOW_HINT}` in a terminal."
@@ -78,10 +83,9 @@ def _judged_parts(path: str, root: str | None) -> tuple[str, ...]:
 
 
 def is_test_path(path: str, root: str | None = None) -> bool:
-    """Match by name, because a new empty file has no test yet."""
+    """Name and folder only, so it serves where the landing text is unknown."""
     name = PurePath(path).name
-    in_test_dir = any(part in TEST_DIRS for part in _judged_parts(path, root))
-    if in_test_dir and PurePath(name.lower()).suffix not in DOC_EXTS:
+    if in_test_dir(path, root) and not _document(path, root):
         return True
     return bool(_TEST_NAME_RE.match(name.lower()) or _JAVA_TEST_RE.match(name))
 
@@ -96,9 +100,33 @@ def inline_test_bodies(path: str, text: str | None) -> tuple[str, ...]:
     return tuple(bodies)
 
 
+def in_test_dir(path: str, root: str | None = None) -> bool:
+    return any(part in TEST_DIRS for part in _judged_parts(path, root))
+
+
+def _held_by_suite(change: PendingChange, root: str | None) -> bool:
+    """Any text counts, because a helper or fixture in a test folder serves tests without declaring one."""
+    name = PurePath(change.path).name
+    texts = [side for side in (change.before, change.after) if side and side.strip()]
+    suite = in_test_dir(change.path, root) and not _document(change.path, root)
+    return bool(texts) and (suite or name == CONFTEST)
+
+
+def _document(path: str, root: str | None) -> bool:
+    fixture = any(part in FIXTURE_DIRS for part in _judged_parts(path, root))
+    return PurePath(path.lower()).suffix in DOC_EXTS and not fixture
+
+
 def touches_tests(change: PendingChange, root: str | None = None) -> bool:
-    """Compare both sides, since deleting a test also changes it."""
-    if is_test_path(change.path, root):
+    """Because a declared test is the proof, a name decides only where no text shows what lands."""
+    if change.after is None and is_test_path(change.path, root):
+        return True
+    if change.before == change.after:
+        return False
+    if _held_by_suite(change, root):
+        return True
+    declared = any(declared_tests.declares_tests(change.path, side) for side in (change.before, change.after) if side)
+    if declared and (is_test_path(change.path, root) or test_units.language_of(change.path) is None):
         return True
     before = inline_test_bodies(change.path, change.before)
     return before != inline_test_bodies(change.path, change.after)

@@ -1,6 +1,8 @@
 """Reads tar, unzip, patch and git apply arguments into an ArchiveRead, because only a source and a landing folder known before the run let the gate list the members."""
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -26,6 +28,8 @@ UNSAFE_CHARS = frozenset("$`*?[~{")
 MEMBER_UNKNOWN_CHARS = frozenset("$`~{\\")
 TAR_LOOSE_MATCHING = ("--files-from", "--no-anchored", "--ignore-case", "--null", "--exclude-from")
 GIT_APPLY_VALUE_FLAGS = frozenset({"--directory", "--include", "--exclude", "-p", "-C"})
+UNQUOTED_HOME_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
+QUOTED_HOME_RE = re.compile(r'^"(?:\$HOME|\$\{HOME\})(?=/|")')
 
 
 class PatchPlan(NamedTuple):
@@ -39,10 +43,19 @@ def stdin_source(args: list[str]) -> str | None:
     """The file behind a plain < redirect, because a piped archive has no file the gate could list."""
     for position, token in enumerate(args):
         if token == "<" and position + 1 < len(args):
-            return _plain(args[position + 1])
+            return _plain(home_expanded(args[position + 1]))
         if token.startswith("<") and not token.startswith(("<<", "<(")) and len(token) > 1:
-            return _plain(token[1:])
+            return _plain(home_expanded(token[1:]))
     return None
+
+
+def home_expanded(token: str) -> str:
+    """Raw token only, because bash expands no quoted tilde and no tilde after an equals sign."""
+    for pattern, lead in ((UNQUOTED_HOME_RE, ""), (QUOTED_HOME_RE, '"')):
+        found = pattern.match(token)
+        if found:
+            return lead + os.path.expanduser("~") + token[found.end():]
+    return token
 
 
 def _plain(word: str) -> str | None:
