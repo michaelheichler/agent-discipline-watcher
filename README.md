@@ -1,166 +1,30 @@
-# Agent Discipline Watcher
+<p align="center"><img src="adw-logo.svg" alt="Agent Discipline Watcher" width="480"></p>
 
-Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.32.0**.
+Agent Discipline Watcher (ADW) checks agent-written prose, comments, tests, and commits, then blocks or reports each finding with one rule and one line.
 
-The watcher reads what an agent writes and names what is wrong with it. Every finding cites one rule and one line, so you can open the file and disagree. It never returns a verdict on a document, and it never answers whether a model wrote something.
+Current release: **0.32.0**.
 
-## Three layers
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Pylint](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml/badge.svg)](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml)
+[![Python 3.11 or newer](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
-**Regex.** 98 patterns run on every write. Because this layer is deterministic and asks no model to release a finding, it is the one that decides the gate.
+## What it does
 
-**Meaning.** Off by default. After each prose write, the watcher embeds every sentence and votes it against one pattern's own violating and clean neighbours. That vote calls no model. Each sentence that survives lands in the session journal as a `pattern` row with its rule, line, and text. A model reviewer judges those rows later. It compares each row with four violating and four clean examples of its rule. This layer catches what the regex misses, because a paraphrase has no literal to match.
+ADW is a Claude Code plugin with a Python hook engine. It checks output from Claude Code, Codex, OMP (oh-my-pi), and Cowork. The host runs checks as an agent writes and when it finishes a turn. ADW never returns a verdict on a whole document and never answers whether a model wrote something.
 
-**Document.** Claude Code runs it by default through the `mixed` preset. When an agent finishes a prose file, the document reader takes the lines the agent changed this turn and a few lines around them. It names what a line rule cannot see. It names an order that hides the argument and a missing bridge between paragraphs. It also names a referent that the document uses before its introduction, and a paragraph shape repeated until it reads as a tic. The reader judges the changed lines only. The lines around them help it understand the change, and it never flags them. Each hunk carries its line range, so these questions stay meaningful on a partial view. Each note quotes the sentence it means and cites its line. The note blocks the Stop, so the agent goes back to work rather than handing you an unread draft. The Stop reviewer reads what the current turn wrote. It reads a file from an earlier turn again only after its content changes. Each path gets two review rounds at most, so a third rewrite goes back to you unread. Codex and OMP review every changed prose file without a preset. Codex sends the same changed hunks, and OMP still reads the whole file.
+A finding names the rule, file, line, and action. For example:
 
-Every rule belongs to one of three families, `prose`, `comment`, and `code`. `prose` splits further into the `punctuation` and `english` subfamilies. The legacy name `clean_code` still works, and it turns both `comment` and `code` on or off together.
-
-A prose rule speaks only where a measurement covers it, and blocks only where that measurement earned the block. The comment rules are the exception. They block on judgement, as the comment policy section explains.
-
-| rule | precision after the judge | gate |
-| --- | --- | --- |
-| `ai_closer` | 1.0000 | block |
-| `utilize` | 1.0000 | block |
-| `inflated_diction` | 0.9595 | block |
-| `vague_quantity` | 0.9406 | block |
-| `business_jargon` | 0.8507 | block |
-
-22 more rules carry exemplars and no measurement. They stay silent until measured. The precision threshold is 0.85, held in `pattern_semantic.ENFORCE_PRECISION`.
-
-The default Claude judge is Sonnet 5.5. The `mixed` preset runs it as a command handler on Stop. The handler makes one `claude -p` call per Stop with no tools and no nested hooks. An empty turn makes no call. The call also reviews the changed hunks of documents. The `luna` preset runs the same review on GPT-5.6 Luna through the subscription-backed Codex runtime. Haiku is not a preset. A Sonnet reader measured the precision numbers above, the same model family as the default judge. If the default judge changes, the numbers need a new run against it.
-
-## What the rules were measured against
-
-The rules used to have no false-positive denominator. They have one now.
-
-**60000 human sentences** from news, encyclopedia articles, and books published mostly before 1930. No model wrote any of it. A rule that fires there is either doing its job or costing you an edit, and `evals/human_hit_rate.json` records the hit rate per genre.
-
-Among the AI-tell rules, the raw regex candidate rate is at most 1 in 20000 human sentences. Structural rules such as `three_item_list` are outside that rate. Its raw regex fires on 278 of 60000 human sentences before the judge decides which candidates count. `passive_voice` is not an AI tell and carries no such budget. It fires on 1 sentence in 4, and every hit read as a genuine passive.
-
-**88148 assistant sentences** from `allenai/WildChat-4.8M` and `lmarena-ai/arena-human-preference-100k`, across 69 models including GPT-4o, o1, Claude 3.5 Sonnet, Gemini 1.5 Pro and Llama 3.1. An AI-tell rule rarely fires on human prose. Without these assistant sentences, such a rule has no violating class, and no measurement can reach it.
-
-**9256 documents that still carry their paragraph breaks**, 5000 human from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, 4256 assistant from the same two chat sets. Both sentence corpora flatten a document to one line, so no paragraph-shaped rule had anything to stand on until this one existed. It is what `uniform_paragraph_endings` measures against, and it is also why that rule stays at observe. The shape it names runs commoner in human literature than in model prose.
-
-All three corpora rebuild byte for byte. See `evals/README.md`.
-
-## How it works
-
-Known mutations go through `hooks/pre_tool.py`, which dispatches to the write, Bash, commit, or MCP gate. One process owns the permission result.
-
-Claude Code calls a hook twice around a tool, PreToolUse before the call runs and PostToolUse after it returns. The gate scans a pending write on PreToolUse, before execution. On PostToolUse it rescans the file on disk and can block continuation, and it never mutates the file. The commit gate scans a message in place and never rewrites it. It reads the index before the command runs, so a commit that stages in the same command, or that takes content from the worktree through paths, `-a`, `-i`, `-o`, or `-p`, blocks. Stage in one tool call and commit in the next.
-
-Text rules do not apply to binary files such as executables, screenshots, PDFs, fonts, archives, and audio or video files. `hooks/lib/binary_content.py` reads the first bytes for a format signature, such as ELF, Mach-O, PE, PNG, zip, or a RIFF container, so an executable without a suffix counts as binary too. Without a signature, a file counts as binary only when more than a third of its content is strange characters, the cut `perldoc -f -X` documents for Perl's `-B` test. An extensionless file needs an executable signature (ELF, Mach-O, or PE) and that share. A source, prose, config, or script suffix and a `#!` script never count as binary. An image filename alone does not exempt code or text stored under it. Commit checks classify the staged bytes, not the working copy, and PostToolUse and Stop apply the same policy before counting lines. Missing files, unreadable source, unknown file types, SVG markup, prose, and commit messages retain their existing checks.
-
-The scanner uses one region extractor for mixed-language files. Markup, attributes, embedded style, embedded script, fenced code, and visible prose keep their original host line numbers.
-
-The meaning layer runs on the `JudgeReview` route in `hooks/judge_review.py`. The route reads each edited prose file, runs the embedding vote, and writes the surviving sentences to the journal. It prints nothing and returns no decision.
-
-1. Claude Code runs the route as an async PostToolUse hook after each file edit tool. The hook has a 180 second timeout. The write never waits for it.
-2. Codex 0.156.1 accepts the `async` field but runs such a hook synchronously. Codex therefore runs the route inline, with a 10 second hook timeout and a 9 second budget inside the route. A cold model takes longer than 9 seconds to load. If the model is already on disk, Codex SessionStart and each Codex prompt start the worker in the background. Neither hook waits for the load or downloads anything. Stop releases the model at the end of each turn, and the next prompt starts it again. The vote then runs inline on a warm worker. A write that lands before the load finishes gets no vote.
-3. OMP has no async route. Its `OmpReview` prepare step runs the same vote inline and waits at most 10 seconds for the model.
-
-On Claude Code and Codex, the Stop reviewer judges the rows of the turn. OMP judges them per write in its own review.
-
-Temp files are not project output. The temp roots are `/tmp`, `/private/tmp`, `$TMPDIR`, the Python temp directory, and `/var/folders`. For a file outside the project root, a temp root means no prose, comment, or code findings. The candidate journal, the document reviewers, and the `JudgeReview` route skip it too. A project that lives under a temp root keeps the full scan for its own files. Self-protection checks run on every path. A redirect from a temp file into the project gets the full scan of the destination. If the agent wrote the temp source, a `cp`, `mv`, `install`, or `rsync` from temp gets the full scan. The next section has the details.
-
-Files under a dot-directory are not project output either. `.build`, `.claude`, `.agent`, `.story`, and every other directory whose name starts with a dot stay out of model review, while `.github` stays in. The scanner still gives such a file every deterministic finding. The candidate journal skips its document and comment rows, the Stop reviewers on Claude Code and Codex drop every queued row for it, and the OMP review leaves it out. The project root is the Git root above the working directory, or the working directory itself when no repository holds it. Only the part of a path below that root counts, so a project that itself lives under a dot-directory keeps its review. A path outside the project leaves review when any directory in it starts with a dot, such as `~/.claude/projects/x/memory/note.md`.
-
-The scanner reads every prose extension it knows, not markdown alone. Before 0.18.7 it accepted `.md` and nothing else, so an HTML or text document never reached the meaning layer. It also masks markup before splitting sentences. The meaning layer used to embed style attributes as prose.
-
-## Stop loops and imported content
-
-A gate blocks only on text the agent wrote. If the agent changed nothing, Stop does not repeat an identical block.
-
-1. **Copies.** A copy from temp lands the files its source holds, under the names the copy gives them. Files that were already in the destination are not part of it.
-2. **Authored or imported.** ADW checks who wrote the temp source. If the agent wrote it in this session, the copy counts as the agent's own. Write, Edit, and a redirect count as writes. ADW treats any other copy as imported. It stores a snapshot of the file and reports its findings once as "imported content, not yours". An imported file is not tracked for Stop, gets no pending reason, and gets no journal row. The record of authored temp paths never drops a path. At 200,000 paths, ADW refuses a new scratch write and asks for a project path or a new session.
-3. **Baselines.** An unchanged imported file never blocks, including `file_too_long` and `unscannable_file`. Before the first edit of an untracked or non-git file, ADW takes the same kind of snapshot. Git HEAD stays the baseline for tracked files.
-4. **Ownership.** After an edit, ADW diffs the baseline against the current text by units, sentences in prose and lines in code. A finding on a unit the agent changed belongs to the agent and blocks, so rewording an old offending sentence makes it the agent's own. A finding on an unchanged or moved unit stays inherited. A reflowed paragraph or a reindented block keeps its findings inherited. A paragraph or block finding becomes the agent's own when any unit in its span changes or a deletion falls inside it, and `function_too_long` and `oversized_list` only when their span grows. Joining two paragraphs or splitting one counts as a change where the break appeared or went away. In code a blank line counts toward growth, since it counts toward function length too. An edit to masked text alone, such as an HTML attribute or a link URL, leaves the prose unchanged. The commit gate compares against HEAD and every incoming parent, and it applies the same growth rule for long files as Stop. A merge makes a finding the agent's own only when no parent already holds it.
-5. **Long and large files.** Data files give no `file_too_long`. The list is `.json .jsonl .csv .tsv .lock .map .svg .xml .sql *.min.*` plus lockfiles such as `uv.lock`. Over the byte limit they give no `unscannable_file` while they are valid UTF-8. If an edit makes any other file longer than its baseline, `file_too_long` blocks over the length limit. An edit that does not add lines leaves it alone. The baseline is git HEAD, the import snapshot, or the first-seen snapshot. If the baseline had a generated marker such as `DO NOT EDIT`, the marker relieves growth.
-6. **Repeat limit.** Stop and SubagentStop fingerprint what they block on. A fingerprint that holds a finding the agent wrote this session blocks 5 identical Stops, or `stop_stall_limit` times if that is higher. The next Stop ends the turn with a system message that lists the unfixed findings and the report, and its `stop_stall` ledger row carries the family `own_finding`. A fingerprint without such a finding, for example inherited findings under `baseline: none`, blocks at most `stop_stall_limit` times, default 2. The next Stop ends the turn with one system message that names the count, the files, and the report. The ledger gets a `stop_stall` row with outcome `release`. In both cases Stop then stays silent until a file or a finding changes.
-7. **Budget.** The Stop rescan stops after 7 seconds and blocks with the number of files it did not scan. A scope tracks at most 500 files. Older files without a pending finding leave the rescan with one notice. A file with a pending finding never leaves, so a scope where every file has one grows past 500 and the 7 second budget names the files it did not reach.
-8. **Damaged state.** Every state write also writes `state.json.bak`. If `state.json` cannot be read, ADW moves it aside, restores the backup, and says so once. Without a backup, Stop still blocks.
-
-A temp file that a subprocess wrote, without a redirect the hook can see, counts as imported. Its copy gets the notice, not a block.
-
-### Known limits
-
-ADW does not scan a file that a saved script writes at the time the script writes it. A later edit snapshots that file as first seen, so its older findings count as inherited. ADW trusts saved scripts and is not a runtime sandbox.
-
-## Comment policy
-
-Comments run through the same scan, and they are the one surface where the watcher is stricter than it is on prose.
-
-Code comments and docstrings can contain one strict WHY line of at most 80 characters. WHAT narration, weak reasons, consecutive prose comments, and multi-line docstrings block. Configuration, exemptions, and model output cannot release these rules.
-
-A WHY line names its reason with `because`, `otherwise`, `so that`, or a consequence clause after a comma, such as `, so pages count as success`. The `what_comment` action lists these markers.
-
-Tool directives are not comments for these rules. In Swift, the scanner skips `// swift-tools-version`, `// swiftlint:`, and a `// MARK:` heading of up to 40 characters. In Go, it skips `//go:` directives and `//nolint`. In TypeScript and JavaScript, it skips `// eslint-disable`, `// eslint-enable`, `// prettier-ignore`, and `/// <reference />`. In TypeScript, it also skips a bare `// @ts-ignore`, `// @ts-expect-error`, `// @ts-nocheck`, or `// @ts-check`. A reason after one of these must pass the comment rules itself. In Python, it skips `noqa`, `type: ignore`, `pragma`, `ruff`, `fmt`, `pylint`, `pyright`, `mypy`, and `isort` directives, also inline. Each form matches an exact shape, so prose after a directive prefix still gets a finding. A `///` doc comment counts from its first word.
-
-A `label: text` comment counts as its text. The scanner drops a generic label such as `note:` and judges the words after the colon. `WHY:`, `invariant:`, deferred-work markers, and docstring section headings such as `Args:` keep their meaning. A subject without an article opens a narration too. `Reader votes a sentence, so the vote stays stable` blocks like its form with `The`.
-
-A deferred-work marker such as `TODO` gives an observed `deferred_work_comment` warning and does not block. The marker line still answers to the length cap and to the block rule. A long marker line blocks. A marker followed by more comment lines blocks too.
-
-The Luna comment reviewer covers Python and supported comment-bearing source files. These include TypeScript, JavaScript, Go, Rust, Java, C-family languages, PHP, Ruby, Swift, shell, Vue, and Svelte. The Claude Luna handler and the Codex Stop review read the same set. The reviewer masks strings before extracting comments, so text inside source strings does not become a review candidate. Literal Bash writes use the same edited-path extractor as the deterministic route.
-
-The opening clause decides it. When a comment opens on the code and its behaviour, it fails even with a `because` clause after it. This applies to the verb-first form and the subject-first form alike. Both `Returns the cached row because callers need stable identity` and `The reader returns the cached row because callers need stable identity` block. `Callers need stable identity, because a fresh read renumbers every row` passes. Lead with the decision, the constraint, or the measurement, and put anything longer on a wiki page.
-
-These rules carry no measurement yet. The prose rules have 60000 human sentences behind them, and the comment rules have nothing equivalent. The 80-character cap and the opening-clause test are therefore a judgement rather than a number.
-
-## Code Check and the test writer
-
-The `code` family also runs one static test-quality scan, taken from Vladimir Khorikov's book on unit testing. The scan reads every Python and Rust test function under `hooks/lib/test_rules/`. `assert_in_loop` blocks a test that asserts inside a loop, because the first failing case then hides the rest. Eight sibling rules, such as `hardcoded_name_presence` and `exposing_private_methods_for_testing`, report and do not yet block. `evals/code_check_precision.json` holds the hand-labeled hit count and precision behind each of these rules.
-
-A Code Check finding carries one plain-text explanation of the principle it breaks, pulled from a local DevIQ or programming-principles knowledge base. The text shows once per rule per session, stays under 80 words, and carries no link. A missing database or a missing entry leaves the finding unchanged.
-
-ADW denies test writes by default. Only the `adw-test-writer` subagent adds or changes a test function, unless a project sets `tests: allow` through `adw-config`. Claude Code and Codex 0.159 identify that subagent through its `agent_type` field on the tool call. OMP names no agent on tool calls, so `adw-config tests allow --for 30m` opens a timed window there instead. A write to any `adw-test-writer` definition file gets a block, in both project and user scope.
-
-The gate recognizes a test by the text that lands, not by the file name. `hooks/lib/declared_tests.py` knows the test syntax of Python, JavaScript, TypeScript, Go, Rust, Ruby, the JVM and .NET languages, PHP, Swift, Elixir, C and C++, Dart, shell, Lua, and Jest snapshots, so an empty `cart.spec.ts` passes while `describe(...)` in `src/checks.ts` blocks. A Python `test_` function counts with an assert, an assert call, or a test framework import. Python and Rust source with inline tests gets a unit by unit check. Where the landing text is unknown, as for a delete, a copy, an archive member, or a shell write whose path another part of the command writes or names, the name and folder decide. Any file with text under `tests/`, `test/`, `spec/`, `__tests__/`, `testdata/`, `__snapshots__/`, `__fixtures__/`, or `__mocks__/` blocks, because a helper or fixture there serves tests without declaring one, and `conftest.py` blocks by name. A `.md`, `.rst`, `.adoc`, or `.txt` file in those folders passes as documentation, but a `.txt` file in `testdata/`, `__snapshots__/`, `__fixtures__/`, or `__mocks__/` blocks, because such a file holds expected output.
-
-`adw-test-writer` ships on three hosts. Claude Code runs it on Opus 5.5 at high effort. Codex runs it on `gpt-6-luna` at high effort. OMP runs it with a model the user picks, through a limited tool set. Each host loads the `unit-testing-principles` skill first. That skill holds a full-depth summary of the Khorikov book in the project's own words, one chapter file per book chapter.
-
-## German prose
-
-German prose gets its own rule set. Prose files and commit messages get the German rules. Code comments keep the English rules.
-
-**Language per paragraph.** `hooks/lib/prose_language.py` sorts each paragraph into German or English by stop words, with umlauts as a tiebreak. A paragraph decides on its own once it has 4 countable words. Code, URLs, and paths do not count. A shorter paragraph takes the document language and carries a weak mark. With `data_boundary` enabled, Luna classifies each weak paragraph after the write, never in the Stop review. Claude Code makes that call on the async `JudgeReview` route. Codex queues the paragraph and classifies it in the background at the next prompt. ADW caches each verdict under the paragraph hash, so a paragraph costs at most one Luna call. With `data_boundary` off, no paragraph goes to Luna, and a weak paragraph keeps the document language.
-
-`adw-config prose-languages en|de|en,de` sets the languages per project. The default is `en,de`. With one language set, every paragraph takes that language and no detection runs.
-
-**Typography after Duden.** A German paragraph drops the English semicolon and colon bans, because German uses both marks as ordinary connectors. These dash and quote forms pass in German.
-
-1. The Gedankenstrich, an en dash (U+2013) with a space on each side.
-2. The Bis-Strich and Streckenstrich, an en dash with no spaces between two numbers or two names, as in a year range or a ferry route.
-3. The Ergänzungsstrich, a word that ends in a hyphen before `und`, `oder`, or `bis`.
-4. German quotation marks, the low-high double pair and the low-high single pair.
-
-The em dash (U+2014) stays banned in German. A spaced ASCII hyphen still reports as `spaced_hyphen`. `dash_cluster` limits Gedankenstrich density. It reports at 5 or more spaced dashes and more than 15 per 1000 German words. It ships off, because its measured precision is 0.15.
-
-**German findings speak German.** A finding on a German line carries a German message and a German action. The rule id stays English, such as `de_meta_commentary` or `spaced_hyphen`, so configuration and reports keep one set of names. The message language also shows which language ADW detected.
-
-**LIX and WSTF.** `hooks/lib/german_readability.py` computes LIX after Björnsson and the first Wiener Sachtextformel after Bamberger and Vanecek, with their published weights. WSTF needs a syllable count. `hooks/lib/german_syllables.py` counts vowel groups and treats `ei`, `ie`, `au`, `eu`, and `äu` as one nucleus. It miscounts 6 of 80 German Wiktionary words, an error rate of 0.075, recorded in `evals/syllable_counter.json`. No rule gates on either score yet.
-
-**German corpora.** The human side holds 28000 sentences, 20000 from a 2018 German Wikipedia dump and 8000 from German Gutenberg books. The AI side holds 21000 sentences, 15000 from the COLING 2025 GenAI detection data and 6000 German WildChat replies. A paragraph corpus keeps 5414 documents with their paragraph breaks. Git ignores all three, and they rebuild byte for byte.
-
-```bash
-uvx --python 3.11 --with duckdb --with pyarrow python evals/build_german_corpora.py
+```text
+/path/file.md:42 Dash character. Use ASCII hyphen or rewrite the sentence. (banned_dash)
 ```
 
-**Gate policy.** Three bands decide what a German rule does. A Wilson lower bound of 0.85 or more blocks (decision Q23). A point precision above 0.70 reports. A point precision of 0.70 or less turns the rule off (N-009). An unmeasured rule stays at observe. `evals/german_static_precision.json` and `evals/judge_stage_de.json` hold the numbers, and `hooks/lib/test_german_rule_registry.py` checks every measured rule against the 0.70 bar.
-
-Three measured rules block German lines today.
-
-1. `de_meta_commentary` holds 40 of 40, lower bound 0.9124.
-2. `spaced_hyphen` holds 39 of 40, lower bound 0.8712.
-3. `de_long_compound` rests on the compound split, which holds 180 of 184 flagged words on a held-out set, lower bound 0.9454, recorded in `evals/german_compounds.json`.
-
-**Compounds.** `hooks/lib/german_compounds.py` splits a word of 14 or more letters into parts from a lexicon built from Wiktionary, and NOTICE items 9 and 10 name its sources. A compound of 25 or more letters without a hyphen blocks as `de_long_compound`. One of 14 to 24 letters reports as `de_compound_hint` and stays at observe. Words in quotes, inline code, links, and paths do not count.
-
-**Tables and code.** The German rules read a Markdown table one cell at a time, so sentences in separate cells never join into one run, and each hit reports the line of its row. Text in backticks feeds no German rule.
-
-The punctuation family also applies its family default to German lines. `banned_dash`, `dash_break`, `pronoun_apostrophe`, and `decade_apostrophe` therefore block there as well. `banned_dash` measured 0.15 on German text and still blocks. N-009 keeps the em dash ban and leaves `banned_dash` and `spaced_hyphen` at their family default. The German SEMANTIC rules send trigger matches to Luna. Their best lower bound on `gpt-6-luna` is 0.64, so none of them blocks.
+Pattern checks catch known forms. An optional meaning layer looks for paraphrases, and a model review can assess comments or document structure. Rules block only when their measured precision reaches 0.85. The [evaluation guide](evals/README.md) explains the measurements.
 
 ## Install
 
 ### Claude Code
+
+In Claude Code, run:
 
 ```text
 /plugin marketplace add michaelheichler/agent-discipline-watcher
@@ -170,403 +34,90 @@ The punctuation family also applies its family default to German lines. `banned_
 
 ### Codex
 
-`install.sh` wires Codex from this checkout, copies the watcher into
-`~/.adw/install/agent-discipline-watcher`, and provisions an ADW-owned virtual
-environment with the pinned `openai-codex==0.160.0` runtime. Client hooks point
-to the installed copy, not the development checkout. Luna reviews use the
-Codex ChatGPT subscription only. Log in through Codex's browser or device-code
-flow before using model review. There is no API-key fallback.
-
-Claude Code defines the deterministic hook coverage. Codex uses the same
-shared handlers for SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
-SubagentStart, SubagentStop, Stop, and SessionEnd. The pre-tool handler sees
-every tool, and the post-tool handler includes Bash writes. Codex does not
-provide Claude's PostToolBatch or PostToolUseFailure events.
+From a checkout of this repository, run:
 
 ```bash
-./install.sh
-./install.sh -y
-./install.sh --codex -y
+./install.sh --codex
 ```
 
-### OMP (`oh-my-pi`)
-`pi/install.sh` copies the checkout into
-`~/.adw/install/agent-discipline-watcher`, symlinks the extension into
-`~/.omp/agent/extensions/agent-discipline-watcher`, and registers the
-installed `index.ts` in `~/.omp/agent/settings.json`. The extension resolves
-its runner from the installed copy under `~/.adw`, so it needs no link outside
-the state directory. An earlier install put one under `~/.agents/skills`.
-If that link still points at an ADW copy, the installer removes it. Nothing in
-the installed client configuration points into the development checkout.
+### OMP (oh-my-pi)
 
-```text
-~/.adw/install/agent-discipline-watcher  installed code
-~/.adw/state                             session state
-~/.adw/ledger                            finding ledger
-~/.adw/reports                           finding reports
-~/.adw/cache                             judge and embedding caches
-~/.adw/runtime                           provider runtimes
-<project>/.agent-discipline.json         project policy
-```
+From a checkout of this repository, run:
 
 ```bash
-./install.sh                      # Choose hosts interactively
-./install.sh --claude --codex --omp
-./install.sh --omp -y             # OMP only
-./pi/install.sh -y                # OMP only (direct)
-./pi/install.sh --remove -y       # uninstall OMP extension
+./install.sh --omp
 ```
 
-Set `PI_CODING_AGENT_DIR` to target a non-default OMP agent directory. Set
-`ADW_INSTALL_DIR` to choose a different isolated install root. Restart OMP
-after install, or pass `--extension` to load it immediately.
+Restart OMP after installation.
 
-The installer puts `~/.adw/bin` on your PATH. It picks the startup file from
-`$SHELL`: zsh gets `~/.zshrc` and bash gets `~/.bashrc`. The line sits in a
-fenced `# >>> agent-discipline-watcher >>>` block, and the installer prints
-the file it changed. A second install leaves the file as it is. `adw-nuke`
-removes the block. For any other shell, the installer prints the line for you
-to add.
+### Cowork
 
-The installer also builds `~/.adw/cache/principles.sqlite`, the principle text
-that Code Check findings quote. It downloads about 60 MB. If the download
-fails, the install still succeeds and `adw update` retries. Set
-`ADW_OFFLINE=1` to skip the download on an air-gapped machine.
+Find Agent Discipline Watcher in the plugin directory on claude.ai and sync it to Cowork. Cowork has no local installer.
 
-ADW blocks OMP JavaScript eval before it runs, because the watcher cannot tell
-which files the code would write. Code made only of literal
-`await tool.name({...})` calls, optionally wrapped in `display(...)`, still runs,
-and each nested tool call passes its own gate. The same block applies to a tool
-without a known adapter, to a non-Bash tool that carries a `command` field, and
-to `lsp` or `debug` actions outside their read lists. Python eval goes through the Python
-gate, and native Write, Edit, and Bash calls keep their existing checks. Read
-tools run as before.
+## Everyday use
 
-### Controlled release updates
-
-The top-level installer registers `~/.adw/bin/adw`. Its `update` command
-installs the latest published release from the official ADW repository for
-the hosts you select. It accepts no alternate repository, checkout, or
-installation directory. It uses the account's default directories and
-preserves session state and all recorded findings.
+`./install.sh` adds `~/.adw/bin` to your shell PATH. Without it, run `bin/adw-config` from a checkout of this repository. Run `adw-config` in a terminal to inspect or change project policy. The configuration file lives at the project root as `.agent-discipline.json`.
 
 ```bash
-~/.adw/bin/adw update --claude --codex --omp --dry-run
-~/.adw/bin/adw update --claude --codex --omp
+adw-config status
+adw-config family prose on
+adw-config tests allow
+adw-config tests deny
+adw-config prose-languages en,de
 ```
 
-Use an absolute path in agent tool calls. For example,
-`/Users/yourname/.adw/bin/adw update --omp` lets the guard check the
-installed executable and host flags before permitting the update.
-Arbitrary installer scripts still require a Terminal install.
-The updater requires the default installation directory.
+Test writes default to deny. To allow them temporarily, use `adw-config tests allow --for 30m`.
 
-The updater selects an existing Claude profile under `~/.claude` or
-`~/.config/claude-code`. If both exist, run the installer from Terminal with
-`CLAUDE_CONFIG_DIR` set to the selected profile.
-It requires a supported Python in the system executable directories and
-ignores `ADW_PYTHON`. Custom interpreters remain an installer option.
+Update the installed hosts to the latest release:
 
-Install the first release containing the updater from Terminal. An older
-installed guard cannot authorize the new command. Restart the selected agent
-hosts after updating so they load the new hooks and extension.
+```bash
+~/.adw/bin/adw update
+```
 
-### Full removal
-
-The Claude installer also links `~/.adw/bin/adw-nuke`. It removes every ADW
-trace so a fresh `./install.sh` starts clean. In a Claude session,
-`/agent-discipline-watcher:adw-nuke --yes` removes ADW and installs it again from a
-checkout. `--uninstall` removes it only, and `--dry-run` lists the paths.
+Preview full removal, then remove ADW and its stored data:
 
 ```bash
 ~/.adw/bin/adw-nuke --dry-run
 ~/.adw/bin/adw-nuke --yes
 ```
 
-The dry run prints each path that a real run removes or edits, and writes nothing.
-Without `--yes` the command prints the same list and refuses.
+## How checks work
 
-`--yes` removes these, in this order.
+**Pattern rules** look for known issues such as banned punctuation or comment narration. These checks are deterministic.
 
-1. The Claude plugin and marketplace records, through `claude plugin
-   uninstall` and `claude plugin marketplace remove`. If the `claude` binary
-   is absent or the call fails, it edits the two JSON files directly.
-2. The ADW entries in Claude `settings.json`, `~/.codex/hooks.json`,
-   `~/.codex/config.toml`, `~/.omp/agent/settings.json`, `~/.zshrc`, and
-   `~/.bashrc`. Every other entry stays as it was.
-3. The Claude plugin cache, marketplace, `commands/adw`, and skill link, the
-   Codex skill and ADW backup files, the OMP extension and `~/.agents` skill
-   links, and the `~/.local/bin` links.
-4. The whole `~/.adw` tree, including state, the ledger, reports, caches, the
-   embedding model, and runtimes. No flag keeps them.
+**Meaning checks** compare prose sentences with examples of a rule, which can surface matching ideas expressed in different words. This layer is optional.
 
-If a path leaves the home directory, the command stops before any write. The
-same stop applies to a symlinked Claude profile and to a foreign link target.
-Restart Claude Code, Codex, and OMP afterwards.
+**Document and model review** can assess structure that line-level rules cannot judge. Model review uses your selected host session, and some host review routes send the text under review to a model provider.
 
-In OMP, `/adw configure` and `/agent-discipline configure` open the ADW policy
-screen. They edit the project `.agent-discipline.json` policy used by the same
-Python hook engine as Claude Code and Codex. OMP's `/advisor configure` is
-separate. It edits `WATCHDOG.yml` and controls OMP's reviewer agents.
+The precision threshold helps keep false positives from blocking work. ADW reports rules that have not reached the threshold instead of blocking on them. See [evaluation results](evals/README.md).
 
-Cursor `.mdc` rules use the same Markdown scanner and frontmatter handling
-as `.md` files. YAML glob patterns do not become code comments. When an agent
-edits a rule or finishes a turn, the watcher still checks the Markdown body.
+## Requirements and privacy
 
-OMP's exact `xd://report_issue` write destination uses the native report
-handler and its consent prompt. ADW does not treat that report as a project
-file or create a pending file scan for it. Other virtual write paths remain
-subject to target validation.
+ADW requires a Unix shell and Python 3.11 or newer. Model review uses the login for the host you configured. ADW does not require an API key.
 
-## Requirements
+ADW keeps session state, findings, reports, caches, and provider runtimes under `~/.adw`. Project policy stays in `.agent-discipline.json` at the project root.
 
-A Unix shell and the Python named in `.python-version`, the one place this project declares the floor. `hooks/run.sh` probes each `python` on PATH and runs the first that meets that floor. It skips a system `python3` too old to import this codebase rather than trusting it. When nothing on PATH qualifies, every hook exits 2 and names the required version. This prevents silent loss of enforcement.
+Deterministic checks run locally. Model review may send candidate text to the provider used by that host. Codex and OMP review need `data_boundary.enabled` set to `true` in the project `.agent-discipline.json` file. The Claude review preset uses your Claude Code session. Choose a review setup only if its data handling fits your needs.
 
-The plugin manifest ships command hooks only. The reviewer lives in
-`~/.claude/settings.json` as the managed block, the hook entries whose first
-line or command carries the `adw-managed-hook-v1` marker. When a Claude Code
-session starts and `settings.json` holds no managed block, the SessionStart hook
-writes the `mixed` preset. A plain install needs no preset step. Claude Code
-picks up the configuration change without a restart. SessionStart leaves a
-current managed block alone, so a preset you chose or edited stays. It
-replaces an old block that registers an agent hook, such as the retired
-`haiku` preset, with the `mixed` default. It also points a stale script path
-in a `mixed` or `luna` block at the current plugin. When SessionStart cannot
-read `settings.json`, it prints one line to stderr and
-the session goes on without a reviewer. Select a different preset with
-`/agent-discipline-watcher:adw-judge mixed|luna|status`.
-Each selection replaces the managed block, so `settings.json` never holds two
-reviewer sets.
+## Development
 
-Both presets register command handlers, because an agent hook runs in a
-mode that asks no questions and cannot run a helper script. The PostToolUse command hook
-records comment candidates in the journal, and the
-async `JudgeReview` route adds pattern candidates. The Stop handler judges both
-from those rows, plus the documents the turn wrote. It sends one request per
-pattern rule, with four violating and four clean examples, beside the document
-rows. Each upheld pattern row prints its path, line, rule title, matched text,
-and action. Pattern and document rows share one 48,000 character Stop budget.
-
-The document rows hold only what the agent changed. ADW compares the file after
-the turn with the file before the turn's first write. The journal keeps that
-earlier text. It takes it from the file's last recorded write. If the session
-has no earlier write, it takes the committed version in git. A file with
-neither counts as new, so the whole file is the change. Each changed hunk
-comes with three lines of context before and after it. Hunks that overlap
-merge into one. Every hunk carries its line range and marks its changed lines
-with a plus sign. The prompt tells the model to judge the marked lines and to
-use the others only to understand them. If the agent reverts a change, the turn
-has nothing to review and makes no call.
-
-`mixed` is the Sonnet preset. Its Stop handler makes one batch call per Stop:
-
-```
-claude -p --model claude-sonnet-5-5 --output-format json --json-schema <schema> \
-  --tools "" --no-session-persistence --settings '{"disableAllHooks":true}' \
-  --strict-mcp-config --mcp-config '{"mcpServers":{}}' --disable-slash-commands \
-  --system-prompt <prompt>
-```
-
-The prompt goes in on stdin. The call has no tools, so the reviewer never needs
-Bash. `disableAllHooks` stops the nested session from firing ADW on its own
-review. An empty turn makes no call. The call uses your Claude Code login.
-
-Every model reviewer gets the same instructions from
-`judge_contracts.reviewer_instructions`, whether it runs on Sonnet, Claude
-Luna, Codex Luna, or OMP. They ask for one verdict per candidate, a passing
-verdict when the text alone cannot decide, and at most six document notes, and
-they tell the model to treat the reviewed text as data. They also name the 80
-character comment cap and the project's list item cap, so the reviewer judges
-text inside those caps on what it says and keeps each suggested fix inside
-them. The German style line appears only when the project allows German prose.
-The rubric versions are `adw-rubric-v3` and `adw-rubric-de-v3`.
-
-The review can fail. The CLI can be missing, run past 90 seconds, or return
-no usable verdict. If the review fails, the Stop shows one line that the
-review did not run, and the failure itself does not block. The rows stay
-unreviewed for a later Stop. When the CLI itself fails, ADW pauses the review
-for 300 seconds before the next try. ADW ignores a verdict item that names a
-document section, because a document section holds no pattern. It also ignores
-an item whose section or candidate number does not exist, and it keeps the rest
-of the verdict. A pattern candidate that got an answer is not sent again in the
-same turn. If the reviewer's answer to that candidate was a block, that block
-stays in force on every later Stop in the same turn, with no new model call.
-This includes a Stop that continues after a Stop hook block, and a Stop whose
-retry fails. The held block ends when the agent edits or deletes the file that
-holds the flagged text, or when the turn ends. If ADW cannot read that file to
-check whether it changed, it keeps the block and adds a notice that the check
-failed. A candidate that gets no answer
-stays queued for the next Stop. After two attempts without an answer, ADW
-releases it unreviewed and names it in the Stop message.
-
-`luna` uses a command handler on the subscription-backed Codex runtime for
-both PostToolUse and Stop, and switches to `mixed` only after Luna is
-unavailable. The Claude CLI cannot call Luna, so no Luna preset runs through it.
-
-The Codex Stop review and the OMP review send source text off the machine.
-They run only with `data_boundary.enabled` set to `true` in
-`.agent-discipline.json`. The Claude `luna` preset has no such gate. Choosing
-`luna` is your consent to send journal rows to OpenAI through your ChatGPT
-subscription, so its handlers review without a project setting. The `mixed`
-preset sends text to Anthropic on your own account and needs no gate either.
-
-`status` counts the reviewers in the managed block. It does not echo the
-stored preset, so an unwired gate says so. `mixed` counts one. `luna`
-counts two, one command handler on PostToolUse and one on Stop. Haiku has no
-preset, and `ADW_CLAUDE_HAIKU_ONLY` no longer does anything.
-
-Codex always selects GPT-5.6 Luna at high effort and has no model fallback.
-Missing runtime, subscription login, model availability, or provider
-transport emits a bounded user notice and pauses provider retries for five
-minutes in that session. Deterministic checks remain active. A Luna timeout
-or an unusable reply blocks the Stop instead, and each retry reviews again
-until one succeeds. ADW records completion only after a successful review. Run `./install.sh --codex -y`
-to repair the runtime, then complete Codex ChatGPT login.
-
-After a review upholds a finding, ADW keeps it active until the affected source changes.
-An unrelated edit cannot release them during a provider outage.
-
-## Environment variables
-
-Set these in the `env` block of `~/.claude/settings.json`, because that block is what reaches the hooks. If you use a shell export instead, you must always launch the client from that shell.
-
-```json
-{
-  "env": {
-    "ADW_EMBEDDING_ENABLED": "1"
-  }
-}
-```
-
-### The meaning layer
-
-| variable | effect |
-| --- | --- |
-| `ADW_EMBEDDING_ENABLED` | Turns the layer on. Off unless set, because a first run provisions about a gigabyte. |
-| `ADW_EMBEDDING_DISABLED` | Turns it off. Wins over the enable. |
-| `ADW_EMBEDDING_URL` | Use one embedding server of your own instead of the supervised one. |
-| `ADW_EMBEDDING_URLS` | A comma separated list, tried in order. The first that answers wins. |
-| `ADW_EMBEDDING_MODEL` | Model name sent in the request body. Defaults to `LFM2.5-Embedding-350M`. |
-
-With none of the URL variables set, the watcher runs its own server on a free port. The platform picks the build, mapping an ARM Mac to MLX and x86 to GGUF. It checks every file against a pinned sha256 before anything runs.
-
-Every project shares the managed worker, and it stays loaded while a live turn holds a lease. The `JudgeReview` route takes the lease on the first prose write of a turn. It waits up to 120 seconds for a cold model. Every PostToolUse renews the lease, so a long turn keeps the model. Stop and SessionEnd release that lease. If the user turned embeddings off after loading, they still release it. Shutdown checks that the process exited before removing its record. A single supervisor checks every five seconds for dead owners and leases older than the existing 900-second lifetime. A missed Stop therefore no longer leaves the model resident indefinitely. Cold-start provisioning retains its pending lease and rechecks demand before launching the worker. These lifecycle checks do not change the model or the opt-in requirement.
-
-### Thresholds
-
-| variable | default | effect |
-| --- | --- | --- |
-| `ADW_LIST_ITEM_CAP` | 8 | Items before a list is oversized. |
-| `ADW_FUNC_BLOCK_LINES` | 80 | Function length that blocks. |
-| `ADW_MAX_SCAN_BYTES` | 1000000 | Full-text scan limit. Larger files retain fallback length checks. |
-
-Each also has a project configuration key in `.agent-discipline.json`. The configuration key wins where you set both, and the environment variable is the fallback.
-
-Code files warn at 500 lines and turn critical at 750.
-At 1000, ADW blocks the write.
-
-ADW measures the resulting file after appends or patch moves, regardless of
-the size of the diff. The legacy `ADW_FILE_BLOCK_LINES` and `file_block_lines`
-keys do not change these thresholds.
-
-### Escape hatches and internals
-
-| variable | effect |
-| --- | --- |
-| `ADW_OFFLINE` | Set to 1 to skip the network steps of `./install.sh`. Today that is the principle KB download. The install still exits 0, and Code Check findings carry no principle line until an online `adw update`. |
-| `ADW_PYTHON` | Interpreter to run the hooks with, skipping the PATH search. It is still probed against `.python-version`, and a build below the floor fails rather than falling back. If the qualifying Python is not on the PATH your client starts with, set it. |
-| `ADW_ALLOW_PROTECTED_EDIT` | Permits an edit to the watcher's own install. Self protection blocks a Bash write that sets this inline. |
-| `ADW_JUDGE_ACTIVE` | Set by the watcher on the judge subprocess so a nested hook cannot recurse. Not for you to set. |
-| `ADW_JUDGE_LIVE` | Set to 1 to run the tests that spend a real model call. Those tests skip otherwise. |
-| `CLAUDE_PLUGIN_DATA` | Read no longer. Everything lives under `~/.adw`, so a host data directory cannot split reports away from state. |
-
-The watcher strips `ANTHROPIC_API_KEY` from every judge subprocess. The judge runs on the session login you already pay for, never on a key you did not choose to spend here.
-
-## Where the watcher keeps its files
-
-Everything is under `~/.adw`.
-
-```
-~/.adw/state              per session state
-~/.adw/ledger             every finding ever recorded
-~/.adw/reports            the full report each block points to
-~/.adw/embedding-leases   who is holding the model
-~/.adw/embedding-server   the model, its runtime, and the running record
-~/.adw/cache              exemplar vectors, keyed by exemplar digest, and principles.sqlite
-~/.adw/runtime/codex      pinned openai-codex runtime (retained, not pruned)
-```
-
-Session state, reports, ledger rows, judge cache entries, and logs older than
-30 days are swept at SessionStart. The current session and live lease are
-preserved. The persistent Codex runtime and embedding models are outside that
-retention sweep.
-
-The watcher migrates an existing `~/.agent-discipline` once, on first run.
-
-## Configuration
-
-Project configuration lives in `.agent-discipline.json` at the project root. The hook code searches upward from the working directory. See `hooks/lib/config.py` for supported keys.
-
-`bin/adw-config` reads and writes that file from a terminal. `adw-config status` prints the effective policy.
-
-`adw-config tests allow` or `adw-config tests deny` sets the test write policy. `adw-config tests allow --for 30m` opens a timed window instead of a permanent change.
-
-`adw-config prose-languages en,de` sets the prose languages ADW detects per paragraph. The default is both. `adw-config prose-languages en` switches German off, so every paragraph runs the English rules.
-
-`adw-config family NAME on|off` toggles one family. An agent that calls a mutating subcommand through a tool call gets a block. Only the user sets policy from a terminal.
-
-Each rule has a gate: `off`, `observe`, `enforce`, or `judged`. Enforce is what the tables above call a block. A rule at observe names the finding without blocking. A rule at judged never reaches the write path at all. Its regex finds candidates and a judge checks them before the watcher reports anything. For `three_item_list` only the OMP review route runs that judge today, while the parataxis rules reach the Stop reviewer on every host. Rules demoted to observe carry the measurement that demoted them, written next to them in `config.py`.
-The same gate covers the pattern rows that the embedding vote of the meaning layer writes to the journal on every host. A rule gated `off` gets no pattern rows, and a rule gated `observe` never blocks on an upheld row. OMP and Codex report such a row, but the Claude Stop reviewer skips it. The shipped default sets `ai_closer` to observe, so an upheld `ai_closer` row reports unless the project sets that rule to enforce.
-In OMP, `/adw configure` and `/agent-discipline configure` edit this project policy through the same Python configuration engine. The screen covers family gates, per-rule gates, thresholds, exemptions, baseline mode, kill switches, and the data boundary. Always-blocking rules stay locked. Unknown keys and environment values are not rendered.
-
-`three_item_list`, `choppy_sentences`, and `de_parataxis` sit at the judged gate.
-
-The regex behind `three_item_list` hits 278 of 60000 human sentences, all of them ordinary writing, so it cannot speak alone. `pattern_exemplars.json` records no judge precision for it, so no number backs a block. The regex also stopped matching the tail of a four-item list, which cut its raw hits on human prose from 483 to 278.
-
-### Telegram style
-
-ADW no longer counts the words in a prose sentence, because a fixed word cap pushed agents to chop their prose into rows of short main clauses. `choppy_sentences` and `de_parataxis` take the place of the old caps. humanizer-de, a German style-editing skill, lists this habit as its pattern 51 (obsessive parataxis). The scanner finds a run of three short main clauses in one prose paragraph, and a sentence that carries a comma, a subordinator, a relative clause, or the word `and` leaves the run. Code comments, list items, and headings never form a run. The run alone never blocks, because blind raters upheld only 7 of 40 English and 22 of 40 German static hits on human paragraphs. Instead, the PostToolUse hook journals each run that touches a line the agent changed in this turn, so inherited prose elsewhere in the file never blocks. Each row carries the neighbouring sentences, and the Stop reviewer (Sonnet or Luna) answers clean or violating for every run. A confirmed run does not block yet. The Claude Stop reviewer hands it to the agent as advice in model context, and OMP reports it without a block. Codex shows it to the user at Stop and passes it to the agent with the next prompt. The advice quotes the run and asks the agent to join the sentences with a comma, a subordinate or relative clause, or `and` or `but`, and it repeats that dashes and semicolons stay banned. Blocking needs a reviewer precision of 0.85, and the reviewers fall short of it on human paragraphs. Blind raters upheld 5 of 10 English runs Sonnet confirmed and 5 of 9 that Luna confirmed. In German they upheld 5 of 8 (Sonnet) and 12 of 17 (Luna). On a held-out set of 72 assistant answers written blind to the detector, the reviewed pipeline found 11 or 12 of 12 chopped answers per language and flagged one clean answer, a German list of facts under Luna. Sonnet's 11 of 11 English confirmations there still give a Wilson lower bound of only 0.74. The rules block once a held-out Wilson lower bound reaches 0.85. `evals/parataxis_pipeline.json` holds the numbers. A project that wants the static report without the reviewer sets `"rule_gates": {"choppy_sentences": "observe"}` in `.agent-discipline.json`. A config that still names `sentence_word_cap`, `long_sentence`, or `de_sentence_length` loads as before, although those names no longer change anything, and code comments keep their own brevity check in `long_comment`.
-
-## Self protection
-
-The `self_protection` family blocks routes around the gates. It covers the watcher's own install directories and a write that strips the watcher's hook entries from a client configuration file. It also covers installer commands without a sandboxed `HOME`, `--no-verify` commits, cap overrides, state deletion, and protected configuration edits. No project configuration can disable these rules.
-
-It does not police file access in general. The host's own permission configuration owns everything else under `~/.claude`, `~/.codex`, `~/.pi`, and `~/.omp`. The watcher judges how an agent writes, not where.
-
-The Python read checker accepts loops, generators, path joins, and text
-processing. If the checker trusts the import paths, it permits ordinary
-Python startup. Writes and executable startup overrides retain their
-checks. Unknown calls must pass the read checker.
-
-`config_seal` reads the pending content of `.agent-discipline.json` and blocks only a write that weakens the gates. That means a self-authorization key, a downgraded always-blocking rule, or a redirected state or ledger root. It also means anything silencing every family through `gates`, `kill_switches`, or a tree-wide exemption glob. Narrowing one family or exempting one path stays yours to change. A write whose body the gate cannot read fails closed, and so does deleting or truncating the file.
-
-Eight rules close the Bash write path: `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`, `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, `opaque_source_write`, and `dynamic_write_target`. Each blocks a Bash-mediated write the scanner cannot read through. Examples are `python3 -c` writing a file, a heredoc piped into an interpreter, a decode pipe ending in a write, `sed -i`, `dd`, and text that a group, loop, function, or `exec` routes into a file. `dynamic_write_target` blocks a write whose destination only the run decides, such as `$(mktemp)`, a glob, or a relative path after a `cd` the gate cannot follow. When the gate can prove a variable, it judges the file the variable names instead. The scanner reads a literal write body such as a clean `echo` or heredoc. It treats that write like a Write or Edit call rather than blocking it.
-
-Output flags count as writes. `curl -o`, `wget -O`, `sort -o`, and `git merge-file` without `-p` face the same gates as a `>` redirect, and ADW scans their files after the run. A `find -delete`, a `find -exec rm`, or a literal feed into `xargs rm` faces the gates on each path it reaches, and so does `rm -r`, `mv`, or `rsync --delete` on a folder. The walk stops at 20,000 entries, 1,000 `find` matches, or 0.25 seconds, and a command past a limit blocks. Write and Edit refuse a named pipe, a device, or a socket.
-
-For inline node, perl and ruby payloads (`node -e`, `node -p`, `perl -e`, `ruby -e`), `inline_interpreter_write` uses heuristics, not a sandbox. These heuristics block known write and reflection routes, such as `process.getBuiltinModule`, Perl `open` without parentheses, and computed member keys. Other payloads run.
-
-For read-only Python snippets in Bash, use isolated startup with `python3 -I -S`.
-For example, `python3 -I -S -c 'from pathlib import Path; print(Path("notes.md").read_text())'`
-reads a file without loading project startup modules. ADW rejects redirects that
-write opaque Python output to a file. Use Write or Edit for content changes.
-
-## Active integrations
-
-Claude Code is the primary plugin surface. Codex support uses the checked-in `hooks/codex-hooks.json` routes for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd`. The installer removes the old watcher entries from `~/.codex/config.toml`, then merges them into `~/.codex/hooks.json` without replacing unrelated configuration or hooks. Codex journals completed writes and runs one Luna review at each completed interaction, with SessionEnd releasing the lease.
-
-OMP loads `pi/extensions/agent-discipline-watcher/index.ts`. The extension calls the same `hooks/run.sh` engine. Pre-tool checks cover every OMP mutating file tool and Bash, then return `{ block: true, reason }`. Unresolved findings block on `session_stop`.
-
-`archive/integrations/` keeps the OpenCode adapters as historical references. The installer, CI, and release verification do not test them.
-
-## Verification
+Run the project checks from the repository root:
 
 ```bash
-cd hooks && uvx --python 3.11 --with pytest pytest . lib -q
+(cd hooks && python -m pytest . lib -q)
 python3 -m pytest pi/test_merge_settings.py -q
-for script in $(git ls-files '*.sh') bin/adw bin/adw-judge bin/adw-nuke bin/adw-config; do bash -n "$script"; done
-bun test pi/extensions/agent-discipline-watcher/index.test.ts
+(cd pi && bun install && bun test)
+pylint $(git ls-files '*.py')
 claude plugin validate . --strict
 ```
 
-`evals/README.md` documents how to rebuild the measurements. The corpora stay gitignored and rebuild byte for byte from their sources. If a Luna review reports a missing package or login, repair the pinned runtime and Codex subscription session instead of setting an API key.
+The project denies test writes by default. Only the `adw-test-writer` agent may add or change tests. See the [test-writing principles](skills/unit-testing-principles/SKILL.md) and [agent skill](skills/agent-discipline-watcher/SKILL.md).
+
+## Further information
+
+- [Configuration help](skills/adw-config/SKILL.md)
+- [Host integrations](hosts/)
+- [Release history](CHANGELOG.md)
+- [License](LICENSE)
+- [Third-party credits](NOTICE)
+- [Evaluation methods](evals/README.md)
