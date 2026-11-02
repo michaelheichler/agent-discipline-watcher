@@ -117,7 +117,7 @@ ADW enforces several of these ideas as rules. The table names the chapter that e
 | `mocking_concrete_classes` | A concrete mock signals a class with two jobs | 5, 9, 11 |
 | `incomplete_mock_call_verification` | A partial check on an unmanaged call misses regressions | 8, 9 |
 
-The names match the entries in `docs/research/2026-09-30-khorikov-test-catalog.md`. Two rules, `hollow_test` and `assert_in_loop`, go beyond the catalog. Chapter 11 scores both on the four pillars.
+Each name maps to an anti-pattern from the book. Two rules, `hollow_test` and `assert_in_loop`, go beyond the book. Chapter 11 scores both on the four pillars.
 
 ## Chapter files
 

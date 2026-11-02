@@ -88,3 +88,9 @@ node_modules/
 
 # Caliber local state
 .caliber/
+
+# Plans, research, tickets, and run reports stay on the workstation.
+docs/
+tasks/
+.story/
+.superpowers/

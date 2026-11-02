@@ -32,7 +32,6 @@ These files carry that material.
   hooks/lib/german_rules/rhetoric.py
   hooks/lib/german_rules/semantic_claims.py
   hooks/lib/german_rules/words.py
-  docs/research/2026-09-30-german-style-catalog.md, rules 21 to 80
 
 
 2. German style books, rules in our own words
@@ -48,8 +47,7 @@ No sentence from them ships in this repository.
 
   Stefan Gottschling, Einfach besser texten. GABAL, 2006.
 
-Rules 1 to 20 of docs/research/2026-09-30-german-style-catalog.md cite
-these books, and the German rule modules implement those rows.
+The German rule modules implement the rules that cite these books.
 
 
 3. Duden
