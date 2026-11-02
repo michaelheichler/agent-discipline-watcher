@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 312 312" role="img" aria-label="ADW icon">
+ <path d="M132 12 H44 Q12 12 12 44 V260 Q12 292 44 292 H132" fill="none" stroke="#20252C" stroke-width="24" stroke-linejoin="round"/>
+ <path d="M180 12 H268 Q300 12 300 44 V260 Q300 292 268 292 H180" fill="none" stroke="#20252C" stroke-width="24" stroke-linejoin="round"/>
+ <path d="M92 98 V206 M220 98 V206" stroke="#20252C" stroke-width="20" stroke-linecap="square"/>
+ <path d="M116 152 H196" stroke="#E33B40" stroke-width="24" stroke-linecap="square"/>
+ <rect x="142" y="138" width="28" height="28" fill="#E33B40"/>
+</svg>
