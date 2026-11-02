@@ -1,0 +1,109 @@
+.love-projects/adw-hooks/staging/architect-plan.json
+  s_ea26e62fa4dc9c::t_0b8a9e32e930a9 612,635
+.love-projects/adw-hooks/engine-room/agent-plan.md
+  s_ea26e62fa4dc9c::t_e21ad12ec737b3 1,96,103
+.love-projects/adw-hooks/epics/epic-01-foundation-dispatcher-state-payload-contracts-ledger/story-E1-S1-core-libraries-dispatch-payloads-and-gate-config.md
+  s_ea26e62fa4dc9c::t_f40a57a68d24ba 1
+.love-projects/adw-hooks/epics/epic-01-foundation-dispatcher-state-payload-contracts-ledger/story-E1-S2-existing-wiring-hardening-and-parity-map.md
+  s_ea26e62fa4dc9c::t_62c27969824827 1
+.love-projects/adw-hooks/epics/epic-01-foundation-dispatcher-state-payload-contracts-ledger/story-E1-S3-core-libraries-durable-session-state-and-findings-ledger.md
+  s_ea26e62fa4dc9c::t_e6354d83f8c0b2 1
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-S1-stop-gate.md
+  s_ea26e62fa4dc9c::t_4ef0f0100893b9 1
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-S2-subagentstop-coverage.md
+  s_ea26e62fa4dc9c::t_4f1519ca4de739 1
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-S3-taskcompleted-gate.md
+  s_ea26e62fa4dc9c::t_98d566f465646c 1
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-S4-posttoolbatch-single-pass-scan.md
+  s_ea26e62fa4dc9c::t_511f761259843a 1
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-S5-failure-event-handling.md
+  s_ea26e62fa4dc9c::t_e4bb79972138f4 1,16
+.love-projects/adw-hooks/epics/epic-02-turn-end-and-completion-enforcement-stop-family/story-E2-W-e2-wiring-and-parity.md
+  s_ea26e62fa4dc9c::t_3a7b81dcbbca82 1
+.love-projects/adw-hooks/epics/epic-03-prompt-and-context-boundary-userpromptsubmit-plus-jit-injection/story-E3-S1-prompt-firewall.md
+  s_ea26e62fa4dc9c::t_b1ec017e0ade5c 1
+.love-projects/adw-hooks/epics/epic-03-prompt-and-context-boundary-userpromptsubmit-plus-jit-injection/story-E3-S2-just-in-time-convention-injection-on-edits.md
+  s_ea26e62fa4dc9c::t_d5bf002c7ea53f 1
+.love-projects/adw-hooks/epics/epic-03-prompt-and-context-boundary-userpromptsubmit-plus-jit-injection/story-E3-W-e3-wiring.md
+  s_ea26e62fa4dc9c::t_cae08277dcc780 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-S1-quality-config-tamper-seal.md
+  s_ea26e62fa4dc9c::t_6a62a5692e72d9 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-S2-configchange-self-tampering-defense.md
+  s_ea26e62fa4dc9c::t_198717a85e1dd5 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-S3-session-scoped-edit-freeze-lease.md
+  s_ea26e62fa4dc9c::t_9dbdc5619d5d25 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-S4-first-touch-fact-forcing-gate-opt-in.md
+  s_ea26e62fa4dc9c::t_a0807328c27d6d 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-S5-cross-call-behavioral-taint-sequences.md
+  s_ea26e62fa4dc9c::t_e881d7dcc48b28 1
+.love-projects/adw-hooks/epics/epic-04-self-protection-and-scope-discipline/story-E4-W-e4-wiring.md
+  s_ea26e62fa4dc9c::t_cc49c4e489d7d7 1
+.love-projects/adw-hooks/epics/epic-05-compaction-resilience/story-E5-S1-precompact-snapshot-with-a-scoped-veto.md
+  s_ea26e62fa4dc9c::t_92a47e0fdb4e05 1
+.love-projects/adw-hooks/epics/epic-05-compaction-resilience/story-E5-S2-sessionstart-compact-contract-re-injection.md
+  s_ea26e62fa4dc9c::t_15b330880384c5 1
+.love-projects/adw-hooks/epics/epic-05-compaction-resilience/story-E5-W-e5-wiring.md
+  s_ea26e62fa4dc9c::t_08a7e9e02b7133 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S1-verify-runner-core.md
+  s_ea26e62fa4dc9c::t_210e5abb808bc7 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S2-formatter-fixed-point.md
+  s_ea26e62fa4dc9c::t_8392248250f68e 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S3-baseline-aware-lint-delta-gate.md
+  s_ea26e62fa4dc9c::t_11b9204bbff48f 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S4-content-hashed-typecheck-gate.md
+  s_ea26e62fa4dc9c::t_62314756eee64e 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S5-impact-selected-tests-on-edits.md
+  s_ea26e62fa4dc9c::t_f92acef1d6a62b 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S6-differential-coverage-ratchet.md
+  s_ea26e62fa4dc9c::t_cbfc76e91852bc 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S7-ast-native-forbidden-api-and-architecture-rules.md
+  s_ea26e62fa4dc9c::t_5bc0e3607a6bfe 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-S8-commit-message-gate.md
+  s_ea26e62fa4dc9c::t_f252a7abfcb30d 1
+.love-projects/adw-hooks/epics/epic-06-repo-verification-tier-config-driven-quality-gates-trust-gated-observe-first/story-E6-W-e6-wiring.md
+  s_ea26e62fa4dc9c::t_1f3e96e8005aaf 1
+.love-projects/adw-hooks/epics/epic-07-data-boundary-secrets-and-redaction-opt-in/story-E7-H-human-policy-gate.md
+  s_ea26e62fa4dc9c::t_cf1c7c02d0db20 1
+.love-projects/adw-hooks/epics/epic-07-data-boundary-secrets-and-redaction-opt-in/story-E7-S1-secret-block-tier.md
+  s_ea26e62fa4dc9c::t_3d8d76ab2b2703 1
+.love-projects/adw-hooks/epics/epic-07-data-boundary-secrets-and-redaction-opt-in/story-E7-S2-pseudonymization-boundary-claude-only-decision-fields.md
+  s_ea26e62fa4dc9c::t_580806fcfbe87c 1
+.love-projects/adw-hooks/epics/epic-07-data-boundary-secrets-and-redaction-opt-in/story-E7-S3-spilled-output-scanning.md
+  s_ea26e62fa4dc9c::t_107ea40b6e65b7 1
+.love-projects/adw-hooks/epics/epic-08-negative-memory-dead-end-registry/story-E8-S1-dead-end-registry-pipeline.md
+  s_ea26e62fa4dc9c::t_d5bcfb940be83a 1
+.love-projects/adw-hooks/epics/epic-08-negative-memory-dead-end-registry/story-E8-W-e8-wiring.md
+  s_ea26e62fa4dc9c::t_ef78a0d4e34184 1
+.love-projects/adw-hooks/epics/epic-09-telemetry-and-audit/story-E9-S1-dead-rules-compliance-telemetry.md
+  s_ea26e62fa4dc9c::t_22da45158f55dc 1
+.love-projects/adw-hooks/epics/epic-09-telemetry-and-audit/story-E9-S2-sessionend-cleanup-and-flush.md
+  s_ea26e62fa4dc9c::t_c8159d0524012f 1
+.love-projects/adw-hooks/epics/epic-09-telemetry-and-audit/story-E9-S3-instructionsloaded-audit-log.md
+  s_ea26e62fa4dc9c::t_735936dcfbcf0d 1
+.love-projects/adw-hooks/epics/epic-09-telemetry-and-audit/story-E9-W-e9-wiring.md
+  s_ea26e62fa4dc9c::t_6dbcb5a65cdfe3 1
+.love-projects/adw-hooks/epics/epic-10-rollout-live-verification-docs/story-E10-S1-prove-and-decide.md
+  s_ea26e62fa4dc9c::t_d55b97ca67c1b9 1
+.love-projects/adw-hooks/penthouse/board.html
+  s_ea26e62fa4dc9c::t_c673d520bc85f2 1,18,29
+.love-projects/adw-hooks/penthouse/overview.md
+  s_ea26e62fa4dc9c::t_eb7a47791e3583 1,5-6,35,41
+.love-projects/adw-hooks/plan.json
+  s_ea26e62fa4dc9c::t_b123b37a1c4afe 469,482,1903-1904
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "563a6cf0aa348d7f02c4dfe453d98f000e9400fe",
+  "prompts": {},
+  "sessions": {
+    "s_ea26e62fa4dc9c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0622562beffef7lF5LjbQROgyK",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

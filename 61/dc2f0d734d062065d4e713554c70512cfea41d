@@ -1,0 +1,138 @@
+hooks/lib/test_baseline.py
+  s_6a2cd207610387::t_7bf9b9c339321a 145-196
+  s_6a2cd207610387::t_797078e45e3f7a 213,220-223
+  s_6a2cd207610387::t_be56318a666e38 239-244,246-249,251-256,261-262
+  s_6a2cd207610387::t_348a74bc25e4d5 13
+  s_6a2cd207610387::t_a46adde139e329 14
+  s_6a2cd207610387::t_c9a88e18b771cc 68-69,71-72,77-82
+  s_6a2cd207610387::t_3fea4158541973 245,250
+  s_6a2cd207610387::t_b79423034b8b4d 83
+hooks/test_pre_bash.py
+  s_6a2cd207610387::t_46f1f85b33743a 157-163,165-170
+hooks/lib/test_config_cli.py
+  s_6a2cd207610387::t_7b4e0351ed3f56 222-251,255-341
+  s_6a2cd207610387::t_da4e1d32b63ba2 252-254
+hooks/lib/config.py
+  s_6a2cd207610387::t_d2f1eae08059db 122
+  s_6a2cd207610387::t_da6f70986acd01 10-15
+  s_6a2cd207610387::t_b652f83b96398f 102-106,110,112
+  s_6a2cd207610387::t_4e4c6736793dd5 47-48
+  s_6a2cd207610387::t_697e823f62c071 61-68,70-76
+  s_6a2cd207610387::t_17982a24d558a3 21-23
+hooks/lib/hookio.py
+  s_6a2cd207610387::t_343cc448427057 7-25,27,31-35
+hooks/lib/test_ledger_reporting.py
+  s_6a2cd207610387::t_9fd59dfd502812 365-438
+hooks/test_merge_configs.py
+  s_6a2cd207610387::t_7e130aa8d17460 23
+  s_6a2cd207610387::t_72192009d02cde 414
+hooks/pre_bash.py
+  s_6a2cd207610387::t_d2976f958fdef5 23-26
+  s_6a2cd207610387::t_6bc66d49a4a62f 415-420,423
+  s_6a2cd207610387::t_11e7587d9c0531 152-185
+  s_6a2cd207610387::t_7b892cf5d20731 186-325
+  s_6a2cd207610387::t_e7b00061573f70 99-104,106-110,117-129
+  s_6a2cd207610387::t_b15ed90762e9e7 74-82
+  s_6a2cd207610387::t_9b84c3215a9719 12
+  s_6a2cd207610387::t_b37d416b2434b0 98
+  s_6a2cd207610387::t_9dd81eeb38ff2d 11,14,18-22,27-30
+hooks/test_self_protection_invariants.py
+  s_6a2cd207610387::t_c3771fe520fd97 1-98,109-194
+  s_6a2cd207610387::t_faa1a563b93b36 99-108
+hooks/test_subagent_start.py
+  s_6a2cd207610387::t_b51a226b7efe9f 1-67
+hooks/record.py
+  s_6a2cd207610387::t_8d3a0dbd1c5f40 132-145,150,153-161
+  s_6a2cd207610387::t_7e40ec456d33ae 70-78,88-91
+  s_6a2cd207610387::t_989b8365279fe6 191
+  s_6a2cd207610387::t_31cc932a222e0d 7,13,15-23
+  s_6a2cd207610387::t_f30846f2a561eb 115
+  s_6a2cd207610387::t_3a0ca3dcfe8610 188
+hooks/session_start.py
+  s_6a2cd207610387::t_b4e9a201ae1430 3,5,14-21
+hooks/lib/test_protected.py
+  s_6a2cd207610387::t_67c22a6f1ab3b1 160-164
+  s_6a2cd207610387::t_710c2dfd4a9443 94,96-101
+  s_6a2cd207610387::t_2e4c39d69f5f84 4-5,10-11,13-14
+  s_6a2cd207610387::t_5ddac797d7b2aa 116-159,165-174
+hooks/claude-settings.snippet.json
+  s_6a2cd207610387::t_d79a4d72239de2 89-98
+bin/agent-discipline
+  s_6a2cd207610387::t_83626c98dbecd5 8-13
+  s_6a2cd207610387::t_8442151ec09480 149-215
+  s_6a2cd207610387::t_e1c13c36773fc8 248-249
+.pylintrc
+  s_6a2cd207610387::t_5b70ac6078af70 25-27
+hooks/test_run_dispatch.py
+  s_6a2cd207610387::t_f628fef40e0933 23
+hooks/lib/protected.py
+  s_6a2cd207610387::t_6e790980494822 181-184,187
+  s_6a2cd207610387::t_d061d304e6efea 4,8-14
+  s_6a2cd207610387::t_4c4926dbcf3c0b 44
+  s_6a2cd207610387::t_be6990f5fac46b 45-46
+  s_6a2cd207610387::t_5278a00d0f1b30 31-35
+  s_6a2cd207610387::t_dfcdac15830b86 38-40,47-57,59-60,63-68,73,75-76
+  s_6a2cd207610387::t_f1d4b06614a986 69
+  s_6a2cd207610387::t_fe67ad4a15f923 15
+  s_6a2cd207610387::t_04baff6c512545 36-37
+hooks/subagent_start.py
+  s_6a2cd207610387::t_4e537a90a82df1 1-14
+hooks/hooks.json
+  s_6a2cd207610387::t_55b9e4ab16ba97 90-99
+hooks/test_edit_journal.py
+  s_6a2cd207610387::t_72dc619e84f603 79-121
+hooks/test_bash_write_scan.py
+  s_6a2cd207610387::t_41fb6476ab457a 1-143
+hooks/lib/test_config_schema.py
+  s_6a2cd207610387::t_71c2c0c53152b5 312-317
+  s_6a2cd207610387::t_d0b3d8f9700695 318
+hooks/batch.py
+  s_6a2cd207610387::t_ccb68d5a478de6 565-570,572-579
+hooks/pre_commit.py
+  s_6a2cd207610387::t_3b4bd182d914a1 11-12,15-16
+  s_6a2cd207610387::t_e6d05b3fc1d1a1 19-23,31-44
+  s_6a2cd207610387::t_d5a6b8b4279961 118
+  s_6a2cd207610387::t_74cd6025f5dc0e 116-117,119-156
+  s_6a2cd207610387::t_e89bb8a1917091 63,66-76
+  s_6a2cd207610387::t_4423f635245bb8 17-18
+hooks/run.sh
+  s_6a2cd207610387::t_ee4a56ba54e5db 7
+hooks/pre_write.py
+  s_6a2cd207610387::t_b9f2e758b90c73 88-89
+  s_6a2cd207610387::t_88b822fe9c2f04 65-73
+  s_6a2cd207610387::t_61711d17286034 103,105
+  s_6a2cd207610387::t_2f50075f852a22 98,101-102,104,106-108,110-112,114-119,121-129
+  s_6a2cd207610387::t_e2c7d827ca12ca 5,7,11,15-17,21-25,27
+hooks/lib/scanner.py
+  s_6a2cd207610387::t_74af81031e3e5d 119-122
+hooks/lib/baseline.py
+  s_6a2cd207610387::t_7c83a8caba5c81 97-111,113,116-117,120-121,123-134
+  s_6a2cd207610387::t_09fd1bad6b77d5 14-15,20,22
+hooks/test_hooks.py
+  s_6a2cd207610387::t_f48d1d2665dda8 361-388
+  s_6a2cd207610387::t_a93f02438cdbee 4,8
+hooks/lib/reporting.py
+  s_6a2cd207610387::t_02540bb2c70ac5 35-41,45,53,58-79
+  s_6a2cd207610387::t_44d6522323769a 80-81
+hooks/test_gate_state_parity.py
+  s_6a2cd207610387::t_ca1b3f15bf1a90 234-237
+  s_6a2cd207610387::t_25f808fd2bf430 141
+  s_6a2cd207610387::t_01bb3530ac41ce 1-93,167-233,238-325
+  s_6a2cd207610387::t_b1e1e6788f3fc0 94-140,142-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "61dc2f0d734d062065d4e713554c70512cfea41d",
+  "prompts": {},
+  "sessions": {
+    "s_6a2cd207610387": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67026414-4be7-406c-985a-c09fbe0a4c71",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

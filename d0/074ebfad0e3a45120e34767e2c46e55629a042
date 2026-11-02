@@ -1,0 +1,37 @@
+hooks/lib/scanner.py
+  s_959d8e519ff7be::t_76eb91ec2d18f4 94-96,101-102,234,361
+  s_959d8e519ff7be::t_bffea1f50fd0ad 4
+  s_959d8e519ff7be::t_502eb250954a88 79,84,91,166,169-171
+  s_959d8e519ff7be::t_77c6a0bb051c4f 167
+  s_959d8e519ff7be::t_1dc99213935e30 494-495
+  s_959d8e519ff7be::t_03e965f87a3ed3 168
+  s_959d8e519ff7be::t_2b12dc476a944b 268-270,276
+  s_959d8e519ff7be::t_7643d1d3fde7e9 76-78
+  s_959d8e519ff7be::t_5c608ec37b5e74 80-83
+  s_959d8e519ff7be::t_93f72f6a9bd2bb 85-90
+  s_959d8e519ff7be::t_8ac422aa0b7513 92-93
+  s_959d8e519ff7be::t_e81b8cf0ec7dda 163-165
+  s_959d8e519ff7be::t_6438174e2a4447 172-174
+  s_959d8e519ff7be::t_6aea06d18f5a86 233
+  s_959d8e519ff7be::t_e82d64211c0307 235-236
+  s_959d8e519ff7be::t_b431aab11789c5 362
+  s_959d8e519ff7be::t_c5f90ec127d033 60-61,73,75,151-162,182-184,192-193,216-218,221,223,226,228-231,246,288-302,307,309,311-313,315,318-320,327-333,335,343-345,353-357,389,421-423,427-428,455-456
+hooks/lib/test_scanner.py
+  s_959d8e519ff7be::t_aec089712aca87 80-81,122-163,217-219,228-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d0074ebfad0e3a45120e34767e2c46e55629a042",
+  "prompts": {},
+  "sessions": {
+    "s_959d8e519ff7be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e51fcb5f-22ea-497f-8865-4214816ceedb",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

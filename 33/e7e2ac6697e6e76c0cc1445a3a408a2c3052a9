@@ -1,0 +1,49 @@
+hooks/merge-codex-config.py
+  s_d01c2db2320db7::t_17cb0c74c812b3 27-31,37-38
+README.md
+  s_7bc5170483c0ca::t_d264f42f4f267c 136,138
+  s_d01c2db2320db7::t_37d206fcb82021 123-129,132-133,137,151-157
+  s_7bc5170483c0ca::t_18f0c132cad609 142
+  s_7bc5170483c0ca::t_2f8a565bde4c24 150
+  s_7bc5170483c0ca::t_de1380397dd60f 130-131,134-135,139-141,143-149
+hooks/test_merge_configs.py
+  s_7bc5170483c0ca::t_0015e732327b83 518,520
+  s_7bc5170483c0ca::t_20bc6c76e9e238 548-570
+  s_d01c2db2320db7::t_f43949258afe09 3,15,38-53
+  s_d01c2db2320db7::t_3c5e9c79b89e91 447-456,460-467,469-481,483,485-497,499-505,510-517,519,521-538,540,542-547
+  s_7bc5170483c0ca::t_45dd7725e1173c 457-459
+  s_d01c2db2320db7::t_861e64014e1308 299
+  s_7bc5170483c0ca::t_0d4f3d23031c43 288-298
+  s_7bc5170483c0ca::t_39ac3416b76719 19
+  s_7bc5170483c0ca::t_a7f836d3653a33 2
+  s_7bc5170483c0ca::t_1e8fb30c21456c 333
+  s_7bc5170483c0ca::t_a794d79ca56692 498,506-509
+  s_7bc5170483c0ca::t_c966f11dff48f3 322-332,334-336
+  s_7bc5170483c0ca::t_5c267c3a8bddda 16-18,20-37
+  s_7bc5170483c0ca::t_219fded07b7a3b 539,541
+  s_7bc5170483c0ca::t_e342cb576f0c57 468,482,484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "33e7e2ac6697e6e76c0cc1445a3a408a2c3052a9",
+  "prompts": {},
+  "sessions": {
+    "s_7bc5170483c0ca": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_061f70900ffeCgzvMucgyMaLZw",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_d01c2db2320db7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_062061e15ffe7WuZ2f6DgGdH5v",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

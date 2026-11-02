@@ -1,0 +1,81 @@
+README.md
+  s_f4ae723feb4e1a::t_cfaede5b5061b7 156
+bin/adw-cli
+  s_f4ae723feb4e1a::t_3d5b424c031e19 23
+bin/agent-discipline
+  s_f4ae723feb4e1a::t_9d97b6e8933ffe 224
+hooks/lib/test_render.py
+  s_f4ae723feb4e1a::t_2f194f763f4167 49
+hooks/lib/render.py
+  s_f4ae723feb4e1a::t_67bb2ce9e3934f 84
+hooks/lib/test_scanner.py
+  s_f4ae723feb4e1a::t_cbebdefaba5c5c 886-910
+hooks/lib/markup.py
+  s_f4ae723feb4e1a::t_ef86a0bfb0d7c6 1-44
+scripts/adw-completion.bash
+  s_f4ae723feb4e1a::t_12aa49e8abfa9a 1-16
+hooks/pre_bash.py
+  s_f4ae723feb4e1a::t_6f4af4bad5ff72 108-110
+  s_f4ae723feb4e1a::t_9136f2bfc3ea37 23-27
+  s_f4ae723feb4e1a::t_f7b3a4b4f8ed49 225,227,233,235-238,242,252,254-255,273,282,296,301,317-318,327,347,370,375,380,386,399,404,409,414,427,437,445,452,460,471,480,485,499
+  s_f4ae723feb4e1a::t_631bd3bcdc1489 182,188-196
+  s_f4ae723feb4e1a::t_9b68d915397870 220
+  s_f4ae723feb4e1a::t_445943e978ca1c 197-198
+install.sh
+  s_f4ae723feb4e1a::t_9b49e6aaec4e9d 101-108
+hooks/lib/scanner.py
+  s_f4ae723feb4e1a::t_1fe7e0c2ce759b 339,341-342
+  s_f4ae723feb4e1a::t_f1d3e22b4ade2f 280-281
+  s_f4ae723feb4e1a::t_617c772118cee9 937
+  s_f4ae723feb4e1a::t_4e721e1a660cb7 966,969
+  s_f4ae723feb4e1a::t_255de592071640 296
+  s_f4ae723feb4e1a::t_58ddece5e68e82 286-287
+  s_f4ae723feb4e1a::t_fa4874a7643800 261
+  s_f4ae723feb4e1a::t_7dc2751371f81e 243
+  s_f4ae723feb4e1a::t_0c10da8343c4ff 20
+  s_f4ae723feb4e1a::t_6d9273dd2d9b60 257-258,263-264,266-267
+  s_f4ae723feb4e1a::t_ccb3ace96043e4 262
+  s_f4ae723feb4e1a::t_819bd0df4718ae 268,271-273
+  s_f4ae723feb4e1a::t_2083e87a58f9fd 291,293-295
+  s_f4ae723feb4e1a::t_ca79d5aa821b2a 265
+  s_f4ae723feb4e1a::t_cb601b561a971f 12,16
+  s_f4ae723feb4e1a::t_e277b1dd9389b9 251
+  s_f4ae723feb4e1a::t_d7115ea53b5147 343
+  s_f4ae723feb4e1a::t_9a8118c2b1980d 940
+hooks/test_pre_bash.py
+  s_f4ae723feb4e1a::t_954c47cfe1b3ee 239-240
+  s_f4ae723feb4e1a::t_a9951c73cea24a 230-238,241-248,250-256,258-259
+  s_f4ae723feb4e1a::t_89bf296a334a05 257
+  s_f4ae723feb4e1a::t_d344c2e8f3747c 249
+hooks/test_adw_cli.py
+  s_f4ae723feb4e1a::t_650fe663742ddf 44-49
+  s_f4ae723feb4e1a::t_d4793712d555ae 60-64
+  s_f4ae723feb4e1a::t_237a33b3621b15 30
+  s_f4ae723feb4e1a::t_a29cfdcb7eaf8f 42-43
+  s_f4ae723feb4e1a::t_0f66edac81348a 1
+  s_dac437e936a4b3::t_76b36bd2d254fe 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "40e44d5e650577a8e79e33725d1391e16e3c658f",
+  "prompts": {},
+  "sessions": {
+    "s_dac437e936a4b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aadw-coder-9a5eae57b940151b",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_f4ae723feb4e1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd4fd233-5149-4cec-83c3-7db26933fa2d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

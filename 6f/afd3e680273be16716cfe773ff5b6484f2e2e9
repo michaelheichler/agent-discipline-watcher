@@ -1,0 +1,68 @@
+bin/agent-discipline
+  s_fdc2bb3e723c42::t_3a4911084288cf 11
+  s_fdc2bb3e723c42::t_3e465b47c050c3 274,277
+  s_fdc2bb3e723c42::t_82eef746580194 221-226
+  s_fdc2bb3e723c42::t_adcb47b8f7485f 216-220,227-240
+hooks/lib/render.py
+  s_fdc2bb3e723c42::t_88569899a38a90 70
+  s_fdc2bb3e723c42::t_5d4f58c1283311 21
+  s_fdc2bb3e723c42::t_5a578107981a38 6-8,14-18,22-25,29-32,39,41-44,48-62,64-66,71-84
+  s_fdc2bb3e723c42::t_b0ae0730ff7ec8 1-5,10-13,19-20,26-28,33-35,63,67-69
+  s_fdc2bb3e723c42::t_dbb3e8b19ee16b 36-38,40,45-47
+  s_fdc2bb3e723c42::t_967e3d5d2ecd61 9
+hooks/lib/review.py
+  s_fdc2bb3e723c42::t_5017de89bf0c32 56-57,109-110
+  s_fdc2bb3e723c42::t_0b948773c3f5dc 210-211
+  s_fdc2bb3e723c42::t_8ce11cf5a90493 5,10,13,15-28,31-37,40-44,47-55,58-70,85-90,92-105,107-108,121-127,134-149,152-159,162-186,189-196,201-202,206,208-209,212-220,222-238,242,244-250,252,256-257
+  s_fdc2bb3e723c42::t_7f0ceab1fae03a 111-120,128-133
+  s_fdc2bb3e723c42::t_9fd94817fc5a6e 205,241
+  s_fdc2bb3e723c42::t_d1c5d2327e0d02 1-4,6-9,11-12,14,29-30,187-188,197-200,203-204,207,221,239-240,243,251,253-255,258
+  s_fdc2bb3e723c42::t_5c566d40a073a3 71-84,91
+  s_fdc2bb3e723c42::t_236e532c036c60 106
+  s_fdc2bb3e723c42::t_59a4de4a2c6443 160-161
+  s_fdc2bb3e723c42::t_41906585ec0a69 38-39,45-46,150-151
+hooks/lib/test_render.py
+  s_fdc2bb3e723c42::t_04284536d365c1 25,33,44
+  s_fdc2bb3e723c42::t_c4fa6d80957ac9 1-24,26-32,34-43,45-60
+hooks/lib/bm25.py
+  s_fdc2bb3e723c42::t_bd44e691d10d5e 1-7,10-17,21,32,50,52,54-55,59
+  s_fdc2bb3e723c42::t_e7a67ecdfafab9 8-9
+  s_fdc2bb3e723c42::t_4e612f7b585218 18-20,22-31,35-44,49,51,53,56-58,61,63-107
+  s_fdc2bb3e723c42::t_ea4a67a9f01e75 33-34
+  s_fdc2bb3e723c42::t_96c3f18f527bc4 60,62
+  s_fdc2bb3e723c42::t_a5e490d5d5cfcc 45-48
+README.md
+  s_fdc2bb3e723c42::t_88d5ccefd4b767 46
+  s_fdc2bb3e723c42::t_2dc8ee7cc77e46 156
+  s_fdc2bb3e723c42::t_9050f614501066 144-155,157-167,169
+  s_fdc2bb3e723c42::t_1251e4243114ca 168
+hooks/lib/test_review.py
+  s_fdc2bb3e723c42::t_b12d8a4bde33c2 85-101
+  s_fdc2bb3e723c42::t_65edccca139fe7 1-84,102-203
+bin/adw-cli
+  s_fdc2bb3e723c42::t_b986c08f558412 1-10,13-14,18,27-30,34-35,37-38,40-41,44,54-56,58-63
+  s_fdc2bb3e723c42::t_ea060ab348a5f1 11-12,15-17,19-26,31-33,36,39,42-43,45-53,57
+hooks/test_adw_cli.py
+  s_fdc2bb3e723c42::t_2721267238b002 1-15,17-50
+  s_fdc2bb3e723c42::t_ec35f5e8d353dc 16
+install.sh
+  s_fdc2bb3e723c42::t_4795d58da80eba 99
+hooks/lib/test_bm25.py
+  s_fdc2bb3e723c42::t_96ad79afb32574 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "6fafd3e680273be16716cfe773ff5b6484f2e2e9",
+  "prompts": {},
+  "sessions": {
+    "s_fdc2bb3e723c42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a873a74-5fd3-4c61-8a19-1892410dd2d1",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

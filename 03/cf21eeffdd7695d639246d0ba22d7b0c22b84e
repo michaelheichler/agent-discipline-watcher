@@ -1,0 +1,79 @@
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/remediation/qa/round-01/R01-VERIFICATION.md
+  s_11842c2b137f6e::t_10c43ffc168dde 1-67
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-UAT.md
+  s_11842c2b137f6e::t_4a44ce7fb35f03 40-41
+  s_11842c2b137f6e::t_ddc7db911f71d7 53-54
+  s_11842c2b137f6e::t_e356052f410735 1-3,5,7,9-26,29-39,42-52,55-65,68-73,75-80,82-87,89-95
+  s_11842c2b137f6e::t_35692b5a8029c0 74
+  s_11842c2b137f6e::t_90c0b7991b3816 81
+  s_11842c2b137f6e::t_96b2d980c87738 66-67
+  s_11842c2b137f6e::t_aff8c2ecc1bc55 27-28
+  s_11842c2b137f6e::t_844a60aad29782 88
+  s_11842c2b137f6e::t_6787e9313ff0a5 4,6,8
+.vbw-planning/todo-details.json
+  s_11842c2b137f6e::t_2f883dc564ac3b 1-5,7-17,21-24,26-36,40-43
+  s_11842c2b137f6e::t_1727d92b5827a5 6,18-20,25,37-39
+.vbw-planning/ROADMAP.md
+  s_11842c2b137f6e::t_3b337d667d1bd8 10
+  s_11842c2b137f6e::t_fdc899db58e4e8 19
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/remediation/qa/round-01/R01-SUMMARY.md
+  s_11842c2b137f6e::t_0bd3a69411181b 11
+  s_11842c2b137f6e::t_24c040ae4b68f1 1-10,12-37
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-02-SUMMARY.md
+  s_11842c2b137f6e::t_b027beddb30ff6 1-52
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-VERIFICATION.md
+  s_11842c2b137f6e::t_b02ea0ec830a4e 1-78
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-03-SUMMARY.md
+  s_11842c2b137f6e::t_474ab55ff80425 1-70
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/remediation/qa/round-01/R01-PLAN.md
+  s_11842c2b137f6e::t_7192ab1035d41e 1-29,39-50,61-88
+  s_11842c2b137f6e::t_00c2948ab77dc6 51-60
+  s_11842c2b137f6e::t_4df57fa9425bd0 30-38
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/remediation/qa/.qa-remediation-stage
+  s_11842c2b137f6e::t_f702982da3df4e 1
+  s_11842c2b137f6e::t_42d7c9f704cd98 2-3
+.vbw-planning/STATE.md
+  s_11842c2b137f6e::t_f14b669fcf404f 28-29
+  s_11842c2b137f6e::t_63e8944a642fb0 35
+  s_11842c2b137f6e::t_5062b30ab1a698 7-8,13
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/remediation/qa/round-01/R01-KNOWN-ISSUES.json
+  s_11842c2b137f6e::t_42d7c9f704cd98 1-28
+.vbw-planning/.agent-spawn-guard.log
+  s_11842c2b137f6e::t_004b19cf085c26 5-20
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-01-SUMMARY.md
+  s_0a7a33ed66efbb::t_6ca9938c2dfb63 1-55
+.vbw-planning/phases/01-self-tamper-fail-open-hardening/01-04-SUMMARY.md
+  s_9f7532af15c318::t_49ffe2bfe5c94d 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "03cf21eeffdd7695d639246d0ba22d7b0c22b84e",
+  "prompts": {},
+  "sessions": {
+    "s_0a7a33ed66efbb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aff808e702f95af55",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_9f7532af15c318": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a888764cee46fac0a",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

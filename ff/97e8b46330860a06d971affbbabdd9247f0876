@@ -1,0 +1,19 @@
+hooks/test_hooks.py
+  s_fcfa07d87e7691::t_bf07612147ef9b 18-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ff97e8b46330860a06d971affbbabdd9247f0876",
+  "prompts": {},
+  "sessions": {
+    "s_fcfa07d87e7691": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3658-a70c-7df1-83d3-dbf4a774fdf6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

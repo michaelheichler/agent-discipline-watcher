@@ -1,0 +1,27 @@
+hooks/test_bash_opaque_write.py
+  s_c7ac3af2a21458::t_3a58e51e533282 97-119
+CHANGELOG.md
+  s_c7ac3af2a21458::t_997e5e13155602 3-8
+hooks/lib/opaque_write.py
+  s_c7ac3af2a21458::t_539f52cdf05db0 17,23-25,28-37,40,42-43,50,57-58,69-84
+  s_c7ac3af2a21458::t_1cf7d92577ae5d 26-27
+  s_c7ac3af2a21458::t_ba602c7d9aff64 38,62-68,85-86
+  s_c7ac3af2a21458::t_e87cc92c8785e7 39,41,44-49,51-56,59-61
+  s_c7ac3af2a21458::t_2dcd2a6eaf6433 140-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "842a8dfadc7b47195b35f25fdbdcaea968e130cf",
+  "prompts": {},
+  "sessions": {
+    "s_c7ac3af2a21458": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25dfafef-bd69-4687-bdd6-158bc3fe5251",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Agent Discipline Watcher CI <ci@agent-discipline-watcher.test>"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+hooks/lib/scanner.py
+  s_c7ac3af2a21458::t_a9efa5a4cf56d6 183
+CHANGELOG.md
+  s_c7ac3af2a21458::t_4b352b3c97cd71 3-8
+hooks/lib/comment_rules.py
+  s_c7ac3af2a21458::t_7839c593fed34b 183
+  s_c7ac3af2a21458::t_c494e3de8f543e 7
+  s_c7ac3af2a21458::t_6762e800278469 184
+  s_c7ac3af2a21458::t_75cb119f331661 163
+  s_c7ac3af2a21458::t_c917397a8a8033 162,164
+  s_c7ac3af2a21458::t_bf5a39ea59e4a8 72-73
+hooks/lib/test_scanner.py
+  s_c7ac3af2a21458::t_499fee66f30d2f 926-949
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "acfe89b70745f143576e7fea7dd283e4b8bdc217",
+  "prompts": {},
+  "sessions": {
+    "s_c7ac3af2a21458": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25dfafef-bd69-4687-bdd6-158bc3fe5251",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Agent Discipline Watcher CI <ci@agent-discipline-watcher.test>"
+    }
+  }
+}

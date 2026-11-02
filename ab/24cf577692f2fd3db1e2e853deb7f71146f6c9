@@ -1,0 +1,22 @@
+hooks/lib/test_protected.py
+  s_11842c2b137f6e::t_e150f4df68ecfa 58-81
+  s_11842c2b137f6e::t_64ae574532f791 5
+hooks/lib/protected.py
+  s_11842c2b137f6e::t_6cac2c39cd84d1 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "ab24cf577692f2fd3db1e2e853deb7f71146f6c9",
+  "prompts": {},
+  "sessions": {
+    "s_11842c2b137f6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c391e32-e117-4c01-b48e-be80db4a5585",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

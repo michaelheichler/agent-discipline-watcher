@@ -1,0 +1,25 @@
+hooks/run.sh
+  s_2074c35763590b::t_59b40d9afdb884 24-27
+.requirements/20260719T084553Z_remove_stop_hook/REQUIREMENTS.md
+  s_2074c35763590b::t_ffb86707c53f44 9,14,21
+hooks/test_hooks.py
+  s_2074c35763590b::t_c7e4130ca1128f 305,313-315
+README.md
+  s_2074c35763590b::t_e96da4475961a1 116-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "10779c36f896536811c0669863b4ea0d7e2328ad",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

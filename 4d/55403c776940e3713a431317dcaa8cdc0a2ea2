@@ -1,0 +1,27 @@
+.claude-plugin/marketplace.json
+  s_34707ea1ec2d56::t_0e77cd7580c5ec 17
+.claude-plugin/plugin.json
+  s_34707ea1ec2d56::t_17c04ff7dc6450 4
+README.md
+  s_34707ea1ec2d56::t_0befa058796bff 155
+hooks/lib/baseline.py
+  s_34707ea1ec2d56::t_4c6f8f7153e0be 67-73,76,84-95
+hooks/lib/test_baseline.py
+  s_34707ea1ec2d56::t_a197cb968a211b 185-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4d55403c776940e3713a431317dcaa8cdc0a2ea2",
+  "prompts": {},
+  "sessions": {
+    "s_34707ea1ec2d56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_34707ea1ec2d56",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

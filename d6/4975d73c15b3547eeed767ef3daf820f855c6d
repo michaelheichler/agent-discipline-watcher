@@ -1,0 +1,22 @@
+hooks/lib/scanner.py
+  s_83e5e4f3bfc28c::t_2a883264305704 27
+  s_83e5e4f3bfc28c::t_9cb85f9da82fe0 504-505
+hooks/test_hooks.py
+  s_83e5e4f3bfc28c::t_46848ec0346e22 73-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d64975d73c15b3547eeed767ef3daf820f855c6d",
+  "prompts": {},
+  "sessions": {
+    "s_83e5e4f3bfc28c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1ff9ce0-6c68-4a35-9007-c9e016601c16",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

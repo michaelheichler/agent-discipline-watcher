@@ -1,0 +1,41 @@
+README.md
+  s_2197beb8592f89::t_02dc46f84cdbf0 181,183-203
+hooks/lib/config.py
+  s_2197beb8592f89::t_7d49f004a33197 18,43-44,102-115,121-123,125
+hooks/lib/hookio.py
+  s_2197beb8592f89::t_e7cbd665f9c33a 41-48
+hooks/lib/reporting.py
+  s_2197beb8592f89::t_66c5bf8da10f08 150-185
+hooks/lib/scanner.py
+  s_2197beb8592f89::t_2ccb9588f9f954 69-71,325-350,353,355-356,358
+hooks/lib/test_config_schema.py
+  s_2197beb8592f89::t_0239e5acc570e2 360-394
+hooks/lib/test_ledger_reporting.py
+  s_2197beb8592f89::t_d8a5bee7aa40c0 4,6,13-15,370-423
+hooks/pre_bash.py
+  s_2197beb8592f89::t_ecfad08dbe984f 7,13,60-72,80-86
+hooks/pre_write.py
+  s_2197beb8592f89::t_d8f37b58690f53 4,7,9,13-16,58,60-70,73-99,106
+hooks/test_hooks.py
+  s_2197beb8592f89::t_12a73151d9e540 66-80,84-85,92-93,95,101-102
+.claude-plugin/marketplace.json
+  s_2197beb8592f89::t_ef7fa261a3db9b 17
+.claude-plugin/plugin.json
+  s_2197beb8592f89::t_877da16d589f25 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "af6d47af32bc516ba4eb9098bf886dfc358cbec4",
+  "prompts": {},
+  "sessions": {
+    "s_2197beb8592f89": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8567170f-748a-47ab-a45c-e9a96e09b1e2",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

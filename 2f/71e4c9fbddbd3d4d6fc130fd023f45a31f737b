@@ -1,0 +1,31 @@
+hooks/batch.py
+  s_2197beb8592f89::t_d2857990d2726a 20,463
+hooks/lib/baseline.py
+  s_2197beb8592f89::t_bda7de423cce50 1-94
+hooks/lib/config.py
+  s_2197beb8592f89::t_664f15ee94f0c8 39-40
+hooks/pre_commit.py
+  s_2197beb8592f89::t_a341459c56b588 9,65-66,73-84
+hooks/record.py
+  s_2197beb8592f89::t_1c924c7d18b410 7,14,74-75,82-83,86-92,96-100,102,104-121,127-130,132-146,150
+README.md
+  s_2197beb8592f89::t_327364fb51ccdf 149-164
+hooks/lib/test_baseline.py
+  s_2197beb8592f89::t_a898a7baed2767 1-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2f71e4c9fbddbd3d4d6fc130fd023f45a31f737b",
+  "prompts": {},
+  "sessions": {
+    "s_2197beb8592f89": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8567170f-748a-47ab-a45c-e9a96e09b1e2",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

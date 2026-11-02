@@ -1,0 +1,36 @@
+hooks/pre_commit.py
+  s_83e5e4f3bfc28c::t_f34158de2e469e 95-108,118-121,123
+hooks/lib/test_pi_extension_contract.py
+  s_83e5e4f3bfc28c::t_3129a8b0cf6a52 133
+  s_83e5e4f3bfc28c::t_df226c218cd236 20,32-38
+  s_83e5e4f3bfc28c::t_5586227f56207c 69-82
+  s_83e5e4f3bfc28c::t_c58c6bf7b35a5d 39-40
+README.md
+  s_83e5e4f3bfc28c::t_7188ca08b03f5b 95
+  s_83e5e4f3bfc28c::t_a29fe5b46ea587 134,137,140-146
+  s_83e5e4f3bfc28c::t_e90352daee9880 147
+hooks/lib/scanner.py
+  s_83e5e4f3bfc28c::t_3018340d77de3b 196-203,209-213
+  s_83e5e4f3bfc28c::t_612fb395fa1e30 259-271,281,283-293
+  s_83e5e4f3bfc28c::t_f557eb9d8e1332 297,301-302,304-308,310-315,320-343
+hooks/gate.py
+  s_83e5e4f3bfc28c::t_c396db295bf608 64-85,99
+hooks/test_hooks.py
+  s_83e5e4f3bfc28c::t_d21f19d3906ba1 376,386-392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "79d1d99d9777443704a3063d9b0468e0750b4744",
+  "prompts": {},
+  "sessions": {
+    "s_83e5e4f3bfc28c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1ff9ce0-6c68-4a35-9007-c9e016601c16",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

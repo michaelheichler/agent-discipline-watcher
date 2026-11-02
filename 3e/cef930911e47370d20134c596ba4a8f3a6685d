@@ -1,0 +1,32 @@
+.requirements/20260719T064754Z_immediate_post_write_gate/REQUIREMENTS.md
+  s_2074c35763590b::t_e4669c90f9abca 1-39
+pi/extensions/agent-discipline-watcher/index.ts
+  s_2074c35763590b::t_421662c308d1df 134-138
+hooks/test_hooks.py
+  s_2074c35763590b::t_0248e4ca393956 230-232,239-245,253-265
+  s_2074c35763590b::t_4efa02db9506f0 246-252
+  s_2074c35763590b::t_37e57ad098bd0e 266-267
+hooks/lib/test_pi_extension_contract.py
+  s_2074c35763590b::t_0248e4ca393956 111-117
+hooks/record.py
+  s_2074c35763590b::t_421662c308d1df 4,10,34,44-53,58-62
+README.md
+  s_2074c35763590b::t_4efa02db9506f0 111,131-132
+  s_2074c35763590b::t_d389c8edc47bd3 116-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "3ecef930911e47370d20134c596ba4a8f3a6685d",
+  "prompts": {},
+  "sessions": {
+    "s_2074c35763590b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78de-819e-7d83-bce4-248931335760",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

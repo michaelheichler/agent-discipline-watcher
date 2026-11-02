@@ -1,0 +1,31 @@
+hooks/lib/test_payloads.py
+  s_6716b054d475e9::t_38747c9872088d 189-192
+  s_6716b054d475e9::t_6278874e6e25c2 107
+  s_6716b054d475e9::t_dbea14f1b7b5e8 106
+  s_6716b054d475e9::t_0b547d44d62755 99
+  s_6716b054d475e9::t_750e04fa8a2763 1-73,78-98,100-105,108-159,165-188,193-252
+  s_6716b054d475e9::t_0cc25dc4efba8b 160-164
+  s_6716b054d475e9::t_734de18575e71e 74-77
+hooks/lib/payloads.py
+  s_6716b054d475e9::t_19abac68ac6756 15-16
+  s_6716b054d475e9::t_3f7152c1377ff1 113-114
+  s_6716b054d475e9::t_23a4bbd8146cc7 73
+  s_6716b054d475e9::t_7b4fd20ba11e70 54-55
+  s_6716b054d475e9::t_bdd7c7e78bfc87 1-14,17-53,56-72,74-112,115-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7e4ac688d5f9e316951014615d07f76b8318b1df",
+  "prompts": {},
+  "sessions": {
+    "s_6716b054d475e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c7001d5-2667-4966-9c4f-5a8526610aed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

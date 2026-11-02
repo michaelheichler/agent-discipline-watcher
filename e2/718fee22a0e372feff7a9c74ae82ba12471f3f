@@ -1,0 +1,49 @@
+hooks/subagent_stop.py
+  s_94b8bead4283ac::t_4e12806cf31fc9 25
+  s_ce920d7766404f::t_adeae0390c5ea3 2-6,8-18,20-24,26-30,41,51-56,58-60,62-66,70,82-93,95-109,111-115,126-127,133,137,139,145-150,156-158,162,164-167,174-186
+  s_94b8bead4283ac::t_f51363993eb084 71
+  s_ce920d7766404f::t_40c78a22bf2bdf 110
+  s_ce920d7766404f::t_eedc25be56f810 94
+  s_ce920d7766404f::t_2d4457200f474c 33-40,42,44-50,57
+  s_ce920d7766404f::t_1a4c60ac9ab000 43
+  s_ce920d7766404f::t_2b7735c3e09e53 32
+  s_94b8bead4283ac::t_7f93f00715ab60 1,19,31,61,67-69,72-81,116-125,128-132,134-136,138,140-144,151-155,159-161,163,168-173
+  s_ce920d7766404f::t_16a3eb2b2640ad 7
+hooks/test_subagent_stop.py
+  s_d31d01441aa05b::t_07de2e54fb9d7c 326-439
+  s_94b8bead4283ac::t_7f93f00715ab60 9,34-35,37,45-47,207-210,218-238,243-244,246-247,251-253,269-290,292,308-324
+  s_ce920d7766404f::t_174f63535151c5 1-8,10-33,36,38-44,48-206,211-217,242,245,248-250,254-268,291,293-307,325,440-452
+  s_94b8bead4283ac::t_ecdc7995f452fc 239-241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e2718fee22a0e372feff7a9c74ae82ba12471f3f",
+  "prompts": {},
+  "sessions": {
+    "s_94b8bead4283ac": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06165cb69ffenceMXSD9eESOwl",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_ce920d7766404f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0618d88deffeG5NnmoEtVahXMA",
+        "model": "k3"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    },
+    "s_d31d01441aa05b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_061600ab4ffehZoDufjZEQK3X5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

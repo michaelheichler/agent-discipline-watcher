@@ -1,0 +1,21 @@
+hooks/lib/test_scanner.py
+  s_ef227f29261427::t_d1b0432a3c9d25 236,238,240
+hooks/lib/config.py
+  s_ef227f29261427::t_d1b0432a3c9d25 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "81319a0c3521dbc557bbb629cb66c0b41f67acec",
+  "prompts": {},
+  "sessions": {
+    "s_ef227f29261427": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5177-b841-77f3-aaf7-8fd5cd6e51cb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

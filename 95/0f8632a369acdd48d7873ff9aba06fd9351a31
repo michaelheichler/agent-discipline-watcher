@@ -1,0 +1,29 @@
+README.md
+  s_b925a0724467e3::t_4fabc1da389501 290-291
+  s_b925a0724467e3::t_08ec9d6e04218c 172,177-179
+  s_b925a0724467e3::t_c6dcc14cfb5367 261-262
+hooks/subagent_stop.py
+  s_b925a0724467e3::t_0e50593e08c7d2 1,4-7
+hooks/test_stop.py
+  s_b925a0724467e3::t_d25ba272c05663 1,65-67,71-72,74-75,79-80,84-85,95,99
+hooks/test_subagent_stop.py
+  s_b925a0724467e3::t_89c480f3617fbd 1,10,29-30,34,36,78-79,81,87-88,91,93,95,103,107
+hooks/stop.py
+  s_b925a0724467e3::t_caa8376a306dd2 1,8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "950f8632a369acdd48d7873ff9aba06fd9351a31",
+  "prompts": {},
+  "sessions": {
+    "s_b925a0724467e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64234c8f-1d81-44a6-92fb-c14b0eb8c5d2",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}

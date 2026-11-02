@@ -1,0 +1,22 @@
+hooks/lib/scanner.py
+  s_6716b054d475e9::t_70c12e6d466751 184-185
+  s_6716b054d475e9::t_1c3ebdbd1d1113 18-21
+hooks/lib/test_scanner.py
+  s_6716b054d475e9::t_4f005379032ae8 362,368-374,379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "273028fea60362c611ba6e6b5a7e01ae2c1202d9",
+  "prompts": {},
+  "sessions": {
+    "s_6716b054d475e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c7001d5-2667-4966-9c4f-5a8526610aed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Michael Heichler <iam@michaelheichler.eu>"
+    }
+  }
+}
