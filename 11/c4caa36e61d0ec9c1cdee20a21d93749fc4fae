@@ -1,0 +1,25 @@
+.gitignore
+  s_3f8a14d52415db::t_af8848fb82b2aa 91-96
+NOTICE
+  s_3f8a14d52415db::t_46bec515d92806 50
+skills/unit-testing-principles/SKILL.md
+  s_3f8a14d52415db::t_69d6d39b8b12a5 120
+evals/README.md
+  s_3f8a14d52415db::t_cf82da10f7f07f 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11c4caa36e61d0ec9c1cdee20a21d93749fc4fae",
+  "prompts": {},
+  "sessions": {
+    "s_3f8a14d52415db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e596e09-44ca-4c39-af4e-111e63a73099",
+        "model": "leverframe:anthropic-api:claude-opus-5-5"
+      },
+      "human_author": "Agent Discipline Watcher CI <ci@agent-discipline-watcher.test>"
+    }
+  }
+}
