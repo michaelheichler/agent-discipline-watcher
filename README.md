@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/adw-logo.svg" alt="Agent Discipline Watcher (ADW)" width="640">
+</p>
+
 # Agent Discipline Watcher
 
 Discipline gates for agent output across **Claude Code**, **Codex**, **OMP** (`oh-my-pi`), and **Cowork**. Current release: **0.32.0**.
