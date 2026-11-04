@@ -14,7 +14,7 @@ except ImportError:
     import claude_native
     import claude_presets
 
-SCRIPT_TOKEN = re.compile(r"'[^']*/hooks/claude_(?:luna|sonnet)\.sh'|/[^\s']*/hooks/claude_(?:luna|sonnet)\.sh")
+SCRIPT_TOKEN = re.compile(r"'[^']*/hooks/claude_luna\.sh'|/[^\s']*/hooks/claude_luna\.sh")
 
 
 def _current_token(token: str) -> str:
@@ -40,10 +40,10 @@ def _repointed(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def ensure_default_block(settings_path: str | Path | None = None, preset_path: str | Path | None = None) -> str | None:
-    """Into an empty slot or over a retired agent block, because any other block is a choice."""
+    """Into an empty slot or over a retired block, because any other block is a choice."""
     preset = claude_native.default_preset(preset_path=preset_path, settings_path=settings_path)
     return claude_native.ensure_managed_block(
-        preset, _repointed, claude_presets.has_retired_agent_hook,
+        preset, _repointed, claude_presets.has_retired_hook,
         settings_file=settings_path, preset_file=preset_path,
     )
 

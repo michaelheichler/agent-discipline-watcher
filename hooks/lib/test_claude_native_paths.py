@@ -21,12 +21,12 @@ def test_an_empty_settings_file_gets_the_default_block(tmp_path: Path) -> None:
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
 
     chosen = claude_native.ensure_managed_block(
-        "mixed", _untouched, _never_retired, settings_file=settings, preset_file=preset,
+        "luna", _untouched, _never_retired, settings_file=settings, preset_file=preset,
     )
 
-    assert chosen == "mixed"
-    assert claude_native.read_preset(preset, settings_path=settings) == "mixed"
-    assert "claude_sonnet.sh" in json.dumps(json.loads(settings.read_text(encoding="utf-8")))
+    assert chosen == "luna"
+    assert claude_native.read_preset(preset, settings_path=settings) == "luna"
+    assert "claude_luna.sh" in json.dumps(json.loads(settings.read_text(encoding="utf-8")))
 
 
 def test_without_paths_the_environment_names_both_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,7 +47,7 @@ def test_a_managed_block_is_repointed_not_replaced(tmp_path: Path) -> None:
     def marked(current: dict) -> dict:
         return {**current, "repointed": True}
 
-    chosen = claude_native.ensure_managed_block("mixed", marked, _never_retired, settings_file=settings, preset_file=preset)
+    chosen = claude_native.ensure_managed_block("luna", marked, _never_retired, settings_file=settings, preset_file=preset)
 
     assert chosen is None
     assert json.loads(settings.read_text(encoding="utf-8"))["repointed"] is True

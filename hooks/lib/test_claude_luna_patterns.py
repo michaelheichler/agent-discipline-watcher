@@ -18,6 +18,10 @@ VERDICTS = {
     ReviewKind.PATTERN: {"items": [{"index": 0, "verdict": "violating", "reason": "Stock closer."}]},
     ReviewKind.DOCUMENT: {"notes": []},
 }
+CLEAN = {
+    ReviewKind.PATTERN: {"items": [{"index": 0, "verdict": "clean", "reason": "Fine."}]},
+    ReviewKind.DOCUMENT: {"notes": []},
+}
 STOP = {"hook_event_name": "Stop", "session_id": "patterns", "stop_hook_active": False}
 
 
@@ -33,13 +37,14 @@ def _config(tmp_path: Path) -> dict:
 
 
 class Provider:  # pylint: disable=too-few-public-methods
-    def __init__(self) -> None:
+    def __init__(self, verdicts: dict | None = None) -> None:
+        self.verdicts = verdicts or VERDICTS
         self.requests: list[JudgeRequest] = []
 
     def judge(self, request: JudgeRequest) -> JudgeResult:
         self.requests.append(request)
         return JudgeResult(
-            payload=VERDICTS[request.review_kind], provider="openai-codex", model="gpt-5.6-luna", effort="high",
+            payload=self.verdicts[request.review_kind], provider="openai-codex", model="gpt-5.6-luna", effort="high",
             rubric_version=request.rubric_version, usage={"input_tokens": 1},
         )
 
@@ -59,8 +64,12 @@ def _run(tmp_path: Path, state_root: Path, provider: Provider) -> dict:
     )
 
 
+def _stop_work(state_root: Path, config: dict | None = None) -> list | None:
+    return claude_luna.stop_work(claude_luna.stop_rows(STOP, state_root), config)
+
+
 def test_a_current_turn_pattern_row_becomes_one_pattern_request(tmp_path: Path) -> None:
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN]), _config(tmp_path))
+    work = _stop_work(_journal(tmp_path, [PATTERN]), _config(tmp_path))
 
     assert work is not None and len(work) == 1
     request, sources = work[0]
@@ -73,7 +82,7 @@ def test_a_current_turn_pattern_row_becomes_one_pattern_request(tmp_path: Path) 
 def test_one_request_carries_every_row_of_one_rule(tmp_path: Path) -> None:
     rows = [PATTERN, {**PATTERN, "line": 5, "text": "I hope this helps with your project."}]
 
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, rows), _config(tmp_path))
+    work = _stop_work(_journal(tmp_path, rows), _config(tmp_path))
 
     assert [len(request.candidates) for request, _rows in work] == [2]
 
@@ -81,11 +90,11 @@ def test_one_request_carries_every_row_of_one_rule(tmp_path: Path) -> None:
 def test_a_rule_the_project_observes_builds_no_request(tmp_path: Path) -> None:
     observed = {**_config(tmp_path), "rule_gates": {"ai_closer": "observe"}}
 
-    assert claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN]), observed) is None
+    assert _stop_work(_journal(tmp_path, [PATTERN]), observed) is None
 
 
 def test_an_unknown_rule_builds_no_request(tmp_path: Path) -> None:
-    assert claude_luna.stop_request(STOP, _journal(tmp_path, [{**PATTERN, "rule": "no_such_rule"}])) is None
+    assert _stop_work(_journal(tmp_path, [{**PATTERN, "rule": "no_such_rule"}])) is None
 
 
 def test_pattern_and_document_rows_share_the_stop_budget(tmp_path: Path) -> None:
@@ -97,7 +106,7 @@ def test_pattern_and_document_rows_share_the_stop_budget(tmp_path: Path) -> None
         for name in ("first.md", "second.md")
     ]
 
-    work = claude_luna.stop_request(STOP, _journal(tmp_path, [PATTERN, *documents]), _config(tmp_path))
+    work = _stop_work(_journal(tmp_path, [PATTERN, *documents]), _config(tmp_path))
 
     paths = {row["path"] for _request, rows in work for row in rows}
     assert paths == {"note.md", "first.md"}
@@ -120,4 +129,24 @@ def test_a_judged_pattern_row_is_not_judged_again(tmp_path: Path) -> None:
     _run(tmp_path, state_root, Provider())
     session_state.update_state("patterns", lambda state: {**state, "turn_id": "turn-2"}, state_root)
 
-    assert claude_luna.stop_request(STOP, state_root) is None
+    assert _stop_work(state_root) is None
+
+
+def test_the_shipped_observe_default_makes_no_luna_call(tmp_path: Path) -> None:
+    (tmp_path / ".agent-discipline.json").write_text("{}", encoding="utf-8")
+    provider = Provider()
+
+    response = _run(tmp_path, _journal(tmp_path, [PATTERN]), provider)
+
+    assert response == {}
+    assert provider.requests == []
+
+
+def test_a_clean_verdict_passes_and_marks_the_row(tmp_path: Path) -> None:
+    state_root = _journal(tmp_path, [PATTERN])
+
+    response = _run(tmp_path, state_root, Provider(CLEAN))
+
+    session_state.update_state("patterns", lambda state: {**state, "turn_id": "turn-2"}, state_root)
+    assert response == {}
+    assert _stop_work(state_root) is None

@@ -87,19 +87,12 @@ def _requests(rule: str, rows: list[dict]) -> list[tuple]:
     ]
 
 
-def _sonnet(request) -> list[dict]:
-    """Through the shipped Stop reviewer, because its prompt, schema, and gap check are what a real turn meets."""
-    sonnet = hook_module("claude_sonnet")
-    payload = sonnet.batch_payload(sonnet._claude_judge(sonnet.batch_prompt([(request, ())])))  # pylint: disable=protected-access
-    return sonnet._pattern_result(request, payload["items"]).payload["items"]  # pylint: disable=protected-access
-
-
 def _luna(request) -> list[dict]:
     """Through the shipped Luna provider, because it checks that every candidate got its own verdict."""
     return hook_module("luna_provider").LunaJudge().judge(request).payload["items"]
 
 
-REVIEWERS = {"sonnet": _sonnet, "luna": _luna}
+REVIEWERS = {"luna": _luna}
 
 
 def verdicts(candidates: list[dict], reviewer: str) -> list[dict]:
@@ -174,7 +167,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("step", choices=("static", "review", "score"))
     parser.add_argument("--set", choices=tuple(SETS), default="final")
-    parser.add_argument("--reviewer", choices=tuple(REVIEWERS), default="sonnet")
+    parser.add_argument("--reviewer", choices=tuple(REVIEWERS), default="luna")
     arguments = parser.parse_args()
     if arguments.step == "static":
         write_jsonl(candidates_path(arguments.set), _candidates_for(arguments.set))

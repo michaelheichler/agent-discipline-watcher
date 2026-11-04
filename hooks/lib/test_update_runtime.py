@@ -523,7 +523,7 @@ def _managed(settings: Path) -> dict:
     return claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8")))
 
 
-@pytest.mark.parametrize(("stored", "written"), [("mixed", "mixed"), ("luna", "luna"), (None, "mixed"), ("sonnet", "mixed"), ("luna-native", "mixed")])
+@pytest.mark.parametrize(("stored", "written"), [("mixed", "luna"), ("luna", "luna"), (None, "luna"), ("sonnet", "luna"), ("luna-native", "luna")])
 def test_update_writes_the_block_for_the_stored_preset_when_none_survives(available_update, capsys, stored, written) -> None:
     settings, preset = _claude_files(available_update.home)
     settings.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
@@ -536,16 +536,15 @@ def test_update_writes_the_block_for_the_stored_preset_when_none_survives(availa
     assert f"Claude reviewer preset written: {written}" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("chosen", ["mixed", "luna"])
-def test_update_keeps_a_user_edited_block_through_the_legacy_cleanup(available_update, capsys, chosen) -> None:
+def test_update_keeps_a_user_edited_block_through_the_legacy_cleanup(available_update, capsys) -> None:
     settings, preset = _claude_files(available_update.home)
-    edited = claude_native.settings_for_preset({}, chosen)
+    edited = claude_native.settings_for_preset({}, "luna")
     edited["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 45
     settings.write_text(json.dumps(edited), encoding="utf-8")
-    preset.write_text(f"{chosen}\n", encoding="utf-8")
+    preset.write_text("luna\n", encoding="utf-8")
     assert _update(available_update, ["update", "--claude"], install_claude=lambda *args: None, run_installer=_prune_legacy_hooks) == 0
     assert json.loads(settings.read_text(encoding="utf-8")) == edited
-    assert preset.read_text(encoding="utf-8") == f"{chosen}\n"
+    assert preset.read_text(encoding="utf-8") == "luna\n"
     assert "Claude reviewer block kept." in capsys.readouterr().out
 
 

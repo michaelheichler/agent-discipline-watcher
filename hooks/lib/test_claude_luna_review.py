@@ -1,12 +1,16 @@
 """Split out because the Luna request shape has its own contract."""
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 import pytest
 
 from lib import claude_luna, claude_native, journal, session_state
-from lib.judge_contracts import JudgeRequest, JudgeResult
+from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
+
+STOP_ROWS = {"session_id": "session", "stop_hook_active": False}
 
 
 class Provider:  # pylint: disable=too-few-public-methods
@@ -19,6 +23,10 @@ class Provider:  # pylint: disable=too-few-public-methods
             payload={"notes": []}, provider="openai-codex", model="gpt-5.6-luna", effort="high",
             rubric_version=request.rubric_version, usage={"input_tokens": 1},
         )
+
+
+def _stop_work(state_root: Path) -> list | None:
+    return claude_luna.stop_work(claude_luna.stop_rows(STOP_ROWS, state_root))
 
 
 def _post_payload(path: Path) -> dict:
@@ -56,7 +64,7 @@ def _long_documents(tmp_path: Path) -> Path:
 def test_the_stop_review_splits_long_documents_instead_of_cutting_them(tmp_path: Path) -> None:
     state_root = _long_documents(tmp_path)
 
-    work = claude_luna.stop_request({"session_id": "session", "stop_hook_active": False}, state_root)
+    work = _stop_work(state_root)
 
     sources = [request.source_context for request, _rows in work]
     assert len(sources) > 1
@@ -95,9 +103,8 @@ def test_a_two_line_edit_to_a_long_document_sends_only_those_lines_and_their_con
     state_root = tmp_path / "state"
     _readme_after_a_two_line_edit(tmp_path, state_root)
 
-    work = claude_luna.stop_request({"session_id": "session", "stop_hook_active": False}, state_root)
+    ((request, _rows),) = _stop_work(state_root)
 
-    ((request, _rows),) = work
     assert "README.md lines 97-104, changed lines: 100-101" in request.source_context
     assert "+ The preset picks the reviewer.\n+ It also names the model." in request.source_context
     assert "Sentence 97 of" in request.source_context and "Sentence 96 of" not in request.source_context
@@ -120,8 +127,7 @@ def test_a_reverted_edit_makes_no_luna_call(tmp_path: Path) -> None:
 
 
 def _section(number: int, reflowed: int | None, edited: int | None) -> str:
-    """A reflowed section joins its two lines, and an edited one changes one word."""
-    verb = "parses" if number == edited else "reads"
+    verb ="parses" if number == edited else "reads"
     joint = " " if number == reflowed else "\n"
     return f"Section {number} explains how the hook {verb} a file.{joint}It then checks the rules for section {number}."
 
@@ -155,7 +161,7 @@ def test_a_reflow_beside_a_real_edit_sends_only_the_edited_hunk(tmp_path: Path) 
     state_root = tmp_path / "state"
     _readme_turn_after(tmp_path, state_root, _sections(reflowed=3, edited=15))
 
-    ((request, _rows),) = claude_luna.stop_request({"session_id": "session", "stop_hook_active": False}, state_root)
+    ((request, _rows),) = _stop_work(state_root)
 
     assert "Section 15 explains how the hook parses a file." in request.source_context
     assert "Section 3 explains" not in request.source_context
@@ -172,3 +178,87 @@ def test_the_comment_reviewer_skips_a_file_with_no_comment_syntax(tmp_path: Path
     source.write_text("# Counts the retries because the report header needs a total.\n", encoding="utf-8")
 
     assert claude_luna.post_request(_post_payload(source)) is None
+
+
+def test_a_reviewed_document_is_not_sent_again(tmp_path: Path) -> None:
+    document = tmp_path / "doc.md"
+    document.write_text("A paragraph with enough text to inspect.\n", encoding="utf-8")
+    state_root = tmp_path / "state"
+    journal.record_edit("session", "turn", "tool", document, state_root=state_root)
+    paths = _luna_paths(tmp_path)
+    payload = {"hook_event_name": "Stop", **STOP_ROWS, "cwd": str(tmp_path)}
+    claude_luna.run(payload, provider=Provider(), state_root=state_root, **paths)
+    later = Provider()
+
+    response = claude_luna.run(payload, provider=later, state_root=state_root, **paths)
+
+    assert response == {}
+    assert later.requests == []
+
+
+def _review_section(title: str, count: int) -> str:
+    rows =(f"{number}. {title} row {number} " + "x" * 120 for number in range(1, count + 1))
+    return "\n".join([f"ADW Luna {title} review:", *rows])
+
+
+def _listed_rows(text: str) -> list[str]:
+    return [line for line in text.splitlines() if re.match(r"\d+\. ", line)]
+
+
+def _report_messages(report: str) -> list[str]:
+    return [row["message"] for row in json.loads(Path(report).read_text(encoding="utf-8"))]
+
+
+def test_a_short_review_is_shown_whole_and_ends_with_a_report_path() -> None:
+    sections = [_review_section("pattern", 1), _review_section("document", 1)]
+
+    shown, tail = claude_luna.bounded_feedback(sections).rsplit("\n", 1)
+
+    assert shown == "\n\n".join(sections)
+    assert _report_messages(tail.partition(": ")[2]) == sections
+
+
+def test_a_long_review_lists_only_the_first_rows_and_keeps_every_section_in_the_report() -> None:
+    sections = [_review_section("pattern", 4), _review_section("comment", 4), _review_section("document", 4)]
+
+    text = claude_luna.bounded_feedback(sections)
+
+    assert len(text) <= claude_luna.MAX_FEEDBACK_CHARS
+    assert len(_listed_rows(text)) <= claude_luna.MAX_LISTED_ROWS
+    assert text.splitlines()[-1].startswith(f"{12 - len(_listed_rows(text))} more findings: ")
+    assert _report_messages(text.splitlines()[-1].partition(": ")[2]) == sections
+
+
+class _LongVerdicts:  # pylint: disable=too-few-public-methods
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        if request.review_kind is ReviewKind.PATTERN:
+            payload = {"items": [{"index": n, "verdict": "violating", "reason": "r"} for n in range(len(request.candidates))]}
+        else:
+            payload = {"notes": [{"quote": "", "problem": f"problem {n} " + "y" * 80, "fix": "f"} for n in range(6)]}
+        return JudgeResult(payload, "openai-codex", "gpt-5.6-luna", "high", request.rubric_version, {})
+
+
+def _closer(line: int) -> dict:
+    return {
+        "role": "pattern", "rule": "ai_closer", "path": "note.md", "line": line,
+        "text": f"Feel free to ask me anything else, reader {line}.", "content_hash": "abc", "turn_id": "turn-1",
+    }
+
+
+def test_a_luna_stop_keeps_every_section_behind_a_report_path(tmp_path: Path) -> None:
+    (tmp_path / ".agent-discipline.json").write_text(json.dumps({"rule_gates": {"ai_closer": "enforce"}}), encoding="utf-8")
+    document = tmp_path / "doc.md"
+    document.write_text("A paragraph with enough text to inspect.\n", encoding="utf-8")
+    state_root = tmp_path / "state"
+    journal.record_edit("session", "turn-1", "tool", document, state_root=state_root)
+    session_state.update_state(
+        "session", lambda state: {**state, journal.STATE_KEY: [*state[journal.STATE_KEY], _closer(2), _closer(3)]},
+        state_root,
+    )
+    payload = {"hook_event_name": "Stop", **STOP_ROWS, "cwd": str(tmp_path)}
+
+    response = claude_luna.run(payload, provider=_LongVerdicts(), state_root=state_root, **_luna_paths(tmp_path))
+
+    report = response["reason"].splitlines()[-1].partition(": ")[2]
+    assert len(response["reason"]) <= claude_luna.MAX_FEEDBACK_CHARS
+    assert [message.splitlines()[0] for message in _report_messages(report)] == ["ADW Luna document review:", "ADW Luna pattern review:"]

@@ -22,7 +22,7 @@ class SessionStartLifecycleTests(unittest.TestCase):
             with patch("session_start.retention.sweep") as sweep:
                 session_start.run({"session_id": "s1"}, config)
 
-            sweep.assert_called_once()
+            sweep.assert_called_once_with(state_root=config["state_root"], ledger_root=config["ledger_root"])
             self.assertEqual(
                 session_start.session_state.live_session_ids(config["state_root"]), frozenset({"s1"})
             )
@@ -85,7 +85,7 @@ def _on_claude(monkeypatch: pytest.MonkeyPatch) -> Path:
     return claude_native.settings_path()
 
 
-def test_a_fresh_settings_file_gains_the_sonnet_command_block_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_fresh_settings_file_gains_the_luna_block_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """Written once, because the plugin ships no reviewer."""
     settings = _on_claude(monkeypatch)
 
@@ -94,14 +94,14 @@ def test_a_fresh_settings_file_gains_the_sonnet_command_block_once(monkeypatch: 
     session_start.run({"source": "startup"})
 
     assert settings.read_text(encoding="utf-8") == first
-    expected = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("mixed")})
+    expected = claude_presets.managed_hooks({"hooks": claude_presets.generated_hooks("luna")})
     assert expected
     assert claude_presets.managed_hooks(json.loads(first)) == expected
-    assert claude_native.read_preset() == "mixed"
+    assert claude_native.read_preset() == "luna"
 
 
-def _moved(settings: Path, preset: str, edit_timeout: bool) -> None:
-    claude_native.set_preset(preset, settings_path=settings, preset_path=claude_native.preset_path())
+def _moved(settings: Path, edit_timeout: bool) -> None:
+    claude_native.set_preset("luna", settings_path=settings, preset_path=claude_native.preset_path())
     old_root = claude_presets.PLUGIN_ROOT.parent / "old-revision"
     text = settings.read_text(encoding="utf-8").replace(str(claude_presets.PLUGIN_ROOT), str(old_root))
     moved = json.loads(text)
@@ -113,14 +113,14 @@ def _moved(settings: Path, preset: str, edit_timeout: bool) -> None:
 def test_a_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Repointed, because an old cache revision can vanish."""
     settings = _on_claude(monkeypatch)
-    _moved(settings, "mixed", edit_timeout=True)
+    _moved(settings, edit_timeout=True)
 
     session_start.run({"source": "startup"})
 
     stop = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["Stop"][0]["hooks"][0]
-    assert stop["command"] == claude_presets.sonnet_command()
+    assert stop["command"] == claude_presets.luna_command()
     assert stop["timeout"] == 45
-    assert claude_native.read_preset() == "mixed"
+    assert claude_native.read_preset() == "luna"
 
 
 def _retired_agent(model: str, prompt_line: str) -> dict:
@@ -136,7 +136,7 @@ RETIRED_AGENT_BLOCKS = {
 
 
 @pytest.mark.parametrize("retired", sorted(RETIRED_AGENT_BLOCKS))
-def test_a_retired_agent_block_is_replaced_by_the_sonnet_command(monkeypatch: pytest.MonkeyPatch, retired: str) -> None:
+def test_a_retired_agent_block_is_replaced_by_the_luna_block(monkeypatch: pytest.MonkeyPatch, retired: str) -> None:
     """Replaced, because an agent hook cannot run the helper and silently drops every model verdict."""
     settings = _on_claude(monkeypatch)
     unrelated = {"type": "command", "command": "keep-this"}
@@ -154,15 +154,30 @@ def test_a_retired_agent_block_is_replaced_by_the_sonnet_command(monkeypatch: py
     assert unrelated in handlers
     assert {hook["type"] for hook in handlers} == {"command"}
     assert claude_presets.managed_hooks(configured) == claude_presets.managed_hooks(
-        {"hooks": claude_presets.generated_hooks("mixed")}
+        {"hooks": claude_presets.generated_hooks("luna")}
     )
-    assert claude_native.read_preset() == "mixed"
+    assert claude_native.read_preset() == "luna"
+
+
+def test_a_sonnet_command_block_is_replaced_by_the_luna_block_at_session_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replaced at startup, because the script it names is gone and every Stop would otherwise fail."""
+    settings = _on_claude(monkeypatch)
+    sonnet = {"type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_presets.MANAGED_MARKER} /old/hooks/claude_sonnet.sh", "timeout": 120}
+    settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [sonnet]}]}}), encoding="utf-8")
+    claude_native.preset_path().parent.mkdir(parents=True, exist_ok=True)
+    claude_native.preset_path().write_text("mixed\n", encoding="utf-8")
+
+    session_start.run({"source": "startup"})
+
+    assert claude_presets.managed_hooks(json.loads(settings.read_text(encoding="utf-8"))) == claude_presets.managed_hooks(
+        {"hooks": claude_presets.generated_hooks("luna")}
+    )
 
 
 def test_a_luna_block_from_an_old_plugin_root_is_repointed(monkeypatch: pytest.MonkeyPatch) -> None:
     """Repointed, because the handler path goes stale too."""
     settings = _on_claude(monkeypatch)
-    _moved(settings, "luna", edit_timeout=False)
+    _moved(settings, edit_timeout=False)
 
     session_start.run({"source": "startup"})
 
@@ -194,7 +209,7 @@ def _from_a_plugin_cache(monkeypatch: pytest.MonkeyPatch, home: Path, stable_ins
     stable = home / claude_presets.STABLE_ROOT
     if stable_installed:
         (stable / "hooks").mkdir(parents=True)
-        (stable / "hooks" / "claude_sonnet.sh").write_text("", encoding="utf-8")
+        (stable / "hooks" / "claude_luna.sh").write_text("", encoding="utf-8")
     return stable if stable_installed else home / CACHE_REVISION / "1.0.0"
 
 
@@ -210,7 +225,7 @@ def test_a_plugin_cache_run_seeds_the_stable_handler_when_it_exists(monkeypatch:
 
     session_start.run({"source": "startup"})
 
-    assert _stop_command(settings).endswith(f" {root}/hooks/claude_sonnet.sh")
+    assert _stop_command(settings).endswith(f" {root}/hooks/claude_luna.sh")
 
 
 @pytest.mark.parametrize("stable_installed", [True, False])
@@ -220,12 +235,12 @@ def test_an_old_cache_block_is_repointed_to_the_same_root(monkeypatch: pytest.Mo
     root = _from_a_plugin_cache(monkeypatch, tmp_path, stable_installed)
     old = tmp_path / CACHE_REVISION / "0.9.0"
     settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
-        {"type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_presets.MANAGED_MARKER} {old}/hooks/claude_sonnet.sh", "timeout": 45},
+        {"type": "command", "command": f"ADW_CLAUDE_MANAGED={claude_presets.MANAGED_MARKER} {old}/hooks/claude_luna.sh", "timeout": 45},
     ]}]}}), encoding="utf-8")
 
     session_start.run({"source": "startup"})
 
-    assert _stop_command(settings).endswith(f" {root}/hooks/claude_sonnet.sh")
+    assert _stop_command(settings).endswith(f" {root}/hooks/claude_luna.sh")
 
 
 def test_a_current_luna_block_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,7 +258,7 @@ def test_a_current_luna_block_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> 
 def test_a_block_the_user_changed_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kept, because the user chose it."""
     settings = _on_claude(monkeypatch)
-    claude_native.set_preset("mixed", settings_path=settings, preset_path=claude_native.preset_path())
+    claude_native.set_preset("luna", settings_path=settings, preset_path=claude_native.preset_path())
     edited = json.loads(settings.read_text(encoding="utf-8"))
     edited["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 45
     settings.write_text(json.dumps(edited), encoding="utf-8")

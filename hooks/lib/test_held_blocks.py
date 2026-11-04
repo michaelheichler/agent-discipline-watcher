@@ -4,14 +4,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import stop
-from lib import blocker_state, claude_luna, claude_sonnet, journal, reporting, session_state, stop_stall
+from lib import blocker_state, claude_luna, claude_native, journal, reporting, session_state, stop_stall
+from lib.judge_contracts import JudgeRequest, JudgeResult
+from lib.luna_storage import LunaProviderFailure
 
 SESSION = "held"
 CLOSER = "Feel free to ask me anything else."
@@ -25,11 +26,7 @@ SAME_LINE_VOTE = {"rule": "utilize", "line": 2, "text": CLOSER}
 LATE_VOTE = {"rule": "ai_closer", "line": 9, "text": LATE}
 GATES = {"rule_gates": {"ai_closer": "enforce", "utilize": "enforce"}}
 OBSERVED = {"rule_gates": {"ai_closer": "observe"}}
-EMPTY_VERDICT = json.dumps({"type": "result", "is_error": False, "structured_output": {"items": [], "notes": []}})
-VIOLATING = json.dumps({
-    "type": "result", "is_error": False,
-    "structured_output": {"items": [{"section": 0, "index": 0, "verdict": "violating", "reason": "Stock closer."}], "notes": []},
-})
+DOWN = "subscription unavailable"
 Indexes = tuple[int, ...]
 # Past the 128 KiB read cap, so no capped read can confirm the old text.
 OVERSIZED = "A plain line without the flagged sentence.\n" * 4000
@@ -83,23 +80,41 @@ def _held(tmp_path: Path, state_root: Path) -> list[str]:
     return claude_luna.held_blocks(_payload(tmp_path), state_root).texts
 
 
+class Verdicts:  # pylint: disable=too-few-public-methods
+    """Kept as a class, because the requests it saw are the contract under test."""
+
+    def __init__(self, verdict: str = "clean", error: Exception | None = None) -> None:
+        self.verdict = verdict
+        self.error = error
+        self.requests: list[JudgeRequest] = []
+
+    def judge(self, request: JudgeRequest) -> JudgeResult:
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        items = [{"index": index, "verdict": self.verdict, "reason": "r"} for index in range(len(request.candidates))]
+        return JudgeResult({"items": items}, "openai-codex", "gpt-5.6-luna", "high", request.rubric_version, {})
+
+
+def _luna_stop(tmp_path: Path, state_root: Path, provider: Verdicts) -> dict:
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+    return claude_luna.run(_payload(tmp_path), provider=provider, state_root=state_root, settings_path=settings, preset_path=preset)
+
+
 def _stop(tmp_path: Path, state_root: Path) -> dict:
-    """An empty verdict, so any block in the reply comes from a held verdict."""
-    return claude_sonnet.run(_payload(tmp_path), state_root=state_root, judge=lambda _prompt: EMPTY_VERDICT)
+    """A clean verdict, so any block in the reply comes from a held verdict."""
+    return _luna_stop(tmp_path, state_root, Verdicts())
 
 
 def _held_by_a_review(tmp_path: Path) -> tuple[Path, Path]:
     """Held through a real Stop, because that Stop also marks the row answered the way a live session does."""
     state_root = _queued(tmp_path, [CLOSER_VOTE])
-    claude_sonnet.run(_payload(tmp_path), state_root=state_root, judge=lambda _prompt: VIOLATING)
+    _luna_stop(tmp_path, state_root, Verdicts("violating"))
     return tmp_path / "note.md", state_root
 
 
-def _sonnet_active_stop(tmp_path: Path, state_root: Path, calls: list) -> dict:
-    return claude_sonnet.run(_payload(tmp_path, active=True), state_root=state_root, judge=lambda prompt: calls.append(prompt) or EMPTY_VERDICT)
-
-
-def _luna_active_stop(tmp_path: Path, state_root: Path, calls: list) -> dict:
+def _active_stop(tmp_path: Path, state_root: Path, calls: list) -> dict:
     return claude_luna.run(_payload(tmp_path, active=True), provider=SimpleNamespace(judge=calls.append), state_root=state_root)
 
 
@@ -190,12 +205,9 @@ def test_a_journal_full_of_held_rows_still_blocks_when_another_vote_arrives(tmp_
     _uphold(tmp_path, state_root, [(request, f"Verdict {index}", [row]) for index, row in enumerate(rows)])
     _vote(state_root,_note(tmp_path), [CLOSER_VOTE])
 
-    response = _sonnet_active_stop(tmp_path, state_root, [])
+    response = _active_stop(tmp_path, state_root, [])
 
     assert response.get("decision") == "block"
-
-
-ACTIVE_STOPS = [pytest.param(_sonnet_active_stop, id="sonnet"), pytest.param(_luna_active_stop, id="luna")]
 
 
 def _later_mtime(target: Path) -> None:
@@ -203,17 +215,16 @@ def _later_mtime(target: Path) -> None:
     os.utime(target, (status.st_atime + 60, status.st_mtime + 60))
 
 
-@pytest.mark.parametrize("active_stop", ACTIVE_STOPS)
 @pytest.mark.parametrize("change", [
     pytest.param(lambda target: None, id="unchanged"),
     pytest.param(_later_mtime, id="mtime-only"),
 ])
-def test_a_held_block_still_blocks_an_active_stop_without_a_model_call(tmp_path: Path, change, active_stop) -> None:
+def test_a_held_block_still_blocks_an_active_stop_without_a_model_call(tmp_path: Path, change) -> None:
     target, state_root = _held_by_a_review(tmp_path)
     change(target)
     calls: list = []
 
-    response = active_stop(tmp_path, state_root, calls)
+    response = _active_stop(tmp_path, state_root, calls)
 
     assert response.get("decision") == "block"
     assert calls == []
@@ -228,31 +239,29 @@ def _readable_note_afterwards(tmp_path: Path):
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whose mode is 000")
 @pytest.mark.usefixtures("readable_note_afterwards")
-@pytest.mark.parametrize("active_stop", ACTIVE_STOPS)
-def test_a_held_file_that_turns_unreadable_still_blocks_an_active_stop_without_a_model_call(tmp_path: Path, active_stop) -> None:
+def test_a_held_file_that_turns_unreadable_still_blocks_an_active_stop_without_a_model_call(tmp_path: Path) -> None:
     target, state_root = _held_by_a_review(tmp_path)
     target.chmod(0o000)
     calls: list = []
 
-    response = active_stop(tmp_path, state_root, calls)
+    response = _active_stop(tmp_path, state_root, calls)
 
     assert response.get("decision") == "block"
     assert calls == []
 
 
-@pytest.mark.parametrize("active_stop", ACTIVE_STOPS)
 @pytest.mark.parametrize("change", [
     pytest.param(Path.unlink, id="deleted"),
     pytest.param(lambda target: target.write_text(f"{EDITED}\n", encoding="utf-8"), id="edited"),
     pytest.param(lambda target: target.write_text(OVERSIZED, encoding="utf-8"), id="oversized-utf8"),
     pytest.param(lambda target: target.write_bytes(b"\xff\xfe\xfd not utf-8\n"), id="not-utf8"),
 ])
-def test_a_changed_held_file_releases_the_block_on_the_next_stop(tmp_path: Path, change, active_stop) -> None:
+def test_a_changed_held_file_releases_the_block_on_the_next_stop(tmp_path: Path, change) -> None:
     target, state_root = _held_by_a_review(tmp_path)
     change(target)
     calls: list = []
 
-    response = active_stop(tmp_path, state_root, calls)
+    response = _active_stop(tmp_path, state_root, calls)
 
     assert "decision" not in response
     assert calls == []
@@ -262,17 +271,28 @@ def test_an_edited_held_file_gets_a_fresh_review_on_the_next_regular_stop(tmp_pa
     target, state_root = _held_by_a_review(tmp_path)
     target.write_text(f"{EDITED}\n", encoding="utf-8")
     _vote(state_root,target, [{"rule": "ai_closer", "line": 1, "text": EDITED}])
-    prompts: list[str] = []
+    provider = Verdicts()
 
-    response = claude_sonnet.run(_payload(tmp_path), state_root=state_root, judge=lambda prompt: prompts.append(prompt) or EMPTY_VERDICT)
+    response = _luna_stop(tmp_path, state_root, provider)
 
     assert "decision" not in response
-    assert [EDITED in prompt for prompt in prompts] == [True]
+    assert [request.candidates for request in provider.requests] == [(EDITED,)]
+
+
+def test_an_outage_keeps_the_held_block_and_says_the_review_did_not_run(tmp_path: Path) -> None:
+    target, state_root = _held_by_a_review(tmp_path)
+    _vote(state_root, target, [LATE_VOTE])
+    outage = Verdicts(error=LunaProviderFailure(DOWN, category="authentication"))
+
+    response = _luna_stop(tmp_path, state_root, outage)
+
+    assert response.get("decision") == "block"
+    assert CLOSER in response["reason"]
+    assert DOWN in response["reason"]
 
 
 HELD_LIMIT = stop_stall.OWN_FINDING_LIMIT
 NARRATED_SCRIPT = "# Increment the counter.\nx = 1\n"
-HeldStop = Callable[[Path, Path], dict]
 
 
 @pytest.fixture(name="ledger_home")
@@ -283,20 +303,9 @@ def _ledger_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
-def _sonnet_held_stop(tmp_path: Path, state_root: Path) -> dict:
-    return _sonnet_active_stop(tmp_path, state_root, [])
-
-
-def _luna_held_stop(tmp_path: Path, state_root: Path) -> dict:
-    return claude_luna.keep_held({}, claude_luna.held_blocks(_payload(tmp_path, active=True), state_root, GATES))
-
-
-HELD_STOPS = [pytest.param(_sonnet_held_stop, id="sonnet"), pytest.param(_luna_held_stop, id="luna")]
-
-
-def _past_the_release(held_stop: HeldStop, tmp_path: Path, state_root: Path) -> list[dict]:
+def _past_the_release(tmp_path: Path, state_root: Path) -> list[dict]:
     """One Stop past the release, so the run shows the silence that follows it."""
-    return [held_stop(tmp_path, state_root) for _ in range(HELD_LIMIT + 2)]
+    return [_active_stop(tmp_path, state_root, []) for _ in range(HELD_LIMIT + 2)]
 
 
 def _shape(responses: list[dict]) -> list[tuple[str | None, bool]]:
@@ -304,11 +313,10 @@ def _shape(responses: list[dict]) -> list[tuple[str | None, bool]]:
 
 
 @pytest.mark.usefixtures("ledger_home")
-@pytest.mark.parametrize("held_stop", HELD_STOPS)
-def test_an_unchanged_held_verdict_blocks_to_the_own_finding_limit_then_releases_once(tmp_path: Path, held_stop: HeldStop) -> None:
+def test_an_unchanged_held_verdict_blocks_to_the_own_finding_limit_then_releases_once(tmp_path: Path) -> None:
     _, state_root = _held_by_a_review(tmp_path)
 
-    responses = _past_the_release(held_stop, tmp_path, state_root)
+    responses = _past_the_release(tmp_path, state_root)
 
     assert _shape(responses) == [("block", False)] * HELD_LIMIT + [(None, True), (None, False)]
     assert "Not blocking again" in responses[HELD_LIMIT]["systemMessage"]
@@ -316,41 +324,38 @@ def test_an_unchanged_held_verdict_blocks_to_the_own_finding_limit_then_releases
 
 
 @pytest.mark.usefixtures("ledger_home")
-@pytest.mark.parametrize("held_stop", HELD_STOPS)
-def test_a_held_release_writes_one_stall_release_row_to_the_ledger(tmp_path: Path, held_stop: HeldStop) -> None:
+def test_a_held_release_writes_one_stall_release_row_to_the_ledger(tmp_path: Path) -> None:
     _, state_root = _held_by_a_review(tmp_path)
 
-    _past_the_release(held_stop, tmp_path, state_root)
+    _past_the_release(tmp_path, state_root)
 
     rows = reporting.read_jsonl(reporting.LEDGER_FILENAME)
     assert [row["outcome"] for row in rows if row.get("rule") == stop_stall.STALL_RULE] == ["release"]
 
 
 @pytest.mark.usefixtures("ledger_home")
-@pytest.mark.parametrize("held_stop", HELD_STOPS)
-def test_an_edit_after_a_held_release_lets_a_fresh_held_verdict_block_again(tmp_path: Path, held_stop: HeldStop) -> None:
+def test_an_edit_after_a_held_release_lets_a_fresh_held_verdict_block_again(tmp_path: Path) -> None:
     target, state_root = _held_by_a_review(tmp_path)
-    _past_the_release(held_stop, tmp_path, state_root)
+    _past_the_release(tmp_path, state_root)
     target.write_text(f"{EDITED}\n", encoding="utf-8")
     _vote(state_root, target, [{"rule": "ai_closer", "line": 1, "text": EDITED}])
-    claude_sonnet.run(_payload(tmp_path), state_root=state_root, judge=lambda _prompt: VIOLATING)
+    _luna_stop(tmp_path, state_root, Verdicts("violating"))
 
-    response = held_stop(tmp_path, state_root)
+    response = _active_stop(tmp_path, state_root, [])
 
     assert response.get("decision") == "block"
 
 
 @pytest.mark.usefixtures("ledger_home")
-@pytest.mark.parametrize("held_stop", HELD_STOPS)
-def test_a_new_turn_after_a_held_release_lets_the_same_verdict_block_again(tmp_path: Path, held_stop: HeldStop) -> None:
+def test_a_new_turn_after_a_held_release_lets_the_same_verdict_block_again(tmp_path: Path) -> None:
     state_root = _queued(tmp_path, [CLOSER_VOTE])
     request, rows = _requests(tmp_path, state_root)["ai_closer"]
     _uphold(tmp_path, state_root, [(request, "Closer verdict", rows)])
-    _past_the_release(held_stop, tmp_path, state_root)
+    _past_the_release(tmp_path, state_root)
     session_state.update_state(SESSION, lambda state: {**state, "turn_id": "turn-2"}, state_root)
     _uphold(tmp_path, state_root, [(request, "Closer verdict", rows)])
 
-    response = held_stop(tmp_path, state_root)
+    response = _active_stop(tmp_path, state_root, [])
 
     assert response.get("decision") == "block"
 
@@ -366,7 +371,7 @@ def test_the_rescan_breaker_and_the_held_breaker_keep_separate_counts_in_one_ses
 
     responses = [
         response for _ in range(HELD_LIMIT + 1)
-        for response in (stop.run(payload, config), _sonnet_held_stop(tmp_path, state_root))
+        for response in (stop.run(payload, config), _active_stop(tmp_path, state_root, []))
     ]
 
     assert _shape(responses) == [("block", False)] * (2 * HELD_LIMIT) + [(None, True)] * 2

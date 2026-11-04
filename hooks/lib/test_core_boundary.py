@@ -61,7 +61,6 @@ def test_no_core_module_imports_a_host_module(path: Path) -> None:
 
 KNOWN_ADAPTERS = frozenset({
     "claude_cache", "claude_default", "claude_luna", "claude_native", "claude_presets", "claude_quarantine",
-    "claude_sonnet",
     "claude_transaction", "codex_luna", "codex_luna_documents", "omp_review", "omp_review_findings", "omp_review_requests",
 })
 
@@ -102,9 +101,9 @@ def test_only_the_declared_seam_reaches_a_host() -> None:
     assert _imported_modules(seam) & KNOWN_ADAPTERS <= {"codex_luna", "claude_default"}
 
 
-def test_the_collector_names_no_host_and_no_state_directory() -> None:
+@pytest.mark.parametrize("forbidden", (*host.SUPPORTED, ".adw"))
+def test_the_collector_names_no_host_and_no_state_directory(forbidden: str) -> None:
     """Keep the reader ignorant because a branch on a host name rebuilds the coupling the split removes."""
     source = (LIB_DIR / "collector.py").read_text(encoding="utf-8")
 
-    for forbidden in (*host.SUPPORTED, ".adw"):
-        assert forbidden not in source, f"collector.py names {forbidden}"
+    assert forbidden not in source, f"collector.py names {forbidden}"

@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
 
 import record
-from lib import claude_luna, claude_native, claude_sonnet, config, journal, parataxis_review, pattern_semantic, session_state
+from lib import claude_luna, claude_native, config, journal, parataxis_review, pattern_semantic
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind, build_prompt
 from lib.omp_review_findings import validated_findings
 from lib.omp_review_requests import build_work
@@ -18,7 +17,6 @@ ENGLISH_CHAIN = "The hook reads the file. It checks every rule. It writes a repo
 GERMAN_CHAIN = "Wir haben eine Pumpe entwickelt. Sie misst den Druck. Sie speichert jeden Wert."
 LONG_LEAD = "I traced the slow start to the hook, which reloads its rules on every call and so spends most of its time in the parser."
 SESSION = "parataxis"
-SECTION_RE = re.compile(r"Section (\d+) \(pattern\)")
 
 
 def _rows(text: str, path: str = "notes.md", gates: dict | None = None) -> list[dict]:
@@ -129,34 +127,25 @@ def test_an_edit_to_the_sentence_after_an_inherited_run_leaves_the_run_alone(tmp
     assert rows == []
 
 
-class Judge:  # pylint: disable=too-few-public-methods
-    """Because only the pattern verdict is under test, the document section gets no answer."""
-
-    def __init__(self, verdict: str | None) -> None:
-        self.verdict = verdict
-
-    def __call__(self, prompt: str) -> str:
-        section = int(SECTION_RE.search(prompt).group(1))
-        items = [] if self.verdict is None else [{"section": section, "index": 0, "verdict": self.verdict, "reason": "r"}]
-        return json.dumps({"type": "result", "is_error": False, "structured_output": {"items": items, "notes": []}})
-
-
 class LunaVerdicts:  # pylint: disable=too-few-public-methods
     """Because only the pattern verdict is under test, the document gets no note."""
 
+    def __init__(self, verdict: str = "violating") -> None:
+        self.verdict = verdict
+
     def judge(self, request: JudgeRequest) -> JudgeResult:
         clean = {"notes": []}
-        confirmed = {"items": [{"index": index, "verdict": "violating", "reason": "r"} for index in range(len(request.candidates))]}
-        payload = confirmed if request.review_kind is ReviewKind.PATTERN else clean
+        answered = {"items": [{"index": index, "verdict": self.verdict, "reason": "r"} for index in range(len(request.candidates))]}
+        payload = answered if request.review_kind is ReviewKind.PATTERN else clean
         return JudgeResult(payload, "openai-codex", "gpt-5.6-luna", "high", request.rubric_version, {})
 
 
-def _stop(tmp_path: Path, judge: Judge) -> dict:
+def _luna_stop(tmp_path: Path, provider: LunaVerdicts) -> dict:
     record._journal_edits(_edits(tmp_path, ENGLISH_CHAIN), "turn-1")
-    state_root = tmp_path / "state"
-    session_state.update_state(SESSION, lambda state: {**state, "turn_id": "turn-1"}, state_root)
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     stop = {"hook_event_name": "Stop", "session_id": SESSION, "stop_hook_active": False, "cwd": str(tmp_path)}
-    return claude_sonnet.run(stop, state_root=state_root, judge=judge)
+    return claude_luna.run(stop, provider=provider, state_root=tmp_path / "state", settings_path=settings, preset_path=preset)
 
 
 def _assert_join_advice(response: dict) -> None:
@@ -169,32 +158,12 @@ def _assert_join_advice(response: dict) -> None:
     assert "semicolons stay banned" in advice
 
 
-def test_a_confirmed_run_tells_the_agent_to_join_without_blocking(tmp_path: Path) -> None:
-    _assert_join_advice(_stop(tmp_path, Judge("violating")))
-
-
 def test_a_run_luna_confirms_tells_the_agent_to_join_without_blocking(tmp_path: Path) -> None:
-    record._journal_edits(_edits(tmp_path, ENGLISH_CHAIN), "turn-1")
-    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
-    stop = {"hook_event_name": "Stop", "session_id": SESSION, "stop_hook_active": False, "cwd": str(tmp_path)}
-
-    response = claude_luna.run(
-        stop, provider=LunaVerdicts(), state_root=tmp_path / "state", settings_path=settings, preset_path=preset,
-    )
-
-    _assert_join_advice(response)
+    _assert_join_advice(_luna_stop(tmp_path, LunaVerdicts()))
 
 
 def test_a_run_the_reviewer_clears_does_not_block(tmp_path: Path) -> None:
-    assert _stop(tmp_path, Judge("clean")) == {}
-
-
-def test_a_skipped_run_reports_that_the_review_did_not_run(tmp_path: Path) -> None:
-    response = _stop(tmp_path, Judge(None))
-
-    assert "decision" not in response
-    assert "skipped a parataxis run" in response["systemMessage"]
+    assert _luna_stop(tmp_path, LunaVerdicts("clean")) == {}
 
 
 def test_an_omp_confirmed_run_asks_for_a_join_and_not_a_comment_rewrite(tmp_path: Path) -> None:

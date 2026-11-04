@@ -1,22 +1,4 @@
 {
-  "claude": {
-    "command": [
-      "claude",
-      "--disable-slash-commands",
-      "--print",
-      "--output-format",
-      "json",
-      "--no-session-persistence",
-      "--setting-sources",
-      "",
-      "--model",
-      "claude-opus-4-8",
-      "--tools",
-      ""
-    ],
-    "response_format": "claude-json",
-    "budget_flag": "--max-budget-usd"
-  },
   "codex": {
     "command": [
       "codex",

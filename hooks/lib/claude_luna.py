@@ -7,7 +7,7 @@ import re
 import stat
 from typing import Any
 
-from . import journal, claude_native, held_release, payloads, reporting, review_scope
+from . import journal, claude_native, held_release, luna_outage, payloads, reporting, review_scope
 from .config import effective_hook_config
 from .document_review import changed_document_work
 from .held_release import NONE_HELD, Held
@@ -288,10 +288,6 @@ def stop_work(rows: list[dict[str, Any]], config: dict | None = None) -> list[Wo
     return [(instructed(request, config or {}), sources) for request, sources in work] or None
 
 
-def stop_request(payload: object, state_root: str | Path | None, config: dict | None = None) -> list[Work] | None:
-    return stop_work(stop_rows(payload, state_root), config)
-
-
 def hook_config(payload: object) -> dict:
     cwd = payloads.cwd(payload) if type(payload) is dict else ""
     try:
@@ -300,38 +296,24 @@ def hook_config(payload: object) -> dict:
         return {}
 
 
-def _failure(
-    event: str,
-    role: str,
-    exc: Exception,
-    *,
-    settings_path: str | Path | None,
-    preset_path: str | Path | None,
-    locked_paths: tuple[Path, Path] | None = None,
-) -> dict:
+def _failure(event: str, exc: Exception, payload: object, work: list[Work], cfg: dict) -> dict:
     reason = _bounded(f"{type(exc).__name__}: {exc}")
-    try:
-        if locked_paths is None:
-            transition = claude_native.fallback_after_luna_failure(
-                role, reason, settings_path=settings_path, preset_path=preset_path,
-            )
-        else:
-            transition = claude_native._fallback_after_luna_failure_unlocked(
-                role, reason, settings_path=locked_paths[0], preset_path=locked_paths[1],
-            )
-        message = _bounded(transition["message"])
-    except (OSError, ValueError) as fallback_error:
-        message = _bounded(f"Luna {role} review unavailable: {reason}. Repair the ADW preset configuration: {fallback_error}")
+    root = cfg.get("state_root")
     if event == "PostToolUse":
-        return context(message, event)
-    return stop_block(message)
+        if luna_outage.is_outage(exc):
+            luna_outage.record_outage(payload, reason, root)
+        return context(_bounded(f"{LUNA} comment review did not run: {reason}."), event)
+    rows = [row for _request, sources in work for row in sources]
+    return luna_outage.failed_stop(
+        payload, rows, reason, root, cfg.get("ledger_root"), cooldown=luna_outage.is_outage(exc),
+    )
 
 
 def _built(event: str, payload: object, state_root: str | Path | None, config: dict) -> list[Work] | None:
     if event == "PostToolUse":
         built = post_request(payload)
         return [built] if built else None
-    return stop_request(payload, state_root, config)
+    return stop_work(luna_outage.retryable(payload, stop_rows(payload, state_root), state_root), config)
 
 
 def _invoke(operation: Any, provider: object | None, request: JudgeRequest) -> JudgeResult | None:
@@ -424,8 +406,9 @@ def stop_verdict(answered: list[Answer], config: dict | None) -> dict:
     return advise(bounded_feedback(advice), "Stop") if advice else {}
 
 
-def _judged(event: str, work: list[Work], provider: object | None, paths: dict[str, Any]) -> list[Judged] | dict:
-    role = "comment" if event == "PostToolUse" else "document"
+def _judged(
+    event: str, work: list[Work], provider: object | None, paths: dict[str, Any], payload: object, cfg: dict,
+) -> list[Judged] | dict:
     try:
         with claude_native.luna_operation(**paths) as operation:
             if operation is None:
@@ -434,9 +417,9 @@ def _judged(event: str, work: list[Work], provider: object | None, paths: dict[s
                 texts = _judge_all(operation, provider, work)
                 return {} if texts is None else texts
             except Exception as exc:
-                return _failure(event, role, exc, **paths)
+                return _failure(event, exc, payload, work, cfg)
     except (OSError, ValueError) as exc:
-        return _failure(event, role, exc, **paths)
+        return _failure(event, exc, payload, work, cfg)
 
 
 def bounded_feedback(texts: list[str]) -> str:
@@ -491,14 +474,22 @@ def run(
     work = _built(event, payload, root, cfg)
     if work is None:
         return keep_held({}, held)
-    outcome = _judged(event, work, provider, {"settings_path": settings_path, "preset_path": preset_path})
+    if luna_outage.cooling(payload, root):
+        return keep_held(luna_outage.cooldown_notice(payload, root) if event == "Stop" else {}, held)
+    scoped = {**cfg, "state_root": root}
+    paths = {"settings_path": settings_path, "preset_path": preset_path}
+    return keep_held(_reply(event, _judged(event, work, provider, paths, payload, scoped), work, payload, scoped), held)
+
+
+def _reply(event: str, outcome: list[Judged] | dict, work: list[Work], payload: object, cfg: dict) -> dict:
     if isinstance(outcome, dict):
-        return keep_held(outcome, held)
+        return outcome
     if event == "PostToolUse":
         return context(bounded_feedback([text for _request, text, _rows in outcome]), event) if outcome else {}
+    root = cfg.get("state_root")
     mark_reviewed(payload, [row for _request, sources in work for row in sources], root)
     remember_blocks(payload, outcome, cfg, root)
-    return keep_held(stop_verdict([(request, text) for request, text, _rows in outcome], cfg), held)
+    return stop_verdict([(request, text) for request, text, _rows in outcome], cfg)
 
 
 def main() -> int:

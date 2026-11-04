@@ -2,7 +2,7 @@
 name: adw-judge
 description: Select the ADW native Claude model-judging preset.
 disable-model-invocation: true
-argument-hint: <mixed|luna|status>
+argument-hint: <luna|status>
 ---
 
 Run the installed `adw-judge` executable exactly once with the one argument supplied after this skill name.
@@ -13,10 +13,10 @@ Use the normal Bash tool with the argument quoted as one value:
 adw-judge "$ARGUMENTS"
 ```
 
-The executable accepts only `mixed`, `luna`, or `status`. It validates the value. It replaces the managed settings block atomically, so settings hold one reviewer set.
+The executable accepts only `luna` or `status` and replaces the managed settings block atomically, so settings hold one reviewer set.
 
-The plugin ships no reviewer of its own. If settings hold no managed block, SessionStart writes the `mixed` block. If settings hold an old agent block, SessionStart replaces it with the `mixed` block.
+The plugin ships no reviewer of its own. If settings hold no managed block, SessionStart writes the `luna` block. If settings hold a retired agent block or Sonnet handler, SessionStart replaces it with the `luna` block.
 
-`mixed` runs one Sonnet 5.5 review per Stop through the `claude` CLI. The call has no tools and fires no nested hooks. `luna` keeps its command handler on PostToolUse and Stop.
+`luna` runs a command handler on PostToolUse and Stop through the Codex runtime, and ADW never calls headless Claude. When Luna is unavailable, the Stop shows one line, findings stay queued, and the review pauses for 300 seconds.
 
 Claude watches settings-only changes automatically. Use `/reload-plugins` only after installing or updating plugin source.

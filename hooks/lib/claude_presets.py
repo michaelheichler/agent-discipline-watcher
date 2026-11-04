@@ -7,8 +7,8 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-PRESETS = ("mixed", "luna")
-CLAUDE_SONNET_MODEL = "claude-sonnet-5-5"
+PRESETS = ("luna",)
+RETIRED_HANDLER = "claude_sonnet.sh"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -19,7 +19,7 @@ HANDLER_TIMEOUT = 120
 
 def validate_preset(value: str) -> str:
     if value not in PRESETS:
-        raise ValueError("preset must be exactly mixed or luna")
+        raise ValueError("preset must be exactly luna")
     return value
 
 
@@ -28,7 +28,7 @@ def handler_root() -> Path:
     if PLUGIN_ROOT.parts[-5:-3] != CACHE_PARTS:
         return PLUGIN_ROOT
     stable = Path.home() / STABLE_ROOT
-    return stable if (stable / "hooks" / "claude_sonnet.sh").is_file() else PLUGIN_ROOT
+    return stable if (stable / "hooks" / "claude_luna.sh").is_file() else PLUGIN_ROOT
 
 
 def _command(leaf: str) -> str:
@@ -38,10 +38,6 @@ def _command(leaf: str) -> str:
 
 def luna_command() -> str:
     return _command("claude_luna.sh")
-
-
-def sonnet_command() -> str:
-    return _command("claude_sonnet.sh")
 
 
 def is_managed_hook(value: object) -> bool:
@@ -88,12 +84,15 @@ def managed_hooks(settings: object) -> dict[str, list[object]]:
     return managed
 
 
-def has_retired_agent_hook(settings: object) -> bool:
-    """Retired, because a tool-less agent hook cannot run the journal helper its prompt names."""
-    return any(
-        isinstance(hook, dict) and hook.get("type") == "agent" and is_managed_hook(hook)
-        for _lifecycle, hook in hook_entries(settings)
-    )
+def _is_retired_hook(hook: object) -> bool:
+    """Retired, because an agent hook has no tools and the Sonnet handler ran headless Claude."""
+    if not isinstance(hook, dict) or not is_managed_hook(hook):
+        return False
+    return hook.get("type") == "agent" or Path(shlex.split(hook["command"])[-1]).name == RETIRED_HANDLER
+
+
+def has_retired_hook(settings: object) -> bool:
+    return any(_is_retired_hook(hook) for _lifecycle, hook in hook_entries(settings))
 
 
 def managed_hash(settings: object) -> str:
@@ -135,16 +134,11 @@ def _handler(command: str) -> dict[str, Any]:
     return {"type": "command", "command": command, "timeout": HANDLER_TIMEOUT}
 
 
-def _preset_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    """Luna also reads live comments on PostToolUse, because only its handler judges them per write."""
-    if preset == "luna":
-        handler = _handler(luna_command())
-        return {
-            "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
-            "Stop": [{"hooks": [handler]}],
-        }
-    return {"Stop": [{"hooks": [_handler(sonnet_command())]}]}
-
-
 def generated_hooks(preset: str) -> dict[str, list[dict[str, Any]]]:
-    return _preset_hooks(validate_preset(preset))
+    """Luna also reads live comments on PostToolUse, because only its handler judges them per write."""
+    validate_preset(preset)
+    handler = _handler(luna_command())
+    return {
+        "PostToolUse": [{"matcher": WRITE_MATCHER, "hooks": [handler]}],
+        "Stop": [{"hooks": [handler]}],
+    }

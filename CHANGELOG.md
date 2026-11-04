@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.33.0 (2026-11-04)
+
+### Removed
+
+- **ADW no longer runs headless Claude.** The `mixed` preset made one `claude -p --model claude-sonnet-5-5` call per Stop, which billed outside the interactive session. `hooks/lib/claude_sonnet.py`, its entry scripts, and the `mixed` preset are gone (user decision 2026-11-04). A test fails if a shipped file launches Claude with `-p` or `--print`.
+- **The Claude runner in `evals/runners.example.json` and the Sonnet reviewer in `evals/measure_parataxis_pipeline.py`.** Evals use Codex and Luna.
+
+### Changed
+
+- **Luna is the only Claude Code reviewer.** It reviews on PostToolUse and Stop through the Codex runtime, so it sends journal rows to OpenAI on your ChatGPT subscription. A stored `mixed`, `sonnet`, or `haiku` preset reads as `luna`, and SessionStart replaces a managed block that runs `claude_sonnet.sh`.
+- **A Luna outage no longer blocks the Stop.** The Stop used to block and switch to `mixed`. It now shows one line, keeps the findings queued, and pauses the review for 300 seconds. ADW releases a finding with no verdict after two attempts and names it.
+
 ## 0.32.0 (2026-10-30)
 
 ### Changed in the test gate

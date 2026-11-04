@@ -24,7 +24,7 @@ except ImportError:
 
 PRESETS = claude_presets.PRESETS
 # Mapped, because a dropped name reads as no preset.
-RETIRED_PRESETS = {"sonnet": "mixed", "haiku": "mixed", "luna-native": "mixed"}
+RETIRED_PRESETS = {"mixed": "luna", "sonnet": "luna", "haiku": "luna", "luna-native": "luna"}
 REMOTE_ENV = "CLAUDE_CODE_REMOTE"
 PRESET_ENV = "ADW_CLAUDE_PRESET"
 SETTINGS_ENV = "ADW_CLAUDE_SETTINGS"
@@ -38,7 +38,6 @@ MAX_STATE_BYTES = 4 * 1024 * 1024
 MAX_CORRUPT_QUARANTINES = 8
 MAX_CORRUPT_QUARANTINE_BYTES = 2 * MAX_STATE_BYTES
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
-MAX_FAILURE_MESSAGE = 256
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 LUNA_HANDLER_PATH = PLUGIN_ROOT / "hooks" / "claude_luna.sh"
 
@@ -516,11 +515,11 @@ def read_preset(
 def _default_preset_unlocked(env: Mapping[str, str], target_preset: Path) -> str:
     explicit = env.get(PRESET_ENV, "").strip()
     if explicit:
-        return _validate_preset(explicit)
+        return _validate_preset(RETIRED_PRESETS.get(explicit, explicit))
     stored = _read_preset_unlocked(target_preset)
     if stored is not None:
         return stored
-    return "mixed"
+    return "luna"
 
 
 def default_preset(
@@ -838,48 +837,6 @@ def status(*, settings_path: str | Path | None = None, preset_path: str | Path |
         "settings": str(settings_path or target_settings),
         "watch": "settings-only changes are watched automatically; reload plugins after plugin install or source updates",
     }
-
-
-def _fallback_after_luna_failure_unlocked(
-    role: str,
-    reason: str,
-    *,
-    settings_path: Path,
-    preset_path: Path,
-) -> dict[str, Any]:
-    if role not in {"comment", "prose", "document"}:
-        raise ValueError("role must be comment, prose, or document")
-    fallback = "mixed"
-    current = _read_preset_unlocked(preset_path) or "mixed"
-    if current == "luna":
-        _set_preset_unlocked(fallback, settings_path, preset_path)
-        switched = True
-    else:
-        fallback = current
-        switched = False
-    bounded = " ".join(str(reason).split())[:MAX_FAILURE_MESSAGE]
-    transition = f"Switched subsequent events to {fallback}." if switched else f"{fallback} remains configured."
-    return {
-        "preset": fallback,
-        "switched": switched,
-        "message": f"Luna {role} review unavailable: {bounded}. {transition}",
-    }
-
-
-def fallback_after_luna_failure(
-    role: str,
-    reason: str,
-    *,
-    settings_path: str | Path | None = None,
-    preset_path: str | Path | None = None,
-) -> dict[str, Any]:
-    target_settings = _settings_target(settings_path)
-    target_preset = _preset_target(preset_path)
-    with _preset_lock(target_preset):
-        _recover_unlocked(target_settings, target_preset)
-        return _fallback_after_luna_failure_unlocked(
-            role, reason, settings_path=target_settings, preset_path=target_preset,
-        )
 
 
 def main(argv: list[str] | None = None) -> int:

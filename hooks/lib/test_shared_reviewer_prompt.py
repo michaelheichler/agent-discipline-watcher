@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import re
-import stat
-import sys
 from contextlib import redirect_stdout
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -16,7 +13,7 @@ import pytest
 from pytest import MonkeyPatch
 
 from lib import (
-    claude_luna, claude_native, claude_sonnet, codex_luna, comment_rules, config, journal, judge_contracts,
+    claude_luna, claude_native, codex_luna, comment_rules, config, journal, judge_contracts,
     language_verdict, luna_worker, prose_language, session_state,
 )
 from lib.document_review import HUNK_NOTICE
@@ -40,7 +37,6 @@ RUBRICS = (
     ("comment", COMMENT_RUBRIC), ("pattern", PATTERN_RUBRIC), ("german pattern", GERMAN_PATTERN_RUBRIC),
     ("document", DOCUMENT_RUBRIC), ("language", LANGUAGE_RUBRIC), ("hunk notice", HUNK_NOTICE),
 )
-CLI_REPLY = {"type": "result", "is_error": False, "structured_output": {"items": [], "notes": []}}
 MIXED_PARAGRAPH = "Das Release folgt morgen, and the notes follow later."
 
 
@@ -53,7 +49,7 @@ class Call:
         return f"{self.system}\n{self.user}".count(text)
 
 
-Reviewer = Callable[[Path, MonkeyPatch, Path], list[Call]]
+Reviewer = Callable[[Path, Path], list[Call]]
 Operation = Callable[[], SdkRunResult]
 
 
@@ -195,39 +191,13 @@ class _Recorder:  # pylint: disable=too-few-public-methods
         return JudgeResult(payload, "openai-codex", LUNA_MODEL, "high", request.rubric_version, {})
 
 
-def _fake_claude(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Stands in for the CLI, because a real call costs money and time."""
-    bin_dir, log, reply = tmp_path / "bin", tmp_path / "cli-call.json", tmp_path / "cli-reply.json"
-    bin_dir.mkdir()
-    reply.write_text(json.dumps(CLI_REPLY), encoding="utf-8")
-    script = bin_dir / "claude"
-    script.write_text(
-        f"#!{sys.executable}\n"
-        "import json, sys\n"
-        f"json.dump({{'argv': sys.argv[1:], 'stdin': sys.stdin.read()}}, open({str(log)!r}, 'w'))\n"
-        f"sys.stdout.write(open({str(reply)!r}).read())\n",
-        encoding="utf-8",
-    )
-    script.chmod(script.stat().st_mode | stat.S_IXUSR)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-    return log
-
-
-def _sonnet(tmp_path: Path, monkeypatch: MonkeyPatch, state_root: Path) -> list[Call]:
-    log = _fake_claude(tmp_path, monkeypatch)
-    claude_sonnet.run(_stop_payload(tmp_path), state_root=state_root)
-    sent = json.loads(log.read_text(encoding="utf-8"))
-    argv = sent["argv"]
-    return [Call(argv[argv.index("--system-prompt") + 1], sent["stdin"])]
-
-
-def _codex_luna(tmp_path: Path, _monkeypatch: MonkeyPatch, state_root: Path) -> list[Call]:
+def _codex_luna(tmp_path: Path, state_root: Path) -> list[Call]:
     sdk = _CodexSdk()
     codex_luna.review(_codex_payload(tmp_path), turn_id=TURN, state_root=state_root, provider=_luna(tmp_path, sdk))
     return sdk.calls
 
 
-def _claude_luna(tmp_path: Path, _monkeypatch: MonkeyPatch, state_root: Path) -> list[Call]:
+def _claude_luna(tmp_path: Path, state_root: Path) -> list[Call]:
     sdk = _CodexSdk()
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
     claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
@@ -240,16 +210,16 @@ def _claude_luna(tmp_path: Path, _monkeypatch: MonkeyPatch, state_root: Path) ->
 
 REVIEWERS = pytest.mark.parametrize(
     "reviewer",
-    [pytest.param(_sonnet, id="sonnet"), pytest.param(_codex_luna, id="codex-luna"), pytest.param(_claude_luna, id="claude-luna")],
+    [pytest.param(_codex_luna, id="codex-luna"), pytest.param(_claude_luna, id="claude-luna")],
 )
 
 
 @REVIEWERS
-def test_reviewers_send_the_shared_instructions_once_in_system_text(tmp_path: Path, monkeypatch: MonkeyPatch, reviewer: Reviewer) -> None:
+def test_reviewers_send_the_shared_instructions_once_in_system_text(tmp_path: Path, reviewer: Reviewer) -> None:
     state_root = _document_turn(tmp_path)
     block = judge_contracts.reviewer_instructions(config.effective_hook_config({}, str(tmp_path)))
 
-    calls = reviewer(tmp_path, monkeypatch, state_root)
+    calls = reviewer(tmp_path, state_root)
 
     assert [(call.system.count(block), call.user.count(block)) for call in calls] == [(1, 0)]
 
@@ -287,10 +257,10 @@ def test_selecting_german_prose_changes_the_shared_instructions(tmp_path: Path) 
 
 
 @REVIEWERS
-def test_no_reviewer_states_a_rubric_twice_in_one_call(tmp_path: Path, monkeypatch: MonkeyPatch, reviewer: Reviewer) -> None:
+def test_no_reviewer_states_a_rubric_twice_in_one_call(tmp_path: Path, reviewer: Reviewer) -> None:
     state_root = _mixed_turn(tmp_path)
 
-    calls = reviewer(tmp_path, monkeypatch, state_root)
+    calls = reviewer(tmp_path, state_root)
 
     repeated = [name for call in calls for name, rubric in RUBRICS if call.occurrences(rubric) > 1]
     assert (bool(calls), repeated) == (True, [])
@@ -298,7 +268,8 @@ def test_no_reviewer_states_a_rubric_twice_in_one_call(tmp_path: Path, monkeypat
 
 def test_codex_luna_sends_the_same_changed_hunks_as_the_claude_luna_preset(tmp_path: Path) -> None:
     state_root = _two_line_edit(tmp_path)
-    preset = [build_prompt(request) for request, _rows in claude_luna.stop_request(_stop_payload(tmp_path), state_root)]
+    work = claude_luna.stop_work(claude_luna.stop_rows(_stop_payload(tmp_path), state_root))
+    preset = [build_prompt(request) for request, _rows in work]
     provider = _Recorder()
 
     codex_luna.review(_codex_payload(tmp_path, "turn-2"), turn_id="turn-2", state_root=state_root, provider=provider)
@@ -307,10 +278,10 @@ def test_codex_luna_sends_the_same_changed_hunks_as_the_claude_luna_preset(tmp_p
 
 
 @REVIEWERS
-def test_reviewers_still_receive_the_changed_text(tmp_path: Path, monkeypatch: MonkeyPatch, reviewer: Reviewer) -> None:
+def test_reviewers_still_receive_the_changed_text(tmp_path: Path, reviewer: Reviewer) -> None:
     state_root = _document_turn(tmp_path)
 
-    calls = reviewer(tmp_path, monkeypatch, state_root)
+    calls = reviewer(tmp_path, state_root)
 
     assert [CHANGED in call.user for call in calls] == [True]
 

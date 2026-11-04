@@ -123,7 +123,7 @@ def test_luna_state_failure_is_not_reported_as_a_clean_review(tmp_path: Path, mo
         settings_path=settings, preset_path=preset,
     )
 
-    assert "Luna comment review unavailable" in response["hookSpecificOutput"]["additionalContext"]
+    assert "preset state unavailable" in response["hookSpecificOutput"]["additionalContext"]
 
 
 
@@ -220,7 +220,7 @@ def test_live_path_extraction_caps_raw_patch_or_bash_before_payload_parser(
         "tool_name": tool_name, "tool_use_id": "tool-1", "tool_input": {field: oversized},
     }
 
-    assert claude_luna._read_candidates(payload) == ()
+    assert claude_luna.post_request(payload) is None
     assert calls == 0
 
 
@@ -263,7 +263,7 @@ def test_live_path_extraction_fails_open_for_malformed_unicode_edit_body(
         "tool_input": {"input": "*** Update File: candidate.py\n\ud800"},
     }
 
-    assert claude_luna._read_candidates(payload) == ()
+    assert claude_luna.post_request(payload) is None
     assert calls == 0
 
 
@@ -276,7 +276,7 @@ def test_live_read_rejects_symlinked_parent_components(tmp_path: Path) -> None:
     alias_root.symlink_to(real_root, target_is_directory=True)
     payload = _post_payload(alias_root / "candidate.py")
 
-    assert claude_luna._read_candidates(payload) == ()
+    assert claude_luna.post_request(payload) is None
 
 
 def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -298,7 +298,7 @@ def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(claude_luna.os, "fstat", swapped_fstat)
 
-    assert claude_luna._read_candidates(_post_payload(source)) == ()
+    assert claude_luna.post_request(_post_payload(source)) is None
 
 
 class _FailFirstProvider:
@@ -321,7 +321,7 @@ class _FailFirstProvider:
         return _result(request, {"items": []})
 
 
-def test_queued_luna_call_cannot_begin_provider_spend_after_failure_commits_mixed(tmp_path: Path) -> None:
+def test_a_second_luna_call_during_a_running_review_does_not_spend(tmp_path: Path) -> None:
     settings, preset = _luna_preset(tmp_path)
     source = tmp_path / "candidate.py"
     source.write_text(COMMENT, encoding="utf-8")
@@ -333,14 +333,13 @@ def test_queued_luna_call_cannot_begin_provider_spend_after_failure_commits_mixe
     first = _started(invoke)
     assert provider.first_started.wait(2)
     second = _started(invoke)
+    second.join(3)
     provider.release_first.set()
     first.join(3)
-    second.join(3)
 
     assert not first.is_alive() and not second.is_alive()
     assert provider.calls == 1
     assert not provider.second_started.is_set()
-    assert claude_native.read_preset(preset) == "mixed"
 
 
 class _BlockingProvider:
@@ -410,9 +409,9 @@ def test_deleted_journal_target_removes_stale_rows_and_stop_has_no_stale_documen
 
     assert journal.record_edit("session", "turn-2", "tool-2", document, state_root=state_root) == []
     assert journal.read("session", state_root=state_root) == []
-    assert claude_luna.stop_request(
+    assert claude_luna.stop_work(claude_luna.stop_rows(
         {"hook_event_name": "Stop", "session_id": "session", "stop_hook_active": False}, state_root,
-    ) is None
+    )) is None
 
 
 def test_post_handler_fails_open_for_irrelevant_or_malformed_input(tmp_path: Path) -> None:
@@ -500,8 +499,9 @@ def test_live_luna_command_uses_a_valid_cache_hit_for_success_without_spending_a
     assert claude_native.read_preset(preset) == "luna"
 
 
-def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path: Path) -> None:
+def test_live_luna_command_provider_failure_keeps_the_preset_and_the_settings(tmp_path: Path) -> None:
     settings, preset = _luna_preset(tmp_path)
+    before = settings.read_text(encoding="utf-8")
     source = tmp_path / "candidate.py"
     source.write_text(COMMENT, encoding="utf-8")
     command = claude_native.generated_hooks("luna")["PostToolUse"][0]["hooks"][0]["command"]
@@ -518,11 +518,8 @@ def test_live_luna_command_valid_event_provider_failure_falls_back_once(tmp_path
     assert result.returncode == 0, result.stderr
     response = json.loads(result.stdout)
     assert response["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
-    assert "Luna" in response["hookSpecificOutput"]["additionalContext"]
-    assert claude_native.read_preset(preset) == "mixed"
-    configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert "PostToolUse" not in configured["hooks"]
-    assert "claude_sonnet.sh" in configured["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert claude_native.read_preset(preset) == "luna"
+    assert settings.read_text(encoding="utf-8") == before
 
 
 def test_luna_launcher_ignores_exported_cdpath(tmp_path: Path) -> None:
@@ -576,33 +573,37 @@ def test_stop_handler_skips_provider_when_stop_is_already_active_or_journal_is_e
     assert provider.requests == []
 
 
-def test_luna_success_has_no_native_double_spend_and_failure_switches_the_matching_role(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+def test_a_passing_luna_review_says_nothing_and_keeps_the_preset(tmp_path: Path) -> None:
+    settings, preset = _luna_preset(tmp_path)
     source = tmp_path / "a.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-
+    source.write_text(COMMENT, encoding="utf-8")
     success = Provider(lambda request: _result(request, {
         "items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}],
     }))
-    assert claude_luna.run(_post_payload(source), provider=success, settings_path=settings, preset_path=preset) == {}
+
+    response = claude_luna.run(_post_payload(source), provider=success, settings_path=settings, preset_path=preset)
+
+    assert response == {}
     assert claude_native.read_preset(preset) == "luna"
 
+
+def test_a_failed_comment_review_keeps_the_preset_and_the_settings(tmp_path: Path) -> None:
+    settings, preset = _luna_preset(tmp_path)
+    before = settings.read_text(encoding="utf-8")
+    source = tmp_path / "a.py"
+    source.write_text(COMMENT, encoding="utf-8")
     failure = Provider(error=LunaProviderFailure("login required", category="authentication"))
-    response = claude_luna.run(
-        _post_payload(source), provider=failure, settings_path=settings, preset_path=preset,
-    )
+
+    response = claude_luna.run(_post_payload(source), provider=failure, settings_path=settings, preset_path=preset)
+
     assert "login required" in response["hookSpecificOutput"]["additionalContext"]
-    assert claude_native.read_preset(preset) == "mixed"
-    configured = json.loads(settings.read_text(encoding="utf-8"))
-    assert "claude_sonnet.sh" in configured["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert claude_native.read_preset(preset) == "luna"
+    assert settings.read_text(encoding="utf-8") == before
 
 
-def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+def test_a_failed_stop_review_does_not_block_and_keeps_the_stored_preset(tmp_path: Path) -> None:
+    settings, preset = _luna_preset(tmp_path)
+    before = settings.read_text(encoding="utf-8")
     document = tmp_path / "doc.md"
     document.write_text("A paragraph with enough text to inspect.\n", encoding="utf-8")
     state_root = tmp_path / "state"
@@ -614,36 +615,33 @@ def test_luna_stop_failure_switches_to_sonnet_once(tmp_path: Path) -> None:
         provider=failure, state_root=state_root, settings_path=settings, preset_path=preset,
     )
 
-    assert response["decision"] == "block"
-    assert "subscription unavailable" in response["reason"]
-    assert claude_native.read_preset(preset) == "mixed"
+    assert "decision" not in response
+    assert "subscription unavailable" in response["systemMessage"]
+    assert claude_native.read_preset(preset) == "luna"
+    assert settings.read_text(encoding="utf-8") == before
 
 
-def test_luna_failure_reports_no_second_transition_after_role_fallback_is_active(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
+@pytest.mark.parametrize("retired", ("mixed", "sonnet", "haiku", "luna-native"))
+def test_a_stored_retired_preset_still_runs_the_luna_review(tmp_path: Path, retired: str) -> None:
+    """Reviewed, because a settings file upgraded ahead of its preset file must not lose its reviewer."""
+    settings, preset = _luna_preset(tmp_path)
+    preset.write_text(f"{retired}\n", encoding="utf-8")
     source = tmp_path / "a.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-    failure = Provider(error=LunaProviderFailure("login required", category="authentication"))
+    source.write_text(COMMENT, encoding="utf-8")
+    provider = Provider(lambda request: _result(request, {
+        "items": [{"index": 0, "verdict": "states_why", "reason": "names a reason"}],
+    }))
 
-    first = claude_luna.run(
-        _post_payload(source), provider=failure, settings_path=settings, preset_path=preset,
-    )
-    second = claude_luna.run(
-        _post_payload(source), provider=failure, settings_path=settings, preset_path=preset,
-    )
+    claude_luna.run(_post_payload(source), provider=provider, settings_path=settings, preset_path=preset)
 
-    assert "Switched subsequent events" in first["hookSpecificOutput"]["additionalContext"]
-    assert second == {}
+    assert len(provider.requests) == 1
 
 
-def test_queued_luna_handler_skips_after_effective_preset_falls_back(tmp_path: Path) -> None:
-    settings = tmp_path / "settings.json"
-    preset = tmp_path / "preset"
-    claude_native.set_preset("mixed", settings_path=settings, preset_path=preset)
+def test_a_luna_handler_without_a_stored_preset_does_not_judge(tmp_path: Path) -> None:
+    settings, preset = _luna_preset(tmp_path)
+    preset.unlink()
     source = tmp_path / "a.py"
-    source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
+    source.write_text(COMMENT, encoding="utf-8")
     provider = Provider(error=AssertionError("stale Luna command must not judge"))
 
     response = claude_luna.run(

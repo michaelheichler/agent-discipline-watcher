@@ -12,7 +12,7 @@ import judge_review
 import record
 import stop
 from lib import (
-    claude_luna, claude_sonnet, embedding_session, journal, omp_review, parataxis_review, pattern_vote, reporting,
+    claude_luna, claude_native, embedding_session, journal, omp_review, parataxis_review, pattern_vote, reporting,
     session_state, temp_scope,
 )
 from lib.judge_contracts import RUBRIC_VERSION, JudgeRequest, JudgeResult, ReviewKind
@@ -23,7 +23,6 @@ COMMENT = "# Counts the retries because the report header needs a total.\nvalue 
 CHAIN = "The hook reads the file. It checks every rule. It writes a report.\n"
 DASH = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation family blocks.\n"
 OUTSIDE = "../home/.claude/projects/x/memory/note.md"
-EMPTY_VERDICT = json.dumps({"type": "result", "is_error": False, "structured_output": {"items": [], "notes": []}})
 DOT_FILES = [".build/qa/cleanup/diffs.txt", ".claude/notes.md"]
 PROJECT_FILES = [("project", "docs/guide.md"), ("project", ".github/CONTRIBUTING.md"), (".work/project", "docs/guide.md")]
 
@@ -74,16 +73,20 @@ def _queue_document(tmp_path: Path, target: Path) -> None:
     session_state.write_state("s1", {journal.STATE_KEY: [row], "turn_id": "turn-1"}, tmp_path / "state")
 
 
-def _sonnet_prompts(tmp_path: Path, project: Path) -> list[str]:
-    prompts: list[str] = []
+def _luna_requests(tmp_path: Path, project: Path) -> list[JudgeRequest]:
+    requests: list[JudgeRequest] = []
 
-    def judge(prompt: str) -> str:
-        prompts.append(prompt)
-        return EMPTY_VERDICT
+    def judge(request: JudgeRequest) -> JudgeResult:
+        requests.append(request)
+        return JudgeResult({"notes": []}, "openai-codex", "gpt-5.6-luna", "high", RUBRIC_VERSION, {})
 
+    settings, preset = tmp_path / "settings.json", tmp_path / "preset"
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
     payload = {"hook_event_name": "Stop", "session_id": "s1", "stop_hook_active": False, "cwd": str(project)}
-    claude_sonnet.run(payload, state_root=tmp_path / "state", judge=judge)
-    return prompts
+    claude_luna.run(
+        payload, provider=SimpleNamespace(judge=judge), state_root=tmp_path / "state", settings_path=settings, preset_path=preset,
+    )
+    return requests
 
 
 def _write_payload(project: Path, target: Path) -> dict:
@@ -148,19 +151,19 @@ def test_a_violating_file_under_a_dot_directory_still_gets_its_deterministic_fin
 
 
 @pytest.mark.parametrize("relative", DOT_FILES)
-def test_a_queued_document_under_a_dot_directory_is_not_sent_to_sonnet(tmp_path: Path, relative: str) -> None:
+def test_a_queued_document_under_a_dot_directory_is_not_sent_to_luna(tmp_path: Path, relative: str) -> None:
     project = _project(tmp_path / "project")
     _queue_document(tmp_path, _written(project / relative))
 
-    assert _sonnet_prompts(tmp_path, project) == []
+    assert _luna_requests(tmp_path, project) == []
 
 
 @pytest.mark.parametrize(("project_dir", "relative"), PROJECT_FILES)
-def test_a_queued_project_document_is_sent_to_sonnet(tmp_path: Path, project_dir: str, relative: str) -> None:
+def test_a_queued_project_document_is_sent_to_luna(tmp_path: Path, project_dir: str, relative: str) -> None:
     project = _project(tmp_path / project_dir)
     _queue_document(tmp_path, _written(project / relative))
 
-    assert len(_sonnet_prompts(tmp_path, project)) == 1
+    assert len(_luna_requests(tmp_path, project)) == 1
 
 
 def _codex_review(tmp_path: Path, project: Path) -> tuple[list[ReviewKind], dict]:

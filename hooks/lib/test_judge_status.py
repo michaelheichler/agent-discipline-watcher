@@ -35,13 +35,13 @@ def test_the_shipped_manifest_carries_no_reviewer() -> None:
     assert judge_status.plugin_reviewers(shipped) == 0
 
 
-def test_status_counts_the_one_sonnet_reviewer(tmp_path: Path, monkeypatch) -> None:
-    """Report one because a second set doubles the spend."""
+def test_status_counts_each_handler_of_the_one_luna_block(tmp_path: Path, monkeypatch) -> None:
+    """Report two, one per lifecycle, because a second block doubles the spend and must show as four."""
     monkeypatch.setenv(judge_status.PLUGIN_ROOT_ENV, str(Path(__file__).parents[2]))
     settings, preset = tmp_path / "settings.json", tmp_path / "preset"
-    claude_native.set_preset("mixed", settings_path=settings, preset_path=preset)
+    claude_native.set_preset("luna", settings_path=settings, preset_path=preset)
 
-    assert claude_native.status(settings_path=settings, preset_path=preset)["reviewers"] == "1"
+    assert claude_native.status(settings_path=settings, preset_path=preset)["reviewers"] == "2"
 
 
 def test_a_missing_manifest_reports_zero_rather_than_raising(tmp_path: Path) -> None:
@@ -97,7 +97,7 @@ def test_settings_reviewers_count_only_the_managed_entries(tmp_path: Path) -> No
 
 def test_an_unwired_gate_says_so_instead_of_naming_a_preset() -> None:
     """Say it plainly because a preset naming a model that nothing runs still reads as working."""
-    described = judge_status.describe("mixed", stored=False, reviewers=0)
+    described = judge_status.describe("luna", stored=False, reviewers=0)
 
     assert described["judging"].startswith("no reviewer is registered")
     assert described["source"] == "default"
@@ -105,8 +105,8 @@ def test_an_unwired_gate_says_so_instead_of_naming_a_preset() -> None:
 
 def test_a_wired_gate_reports_the_count_it_found() -> None:
     """Report the number because one reviewer and two reviewers are different gates."""
-    described = judge_status.describe("mixed", stored=True, reviewers=2)
+    described = judge_status.describe("luna", stored=True, reviewers=2)
 
     assert described == {
-        "preset": "mixed", "source": "stored", "reviewers": "2", "judging": "yes",
+        "preset": "luna", "source": "stored", "reviewers": "2", "judging": "yes",
     }
