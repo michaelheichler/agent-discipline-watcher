@@ -1,0 +1,188 @@
+hooks/lib/test_claude_luna.py
+  s_fdb813676ab1d1::t_5b6877980b4cad 576-577,579,583-586,589-594,596-598,600-601,604-606
+  s_fdb813676ab1d1::t_580bb15516c933 126
+  s_fdb813676ab1d1::t_2258400bf6ac8f 223,266,279
+  s_fdb813676ab1d1::t_a7561ff3c28e3b 324,336
+  s_fdb813676ab1d1::t_025efec68cec1d 301
+  s_fdb813676ab1d1::t_85a579c2385ffc 502,504
+  s_fdb813676ab1d1::t_3dfd6bae53768c 521-522
+  s_fdb813676ab1d1::t_fc700748954fd9 618-621,624-628,630-633,635,637,640-642,644
+  s_fdb813676ab1d1::t_aa2a44cb6d8fca 412,414
+hooks/lib/test_update_runtime.py
+  s_fdb813676ab1d1::t_a8f316a331e2d5 526
+  s_fdb813676ab1d1::t_a8a7bb261cffc0 539,541,544,547
+hooks/lib/test_judge_status.py
+  s_fdb813676ab1d1::t_b8118f85ebd948 38-39,44
+  s_fdb813676ab1d1::t_5d873a30c4e9ba 42
+  s_fdb813676ab1d1::t_5563675aff7b21 108,111
+  s_fdb813676ab1d1::t_e792fa9cd9af9f 100
+hooks/lib/claude_presets.py
+  s_fdb813676ab1d1::t_14c0a3fdc0aaae 22
+  s_fdb813676ab1d1::t_45bd38a192ee28 31
+  s_fdb813676ab1d1::t_2bfcbee43e7034 91
+  s_fdb813676ab1d1::t_51dc375386f012 87-90,92-95
+  s_fdb813676ab1d1::t_19b4633448e885 10-11
+  s_fdb813676ab1d1::t_1770c10781b38f 138-144
+hooks/lib/test_claude_luna_review.py
+  s_fdb813676ab1d1::t_9b4f9e05970c3c 4-5,11-13,28-29
+  s_fdb813676ab1d1::t_3d8a20ac6331c4 213
+  s_fdb813676ab1d1::t_51d41d55b1ce0f 222
+  s_fdb813676ab1d1::t_ddd4f348275da9 130
+  s_fdb813676ab1d1::t_2431d1480a16db 181-198,201-212,214-221,223-264
+  s_fdb813676ab1d1::t_5836341d652763 164
+  s_fdb813676ab1d1::t_f6eed5bbab01a3 67
+  s_fdb813676ab1d1::t_f67d1c3b821b5b 106
+  s_fdb813676ab1d1::t_437e453e8714c5 199-200
+  s_fdb813676ab1d1::t_bdcda89387c978 30-31
+hooks/lib/test_held_blocks.py
+  s_fdb813676ab1d1::t_59688f269bf304 208
+  s_fdb813676ab1d1::t_832b46240f7b87 29
+  s_fdb813676ab1d1::t_4a91ae1f9c8e31 13-15
+  s_fdb813676ab1d1::t_b64fb7dab4c311 316,319
+  s_fdb813676ab1d1::t_6c58ffc60fb1f5 306,308
+  s_fdb813676ab1d1::t_19ee1e8baa7d1d 222,227
+  s_fdb813676ab1d1::t_c91d862742bf19 259,264
+  s_fdb813676ab1d1::t_25517bdcf7e844 83-104,106-107,113,117
+  s_fdb813676ab1d1::t_4ff11376f96318 242,247
+  s_fdb813676ab1d1::t_2d1ae8bfb93844 274,276,279-291
+  s_fdb813676ab1d1::t_e0d7192cc26c89 337,339,342,344
+  s_fdb813676ab1d1::t_1f28429d04a3e9 350,354,358
+  s_fdb813676ab1d1::t_15d32860b2db08 327,330
+  s_fdb813676ab1d1::t_c8cf6d055494f9 374
+hooks/lib/claude_native.py
+  s_fdb813676ab1d1::t_2983c0356ada7a 27
+  s_fdb813676ab1d1::t_5230d594ed2b9a 518,522
+README.md
+  s_fdb813676ab1d1::t_6b8e1b294ecfb8 5
+hooks/lib/test_claude_default.py
+  s_fdb813676ab1d1::t_eeee6973f8dc1f 72-73
+  s_fdb813676ab1d1::t_05361d5f557357 38-41
+  s_fdb813676ab1d1::t_8c146b6179e217 14
+  s_fdb813676ab1d1::t_a77eef3e1ee1c6 1-13,15-37,42-50,53-63,66-71,74-91
+  s_fdb813676ab1d1::t_ec6366b5b19a00 51-52
+  s_fdb813676ab1d1::t_8137cd302340eb 64-65
+hooks/lib/test_shared_reviewer_prompt.py
+  s_fdb813676ab1d1::t_e337a1838abe09 194
+  s_fdb813676ab1d1::t_eeafdd047460f4 213,218,222
+  s_fdb813676ab1d1::t_f74f5e5fe37ca8 200
+  s_fdb813676ab1d1::t_11d0a1fd9ad8b5 271-272
+  s_fdb813676ab1d1::t_5b1fca87d17624 281,284
+  s_fdb813676ab1d1::t_2c446e9cf69705 52
+  s_fdb813676ab1d1::t_8c1a9096a51576 16
+  s_fdb813676ab1d1::t_bf2c8e5789eaa3 260,263
+hooks/test_review_dot_directories.py
+  s_fdb813676ab1d1::t_c9ef8d4ed47ada 76-77,79-81,83-84,86-89
+  s_fdb813676ab1d1::t_d7d6378be8bc2e 154,158,162,166
+  s_fdb813676ab1d1::t_4586eebb8af437 15
+bin/adw-judge
+  s_fdb813676ab1d1::t_7e90e0e0b53b93 9
+  s_fdb813676ab1d1::t_2b7dc4ef1058a4 5
+skills/adw-judge/SKILL.md
+  s_fdb813676ab1d1::t_d876e5f5f90c44 5
+  s_fdb813676ab1d1::t_a67bf11c13d9b0 18,20
+  s_fdb813676ab1d1::t_73dcefa5cc59a6 16
+hooks/lib/claude_default.py
+  s_fdb813676ab1d1::t_06af240efaa974 17
+  s_fdb813676ab1d1::t_5994ec07d1201c 43,46
+hooks/lib/test_luna_outage.py
+  s_fdb813676ab1d1::t_d0c26f9cc27092 58-61
+  s_fdb813676ab1d1::t_8181b5fdfc5de9 1-57,62-279
+  s_fdb813676ab1d1::t_cb30f04cda8b12 280-318
+hooks/lib/claude_luna.py
+  s_fdb813676ab1d1::t_1dc109b41c9802 10
+  s_fdb813676ab1d1::t_441a0aea756c37 299,301,305-306,316
+  s_fdb813676ab1d1::t_db541d47d7af49 307-309
+  s_fdb813676ab1d1::t_80a1e1b5292184 409-411,420,422
+  s_fdb813676ab1d1::t_95d682e742dd5c 477-484,486,489,492
+  s_fdb813676ab1d1::t_86b1a29f7638be 303-304
+hooks/lib/test_claude_native_paths.py
+  s_fdb813676ab1d1::t_4d4852e326270b 24,27-29
+  s_fdb813676ab1d1::t_49a7edb4e773ff 50
+CHANGELOG.md
+  s_fdb813676ab1d1::t_9714c961cf57b5 3-14
+hooks/lib/test_parataxis_review.py
+  s_fdb813676ab1d1::t_58298223a9edbb 133-135,138-139,143,145-146,148
+  s_fdb813676ab1d1::t_3ccb67dd3ada73 10
+  s_fdb813676ab1d1::t_02784802357aa3 162,166
+hooks/lib/test_claude_transaction.py
+  s_fdb813676ab1d1::t_d3a9501632db06 11
+  s_fdb813676ab1d1::t_fe1aa28cdff446 19
+  s_fdb813676ab1d1::t_0246cc3755f691 32,35-37,39
+hooks/lib/test_claude_luna_patterns.py
+  s_fdb813676ab1d1::t_51e0a67e439488 21-24
+  s_fdb813676ab1d1::t_418be62532ccf3 97
+  s_fdb813676ab1d1::t_f1f2f299ec59f2 93
+  s_fdb813676ab1d1::t_b5e775635f0d42 132-152
+  s_fdb813676ab1d1::t_9f1d2647bf1f2a 67-70,72
+  s_fdb813676ab1d1::t_7668693e2ad2ec 85
+  s_fdb813676ab1d1::t_813a3b350ed2e1 40-41,47
+  s_fdb813676ab1d1::t_f27915c1c91d62 109
+hooks/lib/test_core_boundary.py
+  s_fdb813676ab1d1::t_b7f19f976d3405 104-105,109
+hooks/lib/test_claude_native.py
+  s_fdb813676ab1d1::t_41581c483e5bc3 426,430
+  s_fdb813676ab1d1::t_040f8d9ed216e0 457
+  s_fdb813676ab1d1::t_e24fcc7cf23531 26
+  s_fdb813676ab1d1::t_d753f9cda2a831 271
+  s_fdb813676ab1d1::t_24847fd791fb89 309
+  s_fdb813676ab1d1::t_e62b6893e10d3d 542-544
+  s_fdb813676ab1d1::t_afa490cc9cb34d 202
+  s_fdb813676ab1d1::t_cb081a7483c559 290
+  s_fdb813676ab1d1::t_95fea13db9518e 518-520,522,528,530
+  s_fdb813676ab1d1::t_c9e48368f73e83 33,35,37
+  s_fdb813676ab1d1::t_775387fbcb3329 8
+  s_fdb813676ab1d1::t_39dcfc99d266d1 181,188
+  s_fdb813676ab1d1::t_24cf43d605ab45 212,217,228-245
+  s_fdb813676ab1d1::t_e08eff0740fbf9 293-294,297-304,306,308,310
+  s_fdb813676ab1d1::t_f27ab96c295149 558-579
+  s_fdb813676ab1d1::t_9b1ab9307500e5 51-58,61-64,67-69
+  s_fdb813676ab1d1::t_b3ff67a6199b7c 484
+  s_fdb813676ab1d1::t_97b8b1d9e86861 246-247
+hooks/lib/test_claude_presets.py
+  s_fdb813676ab1d1::t_b5da727b6bb000 100-120
+  s_fdb813676ab1d1::t_00fc5869ed4876 93
+  s_fdb813676ab1d1::t_034654b0c9cdbc 8,11,15,21
+  s_fdb813676ab1d1::t_a624fc994b4ccd 85
+hooks/lib/test_no_headless_claude.py
+  s_fdb813676ab1d1::t_5c0175aa268c9e 19
+  s_fdb813676ab1d1::t_a831570f3f5d2c 1-18,20-35,38-141
+  s_fdb813676ab1d1::t_058b78f2f8d8a7 36-37
+hosts/claude/host.json
+  s_fdb813676ab1d1::t_d458442daebe80 7,10
+  s_fdb813676ab1d1::t_4096f4a1f4ca4a 19
+evals/measure_parataxis_pipeline.py
+  s_fdb813676ab1d1::t_95aae7a629052a 170
+  s_fdb813676ab1d1::t_6f7366b3cecfa9 95
+hooks/lib/luna_outage.py
+  s_fdb813676ab1d1::t_96c0b9bbcc05c9 94-95,100
+  s_fdb813676ab1d1::t_23471c27dde813 101
+  s_fdb813676ab1d1::t_7136f620a35f8c 1-14,21-93,96-99,102-120
+  s_fdb813676ab1d1::t_960e3069c77b82 15-20
+hooks/test_session_start.py
+  s_fdb813676ab1d1::t_d9b4ddc7427d9a 261
+  s_fdb813676ab1d1::t_31a4d3c859aa3f 25
+  s_fdb813676ab1d1::t_d444e1d6bfb3a6 116,121,123
+  s_fdb813676ab1d1::t_e316b858589b62 228
+  s_fdb813676ab1d1::t_3cf1332fc9ad83 212
+  s_fdb813676ab1d1::t_d0304d6c6b90d2 157-173,180
+  s_fdb813676ab1d1::t_3d50420cd623f6 97,100,103-104
+  s_fdb813676ab1d1::t_a55f625f5749a2 88
+  s_fdb813676ab1d1::t_dc42c69841e4bd 139
+  s_fdb813676ab1d1::t_b8b868ed59e535 238,243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1abc1d7d01068051012acc202ccf008745c870d",
+  "prompts": {},
+  "sessions": {
+    "s_fdb813676ab1d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "051f56d6-c6f1-42a6-90b9-6fddb08a2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Agent Discipline Watcher CI <ci@agent-discipline-watcher.test>"
+    }
+  }
+}
