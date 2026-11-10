@@ -1,0 +1,63 @@
+README.md
+  s_f22e08e69dbb3d::t_74ec9206b6a57b 5
+hooks/lib/test_omp_review.py
+  s_68af139c195bd5::t_4bb05988bce1b4 74
+hooks/test_commit_heredoc.py
+  s_7905ad4bcfd050::t_d20e90c96d6ee3 1-137
+CHANGELOG.md
+  s_f22e08e69dbb3d::t_74ec9206b6a57b 3-8
+hooks/lib/commit_command.py
+  s_f53d8bf163d2cf::t_2eb3d5edb02359 19,234-236
+hooks/lib/shell_lines.py
+  s_f53d8bf163d2cf::t_b1979084560aec 48,50,52
+hooks/lib/shell_text.py
+  s_7bd7b5db97b127::t_f3a94e88448a74 38,116-117,133-136,140-145,154,164-182,240-243,303-306,313,315-326
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9941ff6cce4f1af36db2eea2dcc6463b78ec2b6b",
+  "prompts": {},
+  "sessions": {
+    "s_68af139c195bd5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac27979-697b-4606-bfc3-382ca5bfb48c",
+        "model": "sol"
+      },
+      "human_author": "Michael Heichler <55435876+michaelheichler@users.noreply.github.com>"
+    },
+    "s_7905ad4bcfd050": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55a4d53b-5705-4042-bf8d-79de9d2e357d",
+        "model": "sol"
+      },
+      "human_author": "Michael Heichler <55435876+michaelheichler@users.noreply.github.com>"
+    },
+    "s_7bd7b5db97b127": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db5c5521-6c22-4c13-9ba9-e542b448db33",
+        "model": "unknown"
+      },
+      "human_author": "Michael Heichler <55435876+michaelheichler@users.noreply.github.com>"
+    },
+    "s_f22e08e69dbb3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b39c0f3d-1495-4848-acc3-fd49d2de7378",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Michael Heichler <55435876+michaelheichler@users.noreply.github.com>"
+    },
+    "s_f53d8bf163d2cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f0386c93-9f35-4a11-9adc-e9c4f75da008",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Michael Heichler <55435876+michaelheichler@users.noreply.github.com>"
+    }
+  }
+}
