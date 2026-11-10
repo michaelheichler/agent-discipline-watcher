@@ -98,7 +98,7 @@ def _source_retains_feedback(source: dict) -> bool:
     path, digest = source.get("path"), source.get("content_hash")
     if not isinstance(path, str) or not path or not isinstance(digest, str) or not digest:
         return True
-    outcome = journal._read_content(Path(path))
+    outcome = journal.read_content(Path(path))
     return outcome.status == "transient" or (outcome.value is not None and outcome.value[0] == digest)
 
 

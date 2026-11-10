@@ -29,21 +29,48 @@ def _end_after(text: str, needle: str, start: int) -> int:
     return len(text) if end < 0 else end + len(needle)
 
 
-def _masked_end(text: str, index: int) -> int | None:
+def _regex_end(text: str, index: int) -> int | None:
+    prefix = text[:index].rstrip()
+    previous = prefix[-1:] or "="
+    keyword = re.search(r"\b(return|throw|yield|await|case|delete|void|typeof|instanceof|in|of)$", prefix)
+    if previous not in "=(:,[!&|?;{}" and keyword is None:
+        return None
+    cursor, in_class = index + 1, False
+    while cursor < len(text) and text[cursor] not in "\r\n":
+        character = text[cursor]
+        if character == "\\":
+            cursor += 2
+            continue
+        if character == "/" and not in_class:
+            cursor += 1
+            while cursor < len(text) and text[cursor].isalpha():
+                cursor += 1
+            return cursor
+        if character == "[":
+            in_class = True
+        elif character == "]":
+            in_class = False
+        cursor += 1
+    return None
+
+
+def _masked_end(text: str, index: int, javascript: bool) -> int | None:
     pair = text[index:index + 2]
     if pair == "//":
         return _end_after(text, "\n", index) - 1 if "\n" in text[index:] else len(text)
     if pair == "/*":
         return _end_after(text, "*/", index + 2)
+    if javascript and text[index] == "/":
+        return _regex_end(text, index)
     return _skip_quoted(text, index) if text[index] in _QUOTES else None
 
 
-def _masked(text: str) -> str:
+def masked_code(text: str, *, javascript: bool = False) -> str:
     """Blank strings and comments but keep newlines, because a brace inside them does not open a block."""
     out = list(text)
     index = 0
     while index < len(text):
-        end = _masked_end(text, index)
+        end = _masked_end(text, index, javascript)
         if end is None:
             index += 1
             continue
@@ -84,14 +111,14 @@ def _brace_pairs(code: str) -> list[tuple[int, int]]:
     return pairs
 
 
-def block_ends(text: str) -> dict[int, int]:
+def block_ends(text: str, *, javascript: bool = False) -> dict[int, int]:
     """Share the masking, because Rust braces hide in strings too."""
-    return dict(_brace_pairs(_masked(text)))
+    return dict(_brace_pairs(masked_code(text, javascript=javascript)))
 
 
 def long_brace_functions(text: str, limit: int) -> list[tuple[int, str, int]]:
     """Count from the header line, because Python measures from the def line and both caps must mean the same span."""
-    code = _masked(text)
+    code = masked_code(text, javascript=True)
     newlines = [index for index, character in enumerate(code) if character == "\n"]
     found: list[tuple[int, str, int]] = []
     for opening, closing in _brace_pairs(code):

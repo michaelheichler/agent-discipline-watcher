@@ -26,7 +26,7 @@ def _located(word: str, cwd: Path) -> Path | None:
     if "/" not in word:
         found = shutil.which(word)
         return Path(found) if found else None
-    target = Path(os.path.expanduser(word))
+    target = Path(os.path.expanduser(os.fspath(word)))
     return target if target.is_absolute() else cwd / target
 
 
@@ -34,6 +34,7 @@ def _resolved_name(word: str, cwd: Path) -> str | None:
     """Resolved because a renamed link still runs the CLI."""
     try:
         target = _located(word, cwd)
+        # Because _located expanded homes already, keep literal tildes in the target.
         return None if target is None else Path(os.path.realpath(target)).name
     except (OSError, ValueError):
         return None

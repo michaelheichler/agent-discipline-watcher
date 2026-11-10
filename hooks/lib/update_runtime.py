@@ -18,10 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from install_runtime import EXCLUDED_NAMES, INSTALL_MARKER, INSTALL_MARKER_CONTENT
+from update import open_runtime_lock, runtime_lock_directory
 
-from . import principle_kb, update_release
+from . import config_roots, principle_kb, state_recovery, update_release
 
-INSTALL_PATH = Path(".adw/install/agent-discipline-watcher")
+INSTALL_PATH = config_roots.install_root(Path("."))
 CLAUDE_PRESET_PATH = Path(".adw/claude/preset")
 HOSTS = ("claude", "codex", "omp")
 EXTENSION_PATH = Path("pi/extensions/agent-discipline-watcher")
@@ -59,7 +60,7 @@ def _arguments(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
-def _check_path(path: Path, home: Path, *, allow_link: bool = False) -> None:
+def check_path(path: Path, home: Path, *, allow_link: bool = False) -> None:
     relative = path.relative_to(home)
     current = home
     for part in relative.parts:
@@ -81,13 +82,13 @@ def _check_path(path: Path, home: Path, *, allow_link: bool = False) -> None:
 
 
 def _require_installed(home: Path) -> Path:
-    installed = home / INSTALL_PATH
+    installed = config_roots.install_root(home)
     expected = installed / "hooks/lib/update_runtime.py"
     if Path(__file__).absolute() != expected:
         raise RuntimeError("updates must run through the installed adw command")
-    _check_path(expected, home)
+    check_path(expected, home)
     marker = installed / INSTALL_MARKER
-    _check_path(marker, home)
+    check_path(marker, home)
     if marker.read_text(encoding="utf-8") != INSTALL_MARKER_CONTENT:
         raise RuntimeError("the installed runtime has no valid ownership marker")
     return installed
@@ -99,7 +100,7 @@ def _installer_environment(home: Path) -> dict[str, str]:
     return {
         "HOME": str(home),
         "PATH": os.pathsep.join(map(str, paths)),
-        "ADW_INSTALL_DIR": str(home / INSTALL_PATH),
+        "ADW_INSTALL_DIR": str(config_roots.install_root(home)),
         "ADW_PYTHON": sys.executable,
         "CODEX_HOME": str(home / ".codex"),
         "PI_CODING_AGENT_DIR": str(home / ".omp/agent"),
@@ -112,29 +113,13 @@ def _installer_environment(home: Path) -> dict[str, str]:
 
 @contextmanager
 def _update_lock(home: Path):
-    updates = home / ".adw/updates"
-    _check_path(updates, home)
-    updates.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if updates.stat().st_mode & 0o077:
-        raise RuntimeError(f"updates directory must be private: {updates}")
-    lock = updates / "update.lock"
-    _check_path(lock, home)
-    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, "r+") as stream:
-        metadata = os.fstat(stream.fileno())
-        current = lock.lstat()
-        if (metadata.st_dev, metadata.st_ino) != (current.st_dev, current.st_ino):
-            raise RuntimeError("update lock changed while opening")
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1 or metadata.st_mode & 0o077:
-            raise RuntimeError("update lock is not a private regular file")
-        try:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise RuntimeError("another update is already running") from error
-        try:
-            yield updates
-        finally:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+    check_path(home / ".adw/updates", home)
+    try:
+        stream = open_runtime_lock(home, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as error:
+        raise RuntimeError("another update is already running") from error
+    with stream:
+        yield home / ".adw/updates"
 
 
 def _claude_root(home: Path) -> Path:
@@ -185,7 +170,7 @@ def _linked_legacy_root(path: Path, home: Path, suffix: Path) -> Path | None:
 
 
 def _is_legacy_checkout(root: Path, home: Path) -> bool:
-    _check_path(root, home)
+    check_path(root, home)
     manifest_path = root / ".claude-plugin/plugin.json"
     _check_external_file(manifest_path, root)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -245,7 +230,7 @@ def _omp_registration_matches(home: Path, root: Path) -> bool:
 
 
 def _preflight_paths(paths: list[Path], home: Path) -> Path | None:
-    installed = home / INSTALL_PATH
+    installed = config_roots.install_root(home)
     legacy_roots: set[Path] = set()
     legacy_paths: dict[Path, Path] = {}
     for path in paths:
@@ -257,14 +242,14 @@ def _preflight_paths(paths: list[Path], home: Path) -> Path | None:
                 legacy_roots.add(legacy_root)
                 legacy_paths[path] = legacy_root
                 continue
-        _check_path(path, home, allow_link=owned_link)
+        check_path(path, home, allow_link=owned_link)
     if len(legacy_roots) > 1:
         raise RuntimeError("ADW legacy links point to different source roots")
     for path in legacy_paths:
         metadata = path.lstat()
         if metadata.st_uid != os.getuid() or metadata.st_nlink != 1:
             raise RuntimeError(f"legacy ADW link is not owned: {path}")
-        _check_path(path, home, allow_link=True)
+        check_path(path, home, allow_link=True)
     return next(iter(legacy_roots), None)
 
 
@@ -304,7 +289,7 @@ def _remove(path: Path) -> None:
 
 def _restore_paths(backups: dict[Path, Path | None], home: Path) -> None:
     for path, backup in backups.items():
-        _check_path(path.parent, home)
+        check_path(path.parent, home)
         _remove(path)
         if backup is None:
             continue
@@ -405,7 +390,7 @@ def _resolved_template(value: object, installed: Path) -> object:
 
 
 def _verify_codex(home: Path, source: Path) -> None:
-    installed = home / INSTALL_PATH
+    installed = config_roots.install_root(home)
     template = _resolved_template(json.loads((source / "hooks/codex-hooks.json").read_text(encoding="utf-8")), installed)
     hooks = json.loads((home / ".codex/hooks.json").read_text(encoding="utf-8"))["hooks"]
     if not isinstance(template, dict) or not isinstance(hooks, dict):
@@ -417,7 +402,7 @@ def _verify_codex(home: Path, source: Path) -> None:
 
 
 def _verify_omp(home: Path) -> None:
-    extension = home / INSTALL_PATH / EXTENSION_PATH
+    extension = config_roots.install_root(home) / EXTENSION_PATH
     link = home / ".omp/agent/extensions/agent-discipline-watcher"
     if not link.is_symlink() or link.resolve() != extension:
         raise RuntimeError("OMP extension does not point to the installed release")
@@ -430,14 +415,14 @@ def _verify_omp(home: Path) -> None:
 
 
 def _verify_install(home: Path, source: Path, hosts: tuple[str, ...], expected: dict) -> None:
-    installed = home / INSTALL_PATH
-    _check_path(installed, home)
+    installed = config_roots.install_root(home)
+    check_path(installed, home)
     marker = installed / INSTALL_MARKER
-    _check_path(marker, home)
+    check_path(marker, home)
     if marker.read_text(encoding="utf-8") != INSTALL_MARKER_CONTENT or _inventory(installed) != expected:
         raise RuntimeError("installed runtime does not match the verified release")
     command = home / ".adw/bin/adw"
-    _check_path(command.parent, home)
+    check_path(command.parent, home)
     if not command.is_symlink() or command.resolve() != installed / "bin/adw":
         raise RuntimeError("adw command does not point to the installed release")
     if "codex" in hosts:
@@ -453,17 +438,9 @@ def _verify_install(home: Path, source: Path, hosts: tuple[str, ...], expected: 
 
 def _record_release(updates: Path, release: update_release.Release, hosts: tuple[str, ...]) -> None:
     target = updates / "installed.json"
-    _check_path(target, updates.parent.parent)
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=updates, delete=False) as stream:
-        temporary = Path(stream.name)
-        json.dump({"tag": release.tag, "commit": release.commit, "hosts": list(hosts)}, stream)
-        stream.write("\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        temporary.replace(target)
-    finally:
-        temporary.unlink(missing_ok=True)
+    check_path(target, updates.parent.parent)
+    payload = {"tag": release.tag, "commit": release.commit, "hosts": list(hosts)}
+    state_recovery.atomic_write(target, json.dumps(payload) + "\n", sync=True)
 
 
 def _update_environment(home: Path, hosts: tuple[str, ...]) -> tuple[dict[str, str], list[Path]]:
@@ -507,20 +484,21 @@ def _perform_update(
         source = workspace / "release"
         steps.stage_release(release, source)
         expected = _source_inventory(source, hosts)
-        environment, paths = _update_environment(home, hosts)
-        backups = _backup_paths(paths, workspace / "backup")
-        try:
-            _install_hosts(steps, home, source, release.commit, hosts, environment)
-            written = _verify_then_write_reviewer(steps, home, source, hosts, expected, environment)
-            _record_release(updates, release, hosts)
-            return written
-        except BaseException:
+        with _update_lock(home):
+            environment, paths = _update_environment(home, hosts)
+            backups = _backup_paths(paths, workspace / "backup")
             try:
-                _restore_paths(backups, home)
-            except Exception as error:
-                retain_backup = True
-                raise RuntimeError(f"rollback failed. Backups remain in {workspace / 'backup'}: {error}") from error
-            raise
+                _install_hosts(steps, home, source, release.commit, hosts, environment)
+                written = _verify_then_write_reviewer(steps, home, source, hosts, expected, environment)
+                _record_release(updates, release, hosts)
+                return written
+            except BaseException:
+                try:
+                    _restore_paths(backups, home)
+                except Exception as error:
+                    retain_backup = True
+                    raise RuntimeError(f"rollback failed. Backups remain in {workspace / 'backup'}: {error}") from error
+                raise
     finally:
         if not retain_backup:
             shutil.rmtree(workspace)
@@ -536,8 +514,9 @@ def main(argv: list[str] | None = None, *, steps: UpdateSteps = UpdateSteps()) -
         if args.dry_run:
             print(f"Would install {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
             return 0
-        with _update_lock(home) as updates:
-            written = _perform_update(home, updates, args.hosts, release, steps)
+        check_path(home / ".adw/updates", home)
+        updates = runtime_lock_directory(home)
+        written = _perform_update(home, updates, args.hosts, release, steps)
         print(f"Installed {release.tag} ({release.commit}) for {', '.join(args.hosts)}")
         if "claude" in args.hosts:
             print(f"Claude reviewer preset written: {written}" if written else "Claude reviewer block kept.")

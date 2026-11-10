@@ -3,29 +3,45 @@ from __future__ import annotations
 
 import re
 import shlex
+from functools import lru_cache
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from .shell_syntax import SHELL_C_INTERPRETERS, _basename, _payload_command_index
-
+WORD_FRAGMENT_RE = re.compile(r'''\\.|'[^']*'|"(?:\\.|[^"\\])*"''')
 SUBSTITUTION_RE = re.compile(r"\\.|\$\(|`", re.DOTALL)
 BACKTICK_BODY_RE = re.compile(r"(?:\\.|[^`\\])*", re.DOTALL)
-SCAN_RE = re.compile(r"""
-    (?P<continuation>\\\n)
-  | (?P<escape>\\.)
-  | (?P<single>'[^']*'?)
-  | (?P<double>"(?:\\.|[^"\\])*"?)
-  | (?P<backtick>`(?:\\.|[^`\\])*`?)
-  | (?P<subst>\$\()
-  | (?P<procsub>[<>]\()
-  | (?P<herestring><<<[ \t]*(?P<word>'[^']*'|"(?:\\.|[^"\\])*"|[^\s;&|()<>'"]+))
-  | (?P<heredoc><<(?P<strip>-?)[ \t]*(?:'(?P<quoted>[^'\n]*)'|"(?P<dquoted>[^"\n]*)"|\\?(?P<bare>[^\s;&|()<>'"]+)))
-  | (?P<dup>\d*[<>]&(?:\d+|-)?)
-  | (?P<redirect>\d*(?:>>|>\||<>|>|<)[ \t]*(?:'[^']*'|"(?:\\.|[^"\\])*"|[^\s;&|()<>'"]+))
-  | (?P<comment>(?<![^\s;&|()])\#[^\n]*)
-  | (?P<separator>[;&|()\n])
-  | (?P<other>(?:[^\\'"`#;&|()<>\s$]|\$(?!\())+|\s+|.)
-""", re.VERBOSE | re.DOTALL)
+SINGLE_QUOTE = r"'[^']*'"
+DOUBLE_QUOTE = r'"(?:\\.|[^"\\])*"'
+BACKTICK = r"`(?:\\.|[^`\\])*`?"
+COMMENT = r"(?<![^\s;&|()])\#[^\n]*"
+
+
+def _scan_pattern(*, physical: bool) -> str:
+    optional = "" if physical else "?"
+    disabled = "(?!)" if physical else ""
+    bare_escape = "" if physical else r"\\?"
+    return rf"""
+        (?P<continuation>\\\n)
+      | (?P<escape>\\.)
+      | (?P<single>{SINGLE_QUOTE}{optional})
+      | (?P<double>{DOUBLE_QUOTE}{optional})
+      | (?P<backtick>{disabled}{BACKTICK})
+      | (?P<subst>\$\()
+      | (?P<procsub>[<>]\()
+      | (?P<herestring><<<[ \t]*(?P<word>{SINGLE_QUOTE}|{DOUBLE_QUOTE}|[^\s;&|()<>'"]+))
+      | (?P<heredoc><<(?P<strip>-?)[ \t]*(?:'(?P<quoted>[^'\n]*)'|"(?P<dquoted>[^"\n]*)"|{bare_escape}(?P<bare>[^\s;&|()<>'"]+)))
+      | (?P<dup>\d*[<>]&(?:\d+|-)?)
+      | (?P<redirect>\d*(?:>>|>\||<>|>|<)[ \t]*(?:{SINGLE_QUOTE}|{DOUBLE_QUOTE}|[^\s;&|()<>'"]+))
+      | (?P<comment>{disabled}{COMMENT})
+      | (?P<separator>[;&|()\n])
+      | (?P<other>(?:[^\\'"`#;&|()<>\s$]|\$(?!\())+|\s+|.)
+    """
+
+
+SCAN_RE = re.compile(_scan_pattern(physical=False), re.VERBOSE | re.DOTALL)
+# Because physical rows retain incomplete quotes, share their grammar fragments.
+PHYSICAL_SCAN_RE = re.compile(_scan_pattern(physical=True), SCAN_RE.flags)
 REDIRECT_PARTS_RE = re.compile(r"(\d*)(>>|>\||<>|<&|>&|>|<)[ \t]*(.*)", re.DOTALL)
 MARKED_RE = re.compile(r"\x00(\d+)(<<|>>|>\||<>|<&|>&|>|<)(.*)", re.DOTALL)
 ANSI_C_START_RE = re.compile(r"\$'|\\.|'[^']*'?|\"(?:\\.|[^\"\\])*\"?", re.DOTALL)
@@ -57,6 +73,76 @@ class Redirect(NamedTuple):
     fd: int
     operator: str
     target: str
+
+
+class ShellBody(NamedTuple):
+    text: str
+    closed: bool
+    expands: bool
+    strip_tabs: bool = False
+
+
+class ShellToken(NamedTuple):
+    match: re.Match[str] | None
+    end: int
+    bodies: tuple[ShellBody, ...] = ()
+
+
+def _drain_heredocs(
+    text: str, position: int, pending: list[tuple[_Heredoc, bool]], *, physical: bool,
+) -> tuple[tuple[ShellBody, ...], int]:
+    bodies = []
+    for heredoc, expands in pending:
+        body, position, closed = _heredoc_body(text, position, heredoc, physical=physical)
+        bodies.append(ShellBody(body, closed, expands, heredoc.strip_tabs))
+    pending.clear()
+    return tuple(bodies), position
+
+
+def shell_tokens(text: str, *, physical: bool = False) -> Iterator[ShellToken]:
+    """Because both shell views need identical boundaries, one lexer consumes their syntax."""
+    position = 0
+    pending: list[tuple[_Heredoc, bool]] = []
+    pattern = PHYSICAL_SCAN_RE if physical else SCAN_RE
+    while position < len(text):
+        newline = text.find("\n", position) if physical else -1
+        limit = len(text) if newline < 0 else max(position + 1, newline)
+        match = pattern.match(text, position, limit)
+        if match is None:
+            break
+        position = match.end()
+        if not physical and match.lastgroup in {"subst", "procsub"}:
+            position = _closing_paren(text, position) + 1
+        if match.lastgroup == "heredoc":
+            expands = match.group("bare") is not None and (physical or "\\" not in match.group())
+            pending.append((_Heredoc(_delimiter(match), bool(match.group("strip")), False), expands))
+        bodies: tuple[ShellBody, ...] = ()
+        if match.lastgroup == "separator" and match.group() == "\n":
+            bodies, position = _drain_heredocs(text, position, pending, physical=physical)
+        yield ShellToken(match, position, bodies)
+    if pending:
+        bodies, position = _drain_heredocs(text, position, pending, physical=physical)
+        yield ShellToken(None, position, bodies)
+
+
+@lru_cache(maxsize=16)
+def shell_words(command: str) -> tuple[str, ...]:
+    fragments: list[str] = []
+    start = 0
+    for token in shell_tokens(command):
+        source = command[start:token.end]
+        fragments.append(WORD_FRAGMENT_RE.sub(
+            lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
+            source,
+        ))
+        start = token.end
+    try:
+        # Because callers retain quotes, shlex groups words without POSIX unquoting.
+        lexer = shlex.shlex("".join(fragments), posix=False, punctuation_chars=";&|()>")
+        lexer.whitespace_split = True
+        return tuple(lexer)
+    except ValueError:
+        return tuple(command.split())
 
 
 def shell_text(command: str) -> str:
@@ -98,19 +184,21 @@ class _Scanner:
     command_part: int = 0
 
     def text(self) -> str:
-        position = 0
-        while position < len(self.command):
-            match = SCAN_RE.match(self.command, position)
-            position = self._take(match) if match else len(self.command)
-        self._bodies(len(self.command))
+        for token in shell_tokens(self.command):
+            if token.match is not None:
+                self._take(token)
+            self._bodies(token.bodies)
         return "".join(self.parts)
 
-    def _take(self, match: re.Match) -> int:
+    def _take(self, token: ShellToken) -> None:
+        match = token.match
         kind = match.lastgroup
         if kind == "separator":
-            return self._separator(match)
+            self._separator(match)
+            return
         if kind in REPLACED:
-            return self._replace(match)
+            self._replace(token)
+            return
         if kind in MARKED:
             fd, operator, target = REDIRECT_PARTS_RE.fullmatch(match.group()).groups()
             self.parts.append(_marker(fd, operator, _unquoted(target)))
@@ -122,7 +210,6 @@ class _Scanner:
             self._lead_with(_substitutions(match.group()))
         if kind in PASSED_THROUGH:
             self.parts.append(match.group())
-        return match.end()
 
     def _heredoc(self, match: re.Match) -> None:
         slot = f"\x01{len(self.pending)}:{match.start()}\x01"
@@ -133,13 +220,13 @@ class _Scanner:
         word = _unquoted(match.group("word"))
         self.parts.append(f"\n{_scan(word)}\n" if self._shell_reads(match.start()) else _marker("", INLINE_INPUT, word))
 
-    def _replace(self, match: re.Match) -> int:
+    def _replace(self, token: ShellToken) -> None:
         """Because a substitution runs first and leaves only its output, its body moves ahead and a dynamic word stays."""
+        match = token.match
         if match.lastgroup == "backtick":
-            body, end = match.group()[1:].removesuffix("`"), match.end()
+            body = match.group()[1:].removesuffix("`")
         else:
-            close = _closing_paren(self.command, match.end())
-            body, end = self.command[match.end():close], close + 1
+            body = self.command[match.end():token.end - 1]
         if match.lastgroup == "procsub":
             self.parts.insert(self.command_part, f"( {_scan(body)}\n) | ")
             self.command_part += 1
@@ -147,7 +234,6 @@ class _Scanner:
         else:
             self._lead_with([body])
             self.parts.append(SUBSTITUTED)
-        return end
 
     def _process_file(self) -> None:
         """Marked as stdin after a bare <, because bash < <(cmd) reads the process output as its input."""
@@ -159,10 +245,9 @@ class _Scanner:
             return
         self.parts.append(PROCESS_FILE)
 
-    def _separator(self, match: re.Match) -> int:
+    def _separator(self, match: re.Match) -> None:
         self.parts.append(match.group())
         self.start, self.command_part = match.end(), len(self.parts)
-        return self._bodies(match.end()) if match.group() == "\n" else match.end()
 
     def _lead_with(self, bodies: list[str]) -> None:
         for body in bodies:
@@ -172,14 +257,13 @@ class _Scanner:
     def _shell_reads(self, position: int) -> bool:
         return _reads_script(self.command[self.start:position])
 
-    def _bodies(self, position: int) -> int:
-        for heredoc in self.pending:
-            body, position, closed = _heredoc_body(self.command, position, heredoc)
-            if heredoc.read_by_shell or not closed:
-                self.parts.append(_scan(body))
-            self.parts[self.parts.index(heredoc.slot)] = "" if heredoc.read_by_shell else _marker("", INLINE_INPUT, body)
-        self.pending = []
-        return position
+    def _bodies(self, bodies: tuple[ShellBody, ...]) -> None:
+        for heredoc, body in zip(self.pending, bodies):
+            if heredoc.read_by_shell or not body.closed:
+                self.parts.append(_scan(body.text))
+            self.parts[self.parts.index(heredoc.slot)] = "" if heredoc.read_by_shell else _marker("", INLINE_INPUT, body.text)
+        if bodies:
+            self.pending = []
 
 
 def _substitutions(text: str) -> list[str]:
@@ -198,10 +282,51 @@ def _substitutions(text: str) -> list[str]:
 
 def _closing_paren(text: str, cursor: int) -> int:
     depth = 1
-    for index in range(cursor, len(text)):
-        depth += {"(": 1, ")": -1}.get(text[index], 0)
+    pending: list[_Heredoc] = []
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "\n" and pending:
+            cursor += 1
+            for heredoc in pending:
+                _, cursor, _ = _heredoc_body(text, cursor, heredoc)
+            pending.clear()
+            continue
+        if text.startswith("<<", cursor):
+            match = SCAN_RE.match(text, cursor)
+            if match is not None and match.lastgroup == "heredoc":
+                pending.append(_Heredoc(_delimiter(match), bool(match.group("strip")), False))
+                cursor = match.end()
+                continue
+        if char == "\\":
+            cursor += 2
+            continue
+        if char in {"'", '"', "`"}:
+            cursor = _quote_end(text, cursor + 1, char)
+            continue
+        if char == "#" and (cursor == 0 or text[cursor - 1] in " \t\n;&|()"):
+            newline = text.find("\n", cursor)
+            cursor = len(text) if newline < 0 else newline
+            continue
+        depth += {"(": 1, ")": -1}.get(char, 0)
         if depth == 0:
-            return index
+            return cursor
+        cursor += 1
+    return len(text)
+
+
+def _quote_end(text: str, cursor: int, quote: str) -> int:
+    """Because nested substitutions own their quotes, skip each before closing its outer quote."""
+    while cursor < len(text):
+        if text[cursor] == quote:
+            return cursor + 1
+        if quote != "'" and text[cursor] == "\\":
+            cursor += 2
+        elif quote == '"' and text.startswith("$(", cursor):
+            cursor = _closing_paren(text, cursor + 2) + 1
+        elif quote == '"' and text[cursor] == "`":
+            cursor = _quote_end(text, cursor + 1, "`")
+        else:
+            cursor += 1
     return len(text)
 
 
@@ -217,6 +342,8 @@ def _unquoted(word: str) -> str:
 
 
 def _reads_script(prefix: str) -> bool:
+    from .shell_syntax import SHELL_C_INTERPRETERS, _basename, _payload_command_index
+
     try:
         words = shlex.split(prefix)
     except ValueError:
@@ -225,13 +352,14 @@ def _reads_script(prefix: str) -> bool:
     return index >= len(words) or words[index] in SCRIPT_READERS or _basename(words[index]) in SHELL_C_INTERPRETERS
 
 
-def _heredoc_body(command: str, start: int, heredoc: _Heredoc) -> tuple[str, int, bool]:
+def _heredoc_body(command: str, start: int, heredoc: _Heredoc, *, physical: bool = False) -> tuple[str, int, bool]:
     cursor = start
     while cursor < len(command):
         newline = command.find("\n", cursor)
         stop = len(command) if newline < 0 else newline
         line = command[cursor:stop]
-        if (line.lstrip("\t") if heredoc.strip_tabs else line) == heredoc.delimiter:
+        line = line.lstrip("\t") if heredoc.strip_tabs else line
+        if (line.rstrip() if physical else line) == heredoc.delimiter:
             return command[start:cursor], min(stop + 1, len(command)), True
         cursor = stop + 1
     return command[start:], len(command), False

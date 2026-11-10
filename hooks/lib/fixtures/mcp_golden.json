@@ -1,0 +1,22 @@
+[
+  {"tool_name":"mcp__files__write","arguments":{"filePath":"a.md","newString":"body"},"targets":["a.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__save_document","arguments":{"relativePath":"a.md","fileText":"body"},"targets":["a.md"],"operation":["save",""],"mutation":true},
+  {"tool_name":"mcp__files__read","arguments":{"URIPath":"a.md"},"targets":["a.md"],"operation":["read",""],"mutation":false},
+  {"tool_name":"mcp__files__batch_update","arguments":{"edits":[{"targetUri":"a.md","newText":"body"},{"destination":"b.md"}]},"targets":["b.md","a.md"],"operation":["update",""],"mutation":true},
+  {"tool_name":"mcp__files__save","arguments":{"source":"a.md","destination":"b.md","filename":"c.md","target":"d.md","body":"text"},"targets":["a.md","b.md","c.md","d.md"],"operation":["save",""],"mutation":true},
+  {"tool_name":"mcp__files__save","arguments":{"fileText":"not-a-path","newSource":"also-not-a-path"},"targets":[],"operation":["save",""],"mutation":false},
+  {"tool_name":"mcp__files__read","arguments":{"paths":["a.md","a.md","b.md"],"operation":"delete"},"targets":["a.md","b.md"],"operation":["read","delete"],"mutation":true},
+  {"tool_name":"mcp__files__read","arguments":{"path":"a.md","operation":" ","action":"write"},"targets":["a.md"],"operation":["read","write"],"mutation":true},
+  {"tool_name":"mcp__files__read","arguments":{"payload":{"action":"write","path":"a.md"}},"targets":["a.md"],"operation":["read",""],"mutation":false},
+  {"tool_name":"mcp__files__batch","arguments":{},"targets":[],"operation":["batch",""],"mutation":false},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:///tmp/a%20b.md?ignored#fragment"},"targets":["/tmp/a b.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"FILE://LOCALHOST/tmp/%C3%A4.md"},"targets":["/tmp/ä.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:/tmp/a.md"},"targets":["/tmp/a.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:////tmp/a.md"},"targets":["//tmp/a.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:///tmp/%2520.md"},"targets":["/tmp/%20.md"],"operation":["write",""],"mutation":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file://remote/tmp/a.md"},"error":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:relative.md"},"error":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:///tmp/a%GG.md"},"error":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:///tmp/a%.md"},"error":true},
+  {"tool_name":"mcp__files__write","arguments":{"uri":"file:///tmp/a%FF.md"},"error":true}
+]

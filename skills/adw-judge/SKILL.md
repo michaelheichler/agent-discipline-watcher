@@ -1,6 +1,6 @@
 ---
 name: adw-judge
-description: Select the ADW native Claude model-judging preset.
+description: Select the Luna review preset for Claude Code or show its status.
 disable-model-invocation: true
 argument-hint: <luna|status>
 ---
@@ -13,7 +13,7 @@ Use the normal Bash tool with the argument quoted as one value:
 adw-judge "$ARGUMENTS"
 ```
 
-The executable accepts only `luna` or `status` and replaces the managed settings block atomically, so settings hold one reviewer set.
+The executable accepts only `luna` or `status`. Selecting `luna` replaces the managed settings block atomically, so settings hold one reviewer set. `status` reports the current setup without changing it.
 
 The plugin ships no reviewer of its own. If settings hold no managed block, SessionStart writes the `luna` block. If settings hold a retired agent block or Sonnet handler, SessionStart replaces it with the `luna` block.
 

@@ -7,13 +7,14 @@ import re
 from pathlib import PurePath
 
 from .findings import Finding, spanning
+from .slop_phrase import EnglishRule, PhraseFamily, _literal_office_idiom
 
 WHY_RULE_IS_HEURISTIC = (
     "The WHY and WHAT split is a lexical heuristic, not semantic analysis. "
     "A WHAT comment with a marker can pass, and a genuine WHY comment without one can be blocked. "
     "Its deliberate bias toward over-blocking matches the hard-block policy with no exceptions."
 )
-# Comma required because so alone also means very or thus.
+# Require the comma because bare so also modifies adjectives.
 CONSEQUENCE_SO = r",\s+so\s+(?!that\b)(?=\S)"
 STRONG_WHY_COMMENT_RE = re.compile(
     r"(?:^why:\s*\S|\b(?:because|otherwise)\b|\bdue to\b|\bso that\b|\bin order to\b|"
@@ -66,7 +67,7 @@ VC_COMMENT_RE = re.compile(
     r"to|from|into|with|previously|used to|formerly|instead of)\b",
     re.IGNORECASE,
 )
-# Uppercase-only lookahead because lowercase forms collide with CSS id selectors and preprocessor tokens.
+# Because lowercase collides with CSS and preprocessing, require uppercase tags.
 _NO_SPACE_HASH = "(?=(?:" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK")) + r")\b)"
 COMMENT_RE = re.compile(r"^\s*(?:///?[ \t]*|#(?!\!)(?:[ \t]+|(?=$)|" + _NO_SPACE_HASH + r")|/\*[ \t]*)(.*)")
 # Kept to "#" only mid-line so that "//" is not misread as Python floor division.
@@ -75,7 +76,7 @@ BLOCK_COMMENT_RE = re.compile(r"/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z)", re.DOTALL)
 BLOCK_COMMENT_TAIL_RE = re.compile(
     r"(?P<block>/\*.*?(?:\*/|\Z)|<!--.*?(?:-->|\Z))(?P<tail>[^\n]*)", re.DOTALL,
 )
-# Excluded because a shell case/test glob has a slash-star with no closer, so the unclosed-block fallback used to eat the rest of the file.
+# Because shell globs lack closers, do not consume them as comment blocks.
 SHELL_GLOB_COLLISION_EXTS = frozenset({".sh", ".bash", ".zsh", ".ksh"})
 COMMENTED_CODE_RE = re.compile(r"^\s*(?://|#|/\*)\s*(def |class |if |for |while |return |import |from |const |let |var |\w+\()", re.IGNORECASE)
 HEADER_COMMENT_RE = re.compile(r"^(spdx-license-identifier:|spdx-filecopyrighttext:|copyright\b|coding[:=]|-\*- coding:)", re.IGNORECASE)
@@ -126,33 +127,6 @@ INLINE_DIRECTIVE_SPLIT_RE = re.compile(r"\s+#\s*")
 TRIPLE_STRING_RE = re.compile(r"(?P<quote>\"\"\"|''').*?(?P=quote)", re.DOTALL)
 
 
-def _finding(finding: Finding | str, *values: object, match: str | None = None) -> dict:
-    return finding.to_dict() if isinstance(finding, Finding) else _legacy_finding(finding, values, match)
-
-
-def _legacy_finding(family: str, values: tuple[object, ...], match: str | None = None) -> dict:
-    if len(values) != 5:
-        raise TypeError("finding requires family, rule, line, detail, snippet, and action")
-    rule, line, detail, snippet, action = values
-    if not isinstance(rule, str) or not isinstance(line, int) or isinstance(line, bool):
-        raise TypeError("finding rule and line have invalid types")
-    if not all(isinstance(value, str) for value in (detail, snippet, action)):
-        raise TypeError("finding detail, snippet, and action must be strings")
-    return Finding(
-        family=family,
-        rule=rule,
-        line=line,
-        detail=detail,
-        force=True,
-        snippet=snippet.strip()[:180],
-        action=action,
-        path=None,
-        severity=None,
-        tool_use_id=None,
-        match=match[:180] if match is not None else None,
-    ).to_dict()
-
-
 DEFERRED_WORK_TAGS = "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX", "HA" + "CK"))
 # Tag lines skip two rules because one finding is enough.
 DEFERRED_TAG_RE = re.compile(r"^(?:" + DEFERRED_WORK_TAGS + r")\b:?[ \t]*", re.IGNORECASE)
@@ -179,23 +153,27 @@ COMMENT_BODY_RULES = (
 
 
 READABILITY_RULES = (
-    (re.compile(
+    EnglishRule(PhraseFamily.compile(
         r"\b(?:hope this helps|let me know if you (?:need anything else|have any questions)|"
-        r"feel free to (?:ask|reach out)|happy to (?:help|clarify|assist))\b",
-        re.IGNORECASE,
+        r"feel free to (?:ask|reach out)|happy to (?:help|clarify|assist)|"
+        r"in short,? (?:that|this) (?:is|was)|to (?:wrap|sum) (?:things |it |this )?up|"
+        r"and there you have it)\b",
     ), "ai_closer", "End when the answer is done."),
-    (re.compile(
-        r"^\s*(?:(?:great question|to answer your question|looking at your)\b|sure!)",
-        re.IGNORECASE,
+    EnglishRule(PhraseFamily.compile(
+        r"^\s*(?:(?:great question|to answer your question|looking at your)\b|sure!|"
+        r"(?:hello|hi|hey|welcome)(?: there| again| back)?(?=[,!:]|$)|thanks? (?:you )?for (?:asking|the question)\b)",
     ), "greeting_opener", "Start with the answer."),
-    (re.compile(
-        r"\b(?:could|may|might|should|would)\s+(?:perhaps|possibly|potentially|probably)\b",
-        re.IGNORECASE,
+    EnglishRule(PhraseFamily.compile(
+        r"\b(?:could|may|might|should|would)\s+(?:perhaps|possibly|potentially|probably)\b|"
+        r"\b(?:perhaps|possibly|potentially|probably)\b[^.!?;,\n]{0,100}?"
+        r"\b(?:could|may|might|should|would|perhaps|possibly|potentially|probably)\b",
     ), "hedge_stack", "Keep one hedge or state the fact."),
-    (re.compile(
-        r"\b(?:circle back|touch base|get the ball rolling|on the same page|"
-        r"low-hanging fruit|move the needle|boil the ocean)\b",
-        re.IGNORECASE,
+    EnglishRule(PhraseFamily.compile(
+        r"\b(?:circl(?:e|es|ed|ing) back|touch(?:es|ed|ing)? base|get(?:s|ting)? the ball rolling|"
+        r"on the same page|low-hanging fruit|mov(?:e|es|ed|ing) the needle|boil(?:s|ed|ing)? the ocean|"
+        r"get(?:s|ting)? (?:everyone|the team|us) aligned|reconnect(?:s|ed|ing)? on|"
+        r"gain(?:s|ed|ing)? traction)\b",
+        literal=_literal_office_idiom,
     ), "corporate_idiom", "Name the literal action."),
 )
 
@@ -251,7 +229,7 @@ def _multiline_comment_findings(path: str, text: str) -> list[dict]:
     if PurePath(path.lower()).suffix in SHELL_GLOB_COLLISION_EXTS:
         return []
     return [
-        spanning(_finding(Finding(family="comment", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None)), text.count("\n", 0, match.end() - 1) + 1)
+        spanning(Finding(family="comment", rule="prose_comment_block", line=text.count("\n", 0, match.start()) + 1, detail="Comment block narrates in " + path, force=True, snippet=(match.group(0).splitlines()[0]).strip()[:180], action="Keep one strict WHY line or delete the comment.", path=None, severity=None, tool_use_id=None).to_dict(), text.count("\n", 0, match.end() - 1) + 1)
         for match in BLOCK_COMMENT_RE.finditer(text)
         if "\n" in match.group(0) and LETTER_RE.search(match.group(0))
         and not _structured_block_comment(match.group(0))
@@ -303,12 +281,12 @@ def _identifier_tokens(parts) -> frozenset[str]:
     )
 
 
-# Third person and gerund only, because a bare participle like "Set to 1.5 because" states a decision while "Sets the cap" describes the code.
+# Because bare participles state decisions, flag third person and gerunds.
 NARRATION_OPENER_RE = re.compile(
     r"^(?:[A-Za-z]+(?:s|ing))\s+"
     r"(?:the|a|an|it|this|to|into|out|off|from|by|on|as|every|each|one|two|all)\b",
 )
-# WHY: Rewriting "Votes a sentence" as "The reader votes a sentence" walked past the opener test and kept the same narration.
+# Because adding a subject hides the same narration, check subject openers too.
 SUBJECT_OPENER_RE = re.compile(
     r"^(?:The|A|An|This|That|Each|Every|One|Its)\s+"
     r"(?:[a-z][a-z-]*\s+){0,2}"
@@ -358,7 +336,7 @@ def _what_comment_findings(path: str, comment_rows: list[tuple[int, str, str]]) 
             continue
         if not _comment_is_what(comment):
             continue
-        rows.append(_finding(Finding(family="comment", rule="what_comment", line=line_number, detail="Comment states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
+        rows.append(Finding(family="comment", rule="what_comment", line=line_number, detail="Comment states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None).to_dict())
     return rows
 
 
@@ -367,14 +345,14 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
     if text is None:
         return []
     rows = [
-        _finding(Finding(family="comment", rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
+        Finding(family="comment", rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None).to_dict()
         for matches, rule, detail, action in COMMENT_BODY_RULES
         if matches(text)
     ]
     rows.extend(
-        _finding(Finding(family="comment", rule=rule, line=line_number, detail="Readable comment rule in " + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
-        for pattern, rule, action in READABILITY_RULES
-        if pattern.search(text)
+        Finding(family="comment", rule=rule, line=line_number, detail="Readable comment rule in " + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None).to_dict()
+        for family, rule, action in READABILITY_RULES
+        if any(pattern.search(text) for pattern in family.patterns)
     )
     return rows
 
@@ -382,17 +360,18 @@ def _comment_body_rows(path: str, line_number: int, line: str) -> list[dict]:
 def _weak_why_findings(path: str, comment_rows: list[tuple[int, str, str]]) -> list[dict]:
     findings = []
     for line_number, line, comment in comment_rows:
-        if not _has_why_marker(comment) or _has_strong_why_marker(comment):
+        label = bool(re.match(r"^(?:[A-Z](?:\d+)?\s*:|just in case[.!]?$)", comment, re.I))
+        if not label and (not _has_why_marker(comment) or _has_strong_why_marker(comment)):
             continue
-        findings.append(_finding(Finding(family="comment", rule="weak_why_comment", line=line_number, detail="Causal wording lacks a concrete reason in " + path, force=True, snippet=(line).strip()[:180], action="Name the constraint, invariant, or consequence, or delete the comment.", path=None, severity=None, tool_use_id=None)))
+        findings.append(Finding(family="comment", rule="weak_why_comment", line=line_number, detail="Causal wording lacks a concrete reason in " + path, force=True, snippet=(line).strip()[:180], action="Name the constraint, invariant, or consequence, or delete the comment.", path=None, severity=None, tool_use_id=None).to_dict())
     return findings
 
 
-def _comment_line_findings(path: str, line_number: int, line: str, active: frozenset[str]) -> list[dict]:
+def scan_comment_line(path: str, line_number: int, line: str, active: frozenset[str]) -> list[dict]:
     if _comment_text(line) is None:
         return []
     rows = [
-        _finding(Finding(family=family, rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None))
+        Finding(family=family, rule=rule, line=line_number, detail=detail + path, force=True, snippet=(line).strip()[:180], action=action, path=None, severity=None, tool_use_id=None).to_dict()
         for regex, rule, detail, action, family in CLEAN_CODE_LINE_RULES
         if family in active and regex.search(line)
     ]
@@ -432,7 +411,7 @@ def _flush_comment_run(path: str, run: list[tuple[int, str]]) -> list[dict]:
     if len(run) < 2 or _is_header_run(run):
         return []
     line_number, line = run[0]
-    return [spanning(_finding(Finding(family="comment", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None)), run[-1][0])]
+    return [spanning(Finding(family="comment", rule="prose_comment_block", line=line_number, detail="Comment block narrates in " + path, force=True, snippet=(line).strip()[:180], action="Move the explanation to a wiki page. Create one or update the existing page.", path=None, severity=None, tool_use_id=None).to_dict(), run[-1][0])]
 
 
 def _scan_comment_blocks(path: str, text: str) -> list[dict]:
@@ -453,9 +432,22 @@ def _scope_docstring(scope) -> tuple[int, str] | None:
     return getattr(first, "lineno", 1), value.value
 
 
+def _structured_api_docstring(value: str) -> bool:
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines or not states_why(lines[0]):
+        return False
+    section = False
+    for line in lines[1:]:
+        if SECTION_LABEL_RE.match(line) or re.match(r"^(?:Raises?|Returns?|Yields?)\s+\S", line):
+            section = True
+        elif not section:
+            return False
+    return section
+
+
 def _narrating_docstring(scope) -> tuple[int, str] | None:
     hit = _scope_docstring(scope)
-    if not hit or "\n" not in hit[1].strip():
+    if not hit or "\n" not in hit[1].strip() or _structured_api_docstring(hit[1]):
         return None
     return hit
 
@@ -466,6 +458,8 @@ def _what_docstring_rows(path: str, hit: tuple[int, str]) -> list[dict]:
     structured = False
     for offset, raw_line in enumerate(value.splitlines()):
         line = raw_line.strip()
+        if offset > 0 and (SECTION_LABEL_RE.match(line) or re.match(r"^(?:Raises?|Returns?|Yields?)\s+\S", line)):
+            structured = True
         if not _narrates_code(line):
             structured = structured or bool(SECTION_LABEL_RE.match(line))
             continue
@@ -473,7 +467,7 @@ def _what_docstring_rows(path: str, hit: tuple[int, str]) -> list[dict]:
             continue
         if states_why(_tag_body(line)):
             continue
-        rows.append(_finding(Finding(family="comment", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None)))
+        rows.append(Finding(family="comment", rule="what_docstring", line=start + offset, detail="Docstring states what the code does in " + path, force=True, snippet=(line).strip()[:180], action=WHAT_COMMENT_ACTION, path=None, severity=None, tool_use_id=None).to_dict())
     return rows
 
 
@@ -497,7 +491,7 @@ def _scan_docstrings(path: str, tree) -> list[dict]:
     for scope in _docstring_scopes(tree):
         narration = _narrating_docstring(scope)
         if narration:
-            findings.append(spanning(_finding(Finding(family="comment", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)), getattr(scope.body[0], "end_lineno", None)))
+            findings.append(spanning(Finding(family="comment", rule="docstring_narration", line=narration[0], detail="Multi-line docstring narrates in " + path, force=True, snippet=(narration[1]).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None).to_dict(), getattr(scope.body[0], "end_lineno", None)))
     return findings
 
 
@@ -505,13 +499,28 @@ def _lexical_docstring_findings(path: str, text: str) -> list[dict]:
     findings = []
     for match in TRIPLE_STRING_RE.finditer(text):
         value = match.group(0)[3:-3]
-        if "\n" not in value.strip():
+        if "\n" not in value.strip() or _structured_api_docstring(value):
             continue
         line = text.count("\n", 0, match.start()) + 1
         before = [row.strip() for row in text[:match.start()].splitlines() if row.strip()]
         if before and not _lexical_scope_header(before):
             continue
-        findings.append(spanning(_finding(Finding(family="comment", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None)), text.count("\n", 0, match.end() - 1) + 1))
+        findings.append(spanning(Finding(family="comment", rule="docstring_narration", line=line, detail="Multi-line docstring narrates in " + path, force=True, snippet=(value).strip()[:180], action="Keep one strict WHY line or delete the docstring.", path=None, severity=None, tool_use_id=None).to_dict(), text.count("\n", 0, match.end() - 1) + 1))
+    return findings
+
+
+def scan_comment_contract(path: str, source: str, tree: ast.Module | None, original: str) -> list[dict]:
+    """Keep contract passes together because source masking must not change comment ownership."""
+    findings = _multiline_comment_findings(path, source)
+    normalized = _normalize_block_comments(source, path)
+    comments = _comment_body_lines(normalized)
+    findings.extend(_what_comment_findings(path, comments))
+    findings.extend(_what_docstring_findings(path, tree))
+    findings.extend(_scan_comment_blocks(path, normalized))
+    findings.extend(_scan_docstrings(path, tree))
+    if tree is None and path.lower().endswith(".py"):
+        findings.extend(_lexical_docstring_findings(path, original))
+    findings.extend(_weak_why_findings(path, comments))
     return findings
 
 

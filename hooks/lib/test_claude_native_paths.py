@@ -52,3 +52,22 @@ def test_a_managed_block_is_repointed_not_replaced(tmp_path: Path) -> None:
     assert chosen is None
     assert json.loads(settings.read_text(encoding="utf-8"))["repointed"] is True
     assert claude_native.read_preset(preset, settings_path=settings) == "luna"
+
+
+@pytest.mark.parametrize("explicit", [pytest.param(True, id="explicit-settings"), pytest.param(False, id="config-profile")])
+def test_settings_overrides_keep_explicit_file_precedence_before_creation(tmp_path, monkeypatch, explicit) -> None:
+    profile = tmp_path / "custom"
+    settings = tmp_path / "selected.json"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(profile))
+    monkeypatch.delenv("ADW_CLAUDE_SETTINGS", raising=False)
+    configure_explicit_settings(monkeypatch, settings, explicit)
+
+    result = claude_native.settings_path()
+
+    assert result == (settings if explicit else profile / "settings.json")
+    assert not profile.exists()
+
+
+def configure_explicit_settings(monkeypatch, settings, enabled) -> None:
+    if enabled:
+        monkeypatch.setenv("ADW_CLAUDE_SETTINGS", str(settings))

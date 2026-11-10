@@ -1,4 +1,5 @@
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, UserPythonEventResult } from "@oh-my-pi/pi-coding-agent";
+import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
 import { Buffer } from "node:buffer";
 import { lstatSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
@@ -19,6 +20,7 @@ import {
   blockReason,
   canonicalPath,
   feedbackMessage,
+  isMcpTool,
   isPostScanTool,
   isPreGateTool,
   postToolPaths,
@@ -39,7 +41,7 @@ type ToolResultEvent = {
   toolName: string;
   toolCallId?: string;
   input: Record<string, unknown>;
-  content: Array<{ type: string; text?: string }>;
+  content: Array<TextContent | ImageContent>;
   details?: unknown;
   isError?: boolean;
 };
@@ -82,9 +84,9 @@ function stopHookRetryActive(event: SessionStopEvent): boolean {
 }
 
 function appendNotice(
-  content: Array<{ type: string; text?: string }>,
+  content: Array<TextContent | ImageContent>,
   message: string,
-): Array<{ type: string; text?: string }> {
+): Array<TextContent | ImageContent> {
   const notice = `\n\n[agent-discipline-watcher]\n${sanitizeDisplay(message, 16 * 1024)}`;
   const updated = content.map(chunk => {
     if (chunk.type !== "text") return chunk;
@@ -94,9 +96,9 @@ function appendNotice(
   return updated;
 }
 
-function toolFailureText(content: Array<{ type: string; text?: string }>): string {
+function toolFailureText(content: Array<TextContent | ImageContent>): string {
   const text = content
-    .filter(chunk => chunk.type === "text" && typeof chunk.text === "string")
+    .filter((chunk): chunk is TextContent => chunk.type === "text")
     .map(chunk => chunk.text ?? "")
     .join("\n");
   return sanitizeDisplay(text, 1024) || "tool result reported an error";
@@ -131,7 +133,7 @@ function payloadTargets(payloads: readonly Record<string, unknown>[]): string[] 
   return [...new Set(payloads.map(payloadFilePath).filter((path): path is string => Boolean(path)))];
 }
 
-function pythonFailureResult(reason: string): Record<string, unknown> {
+function pythonFailureResult(reason: string): NonNullable<UserPythonEventResult["result"]> {
   const output = sanitizeDisplay(reason, 16 * 1024);
   const bytes = Buffer.byteLength(output, "utf8");
   return {
@@ -275,7 +277,7 @@ async function sendContext(pi: ExtensionAPI, message: string, display = false): 
       customType: "agent-discipline-watcher.context",
       content: sanitizeDisplay(message, 16 * 1024),
       display,
-      attribution: "agent-discipline-watcher",
+      attribution: "agent",
     },
     { deliverAs: "nextTurn", triggerTurn: false },
   );
@@ -308,13 +310,14 @@ function gateToolCall(state: Lifecycle, event: ToolCallEvent, ctx: ExtensionCont
   if (sections === undefined) return rejectCall(state, session, event, UNDECODABLE_EDIT);
   const payloads = preGatePayloads(ctx, gateEvent, sections, adapted.preGateInputs);
   const targets = [...payloadTargets(payloads), ...adaptedTargets(adapted, ctx.cwd)];
-  if (adapted.requiresTarget && targets.length === 0) {
-    return rejectCall(state, session, event, adapted.hookToolName === "Edit" ? UNRESOLVED_NATIVE_EDIT : UNRESOLVED_EDIT_TARGET);
-  }
+  const missingTarget = adapted.requiresTarget && targets.length === 0;
+  const targetReason = adapted.hookToolName === "Edit" ? UNRESOLVED_NATIVE_EDIT : UNRESOLVED_EDIT_TARGET;
+  if (missingTarget && adapted.kind !== "mcp") return rejectCall(state, session, event, targetReason);
   for (const payload of payloads) {
     const reason = blockReason(state.run("PreToolUse", payload));
     if (reason) return rejectCall(state, session, event, sanitizeDisplay(reason, 16 * 1024));
   }
+  if (missingTarget) return rejectCall(state, session, event, targetReason);
   if (TRACKED_MUTATIONS.includes(adapted.kind) && event.toolCallId) {
     state.ledger.acceptTool(session, event.toolCallId, targets, adaptedDeletedTargets(adapted, ctx.cwd));
   }
@@ -368,7 +371,7 @@ function acceptedCall(turn: ResultTurn): boolean {
 function scansResult(turn: ResultTurn): boolean {
   const { event, adapted } = turn;
   if (adapted.kind === "host-report" && !acceptedCall(turn)) return false;
-  const acceptedMcpResult = event.toolName.toLowerCase().startsWith("mcp__") && acceptedCall(turn);
+  const acceptedMcpResult = isMcpTool(event.toolName) && acceptedCall(turn);
   return adapted.kind === "unknown-write" || isPostScanTool(event.toolName) || TRACKED_MUTATIONS.includes(adapted.kind) || acceptedMcpResult;
 }
 
@@ -552,7 +555,7 @@ export function registerLifecycleHandlers(
     resolveBashTargets: bashTargetResolver(targetsBridge),
   };
   pi.on("session_start", async (_event, ctx: ExtensionContext) => onSessionStart(state, ctx));
-  pi.on("tool_call", async (event: ToolCallEvent, ctx: ExtensionContext) => onToolCall(state, event, ctx));
+  pi.on("tool_call", async (event, ctx) => onToolCall(state, { ...event, input: { ...event.input } }, ctx));
   pi.on("user_python", async (event: UserPythonEvent, ctx: ExtensionContext) => onUserPython(state, event, ctx));
   pi.on("tool_result", async (event: ToolResultEvent, ctx: ExtensionContext) => onToolResult(state, event, ctx));
   pi.on("session_stop", async (event: SessionStopEvent, ctx: ExtensionContext) => onSessionStop(state, event, ctx));

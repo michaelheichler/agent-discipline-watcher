@@ -8,7 +8,7 @@ from typing import NamedTuple
 
 from . import embedding_session, journal, payloads, session_state
 from .embedding_client import probe
-from .pattern_semantic import candidates
+from .pattern_semantic import candidates, load_manifest, rule_blocks
 
 embedding_session.CONSUMER_REGISTERED = True
 
@@ -68,8 +68,12 @@ def vote(turn: VoteTurn, path: Path, voter: Voter = Voter()) -> list[dict]:
     if source is None:
         return []
     digest, text = source
+    manifest = load_manifest()
     rows = [
-        {"rule": rule, "line": found.line, "text": found.text}
+        {
+            "rule": rule, "line": found.line, "text": found.text,
+            "severity": "block" if rule_blocks(manifest, rule, turn.config) else "observe",
+        }
         for rule, voted in sorted(voter.candidates(str(path), text, turn.config).items())
         for found in voted
     ]

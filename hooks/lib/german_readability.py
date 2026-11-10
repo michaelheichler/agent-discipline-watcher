@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from itertools import accumulate
 
 try:
     from .german_syllables import count_syllables
@@ -10,13 +12,37 @@ except ImportError:
 
 WORD_RE = re.compile(r"[A-Za-zÄÖÜäöüß]+")
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÄÖÜ])")
+NONTERMINAL_ABBREVIATION_RE = re.compile(
+    r"\b(?:(?:z\.\s*b|d\.\s*h|u\.\s*[aä]|i\.\s*d\.\s*r)\.|"
+    r"(?:dr|prof|bzw|ca|vgl|ggf|evtl|inkl|nr|abb|abs|art|kap)\.)", re.IGNORECASE,
+)
+DATE_ORDINAL_RE = re.compile(
+    r"\b\d{1,2}\.(?=\s+(?:Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\b)"
+)
 LONG_WORD_LETTERS = 6
 LONG_SYLLABLE_COUNT = 3
 
 
+def sentence_spans(text: str) -> list[tuple[int, str]]:
+    """Keep punctuation context, because dates and abbreviations contain nonterminal periods."""
+    protected = sorted(found.span() for pattern in (NONTERMINAL_ABBREVIATION_RE, DATE_ORDINAL_RE)
+                       for found in pattern.finditer(text))
+    starts = [low for low, _ in protected]
+    ends = [0, *accumulate((high for _, high in protected), max)]
+    spans, start = [], 0
+    for found in SENTENCE_BREAK_RE.finditer(text):
+        punctuation = found.start() - 1
+        if punctuation < ends[bisect_right(starts, punctuation)]:
+            continue
+        spans.append((start, text[start:found.start()]))
+        start = found.end()
+    spans.append((start, text[start:]))
+    return [(offset, part) for offset, part in spans if part.strip()]
+
+
 def sentences(text: str) -> list[str]:
     """A bare split on whitespace would also cut a mid-sentence abbreviation, because only a capital after the mark reads as a real boundary."""
-    return [part for part in SENTENCE_BREAK_RE.split(text.strip()) if part.strip()]
+    return [part.strip() for _, part in sentence_spans(text.strip())]
 
 
 def words(text: str) -> list[str]:

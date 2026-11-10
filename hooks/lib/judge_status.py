@@ -4,11 +4,15 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+
+try:
+    from . import config_roots
+except ImportError:
+    import config_roots
 from typing import Callable
 
 PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
-CONFIG_ENV = "CLAUDE_CONFIG_DIR"
-CACHE_PARTS = ("plugins", "cache", "agent-discipline-watcher", "agent-discipline-watcher")
+CONFIG_ENV = config_roots.CLAUDE_CONFIG_ENV
 
 
 def _load(path: Path) -> dict:
@@ -49,19 +53,13 @@ def _installed_manifest() -> Path | None:
         candidate = Path(root) / "hooks" / "hooks.json"
         return candidate if candidate.is_file() else None
     newest: Path | None = None
-    for cache in _cache_roots():
+    for root in config_roots.claude_config_roots():
+        cache = root.joinpath(*config_roots.CLAUDE_CACHE_PARTS)
         for revision in sorted(cache.iterdir()) if cache.is_dir() else []:
             manifest = revision / "hooks" / "hooks.json"
             if manifest.is_file():
                 newest = manifest
     return newest
-
-
-def _cache_roots() -> tuple[Path, ...]:
-    home = Path.home()
-    override = os.environ.get(CONFIG_ENV, "").strip()
-    roots = [Path(override)] if override else [home / ".config" / "claude-code", home / ".claude"]
-    return tuple(root.joinpath(*CACHE_PARTS) for root in roots)
 
 
 def settings_reviewers(settings_path: Path, is_managed: Callable[[object], bool]) -> int:

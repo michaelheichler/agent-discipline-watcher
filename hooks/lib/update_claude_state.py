@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 import os
 import stat
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 from typing import Any, Mapping
 
 
@@ -55,22 +59,7 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
     mkdir_safe(path.parent)
     if os.path.lexists(path) and path.is_symlink():
         raise ValueError(f"state path is a symlink: {path}")
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary_path = Path(temporary)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary_path, mode)
-        os.replace(temporary_path, path)
-        _sync_directory(path.parent)
-    except BaseException:
-        try:
-            temporary_path.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+    state_recovery.atomic_write(path, content, mode=mode, sync=True, sync_parent=True)
 
 
 def rollback(
@@ -215,16 +204,3 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RuntimeError(f"Claude state file is not a JSON object: {path}")
     return value
-
-
-def _sync_directory(path: Path) -> None:
-    try:
-        descriptor = os.open(path, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(descriptor)
-    except OSError:
-        pass
-    finally:
-        os.close(descriptor)

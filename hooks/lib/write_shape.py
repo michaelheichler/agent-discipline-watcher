@@ -6,6 +6,7 @@ from pathlib import Path
 from lib.baseline import split_committed
 from lib.findings import Finding
 from lib.regular_file import open_regular
+from lib.path_policy import anchored, anchored_identity
 from lib.scan_input import file_length_policy, file_line_count, is_data_file, scannable_text
 from lib.scanner import _code_file, scan_all
 from lib.shell_parse import LiteralWrite, literal_writes
@@ -31,7 +32,7 @@ def shaped_write_findings(
         if body is None:
             continue
         shape = ShapedWrite(write, body, resolved_cwd, config)
-        path = _resolved_path(write.path, resolved_cwd).resolve()
+        path = anchored_identity(write.path, resolved_cwd)
         if write.append:
             before = lengths[path] if path in lengths else _file_length(path)
             lengths[path] = _appended_length(before, body)
@@ -64,7 +65,7 @@ class ShapedWrite:
 def _overwrite_shape_findings(shape: ShapedWrite) -> tuple[list[dict], list[dict]]:
     findings = _stamped_findings(shape.write.path, shape.body, shape.config)
     return split_committed(
-        _resolved_path(shape.write.path, shape.cwd), findings, shape.config or {}, shape.body
+        anchored(shape.write.path, shape.cwd), findings, shape.config or {}, shape.body
     )
 
 
@@ -148,8 +149,3 @@ def _ends_with_newline(resolved_path: Path) -> bool:
             return handle.read(1) == b"\n"
     except OSError:
         return True
-
-
-def _resolved_path(path: str, cwd: Path) -> Path:
-    candidate = Path(path).expanduser()
-    return candidate if candidate.is_absolute() else cwd / candidate

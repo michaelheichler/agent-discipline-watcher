@@ -7,11 +7,13 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits
+    from ._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits, phrase_families, visible
+    from ._text import has_evidence, has_observable_state, repeats_claim, sentence_contexts
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits
+    from german_rules._text import SentenceFinder, closing_sentences, phrase_hits, placed, sentence_hits, phrase_families, visible
+    from german_rules._text import has_evidence, has_observable_state, repeats_claim, sentence_contexts
     from prose_language import ParagraphLanguage
 
 SYMBOLISM = Rule(
@@ -89,18 +91,21 @@ SYMBOLISM_RE = re.compile(
     r"(?i:\b(?:steh\w*|stand|standen)\s+als\s+Zeugnis\s+für\b"
     r"|\b(?:ist|sind|war|waren)\s+ein\s+Beweis\s+für\b"
     r"|\bspiel\w*\s+eine\s+wichtige\s+Rolle\b|\bsymbolisier\w*)"
+    + "|" + phrase_families("steh~/stand ... als Symbol für", "ist/sind ein Zeugnis", "verkörper~ die Zukunft")
 )
 # humanizer-de Muster 3, because Q13 credits it.
 META_COMMENTARY_RE = re.compile(
     r"(?i:\bes\s+ist\s+wichtig\s+zu\s+(?:bemerken|beachten)\b|\bes\s+kann\s+nicht\s+ignoriert\s+werden\b"
     r"|\bkeine\s+Diskussion\s+wäre\s+vollständig\s+ohne\b|\bes\s+sollte\s+hervorgehoben\s+werden\b"
     r"|\bes\s+ist\s+erwähnenswert\b|\bzu\s+beachten\s+ist,?\s+dass\b)"
+    + "|" + phrase_families("eine Diskussion wäre nicht vollständig ohne")
 )
 # humanizer-de Muster 5, narrow because totals are facts.
 SECTION_SUMMARY_RE = re.compile(
     r"Zusammenfassend\b|Kurz\s+gesagt\b|Im\s+Wesentlichen\b"
     r"|Abschließend\b(?=\s*[,:]|\s+(?:lässt\s+sich|kann\s+man|bleibt|ist\s+festzuhalten|sei|zeigt\s+sich)\b)"
     r"|Insgesamt\b(?![\s\S]*\d)"
+    + "|" + phrase_families("alles in allem", "unterm Strich")
 )
 LEADING_SPACE_RE = re.compile(r"\s*")
 # humanizer-de Muster 64 AI_MARKERS, because Q13.
@@ -109,6 +114,10 @@ AI_MARKER_RE = re.compile(
     r"|\bspannend\w*|\bentscheidend\w*|\bma(?:ß|ss)geblich\w*|\bnahtlos\w*|\bvielschichtig\w*"
     r"|\bfacettenreich\w*|\bdynamisch\w*|\bganzheitlich\w*|\bma(?:ß|ss)geschneidert\w*"
     r"|\bdigitale\w*\s+landschaft\w*|\bzusammenspiel\w*)"
+    + "|" + phrase_families(
+        "bemerkenswert~", "wegweisend~", "robust~", "elegant~", "zukunftsorientiert~",
+        "reibungslos~", "intuitiv~", "innovativ~",
+    )
 )
 AI_MARKER_MIN_COUNT = 3
 # humanizer-de Muster 38, because Q13 credits it.
@@ -117,6 +126,10 @@ CORPORATE_CLOSING_RE = re.compile(
     r"|\bbereit\s+für\s+die\s+nächste\s+Stufe\b|\ban\s+der\s+Schwelle\s+zu\s+einer\s+neuen\s+Ära\b"
     r"|\bdie\s+Weichen\s+sind\s+gestellt\b|\bmit\s+Zuversicht\s+in\s+die\s+Zukunft\b"
     r"|\bdas\s+Potenzial\s+ist\s+enorm\b|\bauf\s+Erfolgskurs\b)"
+    + "|" + phrase_families(
+        "für die Zukunft gut gerüstet", "hervorragend positioniert~",
+        "mit Zuversicht blicken wir auf", "mit Zuversicht blick~ ... Zukunft/Meilenstein",
+    )
 )
 
 
@@ -144,11 +157,38 @@ def _closing_hits(rule: str, paragraphs: list[ParagraphLanguage], pattern: re.Pa
     ]
 
 
+EVIDENTIARY_SUBJECT_RE = re.compile(
+    r"(?i:^\s*(?:der|die|das|dieser|diese|dieses|ein|eine)\s+"
+    r"(?:Bericht|Studie|Messung|Protokoll|Beleg|Urkunde)\s+(?:ist|war)\s+ein\s+Beweis\s+für\b)"
+)
+
+
+def _summary_hits(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
+    hits = []
+    for paragraph, offset, sentence, previous in sentence_contexts(paragraphs):
+        text = visible(sentence)
+        found = opening(SECTION_SUMMARY_RE)(text)
+        if found is None:
+            continue
+        if has_evidence(text) and not repeats_claim(text, previous):
+            continue
+        if not previous and has_observable_state(text):
+            continue
+        hits.append(placed(paragraph, (offset + found.start(), offset + found.end()),
+                           Hit(SECTION_SUMMARY.name, paragraph.line, text, found.group())))
+    return hits
+
+
+def _literal_symbolism(sentence: str, found: re.Match[str]) -> bool:
+    literal = EVIDENTIARY_SUBJECT_RE.search(sentence)
+    return literal is not None and literal.start() <= found.start() < literal.end()
+
+
 def _check(path: str, paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     return [
-        *phrase_hits(SYMBOLISM.name, paragraphs, SYMBOLISM_RE),
+        *sentence_hits(SYMBOLISM.name, paragraphs, SYMBOLISM_RE, unless=_literal_symbolism),
         *phrase_hits(META_COMMENTARY.name, paragraphs, META_COMMENTARY_RE),
-        *sentence_hits(SECTION_SUMMARY.name, paragraphs, opening(SECTION_SUMMARY_RE)),
+        *_summary_hits(paragraphs),
         *_counted(phrase_hits(AI_MARKER_VOCABULARY.name, paragraphs, AI_MARKER_RE), AI_MARKER_MIN_COUNT),
         *_closing_hits(CORPORATE_CLOSING.name, paragraphs, CORPORATE_CLOSING_RE),
     ]

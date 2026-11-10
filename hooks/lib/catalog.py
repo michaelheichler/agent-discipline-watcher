@@ -28,7 +28,7 @@ RULES: dict[str, Entry] = {
     ),
     "banned_adverb": Entry(
         "Empty intensifiers",
-        "Cuts really, just, literally, simply, actually, and eleven more that add no meaning",
+        "Cuts really, just, literally, simply, actually, and similar intensifiers when they add no meaning",
     ),
     "binary_contrast": Entry(
         "Not X but Y framing",
@@ -334,6 +334,12 @@ RULES: dict[str, Entry] = {
 }
 
 UNGATED_RULES: dict[str, Entry] = {
+    "bug_label_comment": Entry("Case label in a comment", "Flags lettered or numbered bug labels where a named test belongs"),
+    "apology_comment": Entry("Comment apologises for code", "Flags an apology that replaces a concrete design reason"),
+    "commented_code": Entry("Code left in a comment", "Flags disabled code that belongs in version history"),
+    "version_control_comment": Entry("Comment records a code change", "Flags change history that belongs in the commit message"),
+    "long_comment": Entry("Comment exceeds the length cap", "Flags a comment past 80 characters that needs a shorter reason"),
+    "narration_comment": Entry("Comment narrates an operation", "Flags a now-we or this-function opening instead of a design reason"),
     "banned_dash": Entry("Dash character", "Blocks em dash, en dash, and their look-alikes"),
     "dash_break": Entry("Double hyphen as a dash", "Blocks a double hyphen used as a clause break"),
     "spaced_hyphen": Entry("Spaced hyphen as a dash", "Blocks a hyphen with spaces standing in for a dash"),

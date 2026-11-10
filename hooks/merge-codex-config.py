@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import re
 import tempfile
@@ -11,7 +12,7 @@ except ModuleNotFoundError:
     tomllib = None
 
 
-# Only packages merged into this one belong here, because pruning a name we never absorbed deletes somebody else's hooks.
+# Because unrelated package hooks must survive migration.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",
@@ -20,7 +21,7 @@ LEGACY = (
     "uncle-bobs-cc",
     "agent-discipline-watcher",
 )
-# Excludes our own name: strip_fences already removes our fenced block explicitly, by markers, not by name.
+# Because strip_fences already removes our managed block.
 PRIOR_PACKAGES = tuple(name for name in LEGACY if name != "agent-discipline-watcher")
 CLAUDE_HOOK_LIFECYCLES = frozenset({
     "ConfigChange",
@@ -50,7 +51,7 @@ CODEX_HOOK_LIFECYCLES = frozenset({
     "SubagentStop",
     "Stop",
 })
-# WHY: A separate vocabulary keeps Claude-only events out of Codex cleanup.
+# Because Codex cleanup must exclude Claude-only events.
 HOOK_LIFECYCLES = CLAUDE_HOOK_LIFECYCLES | CODEX_HOOK_LIFECYCLES
 FENCE_START = "# >>> agent-discipline-watcher >>>"
 FENCE_END = "# <<< agent-discipline-watcher <<<"
@@ -119,27 +120,39 @@ def split_hook_table_trailer(table: str) -> tuple[str, str]:
     return table, ""
 
 
+def _inline_value(value: object) -> str:
+    """Because hook options change behavior, preserve every retained field."""
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_inline_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        fields = (f"{json.dumps(key)} = {_inline_value(item)}" for key, item in value.items())
+        return "{ " + ", ".join(fields) + " }"
+    raise ValueError("unsupported legacy inline hook value; migrate it manually")
+
+
 def strip_legacy_inline_array(line: str) -> str:
-    if "[" not in line or "]" not in line:
-        return line
-    match = re.match(r"^\s*([A-Za-z]+)\s*=\s*\[(.*)\]\s*$", line)
+    match = re.match(r"^\s*([A-Za-z]+)\s*=\s*\[", line)
     if not match or match.group(1) not in HOOK_LIFECYCLES:
         return line
+    require_toml_parser()
     lifecycle = match.group(1)
-    items = re.findall(r"\{[^{}]*\}", match.group(2))
-    kept = [item for item in items if not _mentions_legacy(item)]
-    if not kept:
-        return ""
+    items = tomllib.loads(line).get(lifecycle)
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("unsupported legacy inline hooks; migrate them manually")
+    kept = [item for item in items if not _mentions_legacy(json.dumps(item))]
     blocks = []
     for item in kept:
-        command = re.search(r'command\s*=\s*"([^"]+)"', item)
-        if command:
-            blocks.append(
-                f'[[hooks.{lifecycle}]]\n'
-                f'[[hooks.{lifecycle}.hooks]]\n'
-                'type = "command"\n'
-                f'command = "{command.group(1)}"'
-            )
+        if not isinstance(item.get("command"), str) or "hooks" in item:
+            raise ValueError("unsupported legacy inline hook shape; migrate it manually")
+        fields = {"type": "command", **item}
+        body = "\n".join(f"{json.dumps(key)} = {_inline_value(value)}" for key, value in fields.items())
+        blocks.append(f'[[hooks.{lifecycle}]]\n[[hooks.{lifecycle}.hooks]]\n{body}')
     return "\n".join(blocks)
 
 
@@ -209,6 +222,7 @@ def validate_preserved_sections(before: str, after: str) -> None:
         raise ValueError(f"merge changed unrelated top-level sections: {names}")
 
 
+# Because installation precedes lib imports, this writer stays standalone.
 def atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o600

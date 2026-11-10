@@ -7,6 +7,7 @@ import shlex
 from pathlib import Path
 from typing import NamedTuple
 
+from .path_policy import anchored
 from .script_files import names_commit, runs_as_shell, script_text
 from .shell_syntax import SHELL_C_INTERPRETERS, _basename, _payload_command_index
 
@@ -69,18 +70,13 @@ def shell_input(command: Command, scope: InputScope) -> str | None:
     if name in SCRIPT_READERS:
         args = args[1:] if args[:1] == ["--"] else args
         return _file_script(args[0], args[1:], command, scope) if args else None
-    if "/" in word and runs_as_shell(resolve_cwd(scope.cwd, word)):
+    if "/" in word and runs_as_shell(anchored(word, scope.cwd)):
         return _file_script(word, args, command, scope)
     return None
 
 
-def resolve_cwd(cwd: Path, raw: str) -> Path:
-    path = Path(raw).expanduser()
-    return path if path.is_absolute() else cwd / path
-
-
 def normalized(cwd: Path, raw: str) -> str:
-    return os.path.normpath(resolve_cwd(cwd, raw))
+    return os.path.normpath(anchored(raw, cwd))
 
 
 def is_dynamic(word: str) -> bool:
@@ -144,7 +140,7 @@ def _feed_script(scope: InputScope) -> str:
 def _mentions_commit(feed: Command, cwd: Path) -> bool:
     texts = [*feed.words, *(source.text or "" for source in feed.inputs.values())]
     paths = [*feed.words[1:], *(source.path for source in feed.inputs.values() if source.path)]
-    return any("commit" in text for text in texts) or any(names_commit(resolve_cwd(cwd, path)) for path in paths)
+    return any("commit" in text for text in texts) or any(names_commit(anchored(path, cwd)) for path in paths)
 
 
 def _script_file(word: str, positional: list[str], command: Command, scope: InputScope) -> str | None:

@@ -1,0 +1,15 @@
+{
+  "max_argument_nodes": 4096,
+  "max_argument_depth": 12,
+  "key_acronym_pattern": "([A-Z]+)([A-Z][a-z])",
+  "key_camel_pattern": "([a-z0-9])([A-Z])",
+  "word_pattern": "[a-z0-9]+",
+  "path_keys": ["source", "destination", "target", "filename"],
+  "path_list_keys": ["paths", "files", "targets"],
+  "path_tokens": ["path", "file", "uri"],
+  "content_keys": ["content", "contents", "text", "data", "body", "new_string", "new_source", "file_text", "new_text"],
+  "change_keys": ["edits", "patch", "replacement", "replacements", "old_string"],
+  "operation_keys": ["operation", "action", "mode", "method"],
+  "write_operations": ["append", "create", "delete", "edit", "move", "patch", "remove", "rename", "update", "write"],
+  "delete_operations": ["delete", "remove"]
+}

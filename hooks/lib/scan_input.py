@@ -12,12 +12,14 @@ try:
     from .findings import Finding
     from .markup import DATA_TEXT_EXTS
     from .regular_file import open_regular
+    from .path_policy import anchored
 except ImportError:
     from binary_content import CONTENT_SAMPLE_BYTES, is_binary_content
     from config import effective_config
     from findings import Finding
     from markup import DATA_TEXT_EXTS
     from regular_file import open_regular
+    from path_policy import anchored
 
 LEGACY_ENV_NAMES = {
     "ADW_FUNC_BLOCK_LINES": "CLEANCODER_FUNC_BLOCK_LINES",
@@ -144,8 +146,7 @@ def nothing_landed(raw_path: str, cwd: Path) -> bool:
     if "$" in text or "`" in text:
         return False
     try:
-        candidate = Path(text).expanduser()
-        os.lstat(candidate if candidate.is_absolute() else cwd / candidate)
+        os.lstat(anchored(text, cwd))
     except (FileNotFoundError, NotADirectoryError):
         return True
     except (OSError, ValueError):

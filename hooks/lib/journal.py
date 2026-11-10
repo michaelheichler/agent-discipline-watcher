@@ -7,7 +7,7 @@ from pathlib import Path
 import stat
 from typing import Any, NamedTuple
 
-from . import held_verdicts, imported_baseline, review_scope, session_state
+from . import held_verdicts, imported_baseline, path_policy, review_scope, secure_fs, session_state
 from .baseline import committed_text
 from .imported_baseline import Snapshot
 from .document_hunks import changed_hunks, hunk_chars
@@ -33,8 +33,6 @@ MAX_PATTERN_CHARS = 1600
 MAX_PATTERN_ROWS_PER_FILE = 40
 MAX_FILE_BYTES = 128 * 1024
 MAX_DOCUMENT_CHARS = MAX_FILE_BYTES
-_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-_LEAF_FLAGS = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
 
 
 class _ReadOutcome(NamedTuple):
@@ -44,115 +42,27 @@ class _ReadOutcome(NamedTuple):
     value: tuple[str, str] | None = None
 
 
-def _metadata_key(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
-    return (
-        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
-        metadata.st_mtime_ns, metadata.st_ctime_ns,
-    )
-
-
-def _close_quietly(descriptor: int) -> None:
-    if descriptor < 0:
-        return
-    try:
-        os.close(descriptor)
-    except OSError:
-        pass
-
-
-def _walk_parts(target: Path) -> list[str]:
-    """Reject a dot component because it would climb out of the resolved parent."""
-    parts = []
-    for part in target.parent.parts:
-        if part in (target.anchor, ""):
-            continue
-        if part in (".", ".."):
-            raise ValueError("unsafe path component")
-        parts.append(part)
-    return parts
-
-
-def _descend(parent_fd: int, part: str) -> int:
-    """Check each hop is a directory because a swapped component would escape the walk."""
-    child = os.open(part, _DIRECTORY_FLAGS, dir_fd=parent_fd)
-    if not stat.S_ISDIR(os.fstat(child).st_mode):
-        _close_quietly(child)
-        raise FileNotFoundError(part)
-    _close_quietly(parent_fd)
-    return child
-
-
-def _open_parent(target: Path) -> int:
-    """Walk part by part because one open on a whole path would follow a swapped symlink."""
-    parts = _walk_parts(target)
-    parent_fd = os.open(target.anchor or os.sep, _DIRECTORY_FLAGS)
-    for part in parts:
-        try:
-            parent_fd = _descend(parent_fd, part)
-        except BaseException:
-            _close_quietly(parent_fd)
-            raise
-    return parent_fd
-
-
-def _drain(descriptor: int) -> bytearray | None:
-    """Read one byte past the cap because a file that grows mid-read must not slip through."""
-    data = bytearray()
-    while len(data) <= MAX_FILE_BYTES:
-        chunk = os.read(descriptor, min(65536, MAX_FILE_BYTES + 1 - len(data)))
-        if not chunk:
-            break
-        data.extend(chunk)
-    return None if len(data) > MAX_FILE_BYTES else data
-
-
-def _read_verified(descriptor: int, leaf: os.stat_result) -> _ReadOutcome:
-    """Re-stat after the read because a swap mid-read would hash content that never existed."""
-    opened = os.fstat(descriptor)
-    if _metadata_key(opened) != _metadata_key(leaf) or opened.st_size > MAX_FILE_BYTES:
-        return _ReadOutcome("transient")
-    data = _drain(descriptor)
-    if data is None:
-        return _ReadOutcome("transient")
-    final = os.fstat(descriptor)
-    if _metadata_key(final) != _metadata_key(opened) or len(data) != final.st_size:
-        return _ReadOutcome("transient")
-    try:
-        text = bytes(data).decode("utf-8")
-    except UnicodeDecodeError:
-        return _ReadOutcome("transient")
-    return _ReadOutcome("available", (hashlib.sha256(bytes(data)).hexdigest(), text))
-
-
-def _read_regular_content(path: Path) -> _ReadOutcome:
+def read_content(path: Path) -> _ReadOutcome:
     """No-follow descriptors because a symlink swap would read a file outside the journal."""
     parent_fd = -1
-    descriptor = -1
     try:
-        target = Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
-        parent_fd = _open_parent(target)
-        leaf = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=False)
-        if not stat.S_ISREG(leaf.st_mode):
+        target = path_policy.lexical_absolute(path)
+        parent_fd = secure_fs.open_parent(target)
+        data = secure_fs.read_regular(parent_fd, target.name, MAX_FILE_BYTES)
+        if data is None:
             return _ReadOutcome("missing")
-        descriptor = os.open(target.name, os.O_RDONLY | os.O_NONBLOCK | _LEAF_FLAGS, dir_fd=parent_fd)
-        return _read_verified(descriptor, leaf)
+        return _ReadOutcome("available", (hashlib.sha256(data).hexdigest(), data.decode("utf-8")))
     except FileNotFoundError:
         return _ReadOutcome("missing")
     except (OSError, ValueError):
         return _ReadOutcome("transient")
     finally:
-        _close_quietly(descriptor)
-        _close_quietly(parent_fd)
-
-
-def _read_content(path: Path) -> _ReadOutcome:
-    """Separated because a transient error must not delete a live candidate."""
-    return _read_regular_content(path)
+        secure_fs.close_quietly(parent_fd)
 
 
 def _canonical_path(path: str | Path) -> Path:
     try:
-        return Path(path).expanduser().resolve(strict=False)
+        return path_policy.real_path(path)
     except (OSError, RuntimeError, TypeError, ValueError):
         return Path(path)
 
@@ -304,8 +214,9 @@ def _superseded(row: object, target: str, digest: str) -> bool:
     return _path_status(identity) == "missing"
 
 
-def _merged(rows: list, fresh: list, added: list) -> list:
+def _merged(rows: list, fresh: list) -> tuple[list, list]:
     """Skip a duplicate key because one edit must not report the same candidate twice."""
+    added = []
     keys = {candidate_key(row) for row in rows if isinstance(row, dict)}
     for row in fresh:
         if candidate_key(row) in keys:
@@ -313,7 +224,7 @@ def _merged(rows: list, fresh: list, added: list) -> list:
         rows.append(row)
         added.append(row)
         keys.add(candidate_key(row))
-    return rows
+    return rows, added
 
 
 def _trimmed(rows: list, held: set[str]) -> list:
@@ -398,6 +309,23 @@ def _overflow_marker(
     }
 
 
+def _preserve_omitted_patterns(
+    markers: dict[str, dict[str, Any]], counts: dict[str, int], pattern_counts: dict[str, int],
+    target: str, digest: str, digests: dict[str, str],
+) -> None:
+    """Carry missing votes because another edit cannot restore their candidate text."""
+    for identity in tuple(counts):
+        marker = markers.get(identity)
+        current_digest = digest if identity == target else digests.get(identity)
+        if marker is None or marker.get("content_hash") != current_digest:
+            continue
+        counts[identity] = max(
+            counts[identity] + max(0, marker.get("pattern_candidate_count", 0) - pattern_counts.get(identity, 0)),
+            marker.get("candidate_count", 0),
+        )
+        pattern_counts[identity] = max(pattern_counts.get(identity, 0), marker.get("pattern_candidate_count", 0))
+
+
 def _overflow_markers(
     state: dict,
     target: str,
@@ -407,26 +335,52 @@ def _overflow_markers(
     retained_rows: list,
 ) -> dict[str, dict[str, Any]]:
     markers = _stored_overflow(state)
-    markers.pop(target, None)
     all_counts, digests, turns = _overflow_counts(all_rows)
+    pattern_counts = _retained_counts([
+        row for row in all_rows if isinstance(row, dict) and row.get("role") == "pattern"
+    ])
+    _preserve_omitted_patterns(markers, all_counts, pattern_counts, target, digest, digests)
+    markers.pop(target, None)
     retained_counts = _retained_counts(retained_rows)
     _remove_resolved_markers(markers, retained_counts)
     for identity, count in all_counts.items():
-        retained = retained_counts.get(identity, 0)
-        if retained >= count:
+        if retained_counts.get(identity, 0) >= count:
             continue
-        marker = _overflow_marker(identity, target, digest, turn_id, count, retained, digests, turns)
+        marker = _overflow_marker(
+            identity, target, digest, turn_id, count, retained_counts.get(identity, 0), digests, turns,
+        )
+        if pattern_counts.get(identity, 0):
+            marker["pattern_candidate_count"] = pattern_counts[identity]
         _add_overflow_marker(markers, identity, marker)
     return markers
 
 
-def _refresher(target: str, digest: str, turn_id: str, fresh: list, added: list):
+def _pattern_limited(rows: list, held: set[str]) -> list:
+    """Keep severe votes first because the per-file cap must not hide a stronger candidate."""
+    counts: dict[str, int] = {}
+    retained = []
+    valid = [row for row in rows if isinstance(row, dict)]
+    for row in sorted(valid, key=lambda row: row.get("severity") != "block"):
+        if row.get("role") == "pattern":
+            identity = _row_identity(row)
+            counts[identity] = counts.get(identity, 0) + 1
+            if counts[identity] > MAX_PATTERN_ROWS_PER_FILE and _reviewed_key(row) not in held:
+                continue
+        retained.append(row)
+    keys = {candidate_key(row) for row in retained}
+    return [row for row in valid if candidate_key(row) in keys]
+
+
+def _refresher(target: str, digest: str, turn_id: str, fresh: list, result: dict[str, list]):
     """Close over the edit because update_state accepts a single-argument callable."""
     def update(state: dict) -> dict:
         held = held_verdicts.held_keys(state)
         kept = [row for row in _stored_rows(state) if not _superseded(row, target, digest)]
-        retained = _trimmed(_merged(kept, fresh, added), held)
-        markers = _overflow_markers(state, target, digest, turn_id, kept, retained)
+        merged, added = _merged(kept, fresh)
+        retained = _trimmed(_pattern_limited(merged, held), held)
+        retained_keys = {candidate_key(row) for row in retained}
+        result["added"] = [row for row in added if row.get("role") != "pattern" or candidate_key(row) in retained_keys]
+        markers = _overflow_markers(state, target, digest, turn_id, merged, retained)
         return _set_overflow({**state, STATE_KEY: retained}, markers)
 
     return update
@@ -469,7 +423,7 @@ def record_edit(
     target = _canonical_path(path)
     if not review_scope.is_project_file(target, project):
         return []
-    outcome = _read_content(target)
+    outcome = read_content(target)
     if outcome.status == "transient":
         return []
     if outcome.status == "missing" or outcome.value is None:
@@ -478,14 +432,14 @@ def record_edit(
     digest, text = outcome.value
     before = _before_text(session_id, turn_id, target, state_root, text)
     fresh = _with_before(_candidate_rows(target, digest, text, turn_id, tool_use_id), before)
-    added: list[dict[str, Any]] = []
-    session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, added), state_root)
-    return added
+    result: dict[str, list] = {}
+    session_state.update_state(session_id, _refresher(str(target), digest, turn_id, fresh, result), state_root)
+    return result.get("added", [])
 
 
 def current_source(path: str | Path) -> tuple[str, str] | None:
     """Shared with record_edit, because both hashes must agree."""
-    outcome = _read_content(_canonical_path(path))
+    outcome = read_content(_canonical_path(path))
     return outcome.value if outcome.status == "available" else None
 
 
@@ -493,6 +447,7 @@ def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, 
     return [{
         "role": "pattern",
         "rule": str(row["rule"]),
+        "severity": str(row.get("severity", "observe")),
         "path": str(target),
         "path_identity": str(target),
         "line": int(row["line"]),
@@ -500,7 +455,7 @@ def _pattern_rows(target: Path, digest: str, turn_id: str, rows: list[dict[str, 
         "text_truncated": len(str(row["text"])) > MAX_PATTERN_CHARS,
         "content_hash": digest,
         "turn_id": turn_id,
-    } for row in rows[:MAX_PATTERN_ROWS_PER_FILE]]
+    } for row in rows]
 
 
 def record_patterns(
@@ -515,9 +470,9 @@ def record_patterns(
     if source is None or source[0] != content_hash:
         return []
     fresh = _pattern_rows(target, content_hash, turn_id, rows)
-    added: list[dict[str, Any]] = []
-    session_state.update_state(session_id, _refresher(str(target), content_hash, turn_id, fresh, added), state_root)
-    return added
+    result: dict[str, list] = {}
+    session_state.update_state(session_id, _refresher(str(target), content_hash, turn_id, fresh, result), state_root)
+    return result.get("added", [])
 
 
 def turn_before(session_id: str, path: str | Path, content_hash: str, state_root: str | Path | None = None) -> str | None:
@@ -529,8 +484,7 @@ def turn_before(session_id: str, path: str | Path, content_hash: str, state_root
     return before if isinstance(before, str) else None
 
 
-def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
-    state = session_state.read_state(session_id, state_root)
+def _state_rows(state: dict) -> list[dict[str, Any]]:
     rows = state.get(STATE_KEY)
     if not isinstance(rows, list):
         return []
@@ -541,9 +495,58 @@ def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[
     ]
 
 
+def read(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
+    return _state_rows(session_state.read_state(session_id, state_root))
+
+
+def _strict_state(session_id: str, state_root: str | Path | None) -> dict:
+    try:
+        session_state.session_directory(session_id, state_root)
+    except ValueError:
+        # Because an invalid session ID cannot name stored candidates.
+        return {}
+    state = session_state.read_state_strict(session_id, state_root)
+    rows = state.get(STATE_KEY, [])
+    if type(rows) is not list or any(type(row) is not dict for row in rows):
+        raise ValueError("current-session candidate journal rows are malformed")
+    if OVERFLOW_KEY in state and type(state[OVERFLOW_KEY]) is not dict:
+        raise ValueError("candidate journal overflow state is invalid")
+    return state
+
+
 def read_overflow(session_id: str, *, state_root: str | Path | None = None) -> list[dict[str, Any]]:
-    state = session_state.read_state(session_id, state_root)
-    return list(_stored_overflow(state).values())
+    return list(_stored_overflow(_strict_state(session_id, state_root)).values())
+
+
+def _require_complete(state: dict, project: str | Path | None) -> None:
+    """Reject omitted candidates because a partial journal cannot establish a clean review."""
+    for marker in _stored_overflow(state).values():
+        identity = marker.get("path_identity")
+        if identity == OVERFLOW_SENTINEL:
+            raise ValueError("candidate journal overflow metadata is full; start a new session to recover omitted files")
+        if not isinstance(identity, str) or not identity or not isinstance(marker.get("turn_id"), str):
+            raise ValueError("current-session journal overflow state is malformed")
+        if not review_scope.is_project_file(identity, project):
+            continue
+        count, omitted = marker.get("candidate_count"), marker.get("omitted_count")
+        counts = f" ({count} candidates, {omitted} omitted)" if type(count) is int and type(omitted) is int else ""
+        raise ValueError(
+            f"the current-session journal was truncated for {identity[:512]}{counts}; "
+            "re-edit the affected file with fewer candidates before retrying"
+        )
+
+
+def _complete_state(session_id: str, state_root: str | Path | None, project: str | Path | None) -> dict:
+    state = _strict_state(session_id, state_root)
+    _require_complete(state, project)
+    return state
+
+
+def read_complete(
+    session_id: str, *, state_root: str | Path | None = None, project: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Use one strict snapshot because overflow checks and candidate rows must describe the same write."""
+    return _state_rows(_complete_state(session_id, state_root, project))
 
 
 def _reviewed_key(row: dict[str, Any]) -> str:
@@ -632,11 +635,11 @@ def read_stop(
     project: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Current turn or unreviewed, because a failed Stop must not drop work."""
-    state = session_state.read_state(session_id, state_root)
+    state = _complete_state(session_id, state_root, project)
     reviewed = set(_reviewed(state))
     turns = _review_turns(state)
     current = turn_id if turn_id is not None else str(state.get("turn_id") or "")
-    rows = _project_rows(read(session_id, state_root=state_root), project)
+    rows = _project_rows(_state_rows(state), project)
 
     def due(row: dict[str, Any]) -> bool:
         return (bool(current) and row.get("turn_id") == current) or _reviewed_key(row) not in reviewed

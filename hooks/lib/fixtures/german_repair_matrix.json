@@ -1,0 +1,110 @@
+{
+  "de_ai_marker_vocabulary": {
+    "positive": ["Die Lösung ist bemerkenswert, ganzheitlich und wegweisend.", "Unser Ansatz ist robust, elegant und zukunftsorientiert.", "Die Plattform arbeitet reibungslos, intuitiv und innovativ."],
+    "negative": ["Die Beleuchtung ist spannend; die Naht ist sauber verarbeitet."]
+  },
+  "de_anglicism": {
+    "positive": ["Wir machen einen tiefen Tauchgang in die Daten.", "Das Team hebt das Potenzial der Plattform.", "Am Schluss des Tages müssen wir den Scope noch einmal ausloten."],
+    "negative": ["Die App lässt sich lokal starten und der Build läuft im CI."]
+  },
+  "de_authority_phrase": {
+    "positive": ["Das Entscheidende ist die Tokenisierung.", "Der springende Punkt ist die Erreichbarkeit des Servers.", "Was am meisten zählt, ist die Verfügbarkeit."],
+    "negative": ["Die eigentliche Frage ist, ob der Server erreichbar ist.", "Im Kern des Parsers liegt die Tokenisierung."]
+  },
+  "de_casual_greeting": {
+    "positive": ["Na, der Server läuft wieder.", "Servus, der Build ist fertig.", "Tschau, die Prüfung ist abgeschlossen."],
+    "negative": ["Der Server meldet den Status 200."]
+  },
+  "de_chatbot_talk": {
+    "positive": ["Gern geschehen; die Antwort steht im Log.", "Das ist eine gute Nachfrage. Der Server startet neu.", "Wenn noch etwas offen ist, melde dich bitte."],
+    "negative": ["Der Server startet nach der Prüfung neu."]
+  },
+  "de_corporate_closing": {
+    "positive": ["Damit sind wir für die Zukunft gut gerüstet.", "Das Produkt ist hervorragend positioniert.", "Mit Zuversicht blicken wir auf den nächsten Meilenstein."],
+    "negative": ["Version 2 erscheint am 3. Mai 2026."]
+  },
+  "de_diff_anchored": {
+    "positive": ["Seit dem Update nutzt der Dienst PostgreSQL statt SQLite.", "Wir haben die Health-Prüfung in den Ablauf aufgenommen.", "Die frühere Route ist nun durch `/v2/status` abgelöst."],
+    "negative": ["Der Dienst speichert die Daten in PostgreSQL."]
+  },
+  "de_double_negation": {
+    "positive": ["Er hat keineswegs nie Zugriff.", "Niemand hat niemals den Dienst genutzt."],
+    "negative": ["Ohne Token verweigert der Dienst den Zugriff."]
+  },
+  "de_empty_intensifier": {
+    "positive": ["Der Endpunkt ist unglaublich schnell.", "Die Schnittstelle ist extrem robust.", "Der Fix ist wahnsinnig wichtig.", "Der Prozess wartet sehr genau auf den Lock."],
+    "negative": ["Der Server ist absolut erreichbar: Der Healthcheck liefert HTTP 200.", "Der Cache ist völlig leer; `keys()` gibt 0 zurück."]
+  },
+  "de_filler_word": {
+    "positive": ["Der Server läuft halt auf Port 8080."],
+    "negative": ["Eigentlich wollte ich fragen, ob Python 3.13 unterstützt wird.", "Der Dienst antwortet irgendwie anders als dokumentiert.", "Die alte Route ist jedoch weiterhin verfügbar."]
+  },
+  "de_knowledge_cutoff": {
+    "positive": ["Mein Wissen reicht nur bis 2024.", "Zum Zeitpunkt meines Trainingsstandes gab es das Release noch nicht.", "Ich verfüge nicht über Live-Daten und kann den aktuellen Status nicht prüfen."],
+    "negative": ["Nach meinem Kenntnisstand wurde Python 3.13 im Oktober veröffentlicht."]
+  },
+  "de_letter_frame": {
+    "positive": ["Hallo Frau Weber, Ihre Bestellung wurde versandt.", "Guten Tag, der Dienst ist wieder erreichbar.", "Beste Grüße aus dem Support-Team.", "Sehr geehrte Frau Weber,\nIhre Bestellung ist versandt."],
+    "negative": ["Der Dienst ist wieder erreichbar."]
+  },
+  "de_markdown_artifact": {
+    "positive": ["## Einrichtung\nText.\n#### Voraussetzungen", "Text.\n---\n## Status", "| Name | Wert |\n| --- | --- |\n| API | aktiv |\n\n## Weiter", "---\n## Status"],
+    "negative": ["| Name | Wert |\n| --- | --- |\n| API | aktiv |\n| Cache | leer |", "### Einrichtung\nText.", "Text.\n## Status"]
+  },
+  "de_meta_commentary": {
+    "positive": ["Eine Diskussion wäre nicht vollständig ohne den Hinweis auf TLS."],
+    "negative": ["Die API antwortet mit JSON."]
+  },
+  "de_modal_verb": {
+    "positive": ["Die Anwendung vermag den Prozess zu starten.", "Der Server kann den Request verarbeiten.", "Der Dienst muss vor dem Start konfiguriert werden.", "Der Client darf den Cache leeren."],
+    "negative": ["Der Server verarbeitet den Request."]
+  },
+  "de_noun_style": {
+    "positive": ["Die Prüfung wird im Anschluss durchgeführt.", "Die Umsetzung der Änderung erfolgt am Montag."],
+    "negative": ["Wir prüfen die Eingabe am Montag."]
+  },
+  "de_placeholder_text": {
+    "positive": ["Der Antrag enthält noch das Feld [Abteilung ergänzen].", "Der Bericht enthält die Variable {{DATUM}} statt eines konkreten Werts."],
+    "negative": ["Der Antrag nennt die Abteilung Vertrieb."]
+  },
+  "de_prompt_refusal": {
+    "positive": ["Ich bin ein künstliches Intelligenzsystem und führe keine externen Aktionen aus.", "Diese Anfrage kann ich nicht erfüllen, weil sie gegen meine Vorgaben verstößt."],
+    "negative": ["Ein automatisierter Assistent darf keine persönlichen Daten offenlegen."]
+  },
+  "de_redundant_pair": {
+    "positive": ["Der Dienst reagiert schnell und zügig.", "Das Ergebnis ist völlig komplett.", "Die API wiederholt den Request erneut."],
+    "negative": ["Die API sendet den Request erneut."]
+  },
+  "de_repeated_connector": {
+    "positive": ["Danach wird der Cache geleert. Danach prüft der Client den Status.", "Zudem startet der Worker. Zudem prüft der Scheduler den Status.", "Anschließend antwortet der Server. Anschließend wird protokolliert.", "Der Dienst startet neu. Danach prüft der Client den Status. Danach beginnt der Test."],
+    "negative": ["Der Dienst startet neu. Danach prüft der Client den Status."]
+  },
+  "de_section_summary": {
+    "positive": ["Alles in allem war der Rollout erfolgreich.", "Unterm Strich bleibt festzuhalten: Die API funktioniert."],
+    "negative": ["Zusammenfassend stieg die Latenz um 12 ms.", "Insgesamt umfasst der Bericht drei Abschnitte.", "Kurz gesagt: Der Dienst ist verfügbar."]
+  },
+  "de_signposting": {
+    "positive": ["Kommen wir nun zur Fehlerbehandlung."],
+    "negative": ["Der Server startet. Danach prüft der Client den Status."]
+  },
+  "de_stretched_verb": {
+    "positive": ["Der Client macht einen Neustart des Workers.", "Wir nehmen eine Prüfung des Tokens vor.", "Der Handler führt eine Validierung der Eingabe durch."],
+    "negative": ["Der Client startet den Worker neu.", "Wir prüfen den Token.", "Der Handler validiert die Eingabe."]
+  },
+  "de_symbolism_inflation": {
+    "positive": ["Der Wert steht als Symbol für Stabilität.", "Der Cache ist ein Zeugnis der Robustheit.", "Die Funktion verkörpert die Zukunft der Plattform."],
+    "negative": ["Der Bericht ist ein Beweis für den Erfolg."]
+  },
+  "de_therapeutic_validation": {
+    "positive": ["Du machst nichts falsch. Der Fehler liegt im System.", "Du verdienst es, gehört zu werden.", "Es ist verständlich, dass dich das belastet.", "Du bist nicht zu sensibel; der Server gibt tatsächlich falsche Antworten.", "Du reagierst nicht über; der Dienst war seit Stunden nicht erreichbar."],
+    "negative": ["Der API-Endpunkt weist alle gültigen Tokens ab."]
+  },
+  "de_unexplained_abbreviation": {
+    "positive": ["Die API unterstützt JSON, XML etc.", "Wir liefern Module, Dokumentation u. a. bis Freitag.", "Der Dienst muss ggf. neu gestartet werden."],
+    "negative": ["Z. B. ist der Healthcheck ab 3. Mai aktiv; d. h. der Dienst meldet Status 200.", "Die Datei liegt unter `/etc/adw.conf`; usw. wird im Test geprüft."]
+  },
+  "de_verb_bracket": {
+    "positive": ["Der Client hat nach erfolgreicher Anmeldung mit gültigem Token und bestätigter Sitzung den Request abzuschicken.", "Der Client hat nach dem erfolgreichen Authentifizierungsablauf mit einem gültigen Token und einer bestätigten Sitzung den Request zu senden."],
+    "negative": ["Der Client hat den Request abzuschicken."]
+  }
+}

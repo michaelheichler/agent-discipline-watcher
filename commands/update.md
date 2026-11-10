@@ -14,7 +14,7 @@ It clears `~/.claude/plugins/cache/agent-discipline-watcher` and reinstalls from
 cache. It never touches `~/.adw`, which holds the settings, the ledger, the reports, and the
 pinned Codex runtime.
 
-ADW ships commit revisions rather than a version file, so every check below compares commits.
+This command compares commit revisions rather than release tags.
 
 ## Step 1, read the installed revision
 
@@ -71,12 +71,26 @@ for the user to run, then stop.
 
 ## Step 6, verify
 
+Read `plugins/installed_plugins.json` again after installation. Search the same config roots
+as the helper, in order. Check `$CLAUDE_CONFIG_DIR` when nonempty, then
+`~/.config/claude-code`, then `~/.claude`.
+
+Find the fresh `user` scope entry under
+`plugins["agent-discipline-watcher@agent-discipline-watcher"]`. Its `gitCommitSha` must match
+`remote`, allowing a recorded short prefix. Store its config root as `new_config_root`
+and its absolute `installPath` as `new_plugin_root`. Confirm that
+`hooks/claude_cache_nuke.py` exists there. Stop and report
+if no entry matches, matching entries name different paths, or the helper is missing.
+Do not guess from cache directory order or reuse the old `$CLAUDE_PLUGIN_ROOT`, because the
+cache wipe removed that copy.
+
 ```bash
-"$CLAUDE_PLUGIN_ROOT/hooks/claude_cache_nuke.py" --revision
+CLAUDE_CONFIG_DIR="$new_config_root" "$new_plugin_root/hooks/claude_cache_nuke.py" --revision
 ```
 
-Compare against `installed`. Report the old and the new revision. An unchanged revision after
-an expected upgrade means the update did not apply, so say that plainly.
+Compare against `installed` and `remote`. Report the old and the new revision. An unchanged
+revision after an expected upgrade means the update did not apply, so say that plainly.
+A revision that does not match `remote` also fails verification.
 
 ## Step 7, report
 

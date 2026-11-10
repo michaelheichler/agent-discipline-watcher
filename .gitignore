@@ -12,6 +12,7 @@ ENV/
 Thumbs.db
 
 .agent-discipline.json
+.agent-discipline.json.lock
 
 # Third-party corpus rows carry em dashes and a decade apostrophe the punctuation gate blocks,
 # and editing them would break the byte-for-byte rebuild the calibration depends on.

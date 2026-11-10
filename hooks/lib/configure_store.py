@@ -5,16 +5,16 @@ import fcntl
 import json
 import os
 import re
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 try:
-    from . import config
+    from . import config, state_recovery
     from .configure_policy import MISSING, ConfigureError, known_values, merge_values
 except ImportError:
     import config
+    import state_recovery
     from configure_policy import MISSING, ConfigureError, known_values, merge_values
 
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -54,40 +54,13 @@ def locked(path: Path) -> Iterator[None]:
         _release(stream)
 
 
-def _sync_parent(path: Path) -> None:
-    try:
-        directory = os.open(path.parent, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
-
-
-def _discard(temporary: Path) -> None:
-    try:
-        temporary.unlink()
-    except OSError:
-        pass
-
-
 def atomic_write(path: Path, data: bytes) -> None:
     """Replace through a same-directory temporary because a partial write would corrupt policy."""
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-        _sync_parent(path)
+        state_recovery.atomic_write(path, data, sync=True)
+        state_recovery.sync_directory(path.parent, strict=True)
     except OSError as exc:
         raise ConfigureError("write_failed", "project config could not be replaced") from exc
-    finally:
-        _discard(temporary)
 
 
 def expected_digest(request: dict[str, object]) -> str | None:

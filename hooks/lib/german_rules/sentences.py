@@ -5,11 +5,11 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import sentence_hits
+    from ._text import sentence_hits, phrase_families
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import sentence_hits
+    from german_rules._text import sentence_hits, phrase_families
     from prose_language import ParagraphLanguage
 
 NOUN_STYLE = Rule(
@@ -75,12 +75,13 @@ CARRIER_VERB_RE = re.compile(
     r"|\bpassier(?:t|te|ten|en)\b|\bereignet(?:e|en)?\b|\bstattfind\w*|\bstattgefunden\b"
     r"|\b(?:findet|finden|fand|fanden)\b[^,;:]*?\bstatt\b"
     r"|\bvorlieg\w*|\bvorgelegen\b|\b(?:liegt|liegen|lag|lagen)\b[^,;:]*?\bvor\b"
+    + "|" + phrase_families("wird/werden/wurde/wurden ... durchgeführt")
 )
 MODAL = (
     r"(?:kann|kannst|können|könnt|konnte|konnten|könnte|könnten|muss|musst|müssen|müsst|musste|mussten"
     r"|müsste|müssten|möchte|möchtest|möchten|möchtet|darf|darfst|dürfen|dürft|durfte|durften|dürfte"
     r"|dürften|will|willst|wollen|wollt|wollte|wollten|soll|sollst|sollen|sollt|sollte|sollten"
-    r"|würde|würdest|würden|würdet)"
+    r"|würde|würdest|würden|würdet|vermag|vermagst|vermögen|vermögt|vermochte|vermochten)"
 )
 CLAUSE_END = r"(?=\s*(?:[,;:.!]|$))"
 INFINITIVE = r"[a-zäöüß]\w*en"
@@ -88,7 +89,7 @@ MODAL_RE = re.compile(
     r"\b" + MODAL + r"\b[^,;:.!?]*?\b" + INFINITIVE + r"\b" + CLAUSE_END
     + r"|\b" + INFINITIVE + r"\s+" + MODAL + r"\b" + CLAUSE_END
 )
-NEGATION = r"\b(?:nicht|kein(?:e[nmrs]?)?|nie|niemals|[Uu]n(?!ser|ter|ten|i|gefähr|bedingt)[a-zäöüß]{3,})\b"
+NEGATION = r"\b(?:nicht|kein(?:e[nmrs]?)?|keineswegs|[Nn]iemand(?:em|en|es)?|nie|niemals|[Uu]n(?!ser|ter|ten|i|gefähr|bedingt)[a-zäöüß]{3,})\b"
 DOUBLE_NEGATION_RE = re.compile(NEGATION + r".*?" + NEGATION, re.DOTALL)
 CONDITION = r"\b(?:[Ww]enn|[Ff]alls|[Ss]ofern)\b"
 STACKED_CONDITIONS_RE = re.compile(CONDITION + r".*?" + CONDITION, re.DOTALL)

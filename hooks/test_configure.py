@@ -8,14 +8,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
 import configure
-from lib import config, configure_capability
+from lib import config, configure_capability, state_recovery
 
 
 def _digest(path: Path) -> str:
@@ -26,7 +26,7 @@ def _digest(path: Path) -> str:
 def _capability(tmp_path: Path, monkeypatch) -> None:
     """Install one owner-only capability file and its matching child environment."""
     monkeypatch.setattr(configure_capability, "omp_parent_is_trusted", lambda: True)
-    token = "omp-save-token"
+    token = os.urandom(24).hex()
     path = tmp_path / ".omp-capability"
     path.write_text(token, encoding="utf-8")
     path.chmod(0o600)
@@ -175,16 +175,25 @@ def test_read_resolves_clean_code_to_both_new_families(tmp_path: Path) -> None:
 BRIDGE_TS = Path(__file__).resolve().parents[1] / "pi/extensions/agent-discipline-watcher/adw-bridge.ts"
 
 
-def _ts_names(constant: str) -> list[str]:
-    source = BRIDGE_TS.read_text(encoding="utf-8")
-    body = re.search(rf"const {constant} = \[(.*?)\] as const;", source, re.DOTALL)
-    return re.findall(r'"(\w+)"', body.group(1)) if body else []
+def test_the_omp_bridge_keeps_every_key_python_accepts(tmp_path: Path) -> None:
+    """Because Python owns validation, decoding must preserve its policy values."""
+    values = {key: config.DEFAULTS.get(key) for key in configure.EDITABLE_KEYS}
+    values["future_option"] = {"future_surface": "future"}
+    response = configure.run({"operation": "describe"})
+    response.update(values=values, digest=None)
+    script = (
+        "import {decodeAdwPolicy} from " + json.dumps(str(BRIDGE_TS)) + ";"
+        "const input = await Bun.stdin.text();"
+        "console.log(JSON.stringify(decodeAdwPolicy(JSON.parse(input)).values));"
+    )
 
+    decoded = subprocess.run(
+        ["bun", "-e", script], input=json.dumps(response), text=True,
+        capture_output=True, check=True, cwd=tmp_path,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
 
-def test_the_omp_bridge_keeps_every_key_python_accepts() -> None:
-    """Match both lists because OMP drops a key it does not know."""
-    assert _ts_names("CONFIG_VALUE_KEYS") == list(configure.EDITABLE_KEYS)
-    assert _ts_names("FAMILY_SWITCH_KEYS") == list(config.GATE_FAMILIES)
+    assert json.loads(decoded.stdout) == values
 
 
 def _write_opaque_project(root: Path) -> Path:
@@ -441,17 +450,19 @@ def test_capability_replay_is_refused(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_atomic_failure_keeps_original_file(tmp_path: Path, monkeypatch) -> None:
-    """A failed replacement leaves the original config bytes intact."""
+    """Keep the original bytes because a failed write must not corrupt config."""
     target = tmp_path / config.CONFIG_NAME
     target.write_text(json.dumps({"english": True}), encoding="utf-8")
     before = target.read_bytes()
     _capability(tmp_path, monkeypatch)
 
-    def fail_replace(_source, _destination):
-        """Raise the simulated replacement failure."""
+    def fail_replace() -> None:
         raise OSError("replacement failed")
 
-    monkeypatch.setattr(configure.os, "replace", fail_replace)
+    monkeypatch.setattr(
+        state_recovery, "atomic_open",
+        partial(state_recovery.atomic_open, before_replace=fail_replace),
+    )
     result = configure.run(_request(tmp_path, {"english": False}, _digest(target)))
 
     assert result["error"]["code"] == "write_failed"

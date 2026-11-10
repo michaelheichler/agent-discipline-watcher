@@ -5,6 +5,7 @@ import pwd
 import stat
 from pathlib import Path
 
+from . import config_roots
 from .shell_parse import (
     VERSIONED_PYTHON_RE,
     _basename,
@@ -13,7 +14,7 @@ from .shell_parse import (
     _payload_command_index,
     _words,
 )
-from .protected import _literal, _normalize
+from .protected import _literal
 from .shell_syntax import PYTHON_VALUE_OPTION_RE
 
 HOST_FLAGS = frozenset({"--claude", "--codex", "--omp"})
@@ -63,15 +64,16 @@ def _managed_runtime_update(
     if script_index is None or words[script_index + 1:script_index + 2] != ["update"]:
         return False
     account_home = Path(home) if home is not None else Path(pwd.getpwuid(os.getuid()).pw_dir)
-    target = _expand_home_token(words[script_index], account_home)
+    target = config_roots.home_relative(words[script_index], account_home) or Path(words[script_index])
     if not target.is_absolute():
         target = Path(cwd) / target if cwd is not None else Path.cwd() / target
-    runtime = account_home / ".adw/install/agent-discipline-watcher/hooks/update.py"
+    runtime = config_roots.install_root(account_home) / "hooks/update.py"
     try:
         literal = _literal(str(target), account_home)
     except (OSError, ValueError):
         return False
-    return literal is not None and _normalize(literal) == _normalize(runtime)
+    # Because filesystem names can contain literal tildes.
+    return literal is not None and Path(os.path.realpath(literal)) == Path(os.path.realpath(runtime))
 
 
 def _segment_contexts(
@@ -100,8 +102,9 @@ def _next_shell_cwd(
         operand_index = words.index(operand, index + 1) + 1
         operand = words[operand_index] if operand_index < len(words) else None
     if operand is None:
-        return _normalize(Path(home)) if words[index + 1:] in ([], ["--"]) else current
-    candidate = _expand_home_token(operand, Path(home))
+        # Because filesystem names can contain literal tildes.
+        return Path(os.path.realpath(Path(home))) if words[index + 1:] in ([], ["--"]) else current
+    candidate = config_roots.home_relative(operand, Path(home)) or Path(operand)
     if not _is_literal_token(str(candidate)):
         return current
     try:
@@ -111,7 +114,8 @@ def _next_shell_cwd(
         if not candidate.is_absolute():
             candidate = current / candidate
         literal = _literal(str(candidate), home)
-        return current if literal is None else _normalize(literal)
+        # Because filesystem names can contain literal tildes.
+        return current if literal is None else Path(os.path.realpath(literal))
     except (OSError, ValueError):
         return current
 
@@ -141,18 +145,6 @@ def _python_script_index(words: list[str], start: int) -> int | None:
     return None
 
 
-def _expand_home_token(value: str, home: Path) -> Path:
-    suffix: str | None = None
-    if value in {"~", "$HOME", "${HOME}"}:
-        suffix = ""
-    elif value.startswith("~/"):
-        suffix = value[2:]
-    elif value.startswith("$HOME/"):
-        suffix = value[6:]
-    elif value.startswith("${HOME}/"):
-        suffix = value[8:]
-    return Path(value) if suffix is None else home / suffix
-
 def _owned(path: Path, directory: bool = False) -> bool:
     info = path.lstat()
     expected_type = stat.S_ISDIR if directory else stat.S_ISREG
@@ -160,7 +152,7 @@ def _owned(path: Path, directory: bool = False) -> bool:
 
 
 def _managed_executable(command: Path, home: Path) -> bool:
-    root = home / ".adw/install/agent-discipline-watcher"
+    root = config_roots.install_root(home)
     executable = root / "bin/adw"
     link = home / ".adw/bin/adw"
     if command not in {executable, link}:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -141,10 +143,15 @@ def test_full_overflow_metadata_requires_a_new_codex_session(tmp_path: Path) -> 
         state_root,
     )
 
-    with pytest.raises(codex_luna.LunaReviewFailure, match="new Codex session"):
+    with pytest.raises(codex_luna.LunaReviewFailure):
         codex_luna._journal_rows(
             {"session_id": "overflow-sentinel"}, "turn-new", state_root,
         )
+
+    assert [
+        (marker["candidate_count"], marker["omitted_count"])
+        for marker in journal.read_overflow("overflow-sentinel", state_root=state_root)
+    ] == [(journal.MAX_ROWS + 1, 1)]
 
 
 def test_legacy_document_prefix_is_rejected_before_review(
@@ -245,3 +252,53 @@ def test_overflow_markers_keep_another_target_blocked_during_recovery(tmp_path: 
     second.write_text("second corrected\n", encoding="utf-8")
     journal.record_edit("session", "turn-1", "tool-4", second, state_root=state_root)
     assert journal.read_overflow("session", state_root=state_root) == []
+
+
+def test_complete_journal_rejects_overflow_from_the_same_single_snapshot(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    root = tmp_path / "state"
+    rows = _rows(source, "digest", 1, "turn", "tool")
+    marker = {"path_identity": str(source), "turn_id": "turn", "candidate_count": 2, "omitted_count": 1}
+    session_state.write_state("complete", {journal.STATE_KEY: rows, journal.OVERFLOW_KEY: {str(source): marker}}, root)
+    opened = []
+    open_file = io.open
+
+    def observed(path, *args, **kwargs):
+        opened.append(os.fspath(path))
+        return open_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(io, "open", observed)
+
+    with pytest.raises(ValueError):
+        journal.read_complete("complete", state_root=root, project=tmp_path)
+    assert len([path for path in opened if Path(path).name == session_state.STATE_FILENAME]) == 1
+
+
+def test_complete_journal_accepts_absent_state(tmp_path) -> None:
+    assert journal.read_complete("empty", state_root=tmp_path / "state", project=tmp_path) == []
+
+
+@pytest.mark.parametrize("rows", [
+    pytest.param({}, id="mapping"),
+    pytest.param("rows", id="string"),
+    pytest.param([None], id="invalid-member"),
+])
+def test_complete_journal_rejects_malformed_candidate_containers(tmp_path, rows) -> None:
+    root = tmp_path / "state"
+    session_state.write_state("malformed", {journal.STATE_KEY: rows}, root)
+
+    with pytest.raises(ValueError):
+        journal.read_complete("malformed", state_root=root, project=tmp_path)
+
+
+def test_loaded_unknown_home_candidates_keep_their_canonical_literal_identity(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    raw = "~adw_nonexistent_user_874932/source.py"
+    row = {"role": "comment", "path": raw, "line": 1, "text": "reason", "content_hash": "digest"}
+    root = tmp_path / "state"
+    session_state.write_state("literal", {journal.STATE_KEY: [row]}, root)
+
+    [loaded] = journal.read_complete("literal", state_root=root, project=tmp_path)
+
+    assert journal.candidate_key(loaded)[1] == str((tmp_path / raw).resolve())

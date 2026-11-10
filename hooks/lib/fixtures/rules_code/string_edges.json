@@ -1,0 +1,5 @@
+[
+  {"name":"fstring_private_text","path":"test_text.py","rule":"exposing_private_methods_for_testing","kind":"FP","text":"def test_message():\n    message = f'call client._send() after setup'\n    assert message\n"},
+  {"name":"fstring_private_expression","path":"test_text.py","rule":"exposing_private_methods_for_testing","kind":"FN","text":"def test_message():\n    message = f'{client._send()}'\n    assert message\n"},
+  {"name":"ts_source_test_gate","path":"src/helpers.ts","rule":"test_write_gate","kind":"FN","text":"test('value', () => { expect(value).toBe(1); });\n"}
+]

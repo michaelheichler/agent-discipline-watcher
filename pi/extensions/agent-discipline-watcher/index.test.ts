@@ -137,9 +137,9 @@ test("keeps old family names that the screen no longer lists", () => {
   expect(state.families.map(family => family.name)).toEqual(["prose", "comment", "code"]);
   expect(state.values).toEqual({
     clean_code: false,
-    gates: { prose: "enforce", english: "observe" },
+    gates: { prose: "enforce", english: "observe", unknown: "off" },
     kill_switches: { punctuation: true },
-    exempt_families: { "docs/*": ["english", "comment"] },
+    exempt_families: { "docs/*": ["english", "comment", "typo"] },
   });
 });
 
@@ -204,9 +204,12 @@ describe("watcher helpers", () => {
     expect([...commands.keys()]).toEqual(["adw", "agent-discipline"]);
   });
 
-  test("sanitizes bridge values before OMP rendering", () => {
+  test("sanitizes display text before OMP rendering", () => {
     expect(sanitizeDisplay("\u001b[31mprivate\u001b[0m\n<markup>", 64)).toBe("private <markup>");
-    const state = decodeAdwPolicy({
+  });
+
+  test("rejects unsafe bridge values rather than silently changing policy", () => {
+    expect(() => decodeAdwPolicy({
       ok: true,
       digest: null,
       values: { exempt_paths: ["safe", "\u001b[31munsafe"] },
@@ -217,8 +220,7 @@ describe("watcher helpers", () => {
       family_states: {},
       rule_states: {},
       runtime: {},
-    });
-    expect(state.values.exempt_paths).toEqual(["safe"]);
+    })).toThrow();
   });
 
   test("normalizes camelCase write arguments", () => {
@@ -721,7 +723,7 @@ describe("omp event mapping", () => {
           customType: "agent-discipline-watcher.context",
           content: "Lead with the next action.",
           display: false,
-          attribution: "agent-discipline-watcher",
+          attribution: "agent",
         },
         options: { deliverAs: "nextTurn", triggerTurn: false },
       },
@@ -738,7 +740,7 @@ describe("omp event mapping", () => {
         customType: "agent-discipline-watcher.context",
         content: "repair the blocked startup state",
         display: false,
-        attribution: "agent-discipline-watcher",
+        attribution: "agent",
       },
       options: { deliverAs: "nextTurn", triggerTurn: false },
     });

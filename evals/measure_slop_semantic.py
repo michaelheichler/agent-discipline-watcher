@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "hooks"))
 from lib.embedding_client import embed
 from lib.slop_phrase import scan_slop_phrases
 from lib.slop_semantic import EXEMPLAR_PATH, _best_exemplar, load_exemplars, prose_sentences
-from lib.slop_structure import _scan_slop_structure
+from lib.slop_structure import scan_slop_structure
 
 SENTENCE_CORPUS = REPOSITORY_ROOT / "hooks" / "lib" / "corpus_slop_sentence.jsonl"
 DOCUMENT_CORPUS = REPOSITORY_ROOT / "hooks" / "lib" / "corpus_slop_document.jsonl"
@@ -35,7 +35,7 @@ def _repository_markdown() -> list[Path]:
 
 
 def _regex_flagged(text: str) -> bool:
-    rows = _scan_slop_structure("sample.md", text)
+    rows = scan_slop_structure("sample.md", text)
     rows.extend(scan_slop_phrases("sample.md", text, {}))
     return bool(rows)
 

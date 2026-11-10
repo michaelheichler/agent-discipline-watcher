@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
-from . import imported_baseline, scan_input
+from . import imported_baseline, path_policy, scan_input
 from .baseline import (
     OutOfTime, baseline_mode, fits_deadline, remaining, split_fallback_with_snapshot, split_with_snapshot,
 )
@@ -37,11 +37,6 @@ class Rescan:
 
 def deadline() -> float:
     return time.monotonic() + STOP_SCAN_SECONDS
-
-
-def _resolved(raw_path: str, cwd: Path) -> Path:
-    path = Path(raw_path).expanduser()
-    return path if path.is_absolute() else cwd / path
 
 
 def _tagged(split: Split, cfg: dict) -> list[dict]:
@@ -111,11 +106,11 @@ def _alarm(until: float) -> Iterator[None]:
 def rescan(paths: list[str], cwd: Path, cfg: dict, until: float) -> Rescan:
     result = Rescan()
     for index, raw_path in enumerate(paths):
-        path = _resolved(raw_path, cwd)
+        path = path_policy.anchored(raw_path, cwd)
         try:
             rows = _owned_rows(path, cwd, cfg, until)
         except OutOfTime:
-            result.skipped = [str(_resolved(raw, cwd)) for raw in paths[index:]]
+            result.skipped = [str(path_policy.anchored(raw, cwd)) for raw in paths[index:]]
             result.cut = raw_path
             break
         if rows is not None:

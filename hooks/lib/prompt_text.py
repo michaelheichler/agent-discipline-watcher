@@ -5,13 +5,16 @@ from __future__ import annotations
 import re
 import unicodedata
 
+try:
+    from .markup import FencePolicy, mask_markdown_fences
+except ImportError:
+    from markup import FencePolicy, mask_markdown_fences
+
 _QUOTED_RE = re.compile(
     r"(?<!\w)\"(?:\\.|[^\"\\\n])*\"|"
     r"(?<!\w)'(?:\\.|[^'\\\n])*'|"
     r"(?<!\w)“[^”\n]*”|(?<!\w)‘[^’\n]*’"
 )
-_MIN_FENCE_WIDTH = 3
-_MAX_FENCE_INDENT = 3
 _AT_ALNUM = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 _AT_SEGMENT = _AT_ALNUM | frozenset("_+~.-")
 _AT_BOUNDARY_EXCLUDED = _AT_ALNUM | frozenset("_@./+~-")
@@ -24,63 +27,10 @@ def _mask_quoted(text: str) -> str:
     return _QUOTED_RE.sub(lambda match: " " * len(match.group(0)), text)
 
 
-def _fence_body(line: str) -> str:
-    indent = len(line) - len(line.lstrip(" "))
-    return line[indent:] if indent <= _MAX_FENCE_INDENT else ""
-
-
-def _fence_opener_width(line: str) -> int:
-    body = _fence_body(line)
-    width = len(body) - len(body.lstrip("`"))
-    if width < _MIN_FENCE_WIDTH:
-        return 0
-    return width if "`" not in body[width:] else 0
-
-
-def _is_fence_closer(line: str, width: int) -> bool:
-    body = _fence_body(line)
-    backticks = len(body) - len(body.lstrip("`"))
-    return backticks >= width and not body[backticks:].strip(" \t\r\n")
-
-
 def _mask_span(masked: list[str], start: int, end: int) -> None:
     for position in range(start, end):
         if masked[position] != "\n":
             masked[position] = " "
-
-
-def _fenced_region_extent(
-    lines: list[str], opener_index: int, width: int,
-) -> tuple[int, int]:
-    length = len(lines[opener_index])
-    index = opener_index + 1
-    while index < len(lines):
-        length += len(lines[index])
-        closer = _is_fence_closer(lines[index], width)
-        index += 1
-        if closer:
-            break
-    return length, index
-
-
-def _mask_fenced(text: str) -> str:
-    if "```" not in text:
-        return text
-    lines = text.splitlines(keepends=True)
-    offsets = [0] * len(lines)
-    for index in range(1, len(lines)):
-        offsets[index] = offsets[index - 1] + len(lines[index - 1])
-    masked = list(text)
-    index = 0
-    while index < len(lines):
-        width = _fence_opener_width(lines[index])
-        if not width:
-            index += 1
-            continue
-        start = offsets[index]
-        length, index = _fenced_region_extent(lines, index, width)
-        _mask_span(masked, start, start + length)
-    return "".join(masked)
 
 
 def _find_backtick_run(text: str, start: int, width: int) -> int:
@@ -117,7 +67,7 @@ def _mask_inline_code(text: str) -> str:
 
 
 def mask_examples(text: str) -> str:
-    return _mask_quoted(_mask_inline_code(_mask_fenced(text)))
+    return _mask_quoted(_mask_inline_code(mask_markdown_fences(text, FencePolicy.PROMPT)))
 
 
 def _is_combining_mark(char: str) -> bool:

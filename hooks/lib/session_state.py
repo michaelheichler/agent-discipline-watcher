@@ -4,11 +4,15 @@ import fcntl
 import json
 import os
 import shutil
-import tempfile
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 
 try:
     from . import state_recovery
@@ -17,7 +21,7 @@ except ImportError:
 
 STATE_FILENAME = "state.json"
 LOCK_FILENAME = ".lock"
-DATA_DIRNAME = ".adw"
+DATA_DIRNAME = config_paths.data_root(Path(".")).name
 LEGACY_DATA_DIRNAME = ".agent-discipline"
 SESSION_LEASE_DIRNAME = "session-leases"
 SESSION_LEASE_SUFFIX = ".lease.json"
@@ -27,8 +31,8 @@ EXPLAINED_KEY = "explained_rules"
 
 def plugin_data_home() -> Path:
     """One root for every install, because a host-supplied data directory used to split reports away from state and leases."""
-    home = Path.home() / DATA_DIRNAME
-    legacy = Path.home() / LEGACY_DATA_DIRNAME
+    home = config_paths.data_root()
+    legacy = config_paths.home_root() / LEGACY_DATA_DIRNAME
     if not home.exists() and legacy.is_dir():
         legacy.rename(home)
     return home
@@ -60,7 +64,7 @@ def _session_directory(
     _validate_session_id(session_id)
     base = Path(root) if root is not None else _default_root()
     candidate = base / session_id
-    # Containment check because a symlink planted at base/session_id redirects writes outside the root even with a safe id.
+    # Because symlinks can redirect safe session IDs outside the root.
     resolved_base = base.resolve()
     resolved_candidate = candidate.resolve()
     if not resolved_candidate.is_relative_to(resolved_base):
@@ -247,19 +251,9 @@ def acquire_session_lease(
 ) -> None:
     path = _session_lease_path(session_id, root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{session_id}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump({"session_id": session_id, "renewed_at": time.time() if now is None else now}, handle)
-        os.replace(temporary, path)
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except OSError:
-            pass
-        raise
+    state_recovery.atomic_json(path, {
+        "session_id": session_id, "renewed_at": time.time() if now is None else now,
+    }, ensure_ascii=True)
 
 
 def release_session_lease(
@@ -302,7 +296,7 @@ def _remove_if_stale(entry: Path, cutoff: float) -> bool:
         return False
     if mtime >= cutoff:
         return False
-    # Swallow rmtree errors because another process may be writing here, leaving the dir for the next sweep.
+    # Because concurrent writers can force cleanup into the next sweep.
     try:
         shutil.rmtree(entry)
     except OSError:
@@ -315,7 +309,7 @@ def sweep_stale(
     root: str | os.PathLike[str] | None = None,
     now: float | None = None,
 ) -> int:
-    """Sweeping on mtime accepts deleting a live session that has gone quiet, because no cheaper liveness signal exists on disk."""
+    """Because no cheaper disk signal exists, mtime sweeping risks deleting quiet live sessions."""
     base = Path(root) if root is not None else _default_root()
     if not base.is_dir():
         return 0

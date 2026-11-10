@@ -327,11 +327,16 @@ def test_an_unanswered_ps_keeps_the_worker_counted_as_running(tmp_path, monkeypa
 
 
 def test_an_unanswered_ps_drops_the_record_without_a_signal(tmp_path, monkeypatch) -> None:
-    embedding_server._write_record(tmp_path, _own_record())
-    monkeypatch.setattr(embedding_server, "process_start", lambda _pid: None)
-    monkeypatch.setattr(embedding_server, "_terminate", lambda _pid: pytest.fail("signalled an unconfirmed pid"))
+    record = _own_record()
+    embedding_server.record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    embedding_server.record_path(tmp_path).write_text(json.dumps(dict(zip(
+        ("pid", "port", "url", "platform", "started_at", "process_start", "nonce"), record
+    ))), encoding="utf-8")
+    signals = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: signals.append((pid, sig)))
 
-    assert embedding_server.stop(tmp_path) is False
+    assert embedding_server.stop(tmp_path, start_of=lambda _pid: None) is False
+    assert not [sig for _pid, sig in signals if sig > 0]
     assert embedding_server.read_record(tmp_path) is None
 
 
@@ -353,15 +358,18 @@ def test_a_missing_record_reads_as_absent(tmp_path) -> None:
 
 def test_a_failed_signal_preserves_the_record_for_a_later_cleanup(tmp_path, monkeypatch) -> None:
     record = _own_record()
-    embedding_server._write_record(tmp_path, record)
-    monkeypatch.setattr(embedding_server, "process_alive", lambda _pid: True)
+    embedding_server.record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    embedding_server.record_path(tmp_path).write_text(json.dumps(dict(zip(
+        ("pid", "port", "url", "platform", "started_at", "process_start", "nonce"), record
+    ))), encoding="utf-8")
 
-    def denied(_pid, _signal):
-        raise PermissionError("cannot signal worker")
+    def denied(_pid, signal_number):
+        if signal_number:
+            raise PermissionError("cannot signal worker")
 
     monkeypatch.setattr(os, "kill", denied)
     with pytest.raises(PermissionError):
-        embedding_server.stop(tmp_path)
+        embedding_server.stop(tmp_path, start_of=lambda _pid: record.process_start)
 
     assert embedding_server.read_record(tmp_path) == record
 

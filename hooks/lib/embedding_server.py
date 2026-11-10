@@ -1,4 +1,4 @@
-"""Owns the model process, because a release that expects a server to already be running on the machine is not standalone."""
+"""Because installation must stand alone, own the model process instead of requiring an existing server."""
 from __future__ import annotations
 
 import fcntl
@@ -7,7 +7,6 @@ import json
 import math
 import os
 import secrets
-import signal
 import socket
 import subprocess
 import sys
@@ -20,16 +19,25 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 from urllib.parse import SplitResult, urlsplit
 from typing import NamedTuple
 
 try:
+    from . import process_records
     from .embedding_lease import has_live_leases
+    from .process_records import process_start
     from .model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from .model_store import ensure_runtime, ensure_weights, exclusive
     from .session_state import plugin_data_home
 except ImportError:
+    import process_records
     from embedding_lease import has_live_leases
+    from process_records import process_start
     from model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from model_store import ensure_runtime, ensure_weights, exclusive
     from session_state import plugin_data_home
@@ -45,7 +53,6 @@ READY_POLL_SECONDS = 0.25
 READY_PROBE_TIMEOUT = 1.0
 STOP_GRACE_SECONDS = 10.0
 STOP_POLL_SECONDS = 0.1
-PS_TIMEOUT_SECONDS = 2.0
 NONCE_ENV = "ADW_EMBEDDING_NONCE"
 HEALTH_PATH = "/health"
 EMBEDDINGS_PATH = "/v1/embeddings"
@@ -68,7 +75,7 @@ def record_path(root: Path) -> Path:
 
 
 def _free_port() -> int:
-    """Reserve a kernel-selected loopback port and return it within the valid TCP range."""
+    """Because callers need a concrete loopback port, reject invalid kernel allocations."""
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -94,7 +101,7 @@ def _plain_text(value: object, *, required: bool) -> bool:
 
 
 def _valid_port(value: object) -> bool:
-    """Accept only a concrete TCP port in the non-reserved range."""
+    """Because a listener needs a concrete TCP port, reject booleans and values outside its range."""
     return type(value) is int and 1 <= value <= MAX_PORT  # pylint: disable=unidiomatic-typecheck
 
 
@@ -146,7 +153,7 @@ def _loopback_url(url: object, *, port: int | None = None, path: str | None = No
 
 
 def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-return-statements
-    """Check every persisted field before it can influence a signal or request."""
+    """Because persisted fields control signals and requests, validate every field before use."""
     if not isinstance(record, ServerRecord):
         return False
     if type(record.pid) is not int or record.pid <= 0:  # pylint: disable=unidiomatic-typecheck
@@ -168,7 +175,7 @@ def _valid_record(record: ServerRecord) -> bool:  # pylint: disable=too-many-ret
 
 
 def _read_record_bytes(path: Path) -> bytes | None:
-    """Read a regular record through a nonblocking no-follow descriptor and enforce its byte bound."""
+    """Because record paths may name symlinks or pipes, require bounded regular files without following links."""
     flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
     descriptor = -1
     try:
@@ -190,7 +197,7 @@ def _read_record_bytes(path: Path) -> bytes | None:
 
 
 def read_record(root: Path) -> ServerRecord | None:
-    """Read only a bounded, fully validated loopback server record."""
+    """Because records authorize local process control, reject unbounded or invalid loopback identities."""
     raw = _read_record_bytes(record_path(root))
     if raw is None:
         return None
@@ -207,15 +214,13 @@ def read_record(root: Path) -> ServerRecord | None:
 
 
 def _write_record(root: Path, record: ServerRecord) -> None:
-    """Atomically persist only a valid bounded record."""
+    """Because readers may run concurrently, publish valid bounded records with an atomic replacement."""
     if not _valid_record(record):
         raise ValueError("invalid embedding server record")
     raw = json.dumps(record._asdict(), separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_RECORD_BYTES:
         raise ValueError("embedding server record exceeds the size limit")
-    temporary = record_path(root).with_suffix(".tmp")
-    temporary.write_bytes(raw)
-    temporary.replace(record_path(root))
+    state_recovery.atomic_write(record_path(root), raw, mode=None)
 
 
 def discard_record(root: Path) -> None:
@@ -223,7 +228,7 @@ def discard_record(root: Path) -> None:
 
 
 def process_alive(pid: int) -> bool:
-    """Probe only a positive process id, reaping owned children before the signal check."""
+    """Because zombies still answer signal probes, reap owned children before checking a positive process id."""
     if type(pid) is not int or pid <= 0:  # pylint: disable=unidiomatic-typecheck
         return False
     try:
@@ -240,26 +245,15 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def process_start(pid: int) -> str | None:
-    """Paired with the pid, because the kernel reuses pids."""
-    try:
-        listed = subprocess.run(
-            ("ps", "-o", "lstart=", "-p", str(pid)), capture_output=True, text=True,
-            timeout=PS_TIMEOUT_SECONDS, env={**os.environ, "LC_ALL": "C"}, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return listed.stdout.strip() or None
-
-
-def _owned(record: ServerRecord) -> bool | None:
+def _owned(
+    record: ServerRecord, *, start_of: Callable[[int], str | None] = process_start,
+) -> bool | None:
     """None when ps cannot answer, because a slow ps under memory pressure is no proof that the worker died."""
     if not process_alive(record.pid):
         return False
-    started = process_start(record.pid)
-    if started is None:
-        return None
-    return started == record.process_start
+    return {
+        process_records.Identity.MATCH: True, process_records.Identity.MISMATCH: False,
+    }.get(process_records.identity(record._asdict(), start_of=start_of))
 
 
 def _echoes(raw: bytes, nonce: str) -> bool:
@@ -311,7 +305,7 @@ def _wait_ready(child: subprocess.Popen, record: ServerRecord, deadline: float, 
 
 
 def _archive_command(server: Path, weights: Path, entry: ModelPlatform, port: int) -> tuple[str, ...]:
-    """Build an archive-backed worker command for a validated loopback port."""
+    """Because archive workers expose a local endpoint, validate their port before building the command."""
     if not _valid_port(port):
         raise ValueError("port must be between 1 and 65535")
     model = weights / entry.weights[0].name
@@ -359,11 +353,17 @@ def _launch_nonce(entry: ModelPlatform) -> str:
     return "" if isinstance(entry.runtime, ArchiveRuntime) else secrets.token_hex(16)
 
 
-def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...]) -> tuple[subprocess.Popen, ServerRecord]:
-    """Publish ownership before readiness so Stop can terminate a worker still loading its weights."""
+def _reap_registered(child: subprocess.Popen, registration: Path) -> None:
+    """Remove ownership after exit because a running child must remain discoverable to cleanup."""
+    child.wait()
+    process_records.unregister(registration)
+
+
+def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, ...], *, spawn: Callable[..., subprocess.Popen] | None = None) -> tuple[subprocess.Popen, ServerRecord]:
+    """Because Stop may arrive during model loading, publish ownership before readiness."""
     nonce = _launch_nonce(entry)
-    child = _spawn(arguments, root, nonce, fresh_log=True)
-    started = process_start(child.pid) if type(child.pid) is int and child.pid > 0 else None  # pylint: disable=unidiomatic-typecheck
+    child = (spawn or _spawn)(arguments, root, nonce, fresh_log=True)
+    started = process_start(child.pid)
     if started is None:
         child.terminate()
         raise ValueError("embedding server returned an invalid process id")
@@ -371,19 +371,30 @@ def _launch(entry: ModelPlatform, root: Path, port: int, arguments: tuple[str, .
         child.pid, port, f"http://127.0.0.1:{port}{EMBEDDINGS_PATH}", entry.key, time.time(), started, nonce
     )
     try:
+        registration = process_records.register(
+            "embedding-server" if isinstance(entry.runtime, ArchiveRuntime) else "embedding-worker",
+            pid=child.pid, state_root=root.parent if root.name == ROOT_DIRNAME else root,
+            argv0=arguments[0],
+        )
         _write_record(root, record)
     except Exception:
-        _terminate(child.pid)
+        process_records.terminate(
+            record.pid, partial(_owned, record), grace=STOP_GRACE_SECONDS,
+            poll=STOP_POLL_SECONDS, alive=process_alive,
+        )
         raise
-    # Reap independently of the lifecycle lock, which a different hook holds while waiting for this child to exit.
-    threading.Thread(target=child.wait, daemon=True).start()
+    # Because shutdown holds the lifecycle lock, reap independently.
+    threading.Thread(target=_reap_registered, args=(child, registration), daemon=True).start()
     return child, record
 
 
 def _discard_unready(child: subprocess.Popen, record: ServerRecord, root: Path, locked: bool) -> bool:
     with nullcontext() if locked else exclusive(root / LOCK_NAME):
         owned = read_record(root) == record
-        _terminate(child.pid)
+        process_records.terminate(
+            record.pid, partial(_owned, record), grace=STOP_GRACE_SECONDS,
+            poll=STOP_POLL_SECONDS, alive=process_alive,
+        )
         if owned:
             discard_record(root)
     return owned
@@ -402,44 +413,32 @@ def _ready(child: subprocess.Popen, record: ServerRecord, root: Path, *, locked:
 Provisioner = Callable[[ModelPlatform, Path], Callable[[int], tuple[str, ...]]]
 
 
-def start(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision) -> ServerRecord:
-    """Start a worker and clean up both process and record on any readiness failure."""
+def start(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision, spawn: Callable[..., subprocess.Popen] | None = None) -> ServerRecord:
+    """Because failed readiness must not leave an orphan, clean up both the worker and its record."""
     root.mkdir(parents=True, exist_ok=True)
     arguments = prepare(entry, root)
     port = _free_port()
-    child, record = _launch(entry, root, port, arguments(port))
+    child, record = _launch(entry, root, port, arguments(port), spawn=spawn)
     _ready(child, record, root, locked=True)
     return record
 
 
-def _terminate(pid: int) -> bool:
-    """Confirm exit even after SIGKILL, and tolerate the process exiting between probe and signal."""
-    if not process_alive(pid):
-        return False
-    for termination_signal in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.kill(pid, termination_signal)
-        except ProcessLookupError:
-            return True
-        deadline = time.monotonic() + STOP_GRACE_SECONDS
-        while time.monotonic() < deadline:
-            if not process_alive(pid):
-                return True
-            time.sleep(STOP_POLL_SECONDS)
-    raise TimeoutError(f"embedding server process {pid} did not exit")
-
-
-def _stop(root: Path) -> bool:
+def _stop(root: Path, *, start_of: Callable[[int], str | None] = process_start) -> bool:
     record = read_record(root)
-    stopped = _terminate(record.pid) if record is not None and _owned(record) is True else False
+    stopped = False
+    if record is not None:
+        stopped = process_records.terminate(
+            record.pid, partial(_owned, record, start_of=start_of), grace=STOP_GRACE_SECONDS,
+            poll=STOP_POLL_SECONDS, alive=process_alive,
+        )
     discard_record(root)
     return stopped
 
 
-def stop(root: Path) -> bool:
+def stop(root: Path, *, start_of: Callable[[int], str | None] = process_start) -> bool:
     """Locked, because a shutdown must not race a launch."""
     with exclusive(root / LOCK_NAME):
-        return _stop(root)
+        return _stop(root, start_of=start_of)
 
 
 def running_url(root: Path) -> str | None:
@@ -450,20 +449,21 @@ def running_url(root: Path) -> str | None:
     return record.url
 
 
-def start_detached(root: Path) -> None:
-    """The singleton supervisor outlives hooks to unload expired leases without waiting for another turn."""
+def start_detached(root: Path, *, spawn: Callable[..., subprocess.Popen] | None = None) -> None:
+    """Because leases may expire between turns, keep one supervisor alive beyond the hooks."""
     root.mkdir(parents=True, exist_ok=True)
-    _spawn((sys.executable, str(Path(__file__).resolve()), str(root)), root)
+    (spawn or _spawn)((sys.executable, str(Path(__file__).resolve()), str(root)), root)
 
 
-def _start_leased(entry: ModelPlatform, root: Path, prepare: Provisioner) -> None:
-    """Provision outside the lifecycle lock, then recheck demand before launching a model after a slow download."""
+def _start_leased(entry: ModelPlatform, root: Path, prepare: Provisioner, spawn: Callable[..., subprocess.Popen] | None = None) -> None:
+    """Because downloads may outlast demand, provision without the lifecycle lock and recheck before launch."""
     arguments = prepare(entry, root)
     with exclusive(root / LOCK_NAME):
         if not has_live_leases(root, time.time()) or running_url(root) is not None:
             return
         port = _free_port()
-        child, record = _launch(entry, root, port, arguments(port))
+        launch = partial(_launch, spawn=spawn) if spawn is not None else _launch
+        child, record = launch(entry, root, port, arguments(port))
     _ready(child, record, root, wanted=partial(_demanded, root))
 
 
@@ -472,8 +472,8 @@ def _demanded(root: Path) -> bool:
         return has_live_leases(root, time.time())
 
 
-def supervise(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision) -> None:
-    """Only one monitor may provision and sweep; relinquish its lock atomically with the final idle check."""
+def supervise(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provision, spawn: Callable[..., subprocess.Popen] | None = None) -> None:
+    """Because competing monitors could duplicate workers, serialize supervision through the final idle check."""
     root.mkdir(parents=True, exist_ok=True)
     with (root / SUPERVISOR_LOCK_NAME).open("w", encoding="utf-8") as handle:
         with exclusive(root / LOCK_NAME):
@@ -481,6 +481,9 @@ def supervise(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provis
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return
+        registration = process_records.register(
+            "embedding-supervisor", state_root=root.parent if root.name == ROOT_DIRNAME else root,
+        )
         try:
             while True:
                 with exclusive(root / LOCK_NAME):
@@ -490,9 +493,10 @@ def supervise(entry: ModelPlatform, root: Path, *, prepare: Provisioner = provis
                         return
                     running = running_url(root) is not None
                 if not running:
-                    _start_leased(entry, root, prepare)
+                    _start_leased(entry, root, prepare, spawn)
                 time.sleep(LEASE_POLL_SECONDS)
         finally:
+            process_records.unregister(registration)
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 

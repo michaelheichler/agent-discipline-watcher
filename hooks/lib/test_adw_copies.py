@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
-from lib import adw_copies
+from lib import adw_copies, nuke_runtime
 
 ADW = "agent-discipline-watcher"
 OWN_RELEASE = "0.30.0"
@@ -110,3 +111,33 @@ def test_a_copy_without_a_changelog_is_not_listed(tmp_path: Path) -> None:
     found = adw_copies.copies(home)
 
     assert _roots(found) == [listed]
+
+
+@pytest.mark.parametrize("name, expected_count", [
+    pytest.param(ADW, adw_copies.MAX_ACCOUNT_PLUGINS, id="bounded-owned-candidates"),
+    pytest.param("unrelated-plugin", 0, id="reject-foreign-candidates"),
+])
+def test_account_copy_discovery_is_bounded_and_verifies_plugin_ownership(tmp_path, name, expected_count) -> None:
+    for index in range(adw_copies.MAX_ACCOUNT_PLUGINS + 2):
+        _manifest(tmp_path / ACCOUNT_PLUGINS / f"plugin-{index}", name)
+
+    found = adw_copies.account_roots(tmp_path)
+
+    assert len(found) == expected_count
+    assert len(set(found)) == expected_count
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="account plugins belong to the macOS host")
+@pytest.mark.parametrize("name, expected_count", [
+    pytest.param(ADW, adw_copies.MAX_ACCOUNT_PLUGINS, id="bounded-owned-candidates"),
+    pytest.param("unrelated-plugin", 0, id="reject-foreign-candidates"),
+])
+def test_uninstall_plan_respects_account_copy_bounds_and_ownership(tmp_path, name, expected_count) -> None:
+    parent = tmp_path / ACCOUNT_PLUGINS
+    for index in range(adw_copies.MAX_ACCOUNT_PLUGINS + 2):
+        _manifest(parent / f"plugin-{index}", name)
+    steps = nuke_runtime.NukeSteps(account_home=lambda: tmp_path, environment=lambda: {"PATH": ""})
+
+    plan = nuke_runtime.build_plan(tmp_path, steps)
+
+    assert len([path for path in plan.removals if path.parent == parent]) == expected_count

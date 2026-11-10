@@ -8,11 +8,11 @@ from pathlib import PurePath
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import placed, sentence_spans, text_units, visible
+    from ._text import placed, sentence_spans, text_units, visible, phrase_families
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import placed, sentence_spans, text_units, visible
+    from german_rules._text import placed, sentence_spans, text_units, visible, phrase_families
     from prose_language import ParagraphLanguage
 
 PLACEHOLDER_TEXT = Rule(
@@ -116,7 +116,8 @@ SNIPPET_CONTEXT = 60
 # humanizer-de Muster 21 triggers, because Q13 credits it.
 PLACEHOLDER_RE = re.compile(
     r"\[(?:Name|Datum|Ort|Firma|Bearbeiter\s+Name|Quelle\s+erforderlich)\](?!\()"
-    r"|\[[^\]\n]*\b(?:einfügen|eintragen|hier)\](?!\()|\bTODO:"
+    r"|\[[^\]\n]*\b(?:einfügen|eintragen|ergänzen|ersetzen|ausfüllen|hier)\](?!\()|\bTODO:"
+    r"|\{\{(?:NAME|DATUM|ORT|FIRMA|ABTEILUNG|QUELLE)\}\}"
 )
 # humanizer-de Muster 22 hosts, because Q13 credits it.
 SEARCH_LINK_RE = re.compile(r"(?i:(?:https?://)?(?:www\.)?(?:google\.[a-z.]+/search\?|duckduckgo\.com/\?)\S*)")
@@ -136,6 +137,10 @@ DIFF_RE = re.compile(
     r"(?i:\bwurde\s+jetzt\b[^.!?]*?\b(?:ergänzt|erweitert|hinzugefügt|ersetzt|umgestellt)\b"
     r"|\bneu\s+hinzugefügt\b|\bersetzt\s+(?:die|den|das)\s+alte\w*|\bbisher\s+war\b[^.!?]*?\bnun\s+ist\b"
     r"|\bdie\s+überarbeitete\s+Version\b|\bmit\s+diesem\s+Update\s+wird\b)"
+    + "|" + phrase_families(
+        "seit dem Update ... statt", "hab~ ... in den Ablauf aufgenommen",
+        "früher~ ... ist nun ... abgelöst",
+    )
 )
 VERSIONED_NAMES = ("commit_message", "changelog", "changes", "history", "news", "release", "migrat")
 # humanizer-de Muster 43 ranges, because Q13 credits it.

@@ -6,13 +6,13 @@ from itertools import groupby
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import phrase_hits, placed, sentence_hits, text_units
-    from ..german_verbs import is_finite, is_infinitive
+    from ._text import phrase_hits, placed, sentence_hits, text_units, phrase_families
+    from ..german_verbs import is_finite, is_infinitive, obligation_brackets
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import phrase_hits, placed, sentence_hits, text_units
-    from german_verbs import is_finite, is_infinitive
+    from german_rules._text import phrase_hits, placed, sentence_hits, text_units, phrase_families
+    from german_verbs import is_finite, is_infinitive, obligation_brackets
     from prose_language import ParagraphLanguage
 
 NESTED_CLAUSES = Rule(
@@ -127,7 +127,7 @@ NEW_MAIN_CLAUSE_RE = re.compile(r"[;:]|,\s+" + COORDINATOR + r"\b")
 BRACKET_MAX_GAP = 6
 
 ABBREVIATION_RE = re.compile(
-    r"(?<!\w)(?:usw\.|bzw\.|[dD]\.\s?h\.|u\.\s?U\.|dergl\.|s\.\s?o\.|Fam\.|Fa\.|MfG\b\.?|wg\.)"
+    r"(?<!\w)(?:usw\.|bzw\.|[dD]\.\s?h\.|u\.\s?U\.|dergl\.|s\.\s?o\.|Fam\.|Fa\.|MfG\b\.?|wg\.|etc\.|u\.\s?a\.|ggf\.)"
 )
 
 STACCATO_SENTENCE_RE = re.compile(r"[^.!?\s][^.!?]*[.!?]+")
@@ -136,6 +136,7 @@ STACCATO_MIN_RUN = 3
 
 CASUAL_GREETING_RE = re.compile(
     r"\A\s*(?:Hi|Tachchen|Moin\s+Moin|Halli-Hallo)\b"
+    + r"|\A\s*" + phrase_families("na", "servus", "tschau") + r"(?=\s*[,!])"
     r"|(?:Tschüssi|Mach['’]s\s+gut,?\s+Alter|Und\s+[Tt]schüss|So\s+long)[\s!.]*\Z"
 )
 
@@ -154,6 +155,25 @@ WHOLE_SENTENCE_RE = re.compile(r"\S(?:.*\S)?", re.DOTALL)
 CLUSTER_MAX_ITEMS = 8
 
 
+EXPLANATORY_ABBREVIATION_RE = re.compile(r"(?i:d\.\s*h\.)")
+MENTIONED_ABBREVIATION_RE = re.compile(
+    r"(?i:^\s*(?:wird|werden|ist)\b[^.!?]{0,70}\b(?:geprüft|erklärt|ausgeschrieben|verwendet)\b)"
+)
+
+
+def _unfinished_abbreviation(sentence: str) -> list[re.Match[str]]:
+    matches = []
+    for found in ABBREVIATION_RE.finditer(sentence):
+        following = sentence[found.end():]
+        if MENTIONED_ABBREVIATION_RE.search(following):
+            continue
+        if EXPLANATORY_ABBREVIATION_RE.fullmatch(found.group()):
+            if any(is_finite(word) for word in RIGHT_WORD_RE.findall(following)):
+                continue
+        matches.append(found)
+    return matches
+
+
 def _nested_clauses(sentence: str) -> re.Match[str] | None:
     """Require both signals, because a plain list has many commas and no subordinate clause."""
     openers = list(SUBORDINATE_OPENER_RE.finditer(sentence))
@@ -170,7 +190,8 @@ def _too_wide(found: re.Match[str]) -> bool:
 
 
 def _wide_bracket(sentence: str) -> re.Match[str] | None:
-    found = (match for bracket in BRACKET_RES for match in bracket.finditer(sentence))
+    found = [match for bracket in BRACKET_RES for match in bracket.finditer(sentence)]
+    found.extend(obligation_brackets(sentence))
     return next((match for match in found if _too_wide(match)), None)
 
 
@@ -271,7 +292,7 @@ def _check(path: str, paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     return [
         *sentence_hits(NESTED_CLAUSES.name, paragraphs, _nested_clauses),
         *sentence_hits(VERB_BRACKET.name, paragraphs, _wide_bracket),
-        *phrase_hits(UNEXPLAINED_ABBREVIATION.name, paragraphs, ABBREVIATION_RE),
+        *sentence_hits(UNEXPLAINED_ABBREVIATION.name, paragraphs, _unfinished_abbreviation),
         *(hit for paragraph in paragraphs for hit in _staccato_runs(paragraph)),
         *phrase_hits(CASUAL_GREETING.name, paragraphs, CASUAL_GREETING_RE),
         *sentence_hits(INFORMATION_CLUSTER.name, paragraphs, _information_cluster),

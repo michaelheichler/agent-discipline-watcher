@@ -6,6 +6,11 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from typing import NamedTuple
 
+try:
+    from .markup import FencePolicy, markdown_lines
+except ImportError:
+    from markup import FencePolicy, markdown_lines
+
 ENGLISH = "en"
 GERMAN = "de"
 LANGUAGES = (ENGLISH, GERMAN)
@@ -29,7 +34,6 @@ nicht noch nur ob oder ohne sehr sich sie sind sowie über und uns unter vom von
 wie wir wird wurde wurden zu zum zur zwischen
 """.split())
 
-FENCE_RE = re.compile(r"^\s*(?:`{3,}|~{3,})")
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
 PATH_RE = re.compile(r"(?<!\S)\S*[/\\]\S*|\b[\w-]+\.[a-z0-9]{1,5}\b")
@@ -100,13 +104,7 @@ def allowed_languages(cfg: dict) -> tuple[str, ...]:
 
 
 def _prose_lines(text: str) -> list[str]:
-    lines = []
-    fenced = False
-    for line in text.splitlines():
-        is_fence = FENCE_RE.match(line) is not None
-        fenced = fenced != is_fence
-        lines.append("" if is_fence or fenced else line.strip())
-    return lines
+    return ["" if line.hidden else line.content.strip() for line in markdown_lines(text, FencePolicy.LANGUAGE)]
 
 
 class _Block(NamedTuple):

@@ -6,6 +6,7 @@ import re
 import tokenize
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from pathlib import PurePath
 
 
@@ -335,11 +336,165 @@ def _unified_diff(text: str) -> bool:
     return all(marker.search(text) for marker in DIFF_HEADER_RES)
 
 
+QUOTED_PROSE_RE = re.compile(
+    "\"[^\"\n]*\"|“[^”\n]*”|(?<!\\w)'[^'\n]*'(?!\\w)|(?<!\\w)‘[^’\n]*’(?!\\w)"
+)
+
+
+def _blank_quoted_inside(found: re.Match[str]) -> str:
+    text = found.group(0)
+    return text[0] + " " * (len(text) - 2) + text[-1]
+
+
+QUOTE_MENTION_CONTEXT_RE = re.compile(
+    r"\b(?:called|named|says?|said|wrote|reads?|phrase|term|words?|expression|label)[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def _blank_quoted_mention(found: re.Match[str]) -> str:
+    inner = found[0][1:-1]
+    line_start = found.string.rfind("\n", 0, found.start()) + 1
+    context = found.string[line_start:found.start()]
+    if re.search(r"[.!?]", inner) or len(inner.split()) > 8:
+        return found[0]
+    if QUOTE_MENTION_CONTEXT_RE.search(context) is None:
+        return found[0]
+    return _blank_quoted_inside(found)
+
+
+def mask_phrase_mentions(text: str) -> str:
+    """Keep quoted sentences scannable because only short named or spoken fragments are mentions."""
+    return QUOTED_PROSE_RE.sub(_blank_quoted_mention, text)
+
+
+def mask_quoted(text: str) -> str:
+    """Blank quoted words but keep delimiters and length, because quoted text is cited, not written, and a contraction must not open a quote."""
+    return QUOTED_PROSE_RE.sub(_blank_quoted_inside, text)
+
+
+class FencePolicy(Enum):
+    """Keep host grammars explicit because their existing masks differ."""
+
+    # Because document fences require matching widths and clean closing tails.
+    MARKDOWN = "markdown"
+    # Because prompt examples accept backticks only and blank carriage returns too.
+    PROMPT = "prompt"
+    # Because language routing historically toggles on every indented fence marker.
+    LANGUAGE = "language"
+    # Because punctuation closes on matching kinds, regardless of width.
+    PUNCTUATION = "punctuation"
+
+
+MARKDOWN_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})([^\r\n]*)")
+LOOSE_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*$")
+# humanizer-de Muster 57 cases A to C, because Q13 credits it.
+THEMATIC_BREAK = r"(?:-{3,}|\*{3,}|_{3,})"
+BREAK_THEN_HEADING_RE = re.compile(r"^" + THEMATIC_BREAK + r"\s+#{1,6}\s")
+BREAK_ONLY_RE = re.compile(r"^" + THEMATIC_BREAK + r"$")
+TABLE_SEPARATOR_RE = re.compile(r"^\|?[\s:|-]*-[\s:|-]*\|?$")
+TABLE_DELIMITER_RE = re.compile(r"^\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)+\s*\|?\s*$")
+SEPARATOR_ROW_RE = re.compile(r"\|(?:\s*:?-{3,}:?\s*\|)+")
+SEPARATOR_CELL_RE = re.compile(r":?-{3,}:?")
+PIPE_RE = re.compile(r"(?<!\\)\|")
+LINK_REFERENCE_RE = re.compile(r"^\s*\[[^]]+\]:\s+\S")
+# Because COMPREHENSIVE TECHNICAL STANDARDS drew findings, mask title labels.
+HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
+SETEXT_RE = re.compile(r"^\s{0,3}(?:={2,}|-{2,})\s*$")
+# Because a prose sentence may carry a colon, mask labels only in lists.
+LABEL_LINE_RE = re.compile(r"^\s*[-+*]\s+(?:\[[ xX]\]\s*)?(?:\*{2}[^*]{1,40}\*{2}|`[^`]{1,40}`)\s*:")
+
+
+@dataclass(frozen=True, slots=True)
+class MarkdownLine:
+    """Keep physical lines because consumers report original source coordinates."""
+
+    number: int
+    text: str
+    hidden: bool
+
+    @property
+    def content(self) -> str:
+        return self.text.rstrip("\r\n")
+
+    @property
+    def prose_boundary(self) -> bool:
+        line = self.content
+        if line.lstrip().startswith((">", "|")):
+            return True
+        return any(pattern.match(line) for pattern in (
+            TABLE_DELIMITER_RE, LINK_REFERENCE_RE, HEADING_RE, SETEXT_RE, LABEL_LINE_RE,
+        ))
+
+    @property
+    def punctuation_separator(self) -> bool:
+        return is_table_separator_row(self.content)
+
+
+def _fence_step(line: str, fence: str, policy: FencePolicy) -> tuple[str, bool]:
+    if policy in (FencePolicy.LANGUAGE, FencePolicy.PUNCTUATION):
+        marker = LOOSE_FENCE_RE.match(line)
+        if marker is None:
+            return fence, bool(fence)
+        kind = marker[1][0]
+        closing = bool(fence) and (policy is FencePolicy.LANGUAGE or kind == fence)
+        return ("" if closing else fence or kind), True
+    marker = MARKDOWN_FENCE_RE.match(line)
+    if policy is FencePolicy.PROMPT and marker and marker[1][0] != "`":
+        marker = None
+    if marker is None:
+        return fence, bool(fence)
+    tail = line[len(line) - len(line.lstrip(" ")) + len(marker[1]):]
+    closing_tail = tail.strip(" \t\r\n") if policy is FencePolicy.PROMPT else marker[2].strip()
+    closing = bool(fence and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not closing_tail)
+    opening = not fence and (marker[1][0] != "`" or "`" not in tail)
+    return (marker[1] if opening else "" if closing else fence), bool(fence) or opening
+
+
+@lru_cache(maxsize=2)
+def markdown_lines(text: str, policy: FencePolicy = FencePolicy.MARKDOWN) -> tuple[MarkdownLine, ...]:
+    """Keep each delimiter line hidden because it belongs to the fenced block."""
+    fence = ""
+    result = []
+    for number, line in enumerate(text.splitlines(keepends=True), 1):
+        fence, hidden = _fence_step(line, fence, policy)
+        result.append(MarkdownLine(number, line, hidden))
+    return tuple(result)
+
+
+def is_table_separator_row(line: str) -> bool:
+    """Keep punctuation out because delimiter dashes belong to Markdown syntax."""
+    return bool(TABLE_SEPARATOR_RE.fullmatch(line.strip()))
+
+
+def markdown_heading(text: str) -> re.Match[str] | None:
+    """Keep the heading capture because German findings name its original marker."""
+    return MARKDOWN_HEADING_RE.match(text)
+
+
+def one_row_table_separator(text: str) -> re.Match[str] | None:
+    """Count joined rows because language paragraphs replace line breaks with spaces."""
+    separator = SEPARATOR_ROW_RE.search(text)
+    if not text.startswith("|") or separator is None:
+        return None
+    width = len(SEPARATOR_CELL_RE.findall(separator[0])) + 1
+    return separator if len(PIPE_RE.findall(text)) == width * 3 else None
+
+
+def mask_markdown_fences(text: str, policy: FencePolicy = FencePolicy.MARKDOWN) -> str:
+    """Keep source coordinates because every prose pass reports the original line."""
+    blank = r"[^\n]" if policy is FencePolicy.PROMPT else r"[^\r\n]"
+    return "".join(re.sub(blank, " ", line.text) if line.hidden else line.text for line in markdown_lines(text, policy))
+
+
 def _mask_markup(path: str, text: str) -> str:
     """Mask non-prose syntax because its tokens are not sentences."""
     suffix = PurePath(path.lower()).suffix
     text = _mask_tool_output(suffix, text)
     text = _mask_frontmatter(suffix, text)
+    if suffix in MARKDOWN_EXTS | PLAIN_TEXT_EXTS:
+        text = mask_markdown_fences(text)
     if suffix == ".tex":
         text = re.sub(
             r"\\begin\{(verbatim|lstlisting|equation\*?|align\*)\}.*?\\end\{\1\}",

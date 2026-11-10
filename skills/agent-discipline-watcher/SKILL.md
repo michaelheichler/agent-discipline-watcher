@@ -25,31 +25,31 @@ policy changes. These commands edit `.agent-discipline.json`. OMP's
 
 ## Enforce These Rules
 
-- Punctuation: do not use em dash or en dash characters. Do not use a double
+- Do not use em dash or en dash characters. Do not use a double
   hyphen as a clause break, a spaced hyphen as a dash, a semicolon to join two
   clauses, an apostrophe on possessive pronouns, or a possessive apostrophe on
   decades. Prefer a comma, period, parentheses, or a real ASCII hyphen when the
   word form requires it.
-- English: write plain reader-facing prose. Cut filler, throat-clearing, dead
+- Write plain reader-facing English. Cut filler, throat-clearing, dead
   metaphor, AI tell phrases, inflated diction, wordiness, empty intensifiers, and
   buried subjects. State the fact, evidence, consequence, and next action.
 - Let prose sentences flow and vary their length. Join related thoughts with a
   subordinate clause or with and, instead of writing a row of short
   telegram-style main clauses. The dash and semicolon bans still hold.
   Code comments stay crisp, one terse WHY line each.
-- Code: make intent live in names, structure, and tests. Delete comments that
+- Make code intent live in names, structure, and tests. Delete comments that
   narrate what the code does, label bug cases, apologize for the code, record
   change history, or hide deferred work. Do not ship commented-out code,
   narrating docstrings, hollow tests, long functions, or oversized files.
-- Response stance: be skeptical and direct. Verify changeable facts before
+- Be skeptical and direct. Verify changeable facts before
   claiming them. Challenge weak assumptions and overbuilt solutions. Do not open
   with empty validators such as agreement, praise, or filler.
 
 ## Responding To Hook Findings
 
-Every hook finding is a blocker. Fix the named file, then rerun
-the relevant check if the task requires proof. The scanner does not emit fuzzy
-or advisory results.
+A finding that resolves to `block` stops the operation. Fix the named file,
+then rerun the relevant check. Rules below their measured precision threshold
+stay at `observe`, so their findings report evidence without blocking.
 
 Keep fixes narrow. Rewrite the offending sentence, comment, test, or function
 instead of disabling checks. If a finding looks wrong, inspect the scanner rule
@@ -57,10 +57,10 @@ and the exact snippet before assuming the hook failed.
 
 ## Bash Write Guard
 
-A Bash command that writes file content is judged the same way a Write or Edit
-tool call is judged. A literal write body the watcher can read, such as a clean
-`echo`, `printf`, or heredoc, is scanned for the same rules. A write body the
-watcher cannot read through is blocked outright by one of seven rules:
+The watcher applies the same rules to Bash file writes and Write or Edit
+tool calls. It scans literal write bodies it can read, such as a clean
+`echo`, `printf`, or heredoc. When it cannot read a write body, one of seven
+rules blocks the call.
 `inline_interpreter_write`, `shell_payload_block`, `interpreter_heredoc_write`,
 `dynamic_heredoc_write`, `decode_pipe_write`, `inplace_edit_write`, and
 `opaque_source_write`. These cover inline interpreter code such as `python3 -c`,

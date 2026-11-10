@@ -149,7 +149,7 @@ def test_update_passes_the_validated_legacy_root_to_the_installer(managed_home):
     checkout = _omp_linked_checkout(managed_home, repository)
     captured = {}
     updates = managed_home / ".adw/updates"
-    updates.mkdir(parents=True)
+    updates.mkdir(parents=True, mode=0o700)
     release = SimpleNamespace(tag="v1.2.3", commit="a" * 40)
 
     def run_installer(source, hosts, environment):

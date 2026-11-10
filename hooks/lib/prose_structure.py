@@ -5,32 +5,25 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections.abc import Iterator
+from functools import lru_cache
 from pathlib import PurePath
 from statistics import fmean, pstdev
 from typing import NamedTuple
 
 try:
-    from .comment_rules import _finding
+    from .findings import finding_row
     from .findings import spanning
-    from .markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
+    from .markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code, markdown_lines
     from .scan_input import int_setting as _int_setting
     from .triad_items import ListRun, forced_triad
 except ImportError:
-    from comment_rules import _finding
+    from findings import finding_row
     from findings import spanning
-    from markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code
+    from markup import MIXED_LANGUAGE_EXTS, _strip_english_hidden, _strip_inline_code, markdown_lines
     from scan_input import int_setting as _int_setting
     from triad_items import ListRun, forced_triad
 
-FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
-LINK_REFERENCE_RE = re.compile(r"^\s*\[[^]]+\]:\s+\S")
-TABLE_DELIMITER_RE = re.compile(r"^\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)+\s*\|?\s*$")
 LIST_ITEM_RE = re.compile(r"^\s*(?:[-+*]|\d+[.)])\s+")
-# Masked because a heading is a title, and scanning it reported phrase findings against labels like COMPREHENSIVE TECHNICAL STANDARDS.
-HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s")
-SETEXT_RE = re.compile(r"^\s{0,3}(?:={2,}|-{2,})\s*$")
-# Masked only under a list marker, because a prose sentence may also carry a colon and must still be scanned.
-LABEL_LINE_RE = re.compile(r"^\s*[-+*]\s+(?:\[[ xX]\]\s*)?(?:\*{2}[^*]{1,40}\*{2}|`[^`]{1,40}`)\s*:")
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 WORD_RE = re.compile(r"\b\w+(?:[-']\w+)*\b")
 THREE_ITEM_RE = re.compile(
@@ -40,7 +33,7 @@ THREE_ITEM_RE = re.compile(
     re.IGNORECASE,
 )
 MIN_VARIANCE_SENTENCES = 4
-# Set to the measured p05 of 709 real paragraphs, because the previous 0.32 sat near the median and flagged 33.85 percent of ordinary writing.
+# Because 0.32 flagged 33.85% of 709 real paragraphs, use their measured p05.
 SENTENCE_VARIATION_LIMIT = 0.16
 RHYTHM_LIMITATIONS = {
     "low_sentence_variance": (
@@ -50,9 +43,9 @@ RHYTHM_LIMITATIONS = {
 }
 MIN_ENDING_SENTENCES = 2
 MIN_ENDING_PARAGRAPHS = 3
-# WHY: The p25 of 30700 human paragraph endings in corpus_paragraphs.jsonl, recorded in evals/paragraph_endings.json.
+# Because 30700 human endings give p25 0.7018, use evals/paragraph_endings.json.
 PUNCHY_ENDING_RATIO = 0.7018
-# WHY: The p95 of the same corpus's 4570 human documents, which fires on 3.15 percent of them.
+# Because p95 of 4570 human documents flags 3.15%, use that corpus threshold.
 PUNCHY_SHARE_LIMIT = 0.6667
 ProseLine = tuple[int, str]
 Paragraph = list[ProseLine]
@@ -73,46 +66,23 @@ class SentenceSpan(NamedTuple):
     text: str
 
 
-def _next_fence(line: str, fence: str | None) -> tuple[str | None, bool]:
-    marker = FENCE_RE.match(line)
-    if not marker:
-        return fence, False
-    marker_kind = marker.group(1)[0]
-    if fence is None:
-        return marker_kind, True
-    return (None if marker_kind == fence else fence), True
-
-
 def _next_frontmatter(line: str, number: int, active: bool) -> bool:
     if not active:
         return False
     return number == 1 or line.strip() not in ("---", "...")
 
 
-def _is_nonprose_line(line: str) -> bool:
-    """Grouped so the caller stays readable, because these are one question asked seven ways."""
-    if line.lstrip().startswith((">", "|")):
-        return True
-    return any(
-        pattern.match(line)
-        for pattern in (TABLE_DELIMITER_RE, LINK_REFERENCE_RE, HEADING_RE, SETEXT_RE, LABEL_LINE_RE)
-    )
-
-
-def _markdown_prose_lines(text: str) -> Iterator[tuple[int, str]]:
-    fence = None
+@lru_cache(maxsize=2)
+def _markdown_prose_lines(text: str) -> tuple[tuple[int, str], ...]:
     frontmatter = text.startswith("---\n")
-    for number, line in enumerate(text.splitlines(), 1):
+    result = []
+    for block in markdown_lines(text):
+        number, line = block.number, block.content
         in_frontmatter = frontmatter
         frontmatter = _next_frontmatter(line, number, frontmatter)
-        if in_frontmatter:
-            yield number, ""
-            continue
-        fence, is_marker = _next_fence(line, fence)
-        if is_marker or fence or _is_nonprose_line(line):
-            yield number, ""
-            continue
-        yield number, line
+        hidden = in_frontmatter or block.hidden or block.prose_boundary
+        result.append((number, "" if hidden else line))
+    return tuple(result)
 
 
 def _paragraphs(lines) -> Iterator[list[tuple[int, str]]]:
@@ -188,7 +158,7 @@ def _low_variance_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
         if variation >= SENTENCE_VARIATION_LIMIT:
             continue
         number, first_line = paragraph[0]
-        rows.append(spanning(_finding(
+        rows.append(spanning(finding_row(
             "english", "low_sentence_variance", number,
             "Paragraph has uniform sentence lengths in " + path,
             first_line, "Vary the sentence lengths in this paragraph.",
@@ -197,7 +167,7 @@ def _low_variance_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
 
 
 def _ending_ratio(paragraph: Paragraph) -> float | None:
-    """A paragraph is measured against its own mean because absolute sentence length differs by genre."""
+    """Because sentence length differs by genre, measure a paragraph against its own mean."""
     counts = _sentence_word_counts(paragraph)
     if len(counts) < MIN_ENDING_SENTENCES:
         return None
@@ -214,7 +184,7 @@ def _uniform_endings_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
     if sum(punchy) / len(punchy) <= PUNCHY_SHARE_LIMIT:
         return []
     number, first_line = measured[0][0][0]
-    return [spanning(_finding(
+    return [spanning(finding_row(
         "english", "uniform_paragraph_endings", number,
         "Paragraphs all end on a short sentence in " + path,
         first_line, "Let some paragraphs end on their long sentence.",
@@ -222,7 +192,7 @@ def _uniform_endings_rows(path: str, paragraphs: list[Paragraph]) -> list[dict]:
 
 
 def _three_item_finding(path: str, number: int, evidence: str) -> dict:
-    return _finding(
+    return finding_row(
         "english", "three_item_list", number,
         "Passage uses a three-item list in " + path,
         evidence, "Use two items or vary the structure.",
@@ -278,7 +248,7 @@ def _three_item_markdown_rows(path: str, lines: list[ProseLine]) -> list[dict]:
 
 
 def _paragraph_groups(path: str, lines: list[ProseLine]) -> list[Paragraph]:
-    """Markup gets one block per paragraph, because a rendered document leaves no blank line between two adjacent blocks."""
+    """Because rendered blocks can touch, give each markup paragraph its own block."""
     if PurePath(path.lower()).suffix in MIXED_LANGUAGE_EXTS:
         return [[(number, line.strip())] for number, line in lines if line.strip()]
     return list(_paragraphs(lines))
@@ -301,7 +271,7 @@ def _is_list_continuation(line: str, count: int, item_indent: int) -> bool:
 
 def _oversized_list_rows(path: str, lines, cap: int) -> list[dict]:
     return [
-        spanning(_finding(
+        spanning(finding_row(
             "english", "oversized_list", span.start,
             "List exceeds the item cap in " + path,
             span.first_line, "Split the list into smaller ranked groups.",
@@ -329,7 +299,7 @@ def _list_spans(lines: list[ProseLine]) -> Iterator[_ListSpan]:
         count = 0
 
 
-def _scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:
+def scan_prose_structure(path: str, text: str, config: dict) -> list[dict]:
     lines = list(_markdown_prose_lines(text))
     list_cap = _int_setting(config, "list_item_cap", "ADW_LIST_ITEM_CAP", 8)
     findings = _oversized_list_rows(path, lines, list_cap)

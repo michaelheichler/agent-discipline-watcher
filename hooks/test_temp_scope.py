@@ -70,7 +70,7 @@ def test_the_same_write_inside_a_temp_project_is_scanned(tmp_path: Path) -> None
 
 
 def test_a_temp_config_that_grants_an_escape_is_still_sealed(tmp_path: Path) -> None:
-    grant = json.dumps({protected.AUTH_KEY: True})
+    grant = json.dumps({protected.AUTH_SETTING: True})
 
     response = _write(tmp_path, tmp_path / protected.CONFIG_SEAL_BASENAME, grant)
 

@@ -357,3 +357,26 @@ def test_symlinked_cache_ancestor_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="symlink"):
         update_claude.install_pinned_plugin(home, source, COMMIT, environment)
+
+
+@pytest.mark.parametrize("token, relative", [
+    pytest.param("~/profile", "profile", id="tilde-profile"),
+    pytest.param("$HOME/profile", "$HOME/profile", id="literal-dollar-profile"),
+    pytest.param("${HOME}/profile", "${HOME}/profile", id="literal-braced-profile"),
+])
+def test_config_profile_expands_only_tilde_tokens(tmp_path, token, relative) -> None:
+    result = update_claude.claude_config_root(tmp_path, {"CLAUDE_CONFIG_DIR": token})
+
+    assert result == tmp_path / relative
+
+
+@pytest.mark.parametrize("token", [pytest.param("$HOME", id="dollar-home"), pytest.param("${HOME}", id="braced-home")])
+def test_registered_install_paths_do_not_expand_dollar_home(tmp_path, token) -> None:
+    home, source, _config_root, cache, _log, environment = _scenario(tmp_path)
+    installed = Path(environment["ADW_STUB_INSTALLED"])
+    document = json.loads(installed.read_text(encoding="utf-8"))
+    document["plugins"][update_claude.PLUGIN_ID][0]["installPath"] = token + "/" + str(cache.relative_to(home))
+    installed.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        update_claude.install_pinned_plugin(home, source, COMMIT, environment)

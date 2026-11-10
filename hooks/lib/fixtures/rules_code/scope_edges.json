@@ -1,0 +1,7 @@
+[
+  {"name":"expression_helper_act","path":"edge.test.ts","rule":"multiple_act_sections_in_unit_test","kind":"FP","text":"test('x', () => {\n  const later = () => sut.first();\n  expect(ready).toBe(true);\n  sut.second();\n  expect(done).toBe(true);\n});\n"},
+  {"name":"expression_helper_loop","path":"edge.spec.js","rule":"assert_in_loop","kind":"FP","text":"it('x', () => {\n  for (const value of values) {\n    const later = () => expect(value).toBe(1);\n    register(later);\n  }\n  expect(done).toBe(true);\n});\n"},
+  {"name":"ordinary_expect_method","path":"edge.test.ts","rule":"assert_in_loop","kind":"FP","text":"test('x', () => {\n  for (const token of tokens) { parser.expect(token); }\n  expect(parser.result).toEqual(tokens);\n});\n"},
+  {"name":"division_short","path":"edge.js","rule":"function_too_long","kind":"FP","text":"function ratio() {\n  return left / right / total;\n}\n"},
+  {"name":"fake_test_text","path":"edge.test.tsx","rule":"assert_in_loop","kind":"FP","text":"const example = \"test('x', () => { for (const x of xs) { expect(x); } });\";\n"}
+]

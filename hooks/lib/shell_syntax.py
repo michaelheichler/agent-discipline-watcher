@@ -9,6 +9,7 @@ from .shell_operators import (
     LEADING_REDIRECT_RE, PIPE_OPERATORS, SEPARATORS,
     _merge_adjacent_fragments, _split_punctuation_runs,
 )
+from .shell_text import shell_words
 from .shell_unfold import unfolded
 
 DYNAMIC_RE = re.compile(r"[$`]")
@@ -44,7 +45,6 @@ SHELL_C_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
 VERSIONED_PYTHON_RE = re.compile(r"^(python[23])\.\d+$")
 PYTHON_VALUE_OPTION_RE = re.compile(r"^-[bBdEhIiOPqRsSuvVx]*([cmWX])")
 QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
-QUOTED_FRAGMENT_RE = re.compile(r'''\\.|'[^']*'|"(?:\\.|[^"\\])*"''')
 PROCESS_SUBSTITUTION_RE = re.compile(r"[<>]\(")
 
 
@@ -270,21 +270,8 @@ CLOBBER_HEAD_RE = re.compile(r"^\d*>$")
 
 
 def _tokens(command: str) -> list[str]:
-    try:
-        lexer = shlex.shlex(_separate_quoted_fragments(command), posix=False, punctuation_chars=";&|()>")
-        lexer.whitespace_split = True
-        raw = list(lexer)
-    except ValueError:
-        raw = command.split()
-    raw = _merge_adjacent_fragments(command, _split_punctuation_runs(raw))
+    raw = _merge_adjacent_fragments(command, _split_punctuation_runs(shell_words(command)))
     return _expand_env_split_strings(unfolded(_merge_clobber_operator(raw)))
-
-
-def _separate_quoted_fragments(command: str) -> str:
-    return QUOTED_FRAGMENT_RE.sub(
-        lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
-        command,
-    )
 
 
 def _is_unquoted_assignment(token: str) -> bool:

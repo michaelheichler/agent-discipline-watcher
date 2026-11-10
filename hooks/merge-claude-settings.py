@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 
-# Only packages merged into this one belong here, because pruning a name we never absorbed deletes somebody else's hooks.
+# Because foreign packages own their hooks, prune only absorbed packages.
 LEGACY = (
     "punctuation-discipline",
     "english-for-agents",
@@ -19,7 +19,7 @@ LEGACY = (
 )
 DROP = object()
 
-# Shape-based, because a skill dir is not guaranteed to spell out the package name.
+# Because skill paths may omit the package name, match command shape.
 MANAGED_MARKER = "adw-managed-hook-v1"
 _WATCHER_HOOK_COMMAND_RE = re.compile(r'/hooks/run\.sh"?\s+[A-Za-z]+\Z')
 
@@ -142,8 +142,9 @@ def _drop_emptied_lifecycles(original, cleaned) -> None:
             del after[lifecycle]
 
 
+# Because installation precedes lib imports, this writer stays standalone.
 def _write(settings_path, settings) -> None:
-    # Resolved, because os.replace on a symlink path destroys the link instead of its target.
+    # Because os.replace destroys symlinks, resolve the target first.
     target_path = settings_path.resolve() if settings_path.is_symlink() else settings_path
     text = json.dumps(settings, indent=2, sort_keys=True) + "\n"
     target_path.parent.mkdir(parents=True, exist_ok=True)

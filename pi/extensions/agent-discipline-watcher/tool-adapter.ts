@@ -1,5 +1,6 @@
 import { normalizeArgs } from "./watcher";
 import { isToolDispatch } from "./js-dispatch";
+import { inspectMcp, isMcpTool, mcpIsMutation, operationValue } from "./mcp-contract";
 
 const DIRECT_TOOL_NAMES: Record<string, string> = {
   write: "Write",
@@ -48,21 +49,6 @@ const LSP_READ_ACTIONS = new Set([
   "capabilities",
 ]);
 const NOTEBOOK_READ_OPERATIONS = new Set(["read", "inspect", "list", "show"]);
-const WRITE_OPERATIONS = new Set([
-  "append",
-  "create",
-  "delete",
-  "edit",
-  "move",
-  "patch",
-  "remove",
-  "rename",
-  "update",
-  "write",
-]);
-const DELETE_OPERATIONS = new Set(["delete", "remove"]);
-const MCP_PATH_KEYS = ["path", "file_path", "relative_path", "source", "destination"] as const;
-const MCP_CONTENT_KEYS = ["content", "contents", "text", "data", "new_string", "new_source", "file_text"] as const;
 const REPORT_PATH_ALIASES = ["file_path", "filePath", "notebook_path", "notebookPath"] as const;
 export type MutationKind = "read" | "write" | "bash" | "mcp" | "notebook" | "python" | "host-report" | "unknown-write" | "other";
 
@@ -106,46 +92,8 @@ function pythonInput(code: string): AdaptedTool {
   };
 }
 
-function operationValue(input: Record<string, unknown>): string | undefined {
-  for (const key of ["operation", "action", "mode", "method"]) {
-    const value = stringValue(input[key]);
-    if (value) return value.toLowerCase();
-  }
-  return undefined;
-}
-
 function unique(values: readonly (string | undefined)[]): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function mcpTargetPaths(input: Record<string, unknown>): string[] {
-  const paths = MCP_PATH_KEYS.map(key => input[key]).filter(nonEmptyString);
-  if (Array.isArray(input.paths)) paths.push(...input.paths.filter(nonEmptyString));
-  return unique(paths);
-}
-
-function mcpHasContent(input: Record<string, unknown>): boolean {
-  return MCP_CONTENT_KEYS.some(key => Object.prototype.hasOwnProperty.call(input, key));
-}
-
-function mcpNameHasOperation(toolName: string, operations: ReadonlySet<string>): boolean {
-  const name = toolName.split("__").slice(2).join("__");
-  const parts = name.replace(/([a-z0-9])([A-Z])/gu, "$1_$2").toLowerCase().match(/[a-z0-9]+/gu) ?? [];
-  const operation = parts[0] === "batch" ? parts[1] : parts[0];
-  return operations.has(operation ?? "");
-}
-
-function mcpIsMutation(toolName: string, input: Record<string, unknown>): boolean {
-  const operation = operationValue(input);
-  return Boolean(
-    mcpNameHasOperation(toolName, WRITE_OPERATIONS) ||
-    (operation && WRITE_OPERATIONS.has(operation)) ||
-    (mcpTargetPaths(input).length > 0 && mcpHasContent(input)),
-  );
 }
 
 function patchTargetPaths(source: unknown): { targets: string[]; deleted: string[] } {
@@ -194,12 +142,12 @@ function mutationTargets(
   input: Record<string, unknown>,
   resolveTargets?: TargetResolver,
 ): { targets: string[]; deleted: string[] } {
+  const lower = toolName.toLowerCase();
   const normalized = normalizeArgs(input);
   const targets: string[] = [];
   const deleted: string[] = [];
   const direct = stringValue(normalized.file_path);
   if (direct) targets.push(direct);
-  const lower = toolName.toLowerCase();
   if (lower === "apply_patch") {
     for (const key of ["input", "patch", "command"]) {
       const patch = patchTargetPaths(normalized[key]);
@@ -226,12 +174,6 @@ function mutationTargets(
     }
   }
   if (lower === "bash" && resolveTargets) targets.push(...resolveTargets(toolName, normalized));
-  if (lower.startsWith("mcp__")) {
-    targets.push(...mcpTargetPaths(input));
-    if (DELETE_OPERATIONS.has(operationValue(input) ?? "") || mcpNameHasOperation(toolName, DELETE_OPERATIONS)) {
-      deleted.push(...mcpTargetPaths(input));
-    }
-  }
   return { targets: unique(targets), deleted: unique(deleted) };
 }
 
@@ -261,7 +203,7 @@ export function mutationKind(toolName: string, input: Record<string, unknown> = 
   if (lower === "python") return "python";
   if (lower === "debug") return DEBUG_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
   if (lower === "lsp") return LSP_READ_ACTIONS.has(operationValue(input) ?? "") ? "other" : "unknown-write";
-  if (lower.startsWith("mcp__")) {
+  if (isMcpTool(lower)) {
     if (Object.prototype.hasOwnProperty.call(input, "command")) return "unknown-write";
     return mcpIsMutation(toolName, input) ? "mcp" : "other";
   }
@@ -277,8 +219,21 @@ export function adaptPythonEvent(event: { code: string; cwd?: string }): Adapted
   return pythonInput(event.code);
 }
 
+function adaptMcpCall(toolName: string, input: Record<string, unknown>): AdaptedTool {
+  const summary = inspectMcp(toolName, input);
+  const kind = summary.mutation ? "mcp" : "other";
+  return {
+    kind, hookToolName: toolName, input: { ...input }, requiresTarget: summary.mutation,
+    ...(summary.mutation && summary.targets.length > 0 ? { targetPaths: summary.targets } : {}),
+    ...(summary.mutation && summary.deletes && summary.targets.length > 0 ? { deletedTargetPaths: summary.targets } : {}),
+  };
+}
+
 export function adaptToolCall(event: OmpToolEvent, resolveTargets?: TargetResolver): AdaptedTool {
   const input = event.input ?? {};
+  if (isMcpTool(event.toolName) && !Object.prototype.hasOwnProperty.call(input, "command")) {
+    return adaptMcpCall(event.toolName, input);
+  }
   const kind = mutationKind(event.toolName, input);
   if (kind === "python" && ["eval", "python"].includes(event.toolName.toLowerCase())) {
     return pythonInput(stringValue(input.code) ?? "");

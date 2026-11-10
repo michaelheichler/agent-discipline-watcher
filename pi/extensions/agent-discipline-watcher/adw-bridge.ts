@@ -1,8 +1,4 @@
-/**
- * Owns the ADW configuration bridge contract, response decoding, and runner lifecycle.
- *
- * The TUI and display sanitizers remain in `adw-config.ts`.
- */
+/** Because policy belongs to Python, the TUI shares this transport boundary. */
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,36 +11,13 @@ import { resolveRunner } from "./watcher";
 const BRIDGE_MAX_OUTPUT_BYTES = 256 * 1024;
 const BRIDGE_TIMEOUT_MS = 30_000;
 const CAPABILITY_MAX_BYTES = 4096;
-const CONFIG_VALUE_KEYS = [
-  "prose",
-  "comment",
-  "code",
-  "punctuation",
-  "english",
-  "clean_code",
-  "max_rows",
-  "list_item_cap",
-  "adw_model",
-  "exempt_paths",
-  "exempt_families",
-  "baseline",
-  "gates",
-  "rule_gates",
-  "kill_switches",
-  "data_boundary",
-] as const;
-const FAMILY_SWITCH_KEYS = ["prose", "comment", "code", "punctuation", "english", "clean_code"] as const;
-export const FAMILY_STATES = ["off", "observe", "enforce"] as const;
-export const RULE_STATES = ["off", "observe", "enforce", "judged"] as const;
-export const RULE_SURFACES = ["prose", "commit", "all"] as const;
-export const BASELINE_MODES = ["git", "report", "none"] as const;
-
-type ConfigValueKey = (typeof CONFIG_VALUE_KEYS)[number];
-export type GateState = (typeof FAMILY_STATES)[number];
-export type RuleState = (typeof RULE_STATES)[number];
-export type RuleSurface = (typeof RULE_SURFACES)[number];
+const MAX_POLICY_DEPTH = 12;
+const MAX_POLICY_ENTRIES = 4096;
+export type GateState = string;
+export type RuleState = string;
+export type RuleSurface = string;
 export type RuleGate = RuleState | Partial<Record<RuleSurface, RuleState>>;
-export type BaselineMode = (typeof BASELINE_MODES)[number];
+export type BaselineMode = string;
 
 export type AdwBridgeOperation = "describe" | "read" | "validate" | "write";
 
@@ -88,11 +61,12 @@ export interface AdwPolicyState {
   families: AdwFamilyMetadata[];
   rules: AdwRuleMetadata[];
   alwaysBlockingRules: string[];
+  baselineModes: string[];
 }
 
 export type AdwBridgeRunner = (request: AdwConfigureRequest) => AdwBridgeResponse;
 
-/** Represents a bridge failure that can be shown as a bounded notification. */
+/** Because notifications need stable failure codes. */
 export class AdwBridgeError extends Error {
   readonly code: string;
 
@@ -105,13 +79,13 @@ export class AdwBridgeError extends Error {
 
 const isRecord = adwConfig.isRecord;
 
-/** Return an identifier-shaped bridge name after control filtering. */
+/** Because identifiers must not carry terminal controls. */
 function safeName(value: unknown): string | undefined {
   const text = adwConfig.safePolicyString(value, 128);
   return text && /^[A-Za-z][A-Za-z0-9_.-]*$/.test(text) ? text : undefined;
 }
 
-/** Deduplicate bridge names while preserving their response order. */
+/** Because repeated metadata must not duplicate editor rows. */
 function uniqueNames(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   const names: string[] = [];
@@ -122,40 +96,28 @@ function uniqueNames(values: unknown): string[] {
   return names;
 }
 
-/** Parse a supported family gate state from bridge data. */
+/** Because Python owns policy, accept safe state identifiers. */
 export function allowedFamilyState(value: unknown): GateState | undefined {
-  return typeof value === "string" && (FAMILY_STATES as readonly string[]).includes(value)
-    ? (value as GateState)
-    : undefined;
+  return safeName(value);
 }
 
-/** Parse a supported rule gate state from bridge data. */
-export function allowedRuleState(value: unknown): RuleState | undefined {
-  return typeof value === "string" && (RULE_STATES as readonly string[]).includes(value)
-    ? (value as RuleState)
-    : undefined;
-}
+export const allowedRuleState = allowedFamilyState;
+export const allowedBaseline = allowedFamilyState;
 
-/** Both shapes, because Python accepts one state or one per surface. */
+/** Because surface names belong to Python, preserve each safe state entry. */
 export function allowedRuleGate(value: unknown): RuleGate | undefined {
   const single = allowedRuleState(value);
   if (single !== undefined || !isRecord(value)) return single;
   const surfaces: Partial<Record<RuleSurface, RuleState>> = {};
-  for (const surface of RULE_SURFACES) {
-    const state = allowedRuleState(value[surface]);
-    if (state !== undefined) surfaces[surface] = state;
+  for (const [surface, rawState] of Object.entries(value)) {
+    const state = allowedRuleState(rawState);
+    if (!safeName(surface) || state === undefined) return undefined;
+    surfaces[surface] = state;
   }
   return Object.keys(surfaces).length > 0 ? surfaces : undefined;
 }
 
-/** Parse a supported baseline mode from bridge data. */
-export function allowedBaseline(value: unknown): BaselineMode | undefined {
-  return typeof value === "string" && (BASELINE_MODES as readonly string[]).includes(value)
-    ? (value as BaselineMode)
-    : undefined;
-}
-
-/** Collect valid family names advertised by metadata or state maps. */
+/** Because inherited families can appear only in state maps. */
 function readFamilyNames(response: Record<string, unknown>): string[] {
   const metadata = Array.isArray(response.families)
     ? response.families
@@ -167,7 +129,7 @@ function readFamilyNames(response: Record<string, unknown>): string[] {
   return uniqueNames([...metadata, ...stateNames]);
 }
 
-/** Collect valid rule names advertised by metadata or state maps. */
+/** Because inherited rules can appear only in state maps. */
 function readRuleNames(response: Record<string, unknown>): string[] {
   const metadata = Array.isArray(response.rules)
     ? response.rules
@@ -179,30 +141,22 @@ function readRuleNames(response: Record<string, unknown>): string[] {
   return uniqueNames([...metadata, ...stateNames]);
 }
 
-/** Build editable family metadata with safe defaults for incomplete responses. */
+/** Because Python advertises the editable family states. */
 function readFamilyMetadata(response: Record<string, unknown>, names: readonly string[]): AdwFamilyMetadata[] {
   const source = Array.isArray(response.families) ? response.families.filter(isRecord) : [];
   return names.map(name => {
     const metadata = source.find(item => item.name === name);
-    const states = Array.isArray(metadata?.states)
-      ? metadata.states.filter((state): state is GateState => allowedFamilyState(state) !== undefined)
-      : [...FAMILY_STATES];
-    return { name, states: states.length > 0 ? [...new Set(states)] : [...FAMILY_STATES], locked: metadata?.locked === true };
+    return { name, states: uniqueNames(metadata?.states), locked: metadata?.locked === true };
   });
 }
 
-/** Build rule metadata and force always-blocking rules to enforce. */
+/** Because protected rules must stay locked in the editor. */
 function readRuleMetadata(response: Record<string, unknown>, names: readonly string[]): AdwRuleMetadata[] {
   const source = Array.isArray(response.rules) ? response.rules.filter(isRecord) : [];
   return names.map(name => {
     const metadata = source.find(item => item.name === name);
     const locked = metadata?.locked === true || (Array.isArray(response.always_blocking_rules) && response.always_blocking_rules.includes(name));
-    const states = locked
-      ? ["enforce"]
-      : Array.isArray(metadata?.states)
-        ? metadata.states.filter((state): state is RuleState => allowedRuleState(state) !== undefined)
-        : [...RULE_STATES];
-    return { name, states: states.length > 0 ? [...new Set(states)] : locked ? ["enforce"] : [...RULE_STATES], locked };
+    return { name, states: uniqueNames(metadata?.states), locked };
   });
 }
 
@@ -221,86 +175,36 @@ function readStateMap<State>(
   return output;
 }
 
-/** Copy recognized policy values while discarding unsupported or unsafe data. */
-function copyKnownValues(
-  source: unknown,
-  familyNames: readonly string[],
-  ruleNames: readonly string[],
-): Record<string, unknown> {
-  const input = isRecord(source) ? source : {};
-  const output: Record<string, unknown> = {};
-  for (const key of CONFIG_VALUE_KEYS) {
-    if (!(key in input)) continue;
-    const value = input[key];
-    if ((FAMILY_SWITCH_KEYS as readonly string[]).includes(key)) {
-      if (typeof value === "boolean") output[key] = value;
-      continue;
-    }
-    if (["max_rows", "list_item_cap"].includes(key)) {
-      if (typeof value === "number" && Number.isSafeInteger(value)) output[key] = value;
-      continue;
-    }
-    if (key === "adw_model") {
-      if (typeof value === "string" && value.length <= 256 && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)) {
-        output[key] = value;
-      }
-      continue;
-    }
-    if (key === "baseline") {
-      const baseline = allowedBaseline(value);
-      if (baseline !== undefined) output[key] = baseline;
-      continue;
-    }
-    if (key === "exempt_paths") {
-      if (Array.isArray(value)) {
-        output[key] = value
-          .map(item => adwConfig.safePolicyString(item))
-          .filter((item): item is string => item !== undefined);
-      }
-      continue;
-    }
-    if (key === "exempt_families") {
-      const mappings = isRecord(value) ? value : {};
-      const filtered: Record<string, string[]> = {};
-      for (const [pattern, families] of Object.entries(mappings)) {
-        const safePattern = adwConfig.safePolicyString(pattern);
-        if (!safePattern || !Array.isArray(families)) continue;
-        const selected = families.filter(
-          (family): family is string => typeof family === "string" && familyNames.includes(family),
-        );
-        filtered[safePattern] = selected;
-      }
-      output[key] = filtered;
-      continue;
-    }
-    if (key === "gates") {
-      const gates = readStateMap(value, familyNames, allowedFamilyState);
-      output[key] = gates;
-      continue;
-    }
-    if (key === "rule_gates") {
-      output[key] = readStateMap(value, ruleNames, allowedRuleGate);
-      continue;
-    }
-    if (key === "kill_switches") {
-      const switches = isRecord(value) ? value : {};
-      const filtered: Record<string, boolean> = {};
-      for (const family of familyNames) {
-        if (typeof switches[family] === "boolean") filtered[family] = switches[family] as boolean;
-      }
-      output[key] = filtered;
-      continue;
-    }
-    if (key === "data_boundary") {
-      const boundary = isRecord(value) ? value : {};
-      if (typeof boundary.enabled === "boolean") output[key] = { enabled: boundary.enabled };
-      continue;
-    }
+/** Because Python validates policy, preserve bounded JSON values. */
+function copyPolicyValue(value: unknown, depth: number, budget: { remaining: number }): unknown {
+  budget.remaining -= 1;
+  if (depth > MAX_POLICY_DEPTH || budget.remaining < 0) {
+    throw new AdwBridgeError("response_limit", "ADW policy exceeds the transport limit");
   }
-  return output;
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.length <= BRIDGE_MAX_OUTPUT_BYTES &&
+      !/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/u.test(value)) return value;
+  if (Array.isArray(value)) return value.map(item => copyPolicyValue(item, depth + 1, budget));
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+      if (!adwConfig.safePolicyString(key, 4096)) {
+        throw new AdwBridgeError("invalid_response", "ADW policy contains an unsafe key");
+      }
+      return [key, copyPolicyValue(item, depth + 1, budget)];
+    }));
+  }
+  throw new AdwBridgeError("invalid_response", "ADW policy contains invalid transport data");
 }
 
-/** Redact runtime details to a safe executable basename and status flags. */
+function copyPolicyValues(source: unknown): Record<string, unknown> {
+  if (!isRecord(source)) return {};
+  const copied = copyPolicyValue(source, 0, { remaining: MAX_POLICY_ENTRIES });
+  if (!isRecord(copied)) throw new AdwBridgeError("invalid_response", "ADW policy is not an object");
+  return copied;
+}
+
+/** Because runtime status must not disclose private paths. */
 function readRuntime(response: Record<string, unknown>): AdwRuntimeStatus {
   const runtime = isRecord(response.runtime) ? response.runtime : {};
   const python = isRecord(runtime.python) ? runtime.python : {};
@@ -317,7 +221,7 @@ function readRuntime(response: Record<string, unknown>): AdwRuntimeStatus {
   };
 }
 
-/** Convert a bridge read response into the known, display-safe editor state. */
+/** Because untrusted bridge data must cross one decoding boundary. */
 export function decodeAdwPolicy(response: unknown): AdwPolicyState {
   if (!isRecord(response) || response.ok !== true) {
     const error = isRecord(response) && isRecord(response.error) ? response.error : {};
@@ -326,7 +230,6 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     throw new AdwBridgeError(code, message);
   }
   const familyNames = readFamilyNames(response);
-  const valueFamilies = uniqueNames([...familyNames, ...FAMILY_SWITCH_KEYS]);
   const ruleNames = readRuleNames(response);
   const digest = response.digest === null ? null : adwConfig.safePolicyString(response.digest, 64);
   if (digest !== null && (!digest || !/^[0-9a-f]{64}$/.test(digest))) {
@@ -340,18 +243,20 @@ export function decodeAdwPolicy(response: unknown): AdwPolicyState {
     configPath: adwConfig.sanitizeDisplay(response.config_path, 1024),
     digest,
     exists: response.exists === true,
-    values: copyKnownValues(response.values, valueFamilies, ruleNames),
-    effective: copyKnownValues(response.effective, valueFamilies, ruleNames),
+    values: copyPolicyValues(response.values),
+    effective: copyPolicyValues(response.effective),
     familyStates: readStateMap(response.family_states, familyNames, allowedFamilyState),
     ruleStates,
     runtime: readRuntime(response),
     families: readFamilyMetadata(response, familyNames),
     rules: readRuleMetadata(response, ruleNames),
     alwaysBlockingRules,
+    baselineModes: isRecord(response.wording) && isRecord(response.wording.baseline_wording)
+      ? uniqueNames(Object.keys(response.wording.baseline_wording)) : [],
   };
 }
 
-/** Turn a bridge response error into a bounded message safe for notifications. */
+/** Because errors can contain untrusted terminal text. */
 export function bridgeResponseError(response: unknown): AdwBridgeError | undefined {
   if (!isRecord(response) || response.ok === true) return undefined;
   const error = isRecord(response.error) ? response.error : {};
@@ -361,7 +266,7 @@ export function bridgeResponseError(response: unknown): AdwBridgeError | undefin
   );
 }
 
-/** Decode one bounded JSON response from the bridge process. */
+/** Because child output must stay within the transport budget. */
 function parseBridgeOutput(output: string | Buffer): AdwBridgeResponse {
   const bytes = Buffer.isBuffer(output) ? output : Buffer.from(output, "utf8");
   if (bytes.byteLength > BRIDGE_MAX_OUTPUT_BYTES) {
@@ -379,7 +284,7 @@ function parseBridgeOutput(output: string | Buffer): AdwBridgeResponse {
 
 function createCapability(): { directory: string; path: string; token: string } {
   const directory = mkdtempSync(join(tmpdir(), "adw-config-"));
-/** Create a one-shot capability file with restrictive permissions. */
+/** Because only the interactive editor may authorize policy writes. */
   const path = join(directory, "capability");
   const token = randomBytes(32).toString("hex");
   if (Buffer.byteLength(token, "utf8") > CAPABILITY_MAX_BYTES) {
@@ -390,7 +295,7 @@ function createCapability(): { directory: string; path: string; token: string } 
   return { directory, path, token };
 }
 
-/** Create a bridge runner that uses the fixed Configure route and one-shot write capability. */
+/** Because policy writes require a fresh interactive capability. */
 export function createConfigureBridgeRunner(runnerPath = resolveRunner()): AdwBridgeRunner {
   return request => {
     const environment: NodeJS.ProcessEnv = { ...process.env };
@@ -416,9 +321,13 @@ export function createConfigureBridgeRunner(runnerPath = resolveRunner()): AdwBr
       const stdout = isRecord(error) ? error.stdout : undefined;
       if (typeof stdout === "string" || Buffer.isBuffer(stdout)) {
         try {
-          return parseBridgeOutput(stdout);
+          const response = parseBridgeOutput(stdout);
+          if (response.ok === false && isRecord(response.error) &&
+              typeof response.error.code === "string" && typeof response.error.message === "string") {
+            return response;
+          }
         } catch {
-          // The process error is intentionally reduced to a fixed message below.
+          // Because child errors can expose private process details.
         }
       }
       throw new AdwBridgeError("bridge_failure", "ADW configuration bridge could not complete");
@@ -428,7 +337,7 @@ export function createConfigureBridgeRunner(runnerPath = resolveRunner()): AdwBr
   };
 }
 
-/** Run one bounded bridge request using the installed ADW runner. */
+/** Because every configure request uses the installed gate runtime. */
 export function runConfigureBridge(request: AdwConfigureRequest): AdwBridgeResponse {
   return createConfigureBridgeRunner()(request);
 }

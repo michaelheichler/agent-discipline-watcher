@@ -7,14 +7,14 @@ from pathlib import PurePath
 from typing import NamedTuple
 
 try:
-    from .comment_rules import _finding
+    from .findings import finding_row
     from .findings import spanning
     from .markup import INLINE_CODE_RE, MIXED_LANGUAGE_EXTS
     from .parataxis_lexicon import ABBREVIATIONS, ENGLISH, GERMAN as GERMAN_LEXICON, Lexicon
     from .prose_language import GERMAN
     from .prose_structure import LIST_ITEM_RE, Paragraph, ProseLine, _markdown_prose_lines, _source_line
 except ImportError:
-    from comment_rules import _finding
+    from findings import finding_row
     from findings import spanning
     from markup import INLINE_CODE_RE, MIXED_LANGUAGE_EXTS
     from parataxis_lexicon import ABBREVIATIONS, ENGLISH, GERMAN as GERMAN_LEXICON, Lexicon
@@ -247,7 +247,7 @@ def runs_in(path: str, masked: str, languages: list[str]) -> Iterator[Run]:
 
 
 def _run_finding(path: str, run: Run) -> dict:
-    return spanning(_finding(
+    return spanning(finding_row(
         FAMILY, run.lexicon.rule, run.sentences[0].line,
         f"{len(run.sentences)} short main clauses in a row with nothing joining them in {path}",
         shown(run.sentences),

@@ -2,7 +2,7 @@
 
 Agent Discipline Watcher (ADW) checks agent-written prose, comments, tests, and commits, then blocks or reports each finding with one rule and one line.
 
-Current release: **0.33.0**.
+Current release: **0.34.0**.
 
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Pylint](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml/badge.svg)](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml)
@@ -68,18 +68,20 @@ adw-config prose-languages en,de
 
 Test writes default to deny. To allow them temporarily, use `adw-config tests allow --for 30m`.
 
-Update the installed hosts to the latest release:
+Update selected installed hosts to the latest release. Choose one or more host flags.
 
 ```bash
-~/.adw/bin/adw update
+~/.adw/bin/adw update --claude --codex --omp
 ```
 
-Preview full removal, then remove ADW and its stored data:
+Preview full removal, then remove ADW and its stored data.
 
 ```bash
 ~/.adw/bin/adw-nuke --dry-run
 ~/.adw/bin/adw-nuke --yes
 ```
+
+Removal stops recorded ADW workers, removes local host integrations, and deletes the whole `~/.adw` tree, including state, reports, caches, and models. It also cleans registered project embedding leases and installer backups. It keeps project policy and unrelated host settings. The CLI removes ADW without reinstalling it. The `/agent-discipline-watcher:adw-nuke --yes` skill removes and reinstalls ADW, while its `--uninstall` option only removes it. Remove cloud account plugins through the account UI.
 
 ## How checks work
 
@@ -87,7 +89,7 @@ Preview full removal, then remove ADW and its stored data:
 
 **Meaning checks** compare prose sentences with examples of a rule, which can surface matching ideas expressed in different words. This layer is optional.
 
-**Document and model review** can assess structure that line-level rules cannot judge. Model review uses your selected host session, and some host review routes send the text under review to a model provider.
+**Document and model review** can assess structure that line-level rules cannot judge. Claude Code and Codex use the Luna provider route. OMP uses its configured provider. These routes can send the text under review to a model provider.
 
 The precision threshold helps keep false positives from blocking work. ADW reports rules that have not reached the threshold instead of blocking on them. See [evaluation results](evals/README.md).
 
@@ -97,7 +99,7 @@ ADW requires a Unix shell and Python 3.11 or newer. Model review uses the login 
 
 ADW keeps session state, findings, reports, caches, and provider runtimes under `~/.adw`. Project policy stays in `.agent-discipline.json` at the project root.
 
-Deterministic checks run locally. Model review may send candidate text to the provider used by that host. Codex and OMP review need `data_boundary.enabled` set to `true` in the project `.agent-discipline.json` file. The Claude review preset uses your Claude Code session. Choose a review setup only if its data handling fits your needs.
+Deterministic checks run locally. Model review may send candidate text to the provider used by that host. Codex and OMP review need `data_boundary.enabled` set to `true` in the project `.agent-discipline.json` file. Claude Code offers only the Luna preset, which uses the Codex login through an isolated provider runtime, not a headless Claude session. Choosing Luna on Claude Code supplies consent to that route. Choose a review setup only if its data handling fits your needs.
 
 ## Development
 
@@ -107,6 +109,8 @@ Run the project checks from the repository root:
 (cd hooks && python -m pytest . lib -q)
 python3 -m pytest pi/test_merge_settings.py -q
 (cd pi && bun install && bun test)
+(cd pi && bun run typecheck)
+python3 scripts/run_evals.py validate
 pylint $(git ls-files '*.py')
 claude plugin validate . --strict
 ```

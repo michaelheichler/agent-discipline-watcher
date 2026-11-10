@@ -1,13 +1,13 @@
 """Command handlers, because Luna has no native Claude agent route."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import re
-import stat
 from typing import Any
 
-from . import journal, claude_native, held_release, luna_outage, payloads, reporting, review_scope
+from . import secure_fs
+
+from . import journal, claude_native, held_release, luna_outage, payloads, reporting, path_policy, review_scope
 from .config import effective_hook_config
 from .document_review import changed_document_work
 from .held_release import NONE_HELD, Held
@@ -40,95 +40,22 @@ Work = tuple[JudgeRequest, Any]
 Answer = tuple[JudgeRequest, str]
 Judged = tuple[JudgeRequest, str, list[dict[str, Any]]]
 ADVICE_LEAD = "Advice, not a block."
-_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 _ROW_RE = re.compile(r"\d+\. ")
-
-
-def _descend(descriptor: int, part: str) -> int:
-    child = os.open(part, _DIRECTORY_FLAGS, dir_fd=descriptor)
-    try:
-        is_directory = stat.S_ISDIR(os.fstat(child).st_mode)
-    except OSError:
-        os.close(child)
-        raise
-    if not is_directory:
-        os.close(child)
-        raise ValueError("live candidate parent is not a directory")
-    os.close(descriptor)
-    return child
-
-
-def _open_parent(target: Path) -> int:
-    """One hop at a time, because a swapped symlink must not redirect the read."""
-    parts = [part for part in target.parent.parts if part not in (target.anchor, "")]
-    if any(part in (".", "..") for part in parts):
-        raise ValueError("unsafe path component")
-    descriptor = os.open("/", _DIRECTORY_FLAGS)
-    for part in parts:
-        try:
-            descriptor = _descend(descriptor, part)
-        except OSError:
-            os.close(descriptor)
-            raise
-    return descriptor
-
-
-def _read_up_to(handle: int, limit: int) -> bytes | None:
-    data = bytearray()
-    while len(data) <= limit:
-        chunk = os.read(handle, min(65536, limit + 1 - len(data)))
-        if not chunk:
-            break
-        data.extend(chunk)
-    return None if len(data) > limit else bytes(data)
-
-
-def _read_leaf(descriptor: int, name: str, limit: int) -> bytes | None:
-    """Metadata compared twice, because a file swapped mid-read is not the edit."""
-    leaf = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
-    if not stat.S_ISREG(leaf.st_mode):
-        return None
-    handle = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=descriptor)
-    try:
-        opened = os.fstat(handle)
-        if _file_metadata(opened) != _file_metadata(leaf) or opened.st_size > limit:
-            return None
-        data = _read_up_to(handle, limit)
-        final = os.fstat(handle)
-        if data is None or _file_metadata(final) != _file_metadata(opened) or len(data) != final.st_size:
-            return None
-        return data
-    finally:
-        os.close(handle)
-
-
-def _close_quietly(descriptor: int) -> None:
-    try:
-        os.close(descriptor)
-    except OSError:
-        pass
 
 
 def _bounded_file_text(path: Path, limit: int) -> tuple[str, int] | None:
     try:
-        target = Path(os.path.abspath(os.path.expanduser(os.fspath(path))))
-        descriptor = _open_parent(target)
+        target = path_policy.lexical_absolute(path)
+        descriptor = secure_fs.open_parent(target)
     except (OSError, ValueError):
         return None
     try:
-        data = _read_leaf(descriptor, target.name, limit)
+        data = secure_fs.read_regular(descriptor, target.name, limit)
         return None if data is None else (data.decode("utf-8"), len(data))
     except (OSError, ValueError):
         return None
     finally:
-        _close_quietly(descriptor)
-
-
-def _file_metadata(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
-    return (
-        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
-        metadata.st_mtime_ns, metadata.st_ctime_ns,
-    )
+        secure_fs.close_quietly(descriptor)
 
 
 def _byte_size(value: str) -> int:
@@ -255,10 +182,8 @@ def stop_rows(payload: object, state_root: str | Path | None) -> list[dict[str, 
     session_id = payloads.session_id(payload)
     if not session_id:
         return []
-    try:
-        return journal.read_for_stop(session_id, state_root=state_root, project=payloads.cwd(payload) or None)
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return []
+    project = payloads.cwd(payload) or None
+    return journal.read_for_stop(session_id, state_root=state_root, project=project)
 
 
 def _pattern_candidate(row: dict[str, Any]) -> PatternCandidate:
@@ -471,7 +396,11 @@ def run(
         return {}
     root = state_root if state_root is not None else cfg.get("state_root")
     held = held_blocks(payload, root, cfg) if event == "Stop" else NONE_HELD
-    work = _built(event, payload, root, cfg)
+    try:
+        work = _built(event, payload, root, cfg)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        reason = _bounded(f"{LUNA} review input could not be read: {exc}. Correct the journal state and retry.")
+        return keep_held(stop_block(reason) if event == "Stop" else context(reason, event), held)
     if work is None:
         return keep_held({}, held)
     if luna_outage.cooling(payload, root):

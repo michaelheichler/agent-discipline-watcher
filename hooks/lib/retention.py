@@ -3,10 +3,14 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 
 from . import reporting, session_state
 
@@ -65,27 +69,18 @@ def _compact_ledger(path: Path, cutoff: float, live: frozenset[str], reports: Pa
     if not path.exists():
         return set()
     resolved_reports = _resolved_reports_root(reports)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     kept_reports: set[Path] = set()
-    try:
-        with path.open("r", encoding="utf-8") as source, os.fdopen(descriptor, "w", encoding="utf-8") as target:
-            for line in source:
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    target.write(line)
-                    continue
-                if not isinstance(row, dict) or _is_kept(row, cutoff, live):
-                    target.write(line)
-                    if resolved_reports is not None:
-                        kept_reports.update(_referenced_reports(row, reports, resolved_root=resolved_reports))
-        os.replace(temporary, path)
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except OSError:
-            pass
-        raise
+    with state_recovery.atomic_open(path) as target, path.open("r", encoding="utf-8") as source:
+        for line in source:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                target.write(line)
+                continue
+            if not isinstance(row, dict) or _is_kept(row, cutoff, live):
+                target.write(line)
+                if resolved_reports is not None:
+                    kept_reports.update(_referenced_reports(row, reports, resolved_root=resolved_reports))
     return kept_reports
 
 

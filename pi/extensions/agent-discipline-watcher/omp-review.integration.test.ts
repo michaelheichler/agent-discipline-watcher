@@ -1,8 +1,10 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import type { Api, AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createExtension } from "./index";
 import { createOmpReviewer, type OmpReviewContext } from "./omp-review";
 import { type CompleteSimple } from "./omp-provider";
@@ -34,6 +36,7 @@ function fixture(complete: CompleteSimple, enabled = true, timeoutMs = 30_000) {
   directories.push(cwd);
   writeFileSync(join(cwd, ".agent-discipline.json"), JSON.stringify({
     data_boundary: { enabled }, adw_model: "anthropic/claude-haiku",
+    state_root: join(cwd, "state"), ledger_root: join(cwd, "ledger"),
   }));
   const path = join(cwd, "source.py");
   writeFileSync(path, `# ${COMMENT}\n# ${COMMENT}\n`);
@@ -42,7 +45,7 @@ function fixture(complete: CompleteSimple, enabled = true, timeoutMs = 30_000) {
     cwd, model: MODEL,
     models: { list: () => [MODEL], current: () => MODEL, resolve: () => MODEL },
     modelRegistry: { getApiKey: async () => "session-key", resolver: () => "session-key" },
-    sessionManager: { getSessionId: () => cwd },
+    sessionManager: { getSessionId: () => basename(cwd) },
   } as unknown as OmpReviewContext;
   const pi = { on: (name: string, handler: Handler) => handlers.set(name, handler), registerCommand() {}, sendMessage() {} };
   createExtension(pi as never, () => ({}), undefined, createOmpReviewer({ complete, timeoutMs }));
@@ -53,6 +56,15 @@ function fixture(complete: CompleteSimple, enabled = true, timeoutMs = 30_000) {
     result: () => review(path),
     stop: () => handlers.get("session_stop")!({}, ctx),
   };
+}
+
+function sharedCommentSchema(): Record<string, unknown> {
+  const hooks = join(import.meta.dir, "..", "..", "..", "hooks");
+  const version = readFileSync(join(hooks, "..", ".python-version"), "utf8").trim();
+  const resolve = '. "$1/resolve-python.sh" && adw_resolve_python "$2"';
+  const interpreter = execFileSync("sh", ["-c", resolve, "sh", hooks, version], { encoding: "utf8" }).trim();
+  const code = "import json\nfrom lib.judge_contracts import COMMENT_SCHEMA\nprint(json.dumps(COMMENT_SCHEMA))";
+  return JSON.parse(execFileSync(interpreter, ["-E", "-S", "-c", code], { cwd: hooks, encoding: "utf8" }));
 }
 
 function notes(items: Array<{ quote: string; problem: string; fix: string }>): AssistantMessage {
@@ -140,7 +152,7 @@ test("a policy change during review prevents retries from sending more source", 
   let calls = 0;
   const harness = fixture(async () => {
     calls += 1;
-    if (calls === 1) writeFileSync(join(harness.ctx.cwd, ".agent-discipline.json"), JSON.stringify({ data_boundary: { enabled: false } }));
+    if (calls === 1) writeFileSync(join(harness.ctx.cwd, ".agent-discipline.json"), JSON.stringify({ data_boundary: { enabled: false }, state_root: join(harness.ctx.cwd, "state"), ledger_root: join(harness.ctx.cwd, "ledger") }));
     return answer(calls === 1 ? [verdict(0)] : [verdict(0), verdict(1, true)]);
   });
   await harness.result();
@@ -148,6 +160,7 @@ test("a policy change during review prevents retries from sending more source", 
   expect(calls).toBe(1);
   writeFileSync(join(harness.ctx.cwd, ".agent-discipline.json"), JSON.stringify({
     data_boundary: { enabled: true }, adw_model: "anthropic/claude-haiku",
+    state_root: join(harness.ctx.cwd, "state"), ledger_root: join(harness.ctx.cwd, "ledger"),
   }));
   expect(JSON.stringify(await harness.result())).toContain("Describes the returned value");
   expect(calls).toBe(2);
@@ -185,11 +198,14 @@ test("an ambiguous document quote drops only that note and names the cause witho
 
 test("a multi-request review prepares once and re-prepares only before a retry", async () => {
   const operations: string[] = [];
-  const request = (id: number) => ({ id, prompt: `request ${id}`, schema: {}, instructions: `instructions ${id}` });
+  const schema = sharedCommentSchema();
+  const request = (id: number) => ({ id, prompt: `request ${id}`, schema, instructions: `instructions ${id}` });
+  const path = join(tmpdir(), "a.py");
+  const digest = createHash("sha256").update("reviewed source").digest("hex");
   const bridge = (call: Record<string, unknown>) => {
     operations.push(String(call.operation));
     if (call.operation === "prepare") {
-      return { enabled: true, model: "anthropic/claude-haiku", path: "a.py", digest: "d", requests: [request(0), request(1)] };
+      return { enabled: true, model: "anthropic/claude-haiku", path, digest, requests: [request(0), request(1)] };
     }
     if (call.request_id === 1 && operations.filter(item => item === "validate").length === 2) throw new Error("try again");
     return {};

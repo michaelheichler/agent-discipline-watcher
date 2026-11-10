@@ -1,17 +1,57 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import NamedTuple, cast
 
 try:
     from .findings import Finding, FindingDict
-    from .markup import _strip_english_hidden, _strip_inline_code
+    from .markup import _strip_english_hidden, _strip_inline_code, mask_phrase_mentions
     from .prose_structure import _markdown_prose_lines
 except ImportError:
     from findings import Finding, FindingDict
-    from markup import _strip_english_hidden, _strip_inline_code
+    from markup import _strip_english_hidden, _strip_inline_code, mask_phrase_mentions
     from prose_structure import _markdown_prose_lines
+
+
+LiteralCheck = Callable[[str, re.Match[str]], bool]
+APOSTROPHE_TRANSLATION = str.maketrans({"’": "'", "‘": "'", "`": "'"})
+TECHNICAL_OBJECT_RE = re.compile(
+    r"\b(?:archive|tarball|zip|tuple|bytes?|buffer|packet|struct|payload|route|routing|"
+    r"directory|file|syntax|menu|tree|graph|path|parser|stream|BOM|UTF-8|"
+    r"cache|value|descriptor|socket|process|destination|storage|record|row|node|page|entry)\b"
+    r"|\b\w+\([^\n)]*\)|\b\d+(?:\.\d+)?\b|(?:\.?\.?/)[\w./-]+",
+    re.IGNORECASE,
+)
+MEASURABLE_PROPERTY_RE = re.compile(
+    r"(?:fast|slow|deterministic|reliable|secure|portable|readable|thread-safe)", re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PhraseFamily:
+    patterns: tuple[re.Pattern[str], ...]
+    literal: LiteralCheck | None = None
+
+    @classmethod
+    def compile(cls, *patterns: str, literal: LiteralCheck | None = None) -> PhraseFamily:
+        return cls(tuple(re.compile(pattern, re.I) for pattern in patterns), literal)
+
+
+def phrase_text(text: str) -> str:
+    """Normalize once because every phrase rule scans the same visible text."""
+    return mask_phrase_mentions(text).translate(APOSTROPHE_TRANSLATION)
+
+
+def _literal_use(text: str) -> bool:
+    return bool(TECHNICAL_OBJECT_RE.search(text) or MEASURABLE_PROPERTY_RE.fullmatch(text.strip()))
+
+
+class EnglishRule(NamedTuple):
+    family: PhraseFamily
+    name: str
+    action: str
 
 
 class WeightedMarker(NamedTuple):
@@ -145,6 +185,7 @@ FORMULAIC_CLOSERS = (
     r"(?:remember|keep in mind),? (?:it'?s|the)",
 )
 FILLER_PATTERNS = (
+    r"(?:it is|it's) worth (?:noting|remembering|mentioning|highlighting|considering|understanding|recognizing)",
     r"it is (?:important|worth|crucial|essential|interesting) to (?:note|remember|mention|highlight|consider|understand|recognize)",
     r"on (?:the )?one hand\b.{3,120}\bon the other(?: hand)?",
     r"(?:this|that|which) (?:is to say|means that|implies that|suggests that|indicates that)",
@@ -192,6 +233,8 @@ VAGUE_DECLARATIVE_PATTERNS = (
     r"this is the deepest problem",
     r"the stakes are high",
     r"the consequences are real",
+    r"the (?:challenges|issues|problems) are (?:multifaceted|complex)"
+    r" and the (?:opportunities|possibilities) are (?:transformative|limitless|endless)",
 )
 PERFORMATIVE_PATTERNS = (
     r"\bcreeps in\b",
@@ -200,10 +243,14 @@ PERFORMATIVE_PATTERNS = (
 )
 BANNED_ADVERB_PATTERNS = (
     r"\b(?:really|just|literally|genuinely|honestly|simply|actually|deeply|truly"
-    r"|fundamentally|inherently|inevitably|interestingly|importantly|crucially)\b",
+    r"|fundamentally|inherently|inevitably|interestingly|importantly|crucially"
+    r"|absolutely|totally|completely|utterly|entirely)\b",
 )
 JARGON_PATTERNS = (
-    r"\bnavigat(?:e|ing|es) the\b",
+    r"\bnavigat(?:e|ed|ing|es) the\b",
+    r"\b(?:explor(?:e|es|ed|ing)|examin(?:e|es|ed|ing)) (?:this|the) "
+    r"(?:complicated|complex|wider|broader|evolving) (?:\w+ ){0,2}(?:environment|ecosystem|landscape)\b",
+    r"\bembrac(?:e|es|ed|ing) (?:the|a|our) (?:new |evolving )?strategic (?:direction|vision|paradigm)\b",
     r"\b(?:let me |to )?unpack (?:the|this|that)\b",
     r"\blean(?:s|ing)? into\b",
     r"\b(?:competitive|market|business|digital|regulatory|technology|tech|threat|security|cybersecurity|vendor"
@@ -262,38 +309,6 @@ _WEIGHTED_PATTERNS = tuple(
     (_weighted_pattern(marker), marker)
     for marker in WEIGHTED_MARKERS
 )
-_FORMULAIC_PATTERNS = {
-    "formulaic_opener": tuple(re.compile(value, re.IGNORECASE) for value in FORMULAIC_OPENERS),
-    "formulaic_filler": tuple(re.compile(value, re.IGNORECASE) for value in FILLER_PATTERNS),
-    "filler_phrase": tuple(
-        re.compile(value, re.IGNORECASE) for value in EXTRA_FILLER_PATTERNS
-    ),
-    "throat_clearing_opener": tuple(
-        re.compile(value, re.IGNORECASE) for value in THROAT_CLEARING_PATTERNS
-    ),
-    "emphasis_crutch": tuple(
-        re.compile(value, re.IGNORECASE) for value in EMPHASIS_CRUTCH_PATTERNS
-    ),
-    "meta_commentary": tuple(
-        re.compile(value, re.IGNORECASE) for value in META_COMMENTARY_PATTERNS
-    ),
-    "telling_not_showing": tuple(
-        re.compile(value, re.IGNORECASE) for value in TELLING_PATTERNS
-    ),
-    "vague_declarative": tuple(
-        re.compile(value, re.IGNORECASE) for value in VAGUE_DECLARATIVE_PATTERNS
-    ),
-    "performative_emphasis": tuple(
-        re.compile(value, re.IGNORECASE) for value in PERFORMATIVE_PATTERNS
-    ),
-    "banned_adverb": tuple(
-        re.compile(value, re.IGNORECASE) for value in BANNED_ADVERB_PATTERNS
-    ),
-    "business_jargon": tuple(
-        re.compile(value, re.IGNORECASE) for value in JARGON_PATTERNS
-    ),
-}
-
 
 def _visible_text(text: str) -> str:
     return "\n".join(
@@ -335,11 +350,117 @@ def _formulaic_scope(rule: str, text: str) -> str:
     return text
 
 
+def _sentence_context(text: str, found: re.Match[str]) -> tuple[str, str]:
+    start = max(text.rfind(mark, 0, found.start()) for mark in (".", "!", "?", "\n")) + 1
+    endings = [position for mark in (".", "!", "?", "\n") if (position := text.find(mark, found.end())) >= 0]
+    end = min(endings, default=len(text))
+    return text[start:found.start()], text[found.end():end]
+
+
+def _meaningful_adverb(text: str, found: re.Match[str]) -> bool:
+    before, after = _sentence_context(text, found)
+    word = found.group().lower()
+    if word == "literally":
+        return _literal_use(before + after) and bool(re.search(r"\b(?:not|rather than|instead of)\b", after, re.I))
+    if word in {"simply", "actually"}:
+        return _literal_use(after if word == "simply" else before + after)
+    if word in {"absolutely", "totally", "completely", "utterly", "entirely"}:
+        return _literal_use(after) and len(after.split()) > 1
+    return bool(word == "just" and re.search(r"\b(?:has|have|had)\s*$", before, re.I))
+
+
+def _literal_jargon(text: str, found: re.Match[str]) -> bool:
+    phrase = found.group().lower()
+    if not (phrase.startswith("navigat") or "unpack" in phrase):
+        return False
+    return _literal_use(" ".join(text[found.end():].split()[:3]))
+
+
+def _grounded_assertion(text: str, found: re.Match[str]) -> bool:
+    _before, after = _sentence_context(text, found)
+    reason = re.search(r"(?:\bbecause\b|:\s*)(.+)", after, re.I)
+    if not reason:
+        return False
+    words = re.findall(r"\b[a-z]+\b", reason[1].lower())
+    vague = {"it", "this", "that", "is", "are", "really", "very", "important", "hard", "matters"}
+    return len(set(words) - vague) >= 4
+
+
+def _temporal_day(text: str, found: re.Match[str]) -> bool:
+    if found.group().lower() != "at the end of the day":
+        return False
+    _before, after = _sentence_context(text, found)
+    return bool(re.search(
+        r"\b(?:complete[ds]?|finished?|closed?|shut|ended?|depart(?:s|ed)?|arriv(?:es|ed)|"
+        r"sunset|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b", after, re.I,
+    ))
+
+
+def _literal_agency(text: str, found: re.Match[str]) -> bool:
+    if not re.search(r"\b(?:demands?|shifts?|moves? toward)$", found.group(), re.I):
+        return False
+    _before, after = _sentence_context(text, found)
+    return _literal_use(after)
+
+
+def _ordinary_construction(_text: str, found: re.Match[str]) -> bool:
+    return _literal_use(found.group())
+
+
+def _additive_properties(text: str, found: re.Match[str]) -> bool:
+    halves = re.fullmatch(r"not just (.+) but also", found.group(), re.I)
+    if halves is None:
+        return False
+    _before, after = _sentence_context(text, found)
+    return _literal_use(halves[1]) and _literal_use(after)
+
+
+def _literal_office_idiom(text: str, found: re.Match[str]) -> bool:
+    after = text[found.end():]
+    return bool(found.group().lower().startswith("circl") and re.match(r"\s+to\b", after, re.I) and _literal_use(after))
+
+
+def phrase_family_matches(patterns: tuple[re.Pattern[str], ...], text: str, literal: LiteralCheck | None = None) -> Iterator[re.Match[str]]:
+    """Share contextual matching because phrase variants must keep the same meaning checks."""
+    for pattern in patterns:
+        if pattern.search(text) is None:
+            continue
+        for found in pattern.finditer(text):
+            if literal is None or not literal(text, found):
+                yield found
+
+
+_FORMULAIC_RULES = {
+    "formulaic_opener": PhraseFamily.compile(*FORMULAIC_OPENERS),
+    "formulaic_filler": PhraseFamily.compile(*FILLER_PATTERNS),
+    "filler_phrase": PhraseFamily.compile(*EXTRA_FILLER_PATTERNS),
+    "throat_clearing_opener": PhraseFamily.compile(*THROAT_CLEARING_PATTERNS),
+    "emphasis_crutch": PhraseFamily.compile(*EMPHASIS_CRUTCH_PATTERNS),
+    "meta_commentary": PhraseFamily.compile(*META_COMMENTARY_PATTERNS),
+    "telling_not_showing": PhraseFamily.compile(*TELLING_PATTERNS, literal=_grounded_assertion),
+    "vague_declarative": PhraseFamily.compile(*VAGUE_DECLARATIVE_PATTERNS),
+    "performative_emphasis": PhraseFamily.compile(*PERFORMATIVE_PATTERNS),
+    "banned_adverb": PhraseFamily.compile(*BANNED_ADVERB_PATTERNS, literal=_meaningful_adverb),
+    "business_jargon": PhraseFamily.compile(*JARGON_PATTERNS, literal=_literal_jargon),
+}
+_FORMULAIC_PATTERNS = {name: family.patterns for name, family in _FORMULAIC_RULES.items()}
+
+
+def formulaic_filler_opener(text: str, found: re.Match[str]) -> bool:
+    """Prefer the phrase row because matching openers repeat the same finding."""
+    family = _FORMULAIC_RULES["formulaic_filler"]
+    start = found.start() + len(found[0]) - len(found[0].lstrip())
+    return any(
+        match.start() == start
+        for match in phrase_family_matches(family.patterns, text, family.literal)
+    )
+
+
 def _formulaic_matches(rule: str, text: str) -> tuple[PhraseMatch, ...]:
+    family = _FORMULAIC_RULES[rule]
     matches = [
-        PhraseMatch(match.group(), 0.0, match.start())
-        for pattern in _FORMULAIC_PATTERNS[rule]
-        for match in pattern.finditer(_formulaic_scope(rule, text))
+        PhraseMatch(text[match.start():match.end()], 0.0, match.start())
+        for match in phrase_family_matches(family.patterns, _formulaic_scope(rule, text), family.literal)
     ]
     return _non_overlapping_matches(matches)
 
@@ -398,8 +519,9 @@ def _weighted_findings(context: ScanText) -> list[FindingDict]:
 
 
 def _formulaic_findings(context: ScanText) -> Iterator[FindingDict]:
-    for rule in _FORMULAIC_PATTERNS:
-        for match in _formulaic_matches(rule, context.visible):
+    visible = phrase_text(context.visible)
+    for rule in _FORMULAIC_RULES:
+        for match in _formulaic_matches(rule, visible):
             yield _finding(context, FindingMatch(rule, match, None))
 
 

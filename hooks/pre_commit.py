@@ -16,6 +16,8 @@ from lib.hookio import (
     PARSE_FAILURE, advise, allow, claude_pretool_response, deny, fail_closed, read_payload, write_payload,
 )
 from lib.merge_state import incoming_commits, revision_text, session_started
+from lib.regular_file import read_regular_text
+from lib.path_policy import anchored
 from lib.reporting import inherited_advice, record_findings, run_with_ledger, verdict_message
 from lib.scan_input import is_binary_content
 from lib.scanner import file_length_findings, scan_all, scannable_text
@@ -94,7 +96,10 @@ def _gate(context: _CommitRunContext, turn_id: str, commit_cwds: list[Path]) -> 
     cwd = _payload_cwd(context.payload)
     repo_rows = _repo_findings_by_repo(commit_cwds, context.config, _session_start(context))
     outer_cfg = effective_config(context.config, cwd)
-    message_findings = _message_findings(_bash_command(context.payload), outer_cfg, cwd)
+    try:
+        message_findings = _message_findings(_bash_command(context.payload), outer_cfg, cwd)
+    except UnreadableCommit as exc:
+        return deny(f"{COMMIT_REFUSED}{exc}")
     stamp = _RecordStamp(
         session_id=str(context.payload.get("session_id") or ""),
         tool_use_id=str(context.payload.get("tool_use_id") or ""),
@@ -246,11 +251,48 @@ def _trailer_metadata_ranges(text: str) -> tuple[tuple[int, int], ...]:
 
 def _commit_messages(command: str | list[str], cwd: Path | None = None) -> list[str]:
     calls = git_calls(command, cwd or Path.cwd())
-    return [value for call in calls if call.verb == "commit" for value in _message_values(call.args)]
+    return [value for call in calls if call.verb == "commit" for value in _message_values(call.args, call.cwd, call.stdin)]
 
 
-def _message_value_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
+def _file_message(value: str, cwd: Path | None, stdin: str | None) -> str:
+    """Read before commit because file-backed prose ships with the same authority."""
+    name = decode_ansi_c_value(value)
+    if name == "-" and stdin is not None:
+        return stdin
+    if not name or name == "-":
+        raise UnreadableCommit("commit message stdin is unavailable; use -m or a readable --file")
+    base = cwd or Path.cwd()
+    path = anchored(name, base)
+    literal = base / name
+    if literal != path and literal.exists():
+        raise UnreadableCommit("commit message path has both literal and expanded home targets; use an absolute path")
+    try:
+        return read_regular_text(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise UnreadableCommit(f"commit message file cannot be read: {path}") from exc
+
+
+def _message_file_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
     token = tokens[cursor]
+    if token.startswith("--file="):
+        return token.partition("=")[2], cursor + 1
+    short = token[1:] if token.startswith("-") and not token.startswith("--") else ""
+    flags, marker, inline = short.partition("F")
+    bundled = bool(marker) and all(char in _BOOLEAN_BUNDLE_CHARS for char in flags)
+    if bundled and inline:
+        return inline, cursor + 1
+    if token == "--file" or bundled:
+        if cursor + 1 >= len(tokens):
+            raise UnreadableCommit("commit message file is missing")
+        return tokens[cursor + 1], cursor + 2
+    return None, cursor + 1
+
+
+def _message_value_at(tokens: list[str], cursor: int, cwd: Path | None = None, stdin: str | None = None) -> tuple[str | None, int]:
+    token = tokens[cursor]
+    file_name, next_cursor = _message_file_at(tokens, cursor)
+    if file_name is not None:
+        return _file_message(file_name, cwd, stdin), next_cursor
     if token in {"-m", "--message"} or _is_message_bundle(token):
         next_cursor = cursor + 2
         if cursor + 1 >= len(tokens):
@@ -264,17 +306,19 @@ def _message_value_at(tokens: list[str], cursor: int) -> tuple[str | None, int]:
     return None, cursor + 1
 
 
-def _message_values(tokens: list[str]) -> list[str]:
+def _message_values(tokens: list[str], cwd: Path | None = None, stdin: str | None = None) -> list[str]:
     values: list[str] = []
     cursor = 0
     while cursor < len(tokens):
-        value, cursor = _message_value_at(tokens, cursor)
+        if tokens[cursor] == "--":
+            break
+        value, cursor = _message_value_at(tokens, cursor, cwd, stdin)
         if value is not None:
             values.append(value)
     return values
 
 
-_BOOLEAN_BUNDLE_CHARS = frozenset("anqvoe")
+_BOOLEAN_BUNDLE_CHARS = frozenset("anqvoes")
 
 
 def _is_message_bundle(token: str) -> bool:

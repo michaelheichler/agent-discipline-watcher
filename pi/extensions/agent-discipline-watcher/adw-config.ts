@@ -9,9 +9,6 @@ import {
 } from "@oh-my-pi/pi-tui";
 
 import {
-  BASELINE_MODES,
-  FAMILY_STATES,
-  RULE_STATES,
   allowedBaseline,
   allowedFamilyState,
   allowedRuleGate,
@@ -53,12 +50,12 @@ export interface AdwConfigCallbacks {
   availableModels?: readonly string[];
 }
 
-/** Narrow unknown bridge and draft values to object records. */
+/** Because arrays must not enter object-only transport fields. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Remove terminal controls and collapse line breaks before data reaches the TUI. */
+/** Because bridge text must not control the terminal. */
 export function sanitizeDisplay(value: unknown, limit = 512): string {
   const text = typeof value === "string" ? value : value == null ? "" : String(value);
   return text
@@ -69,7 +66,7 @@ export function sanitizeDisplay(value: unknown, limit = 512): string {
     .slice(0, limit);
 }
 
-/** Accept only bounded, control-free policy strings from bridge data. */
+/** Because policy labels must remain bounded and control-free. */
 export function safePolicyString(value: unknown, limit = 4096): string | undefined {
   if (typeof value !== "string" || value.length === 0 || value.length > limit) return undefined;
   if (/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)) return undefined;
@@ -110,7 +107,7 @@ function copyValues(values: Record<string, unknown>): Record<string, unknown> {
   return output;
 }
 
-/** Fullscreen editor for known ADW policy values. */
+/** Because policy changes require an explicit interactive save. */
 export class AdwConfigOverlayComponent implements Component, MouseRoutable {
   #tui: TUI;
   #state: AdwPolicyState;
@@ -410,7 +407,8 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
   #cycleFamily(name: string): void {
     const metadata = this.#state.families.find(family => family.name === name);
     if (!metadata) return;
-    const states = metadata.states.length > 0 ? metadata.states : [...FAMILY_STATES];
+    const states = metadata.states;
+    if (states.length === 0) return;
     const current = this.#familyState(name);
     const next = states[(states.indexOf(current) + 1) % states.length] ?? states[0] ?? "off";
     this.#setNested("gates", name, next);
@@ -424,7 +422,8 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
   #cycleRule(name: string): void {
     const metadata = this.#state.rules.find(rule => rule.name === name);
     if (!metadata || metadata.locked) return;
-    const states = metadata.states.length > 0 ? metadata.states : [...RULE_STATES];
+    const states = metadata.states;
+    if (states.length === 0) return;
     const current = this.#ruleState(name);
     const next = typeof current === "string"
       ? states[(states.indexOf(current) + 1) % states.length] ?? states[0] ?? "observe"
@@ -450,7 +449,10 @@ export class AdwConfigOverlayComponent implements Component, MouseRoutable {
 
   #cycleBaseline(): void {
     const current = this.#baseline();
-    const next = BASELINE_MODES[(BASELINE_MODES.indexOf(current) + 1) % BASELINE_MODES.length] ?? "report";
+    const modes = this.#state.baselineModes;
+    if (modes.length === 0) return;
+    const next = modes[(modes.indexOf(current) + 1) % modes.length];
+    if (next === undefined) return;
     this.#draft.baseline = next;
     this.#markDirty();
   }

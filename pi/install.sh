@@ -87,6 +87,10 @@ if [ "$remove" -eq 0 ] && [ "${ADW_INSTALL_SKIP_DEPLOY:-0}" -ne 1 ]; then
 fi
 if [ "$remove" -eq 0 ]; then
   skill_dir="$install_dir"
+  if [ ! -f "$skill_dir/hooks/lib/mcp_contract.json" ]; then
+    echo "OMP MCP contract missing from the installed ADW root" >&2
+    exit 1
+  fi
 fi
 extension_src="$skill_dir/pi/extensions/$extension_name"
 extension_link="$omp_agent_dir/extensions/$extension_name"

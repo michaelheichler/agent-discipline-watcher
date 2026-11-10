@@ -165,11 +165,17 @@ def test_without_yes_prints_the_list_and_refuses(home, capsys) -> None:
 
 
 def test_yes_removes_every_artifact(home, capsys) -> None:
-    assert nuke_runtime.main(["--yes"], steps=_steps(home)) == 0
+    calls = []
+    steps = _steps(home, run_claude=lambda command, env: calls.append((command, env)) or "ok")
+    assert nuke_runtime.main(["--yes"], steps=steps) == 0
     output = capsys.readouterr().out
     removed = [line.removeprefix("remove ") for line in _expected_lines(home) if line.startswith("remove ")]
     assert [path for path in removed if os.path.lexists(path)] == []
-    assert output.rstrip().endswith("Restart Claude Code, Codex, and OMP, then run ./install.sh from a checkout.")
+    environment = {"PATH": "", "HOME": str(home), "CLAUDE_CONFIG_DIR": str(home / ".claude")}
+    assert calls == [
+        (["plugin", "uninstall", PLUGIN_ID], environment),
+        (["plugin", "marketplace", "remove", NAME], environment),
+    ]
     assert output.split("\nEdited config files:")[0].splitlines()[-1] == f"removed {home / '.adw'}"
     assert nuke_runtime.main(["--dry-run"], steps=_steps(home)) == 0
     assert capsys.readouterr().out == "Nothing of ADW is left on this machine.\n"

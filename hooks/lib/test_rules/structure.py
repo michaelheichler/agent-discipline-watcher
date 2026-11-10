@@ -4,7 +4,9 @@ from __future__ import annotations
 import ast
 import re
 
-from . import Hit, Rule, RuleSet, Unit, module_tree
+from . import Hit, Rule, RuleSet, Unit, enclosing_classes, module_tree
+from ..brace_functions import block_ends
+from ..test_units import javascript_assertions, javascript_scope
 
 IF_NAME = "if_statements_in_tests"
 ACT_NAME = "multiple_act_sections_in_unit_test"
@@ -37,8 +39,16 @@ def _test_node(unit: Unit, text: str) -> ast.FunctionDef | ast.AsyncFunctionDef 
     return None
 
 
+def _scope_nodes(statements):
+    for node in statements:
+        if isinstance(node, (*_FUNCTIONS, ast.ClassDef, ast.Lambda)):
+            continue
+        yield node
+        yield from _scope_nodes(ast.iter_child_nodes(node))
+
+
 def _has_assert(statements: list[ast.stmt]) -> bool:
-    return any(isinstance(node, ast.Assert) for stmt in statements for node in ast.walk(stmt))
+    return any(isinstance(node, ast.Assert) for node in _scope_nodes(statements))
 
 
 def _branches_on_assert(node: ast.If) -> bool:
@@ -52,7 +62,7 @@ def _match_branches_on_assert(node: ast.AST) -> bool:
 
 
 def _if_hits(test: ast.AST) -> list[int]:
-    nodes = list(ast.walk(test))
+    nodes = list(_scope_nodes(test.body))
     hits = [node for node in nodes if isinstance(node, ast.If) and _branches_on_assert(node)]
     if _MATCH_TYPES:
         matches = (node for node in nodes if isinstance(node, _MATCH_TYPES))
@@ -145,6 +155,46 @@ def _rust_act_hits(unit: Unit) -> list[Hit]:
     return [Hit(ACT_NAME, unit.start + second_act, unit.body.splitlines()[second_act])]
 
 
+def _javascript_if_hits(code: str, ends: dict[int, int]) -> list[int]:
+    hits = []
+    for found in re.finditer(r"\bif\s*\([^{}]*\)\s*\{", code):
+        opening = found.end() - 1
+        closing = ends.get(opening)
+        other = _RUST_ELSE_RE.match(code, closing + 1) if closing is not None else None
+        other_end = ends.get(other.end() - 1) if other else None
+        if other_end is not None and javascript_assertions(code[opening + 1:closing]):
+            if javascript_assertions(code[other.end():other_end]):
+                hits.append(found.start())
+    return hits
+
+
+def _javascript_top_level(code: str, positions: list[int]) -> list[int]:
+    braces, parens = 0, 0
+    wanted = set(positions)
+    found = []
+    for index, char in enumerate(code):
+        if index in wanted and braces == 1 and parens == 1:
+            found.append(index)
+        braces += (char == "{") - (char == "}")
+        parens += (char == "(") - (char == ")")
+    return found
+
+
+def _javascript_hits(unit: Unit) -> list[Hit]:
+    code = javascript_scope(unit)
+    ends = block_ends(code, javascript=True)
+    branches = _javascript_if_hits(code, ends)
+    acts = [found.start() for found in re.finditer(r"\bsut(?:\s*\.\s*\w+)*\s*\(", code)]
+    second = _second_act_index(_javascript_top_level(code, acts),
+                               _javascript_top_level(code, javascript_assertions(code)))
+    positions = [(IF_NAME, position) for position in branches]
+    if second is not None:
+        positions.append((ACT_NAME, second))
+    lines = unit.body.splitlines()
+    return [Hit(rule, unit.start + code.count("\n", 0, position),
+                lines[code.count("\n", 0, position)]) for rule, position in positions]
+
+
 def _self_attr(node: ast.expr) -> str | None:
     """Match self.name, because a bare name is a local, not fixture state."""
     is_self_owned = isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
@@ -158,15 +208,6 @@ def _built_attrs(method: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
         if isinstance(node.value, ast.Call):
             built |= {attr for target in node.targets if (attr := _self_attr(target))}
     return built
-
-def _enclosing_class(tree: ast.Module, unit: Unit) -> ast.ClassDef | None:
-    classes = (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
-    for node in classes:
-        starts = (child.lineno for child in node.body if isinstance(child, _FUNCTIONS))
-        if unit.start in starts:
-            return node
-    return None
-
 
 def _constructor(cls: ast.ClassDef) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     methods = (node for node in cls.body if isinstance(node, _FUNCTIONS))
@@ -182,7 +223,7 @@ def _reused_line(test: ast.FunctionDef | ast.AsyncFunctionDef, built: set[str]) 
 
 
 def _ctor_hit(unit: Unit, tree: ast.Module) -> int | None:
-    cls = _enclosing_class(tree, unit)
+    cls = enclosing_classes(tree).get(unit.start)
     ctor = _constructor(cls) if cls is not None else None
     if ctor is None:
         return None
@@ -200,6 +241,8 @@ def check(unit: Unit, text: str) -> list[Hit]:
     """Share one entry, because the registry calls check per test."""
     if unit.language == "rust":
         return _rust_if_hits(unit) + _rust_act_hits(unit)
+    if unit.language == "javascript":
+        return _javascript_hits(unit)
     test = _test_node(unit, text)
     if test is None:
         return []

@@ -321,6 +321,20 @@ def _validate_tests_policy(fields: dict[str, object]) -> None:
         raise ConfigLoadError("tests must be allow or deny")
 
 
+def _validate_structured_policy(settings: dict[str, object]) -> None:
+    """Reuse the bridge schema because malformed maps must not disable enforcement."""
+    # Because the bridge imports config, defer its import until loading a document.
+    try:
+        from .configure_policy import MAPPING_MERGE_KEYS, known_values
+    except ImportError:
+        from configure_policy import MAPPING_MERGE_KEYS, known_values
+    structured = {key: value for key, value in settings.items() if key in MAPPING_MERGE_KEYS or key == "exempt_paths"}
+    try:
+        known_values(structured)
+    except ValueError as exc:
+        raise ConfigLoadError(str(exc)) from exc
+
+
 def _parse_project_config(path: Path, raw: bytes) -> ProjectConfig:
     """Decode one bounded project document and return its flattened policy settings."""
     _check_json_depth(raw)
@@ -338,7 +352,9 @@ def _parse_project_config(path: Path, raw: bytes) -> ProjectConfig:
     fields = exact_string_dict(data)
     _validate_legacy_family_values(fields)
     _validate_tests_policy(fields)
-    return ProjectConfig(path, fields, flatten_settings(fields), hashlib.sha256(raw).hexdigest(), True)
+    settings = flatten_settings(fields)
+    _validate_structured_policy(settings)
+    return ProjectConfig(path, fields, settings, hashlib.sha256(raw).hexdigest(), True)
 
 
 def load_project_config(path: str | os.PathLike[str]) -> ProjectConfig:
@@ -451,7 +467,7 @@ def family_enabled(cfg: dict, family: str) -> bool:
 def _gate_state_from(cfg: dict, family: str) -> str:
     names = families.scope(family)
     switches = gate_map(cfg, "kill_switches")
-    if any(switches.get(name) for name in names):
+    if any(switches.get(name) is True for name in names):
         return "off"
     gates = gate_map(cfg, "gates")
     for name in names:

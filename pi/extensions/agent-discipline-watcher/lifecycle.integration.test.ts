@@ -189,7 +189,11 @@ test.each(["mcp__files__write", "mcp__fs__write_file"])("post-scans an admitted 
   expect(events).toEqual(["PreToolUse", "PostToolUse", "JudgeReview", "Stop"]);
 });
 
-test.each(["write", "mcp__fs__write_file"])("blocks %s before a pathless write can execute", async toolName => {
+test.each([
+  ["write", []],
+  ["edit", []],
+  ["mcp__fs__write_file", ["PreToolUse"]],
+])("blocks %s before a pathless write can execute", async (toolName, expectedEvents) => {
   const events: string[] = [];
   const handlers = createHarness(event => {
     events.push(event);
@@ -201,7 +205,7 @@ test.each(["write", "mcp__fs__write_file"])("blocks %s before a pathless write c
   );
 
   expect(result).toMatchObject({ block: true });
-  expect(events).toEqual([]);
+  expect(events).toEqual(expectedEvents);
 });
 
 test("pre-gates native per-entry edits at each declared path", async () => {

@@ -5,15 +5,22 @@ import json
 import os
 import shutil
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+    from .config_roots import claude_config_roots as config_roots
+except ImportError:
+    import config_roots as config_paths
+    from config_roots import claude_config_roots as config_roots
 from typing import Iterator, NamedTuple
 
 
 MARKETPLACE = "agent-discipline-watcher"
 PLUGIN = "agent-discipline-watcher"
-CONFIG_ENV = "CLAUDE_CONFIG_DIR"
+CONFIG_ENV = config_paths.CLAUDE_CONFIG_ENV
+CACHE_PARTS = config_paths.CLAUDE_CACHE_PARTS
 PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
 SESSION_ENV = "CLAUDECODE"
-CACHE_PARTS = ("plugins", "cache", MARKETPLACE, PLUGIN)
 COMMAND_PARTS = ("commands", "adw")
 INSTALLED_LEAF = ("plugins", "installed_plugins.json")
 
@@ -27,21 +34,6 @@ class Target(NamedTuple):
 
     config_root: Path
     path: Path
-
-
-def config_roots(environment: dict[str, str] | None = None, home: Path | None = None) -> tuple[Path, ...]:
-    """Search the same three places Claude Code does, because a user may have moved their config."""
-    env = os.environ if environment is None else environment
-    base = Path.home() if home is None else home
-    candidates = [env.get(CONFIG_ENV, "").strip(), str(base / ".config" / "claude-code"), str(base / ".claude")]
-    roots: list[Path] = []
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = Path(candidate)
-        if path.is_dir() and path not in roots:
-            roots.append(path)
-    return tuple(roots)
 
 
 def _guard(path: Path, config_root: Path, parts: tuple[str, ...]) -> None:

@@ -110,3 +110,14 @@ def test_a_wired_gate_reports_the_count_it_found() -> None:
     assert described == {
         "preset": "luna", "source": "stored", "reviewers": "2", "judging": "yes",
     }
+
+
+def test_empty_profile_override_keeps_default_cache_reviewers_visible(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty-profile"))
+    monkeypatch.delenv(judge_status.PLUGIN_ROOT_ENV, raising=False)
+    cache = tmp_path / ".claude" / "plugins" / "cache" / "agent-discipline-watcher" / "agent-discipline-watcher" / "1.0" / "hooks"
+    cache.mkdir(parents=True)
+    _manifest(cache / "hooks.json", {"hooks": [AGENT]})
+
+    assert judge_status.plugin_reviewers() == 1

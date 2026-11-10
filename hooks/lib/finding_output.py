@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 try:
-    from . import catalog, catalog_de, hookio, principle_kb, session_state
+    from . import catalog, catalog_de, hookio, principle_kb, path_policy, session_state
     from .findings import Finding
     from .prose_language import GERMAN
 except ImportError:
@@ -15,6 +15,7 @@ except ImportError:
     import catalog_de
     import hookio
     import principle_kb
+    import path_policy
     import session_state
     from findings import Finding
     from prose_language import GERMAN
@@ -37,7 +38,7 @@ def canonical_path(value: object) -> str:
     if not isinstance(value, str) or not value:
         return ""
     try:
-        return str(Path(value).expanduser().resolve(strict=False))
+        return str(path_policy.real_path(value))
     except (OSError, RuntimeError, ValueError):
         return value
 

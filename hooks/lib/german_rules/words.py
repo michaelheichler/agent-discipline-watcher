@@ -7,11 +7,13 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import phrase_hits, sentence_hits
+    from ._text import phrase_hits, sentence_hits, phrase_families
+    from ._text import evidence_context, has_contrast, has_evidence
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import phrase_hits, sentence_hits
+    from german_rules._text import phrase_hits, sentence_hits, phrase_families
+    from german_rules._text import evidence_context, has_contrast, has_evidence
     from prose_language import ParagraphLanguage
 
 FILLER_WORD = Rule(
@@ -97,16 +99,18 @@ ABSTRACT_NOUNS = Rule(
     state="off",
 )
 
-FILLER_PARTICLES = r"(?i:\b(?:irgendwie|eigentlich|jedoch|obschon|na|nunmehr|lediglich)\b)"
+FILLER_PARTICLES = r"(?i:\b(?:irgendwie|eigentlich|jedoch|obschon|na|nunmehr|lediglich|halt)\b)"
 PARTICLE_DENN_NOT_CONJUNCTION = r"(?<!,)(?<!,\s)\bdenn\b"
 FILLER_RE = re.compile(FILLER_PARTICLES + "|" + PARTICLE_DENN_NOT_CONJUNCTION)
 INTENSIFIER_RE = re.compile(
     r"(?i:\b(?:(?<!voll und )ganz|sehr|durchaus|unbedingt|absolut|völlig|total"
     r"|anmiet\w*|angemietet\w*|unkosten)\b)"
+    + "|" + phrase_families("unglaublich~", "extrem~", "wahnsinnig~")
 )
 REDUNDANT_RE = re.compile(
     r"(?i:\bnie\s+und\s+nimmer\b|\bimmer\s+und\s+ewig\b|\bweiße[nrms]?\s+Schimmel\w*"
     r"|\bgemachten?\s+Erfahrung(?:en)?\b|\btelefonische[nrms]?\s+Anruf\w*|\bvoll\s+und\s+ganz\b)"
+    + "|" + phrase_families("schnell und zügig", "völlig komplett~", "wiederhol~ ... erneut")
 )
 _BRING = r"bring\w*|brachte\w*|gebracht|komm\w*|kam\w*|gekommen"
 _NEHMEN = r"nehm\w*|nimm\w*|nahm\w*|genommen"
@@ -120,6 +124,7 @@ STRETCHED_PAIRS = tuple(
         (r"\b[Zz]ur\s+Kenntnis\b", _BRING + "|" + _NEHMEN),
         (r"\b[Ii]n\s+Gang\b", r"setz\w*|gesetzt|" + _BRING),
         (r"\bRache\b", _NEHMEN),
+
     )
 )
 # humanizer-de Muster 65 words, because Q13 credits it.
@@ -128,12 +133,19 @@ COPULA_RE = re.compile(
     r"|\bzeichnet\s+sich\w*|\berweist\s+sich\s+als\w*|\brepräsentiert\w*|\brepraesentiert\w*)"
 )
 COPULA_MIN_COUNT = 2
+STRETCHED_FAMILY_RE = re.compile(phrase_families(
+    "mach~ ... Neustart", "nehm~/nimmt/nahm ... Prüfung ... vor",
+    "führ~ ... Validierung ... durch",
+))
 # humanizer-de Muster 45 calques, because Q21 follows it.
 ANGLICISM_RE = re.compile(
     r"(?i:\bam\s+Ende\s+des\s+Tages\b|\bin\s+Reihenfolge\s+zu\b|\bzu\s+Beginn\s+mit\b"
     r"|\bmacht\s+keinen\s+Unterschied\s+für\s+mich\b|\bVeränderung(?:en)?\s+um(?:zu)?arm\w*"
     r"|\bPoten[tz]iale?\s+frei(?:zu)?schalt\w*|\bdie\s+Reibung\s+fällt\b|\bsimpler\s+gegangen\b"
     r"|\bgegen\s+echten\s+Output\s+iterier\w*|\bder\s+Filter\s+bei\s+der\s+Arbeit\b)"
+    + "|" + phrase_families(
+        "tief~ Tauchgang in", "heb~/hebt ... Potenzial", "am Schluss des Tages",
+    )
 )
 # humanizer-de Muster 58 words, because Q13 credits it.
 ABSTRACT_RE = re.compile(
@@ -143,12 +155,34 @@ ABSTRACT_RE = re.compile(
 ABSTRACT_MIN_COUNT = 3
 
 
+INTENTION_MODAL_RE = re.compile(
+    r"\s+(?:will|wollte)\b(?:\s+[\wÄÖÜäöüß-]+){0,6}\s+fragen\b", re.IGNORECASE,
+)
+COMPARATIVE_COMPLEMENT_RE = re.compile(r"\s+anders\s+als\b", re.IGNORECASE)
+
+
+def _meaningful_particle(sentence: str, found: re.Match[str]) -> bool:
+    particle = found.group().casefold()
+    if particle in {"jedoch", "obschon"}:
+        return has_contrast(sentence)
+    if particle == "eigentlich":
+        return (not sentence[:found.start()].strip()
+                and INTENTION_MODAL_RE.match(sentence, found.end()) is not None)
+    return (particle == "irgendwie"
+            and COMPARATIVE_COMPLEMENT_RE.match(sentence, found.end()) is not None)
+
+
+def _empty_intensifier(sentence: str) -> list[re.Match[str]]:
+    return [found for found in INTENSIFIER_RE.finditer(sentence)
+            if not has_evidence(evidence_context(sentence, found.start()))]
+
+
 def _stretched_phrase(sentence: str) -> re.Match[str] | None:
     for noun, verb in STRETCHED_PAIRS:
         found = noun.search(sentence)
         if found is not None and verb.search(sentence):
             return found
-    return None
+    return STRETCHED_FAMILY_RE.search(sentence)
 
 
 def _counted(hits: list[Hit], minimum: int) -> list[Hit]:
@@ -158,8 +192,8 @@ def _counted(hits: list[Hit], minimum: int) -> list[Hit]:
 
 def _check(path: str, paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     return [
-        *phrase_hits(FILLER_WORD.name, paragraphs, FILLER_RE),
-        *phrase_hits(EMPTY_INTENSIFIER.name, paragraphs, INTENSIFIER_RE),
+        *sentence_hits(FILLER_WORD.name, paragraphs, FILLER_RE, unless=_meaningful_particle),
+        *sentence_hits(EMPTY_INTENSIFIER.name, paragraphs, _empty_intensifier),
         *phrase_hits(REDUNDANT_PAIR.name, paragraphs, REDUNDANT_RE),
         *sentence_hits(STRETCHED_VERB.name, paragraphs, _stretched_phrase),
         *_counted(phrase_hits(STRETCHED_VERB.name, paragraphs, COPULA_RE), COPULA_MIN_COUNT),

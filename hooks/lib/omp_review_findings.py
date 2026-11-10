@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .judge_contracts import ReviewKind, output_schema, validate_payload
+from .judge_contracts import ReviewKind, document_quote_line, validate_response
 from .omp_review_requests import ReviewWork
 from . import reporting
 from .finding_output import ReviewNote, review_row
@@ -35,19 +35,11 @@ def _candidate_findings(work: ReviewWork, payload: dict) -> list[str]:
 
 
 def _document_findings(work: ReviewWork, payload: dict) -> list[str]:
-    if len(payload["notes"]) > 6:
-        raise ValueError("document review exceeds the six-note limit")
     findings = []
     source = work.request.source_context
     for note in payload["notes"]:
         quote = note["quote"]
-        if not quote.strip() or quote not in source:
-            raise ValueError("document review quote does not occur in the source")
-        if source.find(quote, source.index(quote) + 1) >= 0:
-            raise ValueError("document review quote is ambiguous; include enough context to identify one occurrence")
-        if not note["problem"].strip() or not note["fix"].strip():
-            raise ValueError("document review note has no problem or fix")
-        line = source[:source.index(quote)].count("\n") + 1
+        line = document_quote_line(source, quote)
         note_row = ReviewNote(f"{_text(work.path)}:{line}", _text(quote), _text(note["problem"]), _text(note["fix"]))
         findings.append(review_row(note_row))
     return findings
@@ -67,7 +59,7 @@ def _finding_message(findings: list[str], config: dict | None, limit: int) -> st
 def validated_findings(work: ReviewWork, output: object, config: dict | None = None) -> dict:
     if not isinstance(output, str) or len(output.encode("utf-8")) > 64 * 1024:
         raise ValueError("model output is absent or exceeds the response limit")
-    payload = validate_payload(json.loads(output), output_schema(work.request))
+    payload = validate_response(work.request, json.loads(output))
     findings = _document_findings(work, payload) if work.request.review_kind is ReviewKind.DOCUMENT else _candidate_findings(work, payload)
     if not findings:
         return {}

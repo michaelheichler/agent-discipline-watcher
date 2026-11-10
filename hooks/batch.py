@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from lib import blocker_state, payloads, reporting, temp_authorship
+from lib import blocker_state, payloads, reporting, path_policy, temp_authorship
 from lib.canonical import (
     _INVALID,
     Canonical,
@@ -95,8 +95,7 @@ def _is_write_tool(tool_name: str) -> bool:
 
 def _normalized_path(raw_path: str, cwd: Path) -> str:
     try:
-        path = Path(raw_path).expanduser()
-        return str((path if path.is_absolute() else cwd / path).resolve(strict=False))
+        return str(path_policy.anchored_identity(raw_path, cwd))
     except (OSError, RuntimeError, ValueError):
         return raw_path
 

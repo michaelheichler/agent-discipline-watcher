@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .judge_contracts import JudgeRequest, JudgeResult, output_schema, validate_payload
+from .judge_contracts import JudgeRequest, JudgeResult, validate_response
 from .luna_storage import LunaProviderFailure
 
 
@@ -32,7 +32,7 @@ def validate_worker_result(request: JudgeRequest, result: object, provider_name:
         row = _coerced_result(result)
         _validate_identity(row, request, provider_name, effort_name)
         _validate_types(row)
-        payload = validate_payload(row["payload"], output_schema(request))
+        payload = validate_response(request, row["payload"])
         validate_candidate_indexes(request, payload)
         return JudgeResult(
             payload=payload, provider=row["provider"], model=row["model"], effort=row["effort"],

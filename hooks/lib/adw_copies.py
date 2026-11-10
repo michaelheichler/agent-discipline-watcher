@@ -4,6 +4,11 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 from typing import NamedTuple
 
 PLUGIN_NAME = "agent-discipline-watcher"
@@ -12,7 +17,6 @@ HEAD_BYTES = 4096
 MAX_ACCOUNT_PLUGINS = 200
 ACCOUNT_PLUGINS = "Library/Application Support/Claude/local-agent-mode-sessions/*/*/rpm/*"
 CLI_RECORD = ".claude/plugins/installed_plugins.json"
-SHARED_INSTALL = ".adw/install/agent-discipline-watcher"
 ACCOUNT_LABEL = "Claude account plugin (Desktop and Cowork)"
 CLI_LABEL = "Claude Code plugin"
 SHARED_LABEL = "Codex and OMP install"
@@ -40,7 +44,7 @@ def own_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _is_adw(root: Path) -> bool:
+def is_adw(root: Path) -> bool:
     try:
         manifest = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")[:HEAD_BYTES])
     except (OSError, ValueError):
@@ -60,21 +64,21 @@ def _cli_roots(home: Path) -> list[Path]:
     return [Path(path) for path in paths if isinstance(path, str) and path]
 
 
-def _account_roots(home: Path) -> list[Path]:
+def account_roots(home: Path) -> list[Path]:
     found = []
     for index, root in enumerate(home.glob(ACCOUNT_PLUGINS)):
         if index >= MAX_ACCOUNT_PLUGINS:
             break
-        if _is_adw(root):
+        if is_adw(root):
             found.append(root)
     return found
 
 
 def copies(home: Path | None = None) -> list[Copy]:
-    base = home if home is not None else Path.home()
+    base = config_paths.home_root(home)
     labelled = [(root, CLI_LABEL) for root in _cli_roots(base)]
-    labelled += [(base / SHARED_INSTALL, SHARED_LABEL)]
-    labelled += [(root, ACCOUNT_LABEL) for root in _account_roots(base)]
+    labelled += [(config_paths.install_root(base), SHARED_LABEL)]
+    labelled += [(root, ACCOUNT_LABEL) for root in account_roots(base)]
     found = []
     for root, label in labelled:
         version = release_of(root)

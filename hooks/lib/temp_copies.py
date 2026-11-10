@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from lib.shell_syntax import _bare, _basename, _command_word_index, _segments
-from lib.temp_scope import _absolute, _within, outside_project_temp
+from lib.path_policy import anchored, anchored_identity
+from lib.temp_scope import _within, outside_project_temp
 from lib.write_targets import _drop_target_dir, _expand_home, _target_directory
 
 COPY_VERBS = frozenset({"cp", "mv", "install", "rsync"})
@@ -30,7 +31,7 @@ class _Copy(NamedTuple):
 
 
 def source_key(path: str | os.PathLike[str], cwd: Cwd = None) -> str:
-    return os.path.realpath(_absolute(path, cwd))
+    return str(anchored_identity(path, Path(cwd or ".").absolute()))
 
 
 def temp_copy_destinations(command: str, cwd: Cwd) -> list[str]:
@@ -65,7 +66,7 @@ def _segment_landings(verb: str, args: list[str], cwd: Cwd, authored: frozenset[
         sources, target = paths[:-1], paths[-1]
     else:
         return []
-    destination = _absolute(target, cwd)
+    destination = anchored(target, Path(cwd or ".").absolute())
     return [
         landing
         for source in sources if outside_project_temp(source, cwd)
@@ -75,11 +76,11 @@ def _segment_landings(verb: str, args: list[str], cwd: Cwd, authored: frozenset[
 
 def _source_landings(copy: _Copy) -> list[Landing]:
     if any(char in copy.source for char in GLOB_CHARS):
-        matches = sorted(glob.glob(str(_absolute(copy.source, copy.cwd))))
+        matches = sorted(glob.glob(str(anchored(copy.source, Path(copy.cwd or ".").absolute()))))
         if matches:
             return [landing for match in matches for landing in _tree_landings(Path(match), copy.destination, False)]
         return _moved_glob_landings(copy)
-    source = _absolute(copy.source, copy.cwd)
+    source = anchored(copy.source, Path(copy.cwd or ".").absolute())
     if source.exists():
         contents = copy.source.endswith("/.") or (copy.verb == "rsync" and copy.source.endswith("/"))
         return _tree_landings(source, copy.destination, contents)

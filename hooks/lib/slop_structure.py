@@ -4,12 +4,22 @@ import re
 from typing import NamedTuple, cast
 
 try:
-    from .comment_rules import _finding
+    from .findings import finding_row
     from .findings import FindingDict
+    from .slop_phrase import (
+        LiteralCheck, _additive_properties, _literal_agency, _ordinary_construction,
+        formulaic_filler_opener, phrase_family_matches, phrase_text,
+    )
+    from .markup import mask_quoted
     from .prose_structure import _markdown_prose_lines
 except ImportError:
-    from comment_rules import _finding
+    from findings import finding_row
     from findings import FindingDict
+    from slop_phrase import (
+        LiteralCheck, _additive_properties, _literal_agency, _ordinary_construction,
+        formulaic_filler_opener, phrase_family_matches, phrase_text,
+    )
+    from markup import mask_quoted
     from prose_structure import _markdown_prose_lines
 
 
@@ -18,6 +28,7 @@ class StructureRule(NamedTuple):
     pattern: re.Pattern[str]
     detail: str
     action: str
+    literal: LiteralCheck | None = None
 
 
 _BINARY_CONTRAST_RE = re.compile(
@@ -28,7 +39,12 @@ _BINARY_CONTRAST_RE = re.compile(
     r"|\bit[''`]?s\s+not\s+[^.!?\n]{0,60}?,\s*it[''`]?s\b"
     r"|\bstops?\s+being\b[^.!?\n]{0,40}?\band\s+starts?\s+being\b"
     r"|\bnot\s+just\b[^.!?\n]{0,60}?\bbut\s+also\b"
-    r"|\bdoes\s*n[''`]?t\s+mean\b[^.!?\n]{0,60}?\bbut\s+(?:actually|really)\b",
+    r"|\bdoes\s*n[''`]?t\s+mean\b[^.!?\n]{0,60}?\bbut\s+(?:actually|really)\b"
+    r"|\b(?:is|are|was|were)n['’`]?t\s+about\b[^.!?\n]{1,60}?[;,.]\s*"
+    r"(?:it['’`]?s|(?:it|this|that)\s+is|they['’`]?re)\s+about\b"
+    r"|\bthe\s+(?:cause|answer|problem|point|issue|question)\s+(?:is|was)n['’`]?t\b"
+    r"[^.!?\n]{1,60}?\.\s*the\s+[^.!?\n]{1,40}?\s+(?:is|was)\s*[.!?]"
+    r"|\bstop(?:s|ped|ping)?\s+treating\b[^.!?\n]{1,60}?\band\s+start(?:s|ed|ing)?\s+treating\b",
     re.IGNORECASE,
 )
 _NEGATIVE_LISTING_RE = re.compile(
@@ -40,7 +56,7 @@ _NEGATIVE_LISTING_RE = re.compile(
 )
 _DRAMATIC_FRAGMENT_RE = re.compile(
     r"\.\s*That[''`]?s\s+it\.\s*That[''`]?s\s+the\b"
-    r"|\bThis\s+unlocks\s+something\b"
+    r"|\bThis\s+unlocks\s+something\s*[.!?](?:\s|$)"
     r"|^\s*[A-Z][\w-]*\.\s+And\s+[\w-]+\.\s+And\s+[\w-]+\.",
 )
 _FORMULAIC_CONSTRUCTION_RE = re.compile(
@@ -60,10 +76,12 @@ _NARRATOR_DISTANCE_RE = re.compile(
     r"\b(?:(?:some|many|most)\s+people|people)\s+"
     r"(?:believe|think|say|argue|claim|tend\s+to)\b"
     r"|^\s*Nobody\s+(?:designed|planned|chose|decided|wanted)\b"
-    r"|^\s*This\s+(?:is\s+why|happens\s+because)\b",
+    r"|^\s*This\s+(?:is\s+why|happens\s+because)\b"
+    r"|\b(?:they|experts|observers|critics|commentators)\s+(?:say|believe|think|argue|claim)\b"
+    r"|\bit\s+is\s+(?:(?:widely|generally|commonly)\s+)?(?:believed|thought|said|assumed)\s+that\b",
     re.IGNORECASE,
 )
-# Listed because an ed or en suffix test is blind to the irregular participles, which carried 10 of 13 real passives in a tracked sample.
+# Because suffix tests missed 10 of 13 passives, list irregular participles.
 _IRREGULAR_PARTICIPLES = (
     "built", "sent", "kept", "lost", "told", "caught", "taught", "brought", "bought",
     "thought", "sought", "set", "held", "made", "put", "cut", "split", "shut",
@@ -91,11 +109,13 @@ _RHETORICAL_SETUP_RE = re.compile(
     r"|^\s*What\s+if\s+[^?\n]{5,80}\?",
     re.IGNORECASE,
 )
-# Wh- openers and "So"/"Look," starts are a named stop-slop pattern, kept apart because they judge position rather than wording.
+# Because stop-slop names these openers, check position rather than wording.
 _WEAK_STARTER_RE = re.compile(
     r"^\s*(?:What|When|Where|Which|Who|Why|How)\b[^?\n]{5,}\?"
-    r"|^\s*So\s+[a-z]"
-    r"|^\s*Look,\s",
+    r"|^\s*So\s+(?=(?:basically|actually|really|you\s+see)\b)"
+    r"|^\s*Look,\s"
+    r"|^\s*[Tt]here\s+(?:is|are)\s+(?:a\s+need\s+to\b|(?:several|many|some)\s+\w+\s+that\b)"
+    r"|^\s*[Ii]t\s+is\s+(?:important|necessary|essential|possible)\s+to\b",
 )
 _LAZY_EXTREME_RE = re.compile(
     r"\b(?:every\s+single|everyone\s+(?:knows|agrees)|nobody\s+(?:ever|wants)"
@@ -111,18 +131,21 @@ STRUCTURE_CANDIDATES = (
         _BINARY_CONTRAST_RE,
         "Formulaic negation and reversal",
         "State the positive claim directly.",
+        _additive_properties,
     ),
     StructureRule(
         "formulaic_construction",
         _FORMULAIC_CONSTRUCTION_RE,
         "Formulaic relative-clause negation",
         "Replace the template with a direct description.",
+        _ordinary_construction,
     ),
     StructureRule(
         "false_agency",
         _FALSE_AGENCY_RE,
         "An abstraction receives human agency",
         "Name the person or action responsible.",
+        _literal_agency,
     ),
     StructureRule(
         "narrator_distance",
@@ -159,6 +182,7 @@ STRUCTURE_CANDIDATES = (
         _WEAK_STARTER_RE,
         "Sentence opens on a question word or a filler start",
         "Lead with the subject or the verb.",
+        formulaic_filler_opener,
     ),
     StructureRule(
         "lazy_extreme",
@@ -168,39 +192,24 @@ STRUCTURE_CANDIDATES = (
     ),
 )
 STRUCTURE_RULES: tuple[StructureRule, ...] = STRUCTURE_CANDIDATES
-# Empty because the earlier omissions rested on an AI versus human separation test, which measures the wrong property for a named pattern.
+# Because authorship cannot validate a named pattern, keep every candidate.
 OMITTED_STRUCTURE_RULES: dict[str, str] = {}
-
-
-_QUOTED_RE = re.compile(
-    "\"[^\"\\n]*\"|\u201c[^\u201d\\n]*\u201d|(?<!\\w)'[^'\\n]*'(?!\\w)|(?<!\\w)\u2018[^\u2019\\n]*\u2019(?!\\w)"
-)
-
-
-def _blank_inside(found: re.Match[str]) -> str:
-    text = found.group(0)
-    return text[0] + " " * (len(text) - 2) + text[-1]
-
-
-def mask_quoted(text: str) -> str:
-    """Blank quoted words but keep delimiters and length, because quoted text is cited, not written, and a contraction must not open a quote."""
-    return _QUOTED_RE.sub(_blank_inside, text)
 
 
 def _line_findings(path: str, line_number: int, line: str) -> list[FindingDict]:
     findings: list[FindingDict] = []
-    candidate = mask_quoted(line)
+    candidate = phrase_text(mask_quoted(line))
     for rule in STRUCTURE_RULES:
-        found = rule.pattern.search(candidate)
+        found = next(phrase_family_matches((rule.pattern,), candidate, rule.literal), None)
         if found:
-            findings.append(cast(FindingDict, _finding(
+            findings.append(cast(FindingDict, finding_row(
                 "english", rule.name, line_number, rule.detail + " in " + path,
-                line, rule.action, match=found.group(0),
+                line, rule.action, match=line[found.start():found.end()],
             )))
     return findings
 
 
-def _scan_slop_structure(path: str, text: str) -> list[FindingDict]:
+def scan_slop_structure(path: str, text: str) -> list[FindingDict]:
     findings: list[FindingDict] = []
     for line_number, line in _markdown_prose_lines(text):
         findings.extend(_line_findings(path, line_number, line))

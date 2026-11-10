@@ -54,6 +54,28 @@ def module_tree(text: str) -> ast.Module | None:
         return None
 
 
+@functools.lru_cache(maxsize=32)
+def module_scopes(tree: ast.Module) -> dict[tuple[int, int], ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Because units share a tree, index their function boundaries once."""
+    scopes = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes.setdefault((node.lineno, node.end_lineno), node)
+    return scopes
+
+
+@functools.lru_cache(maxsize=32)
+def enclosing_classes(tree: ast.Module) -> dict[int, ast.ClassDef]:
+    """Because methods share their owner, index enclosing classes once."""
+    owners = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    owners.setdefault(child.lineno, node)
+    return owners
+
+
 def _exported(package: str, name: str) -> RuleSet:
     # Rule modules skip config, because config imports them.
     rule_set = getattr(importlib.import_module(package + "." + name), EXPORT, None)

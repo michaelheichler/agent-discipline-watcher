@@ -8,17 +8,22 @@ from collections.abc import Callable
 from pathlib import Path
 
 try:
-    from .embedding_client import ensure_loaded, release
+    from .embedding_client import Vector, embed, embeddings_urls, ensure_loaded, model_name, release
     from .embedding_lease import renew
     from .embedding_server import default_root, running_url, start_detached
     from .model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from .model_store import VENV_DIRNAME, runtime_root, weights_root
 except ImportError:
-    from embedding_client import ensure_loaded, release
+    from embedding_client import Vector, embed, embeddings_urls, ensure_loaded, model_name, release
     from embedding_lease import renew
     from embedding_server import default_root, running_url, start_detached
     from model_artifacts import ArchiveRuntime, ModelPlatform, current_platform
     from model_store import VENV_DIRNAME, runtime_root, weights_root
+
+__all__ = (
+    "Vector", "close_turn", "embed", "embeddings_urls", "enabled", "lease_root_for",
+    "model_name", "open_turn", "provisioned", "renew_turn",
+)
 
 ENABLE_ENV = "ADW_EMBEDDING_ENABLED"
 DISABLE_ENV = "ADW_EMBEDDING_DISABLED"
@@ -82,14 +87,19 @@ def _needs_supervisor(answered: str | None, managed_url: Callable[[Path], str | 
     return answered is None or answered == managed_url(default_root())
 
 
-def open_turn(session_id: str, root: str | None, *, load: Callable[..., str | None] = ensure_loaded, managed_url: Callable[[Path], str | None] = running_url) -> str | None:
+def open_turn(
+    session_id: str, root: str | None, *,
+    load: Callable[..., str | None] = ensure_loaded,
+    managed_url: Callable[[Path], str | None] = running_url,
+    start: Callable[[Path], None] | None = None,
+) -> str | None:
     """Provisions in the background and answers None for this turn, because a first install downloads most of a gigabyte."""
     if not CONSUMER_REGISTERED or not session_id or not enabled():
         return None
     try:
         answered = load(session_id, time.time(), root, owner_pid())
         if _needs_supervisor(answered, managed_url):
-            start_detached(default_root())
+            (start or start_detached)(default_root())
         return answered
     except Exception as exc:
         sys.stderr.write(

@@ -1,5 +1,6 @@
 import { completeOmpJudge, OmpProviderFailure, type CompleteSimple, type OmpContext } from "./omp-provider";
 import { prepareReview, runReviewBridge, validatedReview, type PreparedReview, type ReviewBridge, type ReviewRequest } from "./omp-review-bridge";
+import { isRecord } from "./adw-config";
 import type { WatcherResult } from "./watcher";
 
 export type OmpReviewContext = OmpContext & { cwd: string };
@@ -18,8 +19,7 @@ type ReviewJob = {
 };
 
 function systemPrompt(request: ReviewRequest): string {
-  return "Return only JSON matching this schema. Give each note a problem, a specific fix, and a source quote that occurs only once, " +
-    `with surrounding context where the text repeats. ${JSON.stringify(request.schema)}\n${request.instructions}`;
+  return `Return only JSON matching this schema. ${JSON.stringify(request.schema)}\n${request.instructions}`;
 }
 
 function retryable(error: unknown): boolean {
@@ -39,7 +39,9 @@ function validateOutput(job: ReviewJob, request: ReviewRequest, output: string):
 
 function documentNotes(output: string): unknown[] | undefined {
   try {
-    const notes: unknown = (JSON.parse(output) as { notes?: unknown } | null)?.notes;
+    const parsed: unknown = JSON.parse(output);
+    if (!isRecord(parsed)) return undefined;
+    const notes = parsed.notes;
     return Array.isArray(notes) && notes.length > 0 ? notes.slice(0, MAX_DOCUMENT_NOTES) : undefined;
   } catch {
     return undefined;

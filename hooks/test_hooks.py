@@ -169,7 +169,7 @@ def test_pre_write_edit_blocks_self_grant_hidden_behind_a_mismatched_new_source(
     tool_input = {
         "file_path": str(target),
         "old_string": "{}",
-        "new_string": json.dumps({protected.AUTH_KEY: True}),
+        "new_string": json.dumps({protected.AUTH_SETTING: True}),
         "new_source": "harmless placeholder",
     }
     response = pre_write.run({"tool_input": tool_input}, _edit_config())

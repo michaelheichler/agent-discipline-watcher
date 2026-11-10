@@ -51,7 +51,11 @@ RESTORE_STAGED = frozenset({"--staged", "-S"})
 RESTORE_WORKTREE = frozenset({"--worktree", "-W", "-SW", "-WS"})
 RESTORE_PLAIN_FLAGS = frozenset({"--staged", "-S", "-q", "--quiet"})
 SED_SCRIPT_TARGET = "sed script"
-Slot = tuple[int, str]
+
+
+class Slot(NamedTuple):
+    position: int
+    prefix: str
 
 
 class GitLookup(NamedTuple):
@@ -154,9 +158,10 @@ def _verb_words(segment: list[str], expansions: Expansions) -> list[tuple[str, s
     found: list[tuple[str, str | None]] = [(token, None) for token, word in zip(args, words) if word is None]
     if verb == "sed" and not sed_script_known(segment):
         found.append((SED_SCRIPT_TARGET, None))
-    for position, prefix in [] if None in words else _destination_slots(verb, words):
-        value = words[position] if verb in DESTINATION_ALL_ARGS_VERBS else expansions.path(args[position])
-        found.append((args[position], None if value is None else value[len(prefix):]))
+    slots: list[Slot] = [] if None in words else _destination_slots(verb, words)
+    for slot in slots:
+        value = words[slot.position] if verb in DESTINATION_ALL_ARGS_VERBS else expansions.path(args[slot.position])
+        found.append((args[slot.position], None if value is None else value[len(slot.prefix):]))
     return found
 
 
@@ -275,22 +280,22 @@ def _destination_slots(verb: str, words: list[str]) -> list[Slot]:
     """Indexes, because only the raw word shows whether a glob in it was quoted."""
     positional = [position for position, word in enumerate(words) if not word.startswith("-")]
     if verb == "dd":
-        return [(position, DD_OUTPUT_PREFIX) for position in positional if words[position].startswith(DD_OUTPUT_PREFIX)]
+        return [Slot(position, DD_OUTPUT_PREFIX) for position in positional if words[position].startswith(DD_OUTPUT_PREFIX)]
     if verb in DESTINATION_ALL_ARGS_VERBS:
-        return [(position, "") for position in positional]
+        return [Slot(position, "") for position in positional]
     target = _target_slot(words) if verb in TARGET_DIR_VERBS else None
     if target is not None:
         return [target]
-    return [(positional[-1], "")] if verb in DESTINATION_LAST_ARG_VERBS and positional else []
+    return [Slot(positional[-1], "")] if verb in DESTINATION_LAST_ARG_VERBS and positional else []
 
 
 def _target_slot(words: list[str]) -> Slot | None:
     """Because -t/--target-directory names the real destination for GNU cp, mv, and ln, the last positional argument must defer to it."""
     for position, word in enumerate(words):
         if word.startswith(TARGET_DIR_PREFIX):
-            return position, TARGET_DIR_PREFIX
+            return Slot(position, TARGET_DIR_PREFIX)
         if word in TARGET_DIR_FLAGS and position + 1 < len(words):
-            return position + 1, ""
+            return Slot(position + 1, "")
     return None
 
 

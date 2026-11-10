@@ -115,12 +115,12 @@ def test_hook_startup_ignores_an_untrusted_python_home(tmp_path):
     assert json.loads(response.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_hook_isolation_keeps_the_sdk_worker_site_packages(tmp_path):
+def sdk_runtime(tmp_path: Path) -> tuple[Path, Path, Path]:
     runtime = tmp_path / "venv"
-    venv.EnvBuilder(with_pip=False).create(runtime)
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(runtime)
     executable = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     site_query = subprocess.run(
-        [str(executable), "-c", "import site; print(site.getsitepackages()[0])"],
+        [str(executable), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
         text=True, capture_output=True, check=True,
     )
     marker = tmp_path / "sdk-import.json"
@@ -130,6 +130,10 @@ def test_hook_isolation_keeps_the_sdk_worker_site_packages(tmp_path):
         "    json.dump({'no_site': sys.flags.no_site, 'source': __file__}, output)\n"
         "raise RuntimeError('local SDK import probe completed')\n", encoding="utf-8",
     )
+    return executable, marker, sdk
+
+
+def sdk_hook_installation(tmp_path: Path, executable: Path) -> Path:
     hook_source = Path(__file__).parent
     hooks = tmp_path / "installation" / "hooks"
     hooks.mkdir(parents=True)
@@ -152,10 +156,26 @@ def test_hook_isolation_keeps_the_sdk_worker_site_packages(tmp_path):
         except LunaProviderFailure as error:
             print(json.dumps({{"no_site": sys.flags.no_site, "category": error.category}}))
     """), encoding="utf-8")
+    return hooks
+
+
+def bootstrap_update_py(hooks: Path) -> None:
+    """Because the dispatcher acquires a real-home lock, bootstrap this isolated fixture directly."""
+    (hooks / "update.py").write_text(
+        "import runpy, sys\nfrom pathlib import Path\n"
+        "runpy.run_path(str(Path(__file__).with_name(sys.argv[2])), run_name='__main__')\n",
+        encoding="utf-8",
+    )
+
+
+def test_hook_isolation_keeps_the_sdk_worker_site_packages(tmp_path) -> None:
+    executable, marker, sdk = sdk_runtime(tmp_path)
+    hooks = sdk_hook_installation(tmp_path, executable)
+    bootstrap_update_py(hooks)
 
     response = subprocess.run(
         [str(hooks / "run.sh"), "SessionStart"], cwd=tmp_path,
-        env={**os.environ, "ADW_PYTHON": sys.executable}, text=True, capture_output=True, check=False,
+        env={**os.environ, "HOME": str(tmp_path), "ADW_PYTHON": sys.executable}, text=True, capture_output=True, check=False,
     )
 
     assert response.returncode == 0, response.stderr

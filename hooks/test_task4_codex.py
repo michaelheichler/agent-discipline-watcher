@@ -193,7 +193,7 @@ def test_codex_stop_journal_failure_blocks_and_active_retry_does_not_silently_al
     state_root = tmp_path / "state"
     config = {"state_root": str(state_root), "ledger_root": str(tmp_path / "ledger")}
     session_state.write_state("s1", {"turn_id": "turn-1"}, state_root)
-    monkeypatch.setattr(codex_luna.journal, "read", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal unavailable")))
+    monkeypatch.setattr(codex_luna.journal, "read_complete", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal unavailable")))
 
     first = stop.run({"session_id": "s1", "stop_hook_active": False, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))
     retry = stop.run({"session_id": "s1", "stop_hook_active": True, "cwd": str(tmp_path)}, config, provider=Provider(_result(ReviewKind.DOCUMENT)))

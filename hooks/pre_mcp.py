@@ -27,7 +27,7 @@ from lib.mcp_health import (
     safe_config,
     valid_now,
 )
-from lib.mcp_paths import mcp_target_paths, mcp_write_contents
+from lib.mcp_paths import mcp_arguments
 from lib.payloads import exact_string_dict
 from lib.protected import path_findings
 from lib.reporting import record_decision, record_findings, run_with_ledger, verdict_message
@@ -111,9 +111,10 @@ def _resolved_path(path: str, cwd: str) -> str:
 
 
 def _candidate_path_findings(tool_input: dict[str, object], cwd: str) -> list[dict]:
-    candidates = mcp_write_contents(tool_input) or [None]
+    arguments = mcp_arguments(tool_input)
+    candidates = arguments.contents or [None]
     findings: list[dict] = []
-    for path in mcp_target_paths(tool_input):
+    for path in arguments.paths:
         resolved = _resolved_path(path, cwd)
         for content in candidates:
             findings.extend(path_findings(resolved, content=content))

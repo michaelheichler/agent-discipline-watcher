@@ -3,18 +3,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import sys
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path, PurePath
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 from typing import NamedTuple
 
 try:
     from .config import rule_state
-    from .embedding_client import Vector, embed, embeddings_urls, model_name
-    from .embedding_session import enabled
+    from .embedding_session import Vector, embed, embeddings_urls, enabled, model_name
     from .markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from .pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from .pattern_language import (
@@ -26,8 +29,7 @@ try:
     from .session_state import plugin_data_home
 except ImportError:
     from config import rule_state
-    from embedding_client import Vector, embed, embeddings_urls, model_name
-    from embedding_session import enabled
+    from embedding_session import Vector, embed, embeddings_urls, enabled, model_name
     from markup import MIXED_LANGUAGE_EXTS, RegionKind, _mask_markup, extract_regions, render_regions
     from pattern_judge import JUDGED_GATE_MODEL, JudgedOutcome, PatternCandidate, PatternRule, confirm_all
     from pattern_language import (
@@ -41,6 +43,7 @@ except ImportError:
 
 def exemplar_cache_root() -> Path:
     return plugin_data_home() / "cache" / "exemplars"
+
 
 EXEMPLAR_PATH = Path(__file__).with_name("pattern_exemplars.jsonl")
 MANIFEST_PATH = Path(__file__).with_name("pattern_exemplars.json")
@@ -212,12 +215,10 @@ def _cached_vectors(path: Path) -> dict[str, Vector]:
 def _write_cache(path: Path, vectors: dict[str, Vector]) -> None:
     """Replaced whole, because a torn cache would poison later scans."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps([[text, list(vector)] for text, vector in vectors.items()]), encoding="utf-8")
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    state_recovery.atomic_write(
+        path, json.dumps([[text, list(vector)] for text, vector in vectors.items()]),
+        mode=None,
+    )
 
 
 def exemplar_vectors(exemplars: tuple[Exemplar, ...], config: dict | None = None, *, vectors: VectorSource = _vectors) -> dict[str, Vector]:

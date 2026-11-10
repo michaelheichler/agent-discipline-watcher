@@ -6,8 +6,14 @@ import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 from typing import NamedTuple
 
+from lib.path_policy import anchored
 from lib.shell_syntax import _bare, _basename, _command_word_index, _is_literal_token, _segments, _tokens
 
 FIXED_TEMP_ROOTS = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
@@ -24,16 +30,12 @@ class _Walk(NamedTuple):
     resolve: Resolve | None
 
 
-def _absolute(path: str | os.PathLike[str], cwd: str | os.PathLike[str] | None) -> Path:
-    candidate = Path(path).expanduser()
-    return candidate if candidate.is_absolute() else Path(cwd or ".").absolute() / candidate
-
-
 def _forms(path: Path) -> tuple[Path, ...]:
     """Both forms, because a symlink must not hide either side."""
     lexical = Path(os.path.normpath(path))
     try:
-        return lexical, lexical.resolve()
+        # Because temp roots may contain literal tildes, do not expand homes.
+        return lexical, Path(os.path.realpath(lexical))
     except (OSError, RuntimeError, ValueError):
         return (lexical,)
 
@@ -51,7 +53,7 @@ def outside_project_temp(path: str | os.PathLike[str], cwd: str | os.PathLike[st
     """Uses cwd, because pytest projects live under temp."""
     if not cwd or not Path(cwd).is_absolute():
         return False
-    forms = _forms(_absolute(path, cwd))
+    forms = _forms(anchored(path, Path(cwd or ".").absolute()))
     if not all(_within(form, temp_roots()) for form in forms):
         return False
     return not any(_within(form, _forms(Path(cwd))) for form in forms)
@@ -72,7 +74,7 @@ def trusted_directory(command: str, cwd: str | os.PathLike[str] | None) -> str |
     directory = leading_directory(command)
     if directory is None or _tokens(command.splitlines()[0])[2] != "&&":
         return None
-    absolute = _absolute(directory, cwd)
+    absolute = anchored(directory, Path(cwd or ".").absolute())
     return directory if absolute.is_dir() and os.access(absolute, os.X_OK) else None
 
 
@@ -91,7 +93,7 @@ def scratch_target(path: str, command: str, cwd: str | os.PathLike[str] | None) 
     if Path(path).is_absolute():
         return outside_project_temp(path, cwd)
     directory = trusted_directory(command, cwd)
-    return directory is not None and outside_project_temp(_absolute(directory, cwd) / path, cwd)
+    return directory is not None and outside_project_temp(anchored(directory, Path(cwd or ".").absolute()) / path, cwd)
 
 
 def segment_directories(segments: list[list[str]], start: Directories, resolve: Resolve | None = None) -> list[Directories]:
@@ -145,9 +147,9 @@ def _cd_target(words: list[str], resolve: Resolve | None) -> str | None:
     if _basename(words[0]) != "cd" or len(operands) > 1 or "-" in map(_bare, words[1:]):
         return None
     if not operands:
-        return os.path.expanduser("~")
+        return str(config_paths.home_root())
     folder = resolve(operands[0]) if resolve is not None else (_bare(operands[0]) if _plain_path(operands[0]) else None)
-    return None if folder is None else os.path.expanduser(folder)
+    return None if folder is None else os.path.expanduser(os.fspath(folder))
 
 
 def _plain_path(token: str) -> bool:

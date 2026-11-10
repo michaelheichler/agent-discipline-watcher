@@ -8,11 +8,15 @@ import sqlite3
 import ssl
 import sys
 import tarfile
-import tempfile
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 from urllib.parse import urlsplit
 
 try:
@@ -283,7 +287,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 
 def _pinned_meta() -> dict[str, str]:
-    """Format joins the shas, because a parser fix changes rows."""
+    """Because a parser fix changes rows, format joins the shas."""
     return {"deviq_commit": DEVIQ_COMMIT, "principles_commit": PRINCIPLES_COMMIT, "format": BUILD_FORMAT}
 
 
@@ -298,13 +302,8 @@ def _insert_rows(connection: sqlite3.Connection, rows: list[Row]) -> None:
 
 def _write_database(db_path: Path, rows: list[Row]) -> None:
     """One fresh file, because a diff cannot trust stale rows."""
-    descriptor, tmp_name = tempfile.mkstemp(
-        prefix=".principles-", suffix=".sqlite", dir=str(db_path.parent),
-    )
-    os.close(descriptor)
-    tmp_path = Path(tmp_name)
-    tmp_path.unlink()
-    try:
+    with state_recovery.temporary_file(db_path.parent) as (tmp_path, stream):
+        stream.close()
         connection = sqlite3.connect(str(tmp_path))
         try:
             _create_schema(connection)
@@ -313,9 +312,6 @@ def _write_database(db_path: Path, rows: list[Row]) -> None:
         finally:
             connection.close()
         os.replace(tmp_path, db_path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
 
 
 def _skip_result(db_path: Path, reason: str) -> BuildResult:

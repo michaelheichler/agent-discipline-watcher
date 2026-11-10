@@ -5,6 +5,11 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
+
 
 OPENAI_CODEX_VERSION = "0.160.0"
 OPENAI_CODEX_REQUIREMENT = f"openai-codex=={OPENAI_CODEX_VERSION}"
@@ -16,7 +21,7 @@ def runtime_root(root: str | os.PathLike[str] | None = None) -> Path:
     """Exempt from retention because a swept runtime would break every later judge call."""
     if root is not None:
         return Path(root)
-    return Path.home() / ".adw" / "runtime" / RUNTIME_DIRNAME
+    return config_paths.data_root() / "runtime" / RUNTIME_DIRNAME
 
 
 def runtime_python(root: str | os.PathLike[str] | None = None) -> Path:

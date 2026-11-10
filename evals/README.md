@@ -2,7 +2,7 @@
 
 ## Human baseline
 
-`build_human_corpus.py` draws 20000 sentences each from news, encyclopedia, and pre-1930 literature into `corpus_human_sentences.jsonl`, which is gitignored and rebuilt byte for byte. `measure_human_hit_rate.py` scores every shipped rule against it and writes `human_hit_rate.json`.
+`build_human_corpus.py` draws 20000 sentences each from news, encyclopedia, and pre-1930 literature into `corpus_human_sentences.jsonl`, which git ignores and the builder reproduces byte for byte. `measure_human_hit_rate.py` scores every shipped rule against it and writes `human_hit_rate.json`.
 
 A hit there is prose no model wrote, so it is the false-positive denominator the rules never had. Read it per genre. The corpus carries no technical or software prose, which is most of what the watcher scans, and a document-scope rule cannot fire on one sentence, so its silence proves nothing.
 
@@ -14,7 +14,7 @@ A hit there is prose no model wrote, so it is the false-positive denominator the
 
 `qualify_embeddings.py` scores a k-NN vote over the embedding server, sweeping the neighbour count so a failure condemns the method and not one setting. It writes `qualification.json`.
 
-`measure_judge_stage.py` puts the reader behind the candidate stage and judges every flagged row, since truncating the list would drop true positives out of the recall denominator. Precision after the reader: `ai_closer` and `utilize` at 1.0000, `inflated_diction` at 0.9595, `vague_quantity` at 0.9406, `business_jargon` at 0.8507. A rule at or above 0.85 there is a hard block, and a rule below it stays advisory.
+`measure_judge_stage.py` puts the reader behind the candidate stage and judges every flagged row, since truncating the list would drop true positives out of the recall denominator. Precision after the reader reaches 1.0000 for `ai_closer` and `utilize`, 0.9595 for `inflated_diction`, 0.9406 for `vague_quantity`, and 0.8507 for `business_jargon`. A rule at or above 0.85 there is a hard block, and a rule below it stays advisory.
 
 The reader is Sonnet from 0.18.7. On Haiku the same five measured 1.0000, 1.0000, 0.9381, 0.9519 and 0.9344, which reads as a wash until you run a document it never saw. Haiku blocked two ordinary technical sentences as `ai_closer` on two of four runs over one file, and Sonnet cleared the same file four times out of four. `inflated_diction` also gained recall, 0.7067 to 0.9467.
 
@@ -24,7 +24,7 @@ An earlier gate read the candidate stage alone against a 0.90 precision floor, w
 
 `build_paragraph_corpus.py` draws 9256 documents that still carry their paragraph breaks into `corpus_paragraphs.jsonl`, which git ignores and which rebuilds byte for byte. 5000 come from `wikimedia/wikipedia` and `sedthh/gutenberg_english`, and 4256 are assistant replies from the two chat sets above. The sentence corpora cannot serve here, since every source they read stores a document as one flat line. No news set on the rows service keeps its paragraph breaks either, so the genre is missing and the manifest says so.
 
-`measure_paragraph_endings.py` scores one shape: a paragraph ending on a sentence shorter than 0.7018 of its own mean, which is the p25 of 30700 human endings. A document trips the rule when more than two thirds of its measurable paragraphs end that way, which is the p95 of 4570 human documents. It writes `paragraph_endings.json`.
+`measure_paragraph_endings.py` scores paragraphs that end on a sentence shorter than 0.7018 of their own mean, which is the p25 of 30700 human endings. A document trips the rule when more than two thirds of its measurable paragraphs end that way, which is the p95 of 4570 human documents. It writes `paragraph_endings.json`.
 
 Read that record before trusting the rule. At the shipped cut it fires on 3.15 percent of human documents and 0.56 percent of assistant replies, and pre-1930 literature is the noisiest genre at 4.92 percent. The pattern runs commoner in human prose than in model prose, so `uniform_paragraph_endings` ships at observe and says nothing about who wrote a document.
 
@@ -86,7 +86,7 @@ Decided accuracy clears 0.98 for both languages at every tested N, down to N = 2
 
 `measure_regex_judge.py` scores a regex candidate stage and its reader as one stage, since a rule at the judged gate reports nothing until the reader confirms it. It writes `regex_judge.json`.
 
-`three_item_list` fires on 278 of 60000 human sentences, which is ordinary writing rather than slop, so the regex alone cannot speak. Behind the sonnet reader it clears 121 held-out candidates at 1.0000 precision, 0 false positives and 0.5422 recall. That reader runs on the async route, so it never delays a write and never decides a block.
+`three_item_list` fires on 278 of 60000 human sentences, which is ordinary writing rather than slop, so the regex alone cannot speak. In the historical Sonnet measurement, it clears 121 held-out candidates at 1.0000 precision, 0 false positives and 0.5422 recall. Those figures describe the retired reader, not the current Luna-only review preset.
 
 ## Parataxis
 
@@ -94,7 +94,7 @@ Decided accuracy clears 0.98 for both languages at every tested N, down to N = 2
 
 `parataxis_precision.py export` writes the blind items with hashed ids. Sonnet and GPT-6 Luna label each hit by whether a careful editor would join the flagged sentences, and Opus decides the 20 rows where they split. `parataxis_precision.py score` writes `parataxis_precision.json`. English holds 7 of 40, a precision of 0.175, with 7 of 10 on encyclopedia prose and 0 of 26 on literature. German holds 22 of 40, a precision of 0.55, with 22 of 36 on encyclopedia prose. Both fall under the 0.70 bar, so the static rule alone cannot speak. A four-sentence run without a pronoun pointing back held 2 of 17. These numbers describe the detector before the reviewer stage below, at runs of four.
 
-`measure_parataxis_pipeline.py` measures the shipped pipeline, which is the static run detector plus the Stop reviewer. The `static` step feeds each answer through `parataxis_review.review_rows`, the `review` step sends the candidates to Sonnet through the Claude Stop reviewer or to GPT-6 Luna through the Luna provider, and `score` writes `parataxis_pipeline.json`. The unit is one answer, and an answer counts as flagged when the reviewer confirms at least one run. Three blind writer agents produced the answer sets without seeing the detector. Each set holds chopped and joined versions of the same assistant answer, plus clean controls with deliberate short rhythm, independent facts, numbered steps, and short sentences beside long ones.
+`measure_parataxis_pipeline.py` measures the static run detector plus the Stop reviewer. The `static` step feeds each answer through `parataxis_review.review_rows`, the `review` step sends the candidates to GPT-6 Luna through the Luna provider, and `score` writes `parataxis_pipeline.json`. The script now accepts only `--reviewer luna`. Sonnet figures below record the retired Claude reviewer route. The unit is one answer, and an answer counts as flagged when the reviewer confirms at least one run. Three blind writer agents produced the answer sets without seeing the detector. Each set holds chopped and joined versions of the same assistant answer, plus clean controls with deliberate short rhythm, independent facts, numbered steps, and short sentences beside long ones.
 
 `parataxis_answers.jsonl` (40 per language) and `parataxis_answers_test.jsonl` (36 per language) tuned the detector, so they are development data. On the first set, the original rule found 12 of 15 English and 13 of 15 German chopped answers. On the second set, after fixes from the first, it found 7 and 6 of 12. The fixes that followed are runs of three, two sequence openers per run, clock times and version numbers inside a sentence, inline code at a sentence start, and no English joiner list entries that also open a plain phrase (after, as, once, since). The reviewer definition now also names narrative prose and dialogue as clean.
 
@@ -109,9 +109,9 @@ Every static false positive on the final set is a facts control. Twelve chopped 
 
 ## Response quality
 
-The harness compares response quality, not just length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.
+The harness compares response quality as well as length. Cases live in `cases.jsonl`. The scoring contract lives in `rubric.md`.
 
-The rubric preserves the upstream scoring and meaning. Its two semicolon splices are split into separate sentences because this repository enforces that punctuation rule.
+The rubric preserves the upstream scoring and meaning. It splits two semicolon splices into separate sentences because this repository enforces that punctuation rule.
 
 ## Validate and plan
 
@@ -126,14 +126,16 @@ Run each condition into the same results file. The candidate condition injects `
 
 ```bash
 python3 scripts/run_evals.py run \
-  --runner claude \
+  --runner codex \
+  --allow-unmetered \
   --condition baseline \
   --trials 3 \
   --budget-usd 12.50 \
   --output evals/results/responses.jsonl
 
 python3 scripts/run_evals.py run \
-  --runner claude \
+  --runner codex \
+  --allow-unmetered \
   --condition candidate \
   --condition-skill skills/readable-output/SKILL.md \
   --trials 3 \
@@ -141,13 +143,13 @@ python3 scripts/run_evals.py run \
   --output evals/results/responses.jsonl
 ```
 
-The default Claude runner reports dollar cost and receives the remaining condition budget on every call. Runners without cost reporting are rejected unless `--allow-unmetered` is supplied. Use that flag only when the provider account has its own hard cap.
+The shipped Codex runner does not report dollar cost. The harness rejects it unless the operator supplies `--allow-unmetered`. Use the examples only when the provider account has its own hard cap. With this flag, `--budget-usd` cannot cap unreported spending.
 
-Both example runners isolate the call from the operator's own agent configuration: `--setting-sources ""` for Claude, `--ignore-user-config --ephemeral` for Codex. Keep that isolation when adding runners. Without it, user-level plugins, hooks, memory, and output styles leak into every condition and shape the responses being judged. This repository's SessionStart hook would otherwise inject the readable-output rules into the **baseline** condition and make the comparison measure the skill against itself.
+The Codex runner isolates the call from the operator's own agent configuration with `--ignore-user-config --ephemeral`. Keep that isolation when adding runners. Without it, user-level plugins, hooks, memory, and output styles leak into every condition and shape the responses under review. This repository's SessionStart hook would otherwise inject the readable-output rules into the **baseline** condition and make the comparison measure the skill against itself.
 
-Isolation also drops the operator's saved model and effort settings, so the Claude runner pins `--model` explicitly. Keep a pin when editing the runner. Without one, the eval silently runs whatever the operator or CLI release defaults to. The model would vary between operators and over time, and per-token cost varies with it. The pinned model is part of the result. Record it with published numbers, as below.
+Isolation also drops the operator's saved model and effort settings. Add an explicit `--model` pin in a local runner config and pass that file with `--runner-config`. The shipped example does not pin a model. Without a pin, the eval runs whatever the CLI release defaults to, which can vary over time. Record the model with published numbers, as below.
 
-Runs are resumable: rerun the same command after a provider failure and completed `(case, trial, condition, runner)` rows are skipped. Each incomplete call is retried twice by default, and the final provider error is preserved.
+Runs can resume. Rerun the same command after a provider failure, and the harness skips completed `(case, trial, condition, runner)` rows. It retries each incomplete call twice by default and preserves the final provider error.
 
 ## Judge and score
 

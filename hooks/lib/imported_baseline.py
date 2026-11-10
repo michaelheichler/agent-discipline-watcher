@@ -3,17 +3,22 @@ from __future__ import annotations
 
 import hashlib
 import os
-import tempfile
 from dataclasses import dataclass
 from collections.abc import Callable, Iterator
 from functools import cached_property
 from pathlib import Path
+
+try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
 from typing import BinaryIO
 
 try:
-    from . import session_state
+    from . import path_policy, session_state
     from .regular_file import open_regular
 except ImportError:
+    import path_policy
     import session_state
     from regular_file import open_regular
 
@@ -58,7 +63,7 @@ class Snapshot:
 
 
 def path_key(path: str | os.PathLike[str]) -> str:
-    return os.path.realpath(os.path.expanduser(os.fspath(path)))
+    return str(path_policy.real_path(path))
 
 
 def _stream_digest(handle: BinaryIO, check: Check) -> str:
@@ -103,20 +108,17 @@ def _read_mark(index: Path, key: str) -> str | None:
 def _put_mark(index: Path, key: str, mark: str, *, replace: bool) -> bool:
     """Linked when not replacing, because two hooks can see one file first at once and the first sight must win."""
     index.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=index, prefix=".mark.", suffix=".tmp")
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(mark)
-        if replace:
-            os.replace(temporary, _index_file(index, key))
-            return True
+    if replace:
+        state_recovery.atomic_write(_index_file(index, key), mark)
+        return True
+    with state_recovery.temporary_file(index) as (temporary, stream):
+        stream.write(mark)
+        stream.close()
         try:
             os.link(temporary, _index_file(index, key))
         except FileExistsError:
             return False
         return True
-    finally:
-        Path(temporary).unlink(missing_ok=True)
 
 
 def _legacy_entries(state: dict) -> dict[str, str]:
@@ -159,15 +161,12 @@ def _hashed_copy(source: BinaryIO, target: BinaryIO) -> str:
 
 def _copied_blob(source: BinaryIO, store: Path) -> str:
     store.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=store, prefix=".blob.", suffix=".tmp")
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            digest = _hashed_copy(source, handle)
+    with state_recovery.temporary_file(store, binary=True) as (temporary, handle):
+        digest = _hashed_copy(source, handle)
+        handle.close()
         if not (store / digest).exists():
-            os.replace(temporary, store / digest)
+            temporary.replace(store / digest)
         return digest
-    finally:
-        Path(temporary).unlink(missing_ok=True)
 
 
 def _captured(path: Path, store: Path) -> str | None:

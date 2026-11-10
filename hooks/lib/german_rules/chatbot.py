@@ -7,12 +7,12 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import phrase_hits, sentence_hits
+    from ._text import phrase_hits, sentence_hits, phrase_families
     from .phrases import opening
     from ..prose_language import ParagraphLanguage
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import phrase_hits, sentence_hits
+    from german_rules._text import phrase_hits, sentence_hits, phrase_families
     from german_rules.phrases import opening
     from prose_language import ParagraphLanguage
 
@@ -87,6 +87,8 @@ THERAPEUTIC_VALIDATION = Rule(
 LETTER_FRAME_RE = re.compile(
     r"(?im:^[ \t]*Betreff:|^[ \t]*(?:Liebe[rs]?|Sehr\s+geehrte[rs]?)\s+[^\n,]{1,60},[ \t]*$"
     r"|\bmit\s+freundlichen\s+Grüßen\b)"
+    + r"|\A\s*" + phrase_families("hallo Frau/Herr", "guten Tag", "sehr geehrt~ Frau/Herr")
+    + "|" + phrase_families("beste Grüße") + r"[^.!?]*[.!?]?\s*\Z"
 )
 # humanizer-de Muster 18 plus du forms, because Q13.
 CHATBOT_TALK_RE = re.compile(
@@ -94,19 +96,32 @@ CHATBOT_TALK_RE = re.compile(
     r"|\b(?:du\s+hast|Sie\s+haben)\s+völlig\s+recht\b|\blass(?:en\s+Sie)?\s+mich\s+wissen\b"
     r"|\bbitte\s+frag(?:en\s+Sie|e)?,?\s+wenn\b|\bwie\s+(?:Sie\s+sehen\s+können|du\s+sehen\s+kannst)\b"
     r"|\bich\s+helfe\s+(?:Ihnen|dir)\s+gerne?\b)"
+    + "|" + phrase_families(
+        "gern/gerne geschehen", "das ist eine gut~ Nachfrage",
+    )
+    + "|" + phrase_families("wenn noch etwas offen ist") + r"\s*,?\s*" + phrase_families("melde dich")
 )
 # Muster 18 openers, because praise mid-text is fine.
 PRAISE_OPENER_RE = re.compile(r"(?i:gute\s+Frage|starker\s+Punkt|was\s+für\s+eine\s+großartige\s+Frage)\s*[!.,]")
 # Muster 19. No Stand [Datum], because docs date it.
 KNOWLEDGE_CUTOFF_RE = re.compile(
     r"(?i:\bbis\s+zu\s+meinem\s+letzten\s+(?:Update|Wissensstand|Trainingsstand)\b"
-    r"|\bnach\s+meinem\s+(?:aktuellen\s+)?(?:Wissen|Wissensstand|Kenntnisstand)\b|\[Aktualisierung\s+erforderlich\])"
+    r"|\bnach\s+meinem\s+(?:aktuellen\s+)?(?:Wissen|Wissensstand|Kenntnisstand)\b"
+    r"(?=[^.!?]{0,100}\b(?:Training\w*|Wissensgrenze|Live-Daten)\b)|\[Aktualisierung\s+erforderlich\])"
+    + "|" + phrase_families(
+        "mein Wissen reicht nur bis", "zum Zeitpunkt meines Trainingsstandes",
+        "ich verfüge nicht über Live-Daten",
+    )
 )
 # Muster 20 in first person, because docs name models.
 PROMPT_REFUSAL_RE = re.compile(
     r"(?i:\bals\s+KI(?:-Sprachmodell|-Modell)?\s*,?\s+(?:kann|darf|habe|bin|werde|möchte|verfüge)\s+ich\b"
     r"|\bich\s+kann\s+keine\s+aktuellen?\s+Informationen?\s+bereitstellen\b"
     r"|\bdas\s+liegt\s+außerhalb\s+meiner\s+Fähigkeiten\b)"
+    + "|" + phrase_families(
+        "ich bin ein künstlich~ Intelligenzsystem ... keine ... Aktionen aus",
+        "diese Anfrage kann ich nicht erfüllen",
+    )
 )
 # humanizer-de Muster 72, because Q13 credits it.
 THERAPEUTIC_VALIDATION_RE = re.compile(
@@ -116,7 +131,11 @@ THERAPEUTIC_VALIDATION_RE = re.compile(
     r"|deine\s+gefühle\s+sind\s+(?:völlig\s+)?(?:berechtigt|valide|verständlich)"
     r"|deine\s+reaktion(?:en)?\s+(?:ist|sind)\s+(?:völlig\s+)?(?:berechtigt|valide|verständlich)"
     r"|du\s+wurdest\s+(?:nur\s+)?(?:zu\s+lange\s+)?"
-    r"(?:nicht\s+ernst\s+genommen|kleingehalten|emotional\s+vernachlässigt))\b",
+    r"(?:nicht\s+ernst\s+genommen|kleingehalten|emotional\s+vernachlässigt))\b"
+    + "|" + phrase_families("du machst nichts falsch")
+    + "|" + phrase_families("du verdienst es")
+    + r"\s*,\s*" + phrase_families("gehört zu werden")
+    + "|" + phrase_families("es ist verständlich") + r"\s*,\s*" + phrase_families("dass dich das belastet"),
     re.IGNORECASE,
 )
 

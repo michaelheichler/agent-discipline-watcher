@@ -9,17 +9,67 @@ try:
 except ImportError:
     from host import CLAUDE, CODEX, COWORK, OMP, current_host
 
+CLAUDE_CONFIG_ENV = "CLAUDE_CONFIG_DIR"
+CLAUDE_CACHE_PARTS = ("plugins", "cache", "agent-discipline-watcher", "agent-discipline-watcher")
 STATE_ENV = "ADW_STATE_ROOT"
 PLUGIN_ROOT_ENV = "CLAUDE_PLUGIN_ROOT"
 DEFAULTS_LEAF = "defaults"
 HOME_ROOT_HOSTS = (CLAUDE, CODEX, OMP)
 
 
-def state_root(environment: dict[str, str] | None = None) -> Path:
+def home_root(home: str | os.PathLike[str] | None = None) -> Path:
+    """Accept an injected home because isolated callers must not read machine state."""
+    return Path(home).expanduser() if home is not None else Path.home()
+
+
+def claude_config_roots(
+    environment: dict[str, str] | None = None, home: Path | None = None,
+) -> tuple[Path, ...]:
+    """Because Claude config can move, inspect its override and both default directories."""
+    env = os.environ if environment is None else environment
+    base = home_root(home)
+    candidates = [
+        env.get(CLAUDE_CONFIG_ENV, "").strip(),
+        str(base / ".config" / "claude-code"),
+        str(base / ".claude"),
+    ]
+    found: list[Path] = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path.is_dir() and path not in found:
+            found.append(path)
+    return tuple(found)
+
+
+def data_root(home: str | os.PathLike[str] | None = None) -> Path:
+    """Keep runtime state stable because policy overrides must not redirect protected files."""
+    return home_root(home) / ".adw"
+
+
+def install_root(home: str | os.PathLike[str] | None = None) -> Path:
+    """Share one install location because every host uses the managed release."""
+    return data_root(home) / "install" / "agent-discipline-watcher"
+
+
+def home_relative(text: str, home: str | os.PathLike[str] | None = None) -> Path | None:
+    """Expand home tokens together because injected homes must stay isolated."""
+    for token in ("~", "$HOME", "${HOME}"):
+        if text == token:
+            return home_root(home)
+        if text.startswith(token + "/"):
+            return home_root(home) / text[len(token) + 1:]
+    return None
+
+
+def state_root(
+    environment: dict[str, str] | None = None, *, home: str | os.PathLike[str] | None = None,
+) -> Path:
     """Read the override first because a test must never touch the real home directory."""
     env = os.environ if environment is None else environment
     override = env.get(STATE_ENV, "").strip()
-    return Path(override).expanduser() if override else Path.home() / ".adw"
+    return Path(override).expanduser() if override else data_root(home)
 
 
 def _home_roots(name: str, environment: dict[str, str] | None) -> tuple[Path, ...]:

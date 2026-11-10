@@ -10,7 +10,7 @@ import threading
 
 import pytest
 
-from lib import journal, claude_luna, claude_native
+from lib import journal, claude_luna, claude_native, secure_fs
 from lib.judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from lib.luna_provider import LUNA_MODEL, LunaJudge
 from lib.luna_storage import LunaProviderFailure
@@ -282,7 +282,7 @@ def test_live_read_rejects_symlinked_parent_components(tmp_path: Path) -> None:
 def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "candidate.py"
     source.write_text("# Counts the retries because the report header needs a total.\nvalue = 1\n", encoding="utf-8")
-    original_fstat = claude_luna.os.fstat
+    original_fstat = secure_fs.os.fstat
     regular_calls = 0
 
     def swapped_fstat(descriptor: int):
@@ -296,7 +296,7 @@ def test_live_read_rejects_same_size_inode_replacement(tmp_path: Path, monkeypat
             return os.stat_result(values)
         return metadata
 
-    monkeypatch.setattr(claude_luna.os, "fstat", swapped_fstat)
+    monkeypatch.setattr(secure_fs.os, "fstat", swapped_fstat)
 
     assert claude_luna.post_request(_post_payload(source)) is None
 

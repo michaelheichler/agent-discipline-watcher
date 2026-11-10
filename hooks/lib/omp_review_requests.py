@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import journal
+from . import journal, path_policy
 from .config import gate_state
 from .judge import Candidate, request_for as comment_request
 from .judge_contracts import JudgeRequest, ReviewKind, build_prompt, instructed, output_schema
@@ -84,23 +84,21 @@ def _regex_work(path: str, text: str, config: dict, exemplars: tuple) -> list[Re
     return work
 
 
-def _journal_rows(config: dict) -> list[dict]:
+def _journal_rows(config: dict, *, project: Path) -> list[dict]:
     """Empty on a bad session id, because no journal can exist."""
     session_id = config.get("session_id")
     state_root = config.get("state_root")
     if not isinstance(session_id, str) or not session_id:
         return []
-    try:
-        return journal.read(session_id, state_root=state_root if isinstance(state_root, str) else None)
-    except ValueError:
-        return []
+    root = state_root if isinstance(state_root, (str, Path)) else None
+    return journal.read_complete(session_id, state_root=root, project=project)
 
 
 def _journal_candidates(path: str, text: str, config: dict) -> dict[str, tuple[PatternCandidate, ...]]:
-    identity = str(Path(path).expanduser().resolve())
+    identity = str(path_policy.real_path(path))
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     grouped: dict[str, list[PatternCandidate]] = {}
-    for row in _journal_rows(config):
+    for row in _journal_rows(config, project=Path(path).parent):
         if row.get("role") == "pattern" and row.get("path_identity") == identity and row.get("content_hash") == digest:
             grouped.setdefault(str(row.get("rule")), []).append(PatternCandidate(path, int(row["line"]), str(row["text"])))
     return {rule: tuple(found) for rule, found in grouped.items()}

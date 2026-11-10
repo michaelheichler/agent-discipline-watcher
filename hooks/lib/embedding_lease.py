@@ -8,18 +8,25 @@ import os
 from pathlib import Path
 
 try:
+    from . import state_recovery
+except ImportError:
+    import state_recovery
+
+try:
+    from .process_records import Identity, identity, process_start, start_times
     from .session_state import _validate_session_id, plugin_data_home
 except ImportError:
+    from process_records import Identity, identity, process_start, start_times
     from session_state import _validate_session_id, plugin_data_home
-
 LEASE_TTL_SECONDS = 900
 LEASE_SUFFIX = ".lease.json"
+LEASE_DIRECTORY = "embedding-leases"
 ROOTS_DIRECTORY = "lease-roots"
 ROOT_SUFFIX = ".root"
 
 
 def lease_root(root: str | os.PathLike[str] | None) -> Path:
-    return Path(root) if root is not None else plugin_data_home() / "embedding-leases"
+    return Path(root) if root is not None else plugin_data_home() / LEASE_DIRECTORY
 
 
 def _lease_path(directory: Path, session_id: str) -> Path:
@@ -27,7 +34,7 @@ def _lease_path(directory: Path, session_id: str) -> Path:
     return directory / (session_id + LEASE_SUFFIX)
 
 
-def _read_lease(path: Path) -> dict | None:
+def read_lease(path: Path) -> dict | None:
     try:
         row = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -42,23 +49,11 @@ def _read_lease(path: Path) -> dict | None:
     return row
 
 
-def _process_alive(pid: object) -> bool:
+def _is_live(row: dict, now: float, starts: dict[int, str | None]) -> bool:
     """Unknown ownership counts as alive, because evicting a foreign session costs more than a late unload."""
-    if not isinstance(pid, int) or pid <= 0:
-        return True
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _is_live(row: dict, now: float) -> bool:
     if now - float(row["renewed_at"]) > LEASE_TTL_SECONDS:
         return False
-    return _process_alive(row.get("pid"))
+    return identity(row, starts=starts) != Identity.MISMATCH
 
 
 def acquire(session_id: str, now: float, root: str | os.PathLike[str] | None, owner_pid: int) -> None:
@@ -66,23 +61,21 @@ def acquire(session_id: str, now: float, root: str | os.PathLike[str] | None, ow
     directory = lease_root(root)
     directory.mkdir(parents=True, exist_ok=True)
     path = _lease_path(directory, session_id)
-    _write_lease(path, {"session_id": session_id, "pid": owner_pid, "renewed_at": now})
-
-
-def _write_lease(path: Path, row: dict) -> None:
-    payload = json.dumps(row)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(payload, encoding="utf-8")
-    temporary.replace(path)
+    started = process_start(owner_pid)
+    state_recovery.atomic_json(path, {
+        "session_id": session_id, "pid": owner_pid, "process_start": started, "renewed_at": now,
+    }, ensure_ascii=True, mode=None)
 
 
 def renew(session_id: str, now: float, root: str | os.PathLike[str] | None) -> bool:
     """A turn past the TTL would otherwise lose the model."""
     path = _lease_path(lease_root(root), session_id)
-    row = _read_lease(path)
+    row = read_lease(path)
     if row is None:
         return False
-    _write_lease(path, {**row, "session_id": session_id, "renewed_at": now})
+    state_recovery.atomic_json(
+        path, {**row, "session_id": session_id, "renewed_at": now}, ensure_ascii=True, mode=None,
+    )
     return True
 
 
@@ -103,24 +96,25 @@ def _discard(path: Path) -> None:
         pass
 
 
-def _surviving_session(path: Path, now: float) -> str | None:
-    row = _read_lease(path)
-    if row is None or not _is_live(row, now):
-        _discard(path)
-        return None
-    return str(row.get("session_id", path.name[: -len(LEASE_SUFFIX)]))
+def _lease_rows(directory: Path) -> list[tuple[Path, dict | None]]:
+    return [(path, read_lease(path)) for path in sorted(directory.glob("*" + LEASE_SUFFIX))]
+
+
+def _sweep(rows: list[tuple[Path, dict | None]], now: float, starts: dict[int, str | None]) -> tuple[str, ...]:
+    found = []
+    for path, row in rows:
+        if row is None or not _is_live(row, now, starts):
+            _discard(path)
+        else:
+            found.append(str(row.get("session_id", path.name[:-len(LEASE_SUFFIX)])))
+    return tuple(found)
 
 
 def live_sessions(now: float, root: str | os.PathLike[str] | None) -> tuple[str, ...]:
     """Sweeps because a crashed session would pin the model."""
-    directory = lease_root(root)
-    if not directory.is_dir():
-        return ()
-    found = (
-        _surviving_session(path, now)
-        for path in sorted(directory.glob("*" + LEASE_SUFFIX))
-    )
-    return tuple(name for name in found if name is not None)
+    rows = _lease_rows(lease_root(root))
+    starts = start_times([row.get("pid") for _, row in rows if row is not None])
+    return _sweep(rows, now, starts)
 
 
 def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> None:
@@ -130,18 +124,30 @@ def register_root(server_root: Path, root: str | os.PathLike[str] | None) -> Non
     resolved = str(lease_root(root).resolve())
     name = hashlib.sha256(resolved.encode("utf-8")).hexdigest()
     registration = directory / (name + ROOT_SUFFIX)
-    temporary = registration.with_suffix(".tmp")
-    temporary.write_text(resolved, encoding="utf-8")
-    temporary.replace(registration)
+    state_recovery.atomic_write(registration, resolved, mode=None)
+
+
+def registered_roots(server_root: Path) -> list[Path]:
+    """Validate registration names because cleanup must not follow forged lease pointers."""
+    found = []
+    for registration in sorted((server_root / ROOTS_DIRECTORY).glob("*" + ROOT_SUFFIX)):
+        text = registration.read_text(encoding="utf-8")
+        expected = hashlib.sha256(text.encode("utf-8")).hexdigest() + ROOT_SUFFIX
+        directory = Path(text)
+        if registration.name != expected or not directory.is_absolute():
+            raise RuntimeError(f"invalid embedding lease registration: {registration}")
+        found.append(directory)
+    return found
 
 
 def has_live_leases(server_root: Path, now: float) -> bool:
-    """Sweeps because an idle root must not pin the worker."""
-    found = False
-    for registration in sorted((server_root / ROOTS_DIRECTORY).glob("*" + ROOT_SUFFIX)):
-        directory = registration.read_text(encoding="utf-8")
-        if live_sessions(now, directory):
-            found = True
+    """Batch identities because lifecycle callers wait for the entire sweep."""
+    rows = []
+    for directory in registered_roots(server_root):
+        if directory.exists():
+            rows.extend(_lease_rows(directory))
         else:
-            registration.unlink(missing_ok=True)
-    return found
+            name = hashlib.sha256(str(directory).encode("utf-8")).hexdigest() + ROOT_SUFFIX
+            (server_root / ROOTS_DIRECTORY / name).unlink(missing_ok=True)
+    starts = start_times([row.get("pid") for _, row in rows if row is not None])
+    return bool(_sweep(rows, now, starts))

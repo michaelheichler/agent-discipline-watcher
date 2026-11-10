@@ -6,13 +6,15 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Iterator
+from contextlib import contextmanager
 
 from install_runtime import EXCLUDED_NAMES
 
 try:
-    from . import update_claude_state as state
+    from . import config_roots, update_claude_state as state
 except ImportError:
+    import config_roots
     import update_claude_state as state
 
 
@@ -42,14 +44,19 @@ def install_pinned_plugin(
     cli_environment = _cli_environment(target_home, environment)
     config_root = _config_root(target_home, cli_environment)
     catalog_path = target_home / MARKETPLACE_RELATIVE / ".claude-plugin" / "marketplace.json"
-    snapshots = state.snapshots(config_root, catalog_path)
-
-    try:
+    with _install_transaction(config_root, catalog_path):
         _write_catalog(catalog_path, pinned_commit)
         _register_marketplace(target_home, catalog_path.parent.parent, cli_environment)
         _install_plugin(target_home, config_root, cli_environment, pinned_commit)
         _verify_registration(config_root, catalog_path.parent.parent)
         _verify_install(target_home, config_root, staged_source, pinned_commit)
+
+
+@contextmanager
+def _install_transaction(config_root: Path, catalog_path: Path) -> Iterator[None]:
+    snapshots = state.snapshots(config_root, catalog_path)
+    try:
+        yield
     except BaseException as error:
         try:
             state.rollback(config_root, catalog_path, snapshots, MARKETPLACE_NAME, PLUGIN_ID)
@@ -117,14 +124,9 @@ def claude_config_root(home: Path, environment: Mapping[str, str]) -> Path:
 
 def _config_root(home: Path, environment: Mapping[str, str]) -> Path:
     raw = str(environment.get(CONFIG_ENV, "")).strip()
-    if raw == "~":
-        candidate = home
-    elif raw.startswith("~/"):
-        candidate = home / raw[2:]
-    elif raw:
-        candidate = Path(raw)
-    else:
-        candidate = _default_config_root(home)
+    candidate = (
+        config_roots.home_relative(raw, home) if raw.startswith("~") else None
+    ) or (Path(raw) if raw else _default_config_root(home))
     if not candidate.is_absolute():
         candidate = home / candidate
     target = Path(os.path.abspath(candidate))
@@ -280,6 +282,13 @@ def _verify_registration(config_root: Path, marketplace_root: Path) -> None:
 
 
 def _verify_install(home: Path, config_root: Path, source: Path, commit: str) -> None:
+    install_path = _registered_install_path(config_root, commit)
+    cache = _verified_cache(home, config_root, install_path)
+    _compare_release_trees(source, cache)
+    _verify_enabled(config_root)
+
+
+def _registered_install_path(config_root: Path, commit: str) -> str:
     registry_path = config_root / "plugins" / "installed_plugins.json"
     registry = _read_json(registry_path)
     plugins = registry.get("plugins") if isinstance(registry, dict) else None
@@ -297,7 +306,13 @@ def _verify_install(home: Path, config_root: Path, source: Path, commit: str) ->
     install_path = matching[-1].get("installPath")
     if not isinstance(install_path, str) or not install_path:
         raise RuntimeError("Claude plugin registry entry has no install path")
-    cache = _expand_install_path(install_path, home)
+    return install_path
+
+
+def _verified_cache(home: Path, config_root: Path, install_path: str) -> Path:
+    cache = (
+        config_roots.home_relative(install_path, home) if install_path.startswith("~") else None
+    ) or Path(install_path)
     if not cache.is_absolute():
         cache = config_root / cache
     cache = Path(os.path.abspath(cache))
@@ -310,16 +325,7 @@ def _verify_install(home: Path, config_root: Path, source: Path, commit: str) ->
         raise RuntimeError(str(error)) from error
     if cache.is_symlink() or not cache.is_dir():
         raise RuntimeError(f"Claude plugin cache is not a directory: {cache}")
-    _compare_release_trees(source, cache)
-    _verify_enabled(config_root)
-
-
-def _expand_install_path(value: str, home: Path) -> Path:
-    if value == "~":
-        return home
-    if value.startswith("~/"):
-        return home / value[2:]
-    return Path(value)
+    return cache
 
 
 def _verify_enabled(config_root: Path) -> None:

@@ -19,7 +19,7 @@ GEDANKENSTRICH_RE = re.compile("(?:^|(?<=\\s))\u2013(?=\\s|$)")
 BIS_STRICH_RE = re.compile("(?<=[\\w.])–(?=\\w)")
 GERMAN_QUOTED_RE = re.compile("\u201e[^\u201e\u201c\u201d\\n]*\u201c|\u201a[^\u201a\u2018\u2019\\n]*\u2018")
 WRONG_QUOTE_RE = re.compile("[\"\u201c\u201d\u2018]|(?<!\\w)'[^'\\n]+'(?!\\w)")
-GENITIVE_APOSTROPHE_RE = re.compile("(?<=[\\w,] )[A-Z\u00c4\u00d6\u00dc][a-z\u00e4\u00f6\u00fc\u00df]+['\u2019]s\\b")
+GENITIVE_APOSTROPHE_RE = re.compile(r"(?<!\w)[A-ZÄÖÜ][a-zäöüß]+(?:['’]+s)+\b")
 TYPED_ELLIPSIS_RE = re.compile("\\.{3,}|\u2026\\.|\\.\u2026")
 WORD_RE = re.compile(r"[^\W\d_]+")
 

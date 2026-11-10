@@ -13,6 +13,7 @@ WATCHER_MARKERS = (
 )
 
 
+# Because installation precedes lib imports, this writer stays standalone.
 def atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o600

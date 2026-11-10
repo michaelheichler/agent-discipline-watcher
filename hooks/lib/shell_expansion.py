@@ -96,6 +96,7 @@ class Expansions(NamedTuple):
         for index in range(len(parts) - 1 if os.path.isabs(expanded) else 0, len(parts)):
             prefix = os.path.join(base, *parts[:index + 1])
             if os.path.islink(prefix):
+                # Because filesystem names can contain literal tildes.
                 return [os.path.join(os.path.realpath(prefix), *parts[index + 1:])]
         return []
 

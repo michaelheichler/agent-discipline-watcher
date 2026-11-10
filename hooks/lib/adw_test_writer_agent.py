@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
+
+try:
+    from .config_roots import install_root
+except ImportError:
+    from config_roots import install_root
 
 AGENT_NAME = "adw-test-writer"
 PLUGIN_NAME = "agent-discipline-watcher"
 SKILL_PATH = "skills/unit-testing-principles/SKILL.md"
 SKILL_NAME = "unit-testing-principles"
 CLAUDE_SKILL_ID = f"{PLUGIN_NAME}:{SKILL_NAME}"
-INSTALL_ROOT = "$HOME/.adw/install/agent-discipline-watcher"
-INSTALLED_SKILL_PATH = f"{INSTALL_ROOT}/{SKILL_PATH}"
+INSTALLED_SKILL_PATH = str(install_root(Path("$HOME")) / SKILL_PATH)
 
 CLAUDE_MODEL = "claude-opus-5-5"
 CLAUDE_EFFORT = "high"

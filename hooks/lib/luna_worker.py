@@ -4,11 +4,13 @@ from __future__ import annotations
 from collections.abc import Callable
 import json
 import os
+import signal
 from pathlib import Path
 import stat
 import sys
 from typing import TextIO
 
+from . import process_records
 from .judge_contracts import JudgeRequest, JudgeResult, ReviewKind
 from .luna_provider import (
     CONFIG_OVERRIDES,
@@ -49,6 +51,32 @@ def main(*, stdin: TextIO = sys.stdin, run: Runner = execute) -> int:
         category, message = _classify_sdk_error(exc)
         _write_error(category, message)
         return 70
+
+
+def _terminate_worker(signum: int, _frame: object) -> None:
+    raise SystemExit(128 + signum)
+
+
+def registered_main(
+    *, run: Callable[[], int] = main,
+    register: Callable[..., Path] = process_records.register,
+    unregister: Callable[[Path], None] = process_records.unregister,
+    state_root: str | Path | None = None,
+) -> int:
+    """Track detached workers because abrupt hook exit cannot reap their new process session."""
+    root = state_root if state_root is not None else os.environ.get("ADW_PROCESS_STATE_ROOT")
+    try:
+        record = register("luna-worker", state_root=root)
+    except (OSError, ValueError) as exc:
+        _write_error("configuration", _bounded_message(str(exc), "could not register Luna worker"))
+        return 70
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        signal.signal(signal.SIGTERM, _terminate_worker)
+        return run()
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        unregister(record)
 
 
 def _decode_request(row: object) -> tuple[JudgeRequest, SdkLaunch]:
@@ -223,4 +251,4 @@ def _write_error(category: str, message: str) -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(registered_main())

@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.34.0 (2026-11-10)
+
+### Fixed in the gates
+
+- **Hard-link aliases of protected files block.** Before, a second name for a protected inode let a write through, both through Write and Edit and through Bash. `hooks/lib/protected.py` now compares device and inode against the ADW-owned trees and caches that index for the length of a hook call. A write through an ordinary pnpm or uv hard link still passes, and a cold check in a large repository takes about 1.5 s instead of 12 s.
+- **Commit messages from a file get scanned.** `git commit -F`, `--file`, and a literal heredoc on stdin now go through the same scan as `-m`. An unreadable message, or a tilde target that could name two different files, blocks instead of slipping through.
+- **A malformed `kill_switches` value keeps the family on.** Before, a bad entry silently disabled the family gate. ADW now enforces the family and names the error.
+- **MCP writes through `filePath` and `body` reach the gate.** One shared contract in `hooks/lib/mcp_contract.json` lists path and content keys for Python and TypeScript. A content key never counts as a path, an unseen path key such as `destinationPath` still counts, and OMP forwards every raw alias candidate to the Python gate.
+
+### Fixed in detection
+
+- **English phrase rules catch paraphrases.** One phrase-family matcher handles inflection and nearby wording for the rules that missed every paraphrased probe (`ai_closer`, `banned_adverb`, `business_jargon`, `corporate_idiom`, `greeting_opener`, `hedge_stack`, `narrator_distance`, `binary_contrast`). Context checks sit on each rule, so "the market shifts toward whoever tells the best story" and "not just fast but also beautiful" get flagged again.
+- **Prose rules skip Markdown code fences.** `hooks/lib/markup.py` owns fence, heading, thematic-break, and table recognition for English and German rules, and line numbers outside the fences stay exact.
+- **German rules catch more of their targets.** A shared inflection-aware matcher and document context add 64 static hits across the review matrix and clear 12 confirmed false positives. Ordinal dates such as "3. Mai" stay inside their sentence, "Mai" counts one syllable, and malformed genitives at the start of a sentence report.
+- **JS and TS test files get test-smell checks.** Assertion loops, branches in a test body, and repeated act sections now report in `*.test.ts`, `*.spec.js`, and their variants. Comments and quoted examples no longer trigger the private-access and mock rules, and a regex brace no longer cuts a JavaScript function span short.
+
+### Fixed in the judges
+
+- **Luna and OMP reject fabricated evidence.** They reject a quote that is missing from the reviewed text or ambiguous within it, an empty note field, and a seventh note. Reviewed text sits inside `<adw-untrusted>` fences with escaped markers, and the rubric version change invalidates old Luna verdicts.
+- **Every host reports an incomplete journal.** Claude, Codex, and OMP read the candidate journal through one strict snapshot. Overflow and corrupt state now fail visibly with counts, where they used to pass as a clean review.
+
+### Fixed in install and uninstall
+
+- **`adw-nuke` removes the whole footprint.** It stops registered ADW workers first, rechecking process identity before each signal. It also removes verified macOS account plugin copies, OMP settings backups, and registered project embedding leases. ADW processes record their pid, start time, and argv under `~/.adw/run/` through `hooks/lib/process_records.py`.
+- **Updates no longer stall hooks.** `adw update` downloads and stages outside the exclusive lock and holds it only for the final swap.
+- **The Codex hooks merge keeps inline options.** A command with braces or escaped quotes keeps its other fields, and the merge rejects shapes it cannot parse rather than rewriting them.
+- **Docs match the commands.** `/update` step 6 finds the helper in the newly installed plugin root, and the eval guide uses the shipped Codex runner. CI also runs the Pi settings-merge tests and `bun run typecheck`, and it fails when pylint exits nonzero.
+
+### Changed in the code
+
+- **Shared owners replace copies.** `state_recovery` owns atomic writes, `secure_fs` owns descriptor-safe reads, and `config_roots` owns home, data, and install roots. `review_scope` and `payloads.resolved_path` own path policies, `shell_text` owns shell lexing, and `findings.finding_row` owns finding rows. Seven copies of the cwd-anchored path resolver and three drifted copies of descriptor-safe I/O are gone.
+- **Hot paths do less work.** The test-double rule went from 21 s to under 1 s on a 600-test file, and README prose scans went from 16 ms to 9 ms. Hook startup imports about 10 ms less, and the lease sweep makes one `ps` call instead of forty.
+- **Seams replace monkeypatching.** The embedding worker, server, supervisor, and process identity accept injected loaders, server factories, spawners, and start-time lookups, so tests drive the full lifecycle without touching private names.
+- **`protected.AUTH_KEY` is now `protected.AUTH_SETTING`.** The settings field keeps its name `protected_paths_authorized` (user decision 2026-11-10).
+
 ## 0.33.0 (2026-11-04)
 
 ### Removed

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from functools import partial
+
 import pytest
 
-from lib import embedding_session, pattern_semantic
+from lib import embedding_session, pattern_semantic, state_recovery
 from lib.pattern_judge import JudgedOutcome
 from lib.pattern_semantic import Exemplar, Layer, Sentence
 
@@ -99,13 +101,13 @@ def test_an_enforce_gate_cannot_lift_a_rule_below_the_floor() -> None:
     assert not pattern_semantic.rule_blocks(GATED, "measured_low", {"rule_gates": {"measured_low": "enforce"}})
 
 
-def test_the_shipped_gate_matches_the_recorded_measurement() -> None:
+@pytest.mark.parametrize("rule", pattern_semantic.blocking_rules(pattern_semantic.load_manifest()))
+def test_the_shipped_gate_matches_the_recorded_measurement(rule: str) -> None:
     manifest = pattern_semantic.load_manifest()
     blocking = pattern_semantic.blocking_rules(manifest)
 
     assert "ai_closer" in blocking
-    for rule in blocking:
-        assert manifest["rules"][rule]["judge_precision"] >= pattern_semantic.ENFORCE_PRECISION
+    assert manifest["rules"][rule]["judge_precision"] >= pattern_semantic.ENFORCE_PRECISION
 
 
 def test_a_near_neighbour_of_the_violating_side_becomes_a_candidate() -> None:
@@ -191,10 +193,13 @@ def test_a_failed_cache_write_leaves_the_old_cache_whole(cache_root, monkeypatch
     path = pattern_semantic._cache_path(None)
     path.write_text('[["old", [1.0]]]', encoding="utf-8")
 
-    def interrupted(_source, _target) -> None:
+    def interrupted() -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr(pattern_semantic.os, "replace", interrupted)
+    monkeypatch.setattr(
+        state_recovery, "atomic_open",
+        partial(state_recovery.atomic_open, before_replace=interrupted),
+    )
     with pytest.raises(OSError):
         pattern_semantic.exemplar_vectors(EXEMPLARS, vectors=lambda texts, config=None: {text: (0.5,) for text in texts})
 

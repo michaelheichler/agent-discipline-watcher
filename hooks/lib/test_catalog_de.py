@@ -1,16 +1,25 @@
+"""Because German findings need German wording, check prose catalog coverage."""
+
 from __future__ import annotations
 
 import re
 
-from lib import catalog, catalog_de, config, german_punctuation, test_rules
+from lib import catalog, catalog_de, comment_rules, config, german_punctuation, test_rules
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _english_only() -> set[str]:
-    """Exclude these because code comments keep English (decision Q3) and German never raises the colon or semicolon ban."""
+    """Because Q3 keeps code comments English, exclude their detector families."""
+    comment_line_rules = {
+        rule for _, rule, _, _, family in comment_rules.CLEAN_CODE_LINE_RULES
+        if family in {"comment", "code"}
+    }
+    comment_body_rules = {rule for _, rule, _, _ in comment_rules.COMMENT_BODY_RULES}
     return (
-        set(config.ALWAYS_BLOCKING_RULES)
+        comment_line_rules
+        | comment_body_rules
+        | set(config.ALWAYS_BLOCKING_RULES)
         | set(config.FIXED_OBSERVE_RULES)
         | set(test_rules.default_gates(test_rules.RULE_SETS))
         | {"function_too_long", "hollow_test", "deferred_work_comment"}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,17 +10,19 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 import pre_bash
 import pre_mcp
 import pre_tool
 import pre_write
-from lib import catalog, protected
+from lib import catalog, mcp_paths, protected
 from lib.config import CONFIG_NAME
 from lib.scanner import scan_all
 
 HOOKS = Path(__file__).resolve().parent
 CONFIG_SEAL_TITLE = catalog.rule_entry("config_seal").title
-GRANT = json.dumps({protected.AUTH_KEY: True})
+GRANT = json.dumps({protected.AUTH_SETTING: True})
 DOWNGRADE = json.dumps({"rule_gates": {"suppression_escape_hatch": "off"}})
 ATTACK = json.dumps({
     "punctuation": False,
@@ -145,14 +148,14 @@ class SelfGrantChainTests(unittest.TestCase):
 
     def test_a_landed_grant_cannot_authorize_the_next_grant(self):
         self.config.write_text(GRANT, encoding="utf-8")
-        granted = {protected.AUTH_KEY: True}
+        granted = {protected.AUTH_SETTING: True}
         self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._write(GRANT, granted)))
         command = "cat > " + str(self.config) + " <<'JE'\n" + GRANT + "\nJE\n"
         self.assertIn(CONFIG_SEAL_TITLE, self._blocked(self._bash(command, granted)))
 
     def test_a_landed_grant_is_inert_against_the_rest_of_the_family(self):
         self.config.write_text(GRANT, encoding="utf-8")
-        granted = {protected.AUTH_KEY: True}
+        granted = {protected.AUTH_SETTING: True}
         for command, rule in (
             ("git commit --no-verify -m x", "commit_gate_bypass"),
             ("rm -f " + str(self.config), "state_deletion"),
@@ -213,7 +216,7 @@ class SelfGrantChainTests(unittest.TestCase):
         self.assertIn(catalog.rule_entry("state_mutation").title, self._blocked(self._mcp({"path": str(target)})))
 
     def test_an_mcp_write_to_the_legacy_state_home_is_blocked(self):
-        """The legacy root stays guarded because an unmigrated machine still keeps its state there."""
+        """Because unmigrated machines retain legacy state, protect that root."""
         target = Path.home() / ".agent-discipline" / "state" / "s1" / "state.json"
         self.assertIn(catalog.rule_entry("state_mutation").title, self._blocked(self._mcp({"path": str(target)})))
 
@@ -268,6 +271,58 @@ class SelfGrantChainTests(unittest.TestCase):
         self.assertIn(CONFIG_SEAL_TITLE, self._blocked(pre_tool.run(payload, self.cfg)))
 
 
+def test_mcp_camelcase_body_cannot_weaken_existing_policy(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / CONFIG_NAME).write_text("{}", encoding="utf-8")
+    payload = {
+        "session_id": "mcp-alias", "cwd": str(tmp_path),
+        "tool_name": "mcp__docs__save_document",
+        "tool_input": {"filePath": CONFIG_NAME, "body": '{"tests":"allow"}'},
+    }
+    roots = {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")}
+
+    result = pre_mcp.run(payload, roots)
+
+    assert result.get("decision") == "block"
+    assert "config_seal" in result["reason"]
+
+
+@pytest.mark.parametrize("key", [
+    "destinationPath", "outputFile", "targetUri", "URIPath",
+])
+def test_unlisted_path_shaped_mcp_keys_still_resolve_targets(key) -> None:
+    assert mcp_paths.mcp_target_paths({key: "a.md", "body": "replacement"}) == ["a.md"]
+
+
+@pytest.mark.parametrize("key", [
+    "content", "contents", "text", "data", "body", "new_string", "newString",
+    "new_source", "newSource", "file_text", "fileText", "new_text", "newText",
+    "edits", "patch", "replacement", "replacements", "old_string", "oldString",
+    "source_metadata",
+])
+def test_mcp_content_and_change_values_never_invent_a_target(key) -> None:
+    assert mcp_paths.mcp_target_paths({key: "a.md"}) == []
+
+
+@pytest.mark.parametrize("protected_key", ["file_path", "filePath"])
+def test_every_conflicting_mcp_alias_faces_the_python_config_seal(
+        tmp_path, monkeypatch, protected_key) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / CONFIG_NAME).write_text("{}", encoding="utf-8")
+    candidates = {"file_path": "ordinary.md", "filePath": "ordinary.md"}
+    candidates[protected_key] = CONFIG_NAME
+    payload = {"session_id": "mcp-conflict", "cwd": str(tmp_path),
+               "tool_name": "mcp__docs__save_document",
+               "tool_input": {**candidates, "body": "replacement"}}
+    roots = {"state_root": str(tmp_path / "state"), "ledger_root": str(tmp_path / "ledger")}
+
+    result = pre_mcp.run(payload, roots)
+
+    assert result.get("decision") == "block"
+    rows = (tmp_path / "ledger/ledger.jsonl").read_text(encoding="utf-8").splitlines()
+    assert "config_seal" in {json.loads(row).get("rule") for row in rows}
+
+
 class MalformedConfigFailClosedTests(unittest.TestCase):
     """A gate that cannot read its config must fail closed, because exit one reads as hook error and lets the call through."""
 
@@ -294,13 +349,14 @@ class MalformedConfigFailClosedTests(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(HOOKS / script)], input=self._payload(), text=True,
             capture_output=True, check=False, cwd=str(self.root),
+            env={**os.environ, "HOME": str(self.root)},
         )
 
     def _assert_blocking_marker_reported(self, result: subprocess.CompletedProcess) -> None:
         self.assertEqual(result.returncode, 0, result.stderr)
         response = json.loads(result.stdout)
         self.assertNotIn("decision", response)
-        self.assertIn("Apology comment", response["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("apology_comment", response["hookSpecificOutput"]["additionalContext"])
 
     def test_no_entry_point_dies_on_a_malformed_gate_map(self):
         for malformed in MALFORMED:

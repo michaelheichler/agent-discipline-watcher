@@ -15,29 +15,24 @@ try:
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
-        _comment_body_lines,
-        _comment_line_findings,
-        _finding,
-        _lexical_docstring_findings,
-        _multiline_comment_findings,
-        _normalize_block_comments,
-        _scan_comment_blocks,
-        _scan_docstrings,
-        _weak_why_findings,
-        _what_comment_findings,
-        _what_docstring_findings,
+        scan_comment_line,
+        scan_comment_contract,
     )
     from . import families, german_punctuation, german_rules, language_verdict, test_rules
     from .german_document_rules import scan_german_document
     from .prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from .config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
-    from .findings import spanning
+    from .findings import finding_row, spanning
     from .markup import (
         CONFIG_EXTS,
         MIXED_LANGUAGE_EXTS,
         PROSE_EXTS,
         TEMPLATE_EXPRESSION_RE,
         CommentSource,
+        FencePolicy,
+        markdown_lines,
+        mask_quoted,
+        is_table_separator_row as _is_table_separator_row,
         RegionKind,
         _blank_keep_newlines,
         _mask_markup,
@@ -50,9 +45,9 @@ try:
     )
     from .brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from .parataxis import scan_parataxis
-    from .prose_structure import _next_fence, _scan_prose_structure
-    from .slop_phrase import scan_slop_phrases
-    from .slop_structure import _scan_slop_structure, mask_quoted
+    from .prose_structure import scan_prose_structure
+    from .slop_phrase import EnglishRule, PhraseFamily, _temporal_day, phrase_family_matches, phrase_text, scan_slop_phrases
+    from .slop_structure import scan_slop_structure
 except ImportError:
     import scan_input
     from comment_rules import (
@@ -61,17 +56,8 @@ except ImportError:
         DIRECTIVE_COMMENT_RE,
         HEADER_COMMENT_RE,
         READABILITY_RULES,
-        _comment_body_lines,
-        _comment_line_findings,
-        _finding,
-        _lexical_docstring_findings,
-        _multiline_comment_findings,
-        _normalize_block_comments,
-        _scan_comment_blocks,
-        _scan_docstrings,
-        _weak_why_findings,
-        _what_comment_findings,
-        _what_docstring_findings,
+        scan_comment_line,
+        scan_comment_contract,
     )
     import families
     import german_punctuation
@@ -81,13 +67,17 @@ except ImportError:
     from german_document_rules import scan_german_document
     from prose_language import ENGLISH, GERMAN, ParagraphLanguage, allowed_languages, paragraph_languages
     from config import calibrated_findings, effective_config, family_enabled, slop_phrase_candidate
-    from findings import spanning
+    from findings import finding_row, spanning
     from markup import (
         CONFIG_EXTS,
         MIXED_LANGUAGE_EXTS,
         PROSE_EXTS,
         TEMPLATE_EXPRESSION_RE,
         CommentSource,
+        FencePolicy,
+        markdown_lines,
+        mask_quoted,
+        is_table_separator_row as _is_table_separator_row,
         RegionKind,
         _blank_keep_newlines,
         _mask_markup,
@@ -100,9 +90,9 @@ except ImportError:
     )
     from brace_functions import BRACE_LANGUAGE_EXTS, long_brace_functions
     from parataxis import scan_parataxis
-    from prose_structure import _next_fence, _scan_prose_structure
-    from slop_phrase import scan_slop_phrases
-    from slop_structure import _scan_slop_structure, mask_quoted
+    from prose_structure import scan_prose_structure
+    from slop_phrase import EnglishRule, PhraseFamily, _temporal_day, phrase_family_matches, phrase_text, scan_slop_phrases
+    from slop_structure import scan_slop_structure
 read_scannable = scan_input.read_scannable
 scannable_text = scan_input.scannable_text
 _int_setting = scan_input.int_setting
@@ -128,26 +118,25 @@ ITS_APOS_RE = re.compile(r"(?<![\w\"'])its" + chr(39) + r"(?!\w)", re.IGNORECASE
 DECADE_APOS_RE = re.compile(r"(?:\b\d{3}0|'\d0)'s\b")
 HTML_CODE_RE = re.compile(r"<(code|pre)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 HTML_SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
-TABLE_SEPARATOR_RE = re.compile(r"^\|?[\s:|-]*-[\s:|-]*\|?$")
 PROSE_FINDING_FAMILIES = frozenset({"punctuation", "english"})
 ENGLISH_RULES = (
-    (re.compile(r"\bsmoking gun\b", re.IGNORECASE), "dead_metaphor", "Name the evidence and what it proves."),
-    (re.compile(r"\bat the end of the day\b", re.IGNORECASE), "filler", "State the conclusion directly."),
-    (re.compile(r"\b(it'?s worth noting|it'?s important to note|it should be noted)\b", re.IGNORECASE), "throat_clearing", "Start with the point."),
-    (re.compile(r"\bneedless to say\b", re.IGNORECASE), "filler", "Delete it or say the point plainly."),
-    (re.compile(r"\bin today'?s (fast-paced|digital|modern|ever-changing)\b", re.IGNORECASE), "filler_opener", "Start with the actual point."),
-    (re.compile(r"\bdelve into\b", re.IGNORECASE), "ai_tell", "Use a plain verb."),
-    (re.compile(r"\b(tapestry|rich tapestry)\b", re.IGNORECASE), "dead_metaphor", "Name the real parts."),
-    (re.compile(r"\b(a )?testament to\b", re.IGNORECASE), "inflated_diction", "State what it shows."),
-    (re.compile(r"\bnavigat(e|ing) the (complexities|landscape|challenges)\b", re.IGNORECASE), "dead_metaphor", "Say what is hard."),
-    (re.compile(r"\butili[sz](?:e|es|ed|ing|ation|ations)\b", re.IGNORECASE), "utilize", "Use 'use'."),
-    (re.compile(r"\bleverag(e|es|ed|ing)\b", re.IGNORECASE), "inflated_diction", "Use 'use' or name the action."),
-    (re.compile(r"\bin order to\b", re.IGNORECASE), "wordiness", "Use 'to'."),
-    (re.compile(r"\bdue to the fact that\b", re.IGNORECASE), "wordiness", "Use 'because'."),
-    (re.compile(r"\b(a )?(wide )?(variety|plethora|myriad) of\b", re.IGNORECASE), "vague_quantity", "Give the number or name the items."),
-    (re.compile(r"\bThere (is|are)\s+\w[\w\s,]{0,40}?\s+that\b", re.IGNORECASE), "expletive_there", "Lead with the subject and an active verb."),
-    (re.compile(r"\b(very|really|quite|extremely)\s+\w+", re.IGNORECASE), "empty_intensifier", "Drop the modifier or choose a stronger word."),
-    (re.compile(r"\bgame[- ]chang(er|ing)\b", re.IGNORECASE), "dead_metaphor", "State the concrete effect."),
+    EnglishRule(PhraseFamily.compile(r"\bsmoking gun\b"), "dead_metaphor", "Name the evidence and what it proves."),
+    EnglishRule(PhraseFamily.compile(r"\bat the end of the day\b", literal=_temporal_day), "filler", "State the conclusion directly."),
+    EnglishRule(PhraseFamily.compile(r"\b(it'?s worth noting|it'?s important to note|it should be noted)\b"), "throat_clearing", "Start with the point."),
+    EnglishRule(PhraseFamily.compile(r"\bneedless to say\b"), "filler", "Delete it or say the point plainly."),
+    EnglishRule(PhraseFamily.compile(r"\bin today'?s (fast-paced|digital|modern|ever-changing)\b"), "filler_opener", "Start with the actual point."),
+    EnglishRule(PhraseFamily.compile(r"\bdelve into\b"), "ai_tell", "Use a plain verb."),
+    EnglishRule(PhraseFamily.compile(r"\b(tapestry|rich tapestry)\b"), "dead_metaphor", "Name the real parts."),
+    EnglishRule(PhraseFamily.compile(r"\b(a )?testament to\b"), "inflated_diction", "State what it shows."),
+    EnglishRule(PhraseFamily.compile(r"\bnavigat(e|ing) the (complexities|landscape|challenges)\b"), "dead_metaphor", "Say what is hard."),
+    EnglishRule(PhraseFamily.compile(r"\butili[sz](?:e|es|ed|ing|ation|ations)\b"), "utilize", "Use 'use'."),
+    EnglishRule(PhraseFamily.compile(r"\bleverag(e|es|ed|ing)\b"), "inflated_diction", "Use 'use' or name the action."),
+    EnglishRule(PhraseFamily.compile(r"\bin order to\b"), "wordiness", "Use 'to'."),
+    EnglishRule(PhraseFamily.compile(r"\bdue to the fact that\b"), "wordiness", "Use 'because'."),
+    EnglishRule(PhraseFamily.compile(r"\b(a )?(wide )?(variety|plethora|myriad) of\b"), "vague_quantity", "Give the number or name the items."),
+    EnglishRule(PhraseFamily.compile(r"\bThere (is|are)\s+\w[\w\s,]{0,40}?\s+that\b"), "expletive_there", "Lead with the subject and an active verb."),
+    EnglishRule(PhraseFamily.compile(r"\b(very|really|quite|extremely)\s+\w+"), "empty_intensifier", "Drop the modifier or choose a stronger word."),
+    EnglishRule(PhraseFamily.compile(r"\bgame[- ]chang(er|ing)\b"), "dead_metaphor", "State the concrete effect."),
 ) + READABILITY_RULES
 ASSERT_RE = re.compile(r"\bassert\b|\.assert|expect\(|\bexpect\.(?:poll|soft)\(|raises\(|warns\(|should\b|\.to\b|require\.|verify\(", re.IGNORECASE)
 TEST_START_RE = re.compile(r"^(\s*)(?:async\s+)?def\s+test\w*\s*\([^)]*\):|^(\s*)(?:it|test|describe)\s*\(", re.IGNORECASE)
@@ -158,6 +147,8 @@ SHELL_IN_CONFIG_RE = re.compile(
 )
 SUPPRESSION_MARKER = "craftsman" + "-ignore"
 SUPPRESSION_MARKER_RE = re.compile(r"\b" + re.escape(SUPPRESSION_MARKER) + r"\b", re.IGNORECASE)
+
+
 
 
 def _is_exempt(path: str, cfg: dict) -> bool:
@@ -205,7 +196,7 @@ def _python_tree(path: str, text: str) -> ast.Module | None:
 
 def _unconditional_findings(context: _ScanContext, comment_text: str) -> list[dict]:
     findings = [
-        _finding("code", "suppression_escape_hatch", number,
+        finding_row("code", "suppression_escape_hatch", number,
                  "Craftsman suppression marker in " + context.path, line,
                  "Remove the marker and fix the reported issue.")
         for number, line in enumerate(context.lines, 1) if SUPPRESSION_MARKER_RE.search(line)
@@ -213,16 +204,7 @@ def _unconditional_findings(context: _ScanContext, comment_text: str) -> list[di
     if not context.code_file:
         return findings
     findings.extend(_file_length_findings(context.path, len(context.lines)))
-    findings.extend(_multiline_comment_findings(context.path, comment_text))
-    comment_source = _normalize_block_comments(comment_text, context.path)
-    comment_rows = _comment_body_lines(comment_source)
-    findings.extend(_what_comment_findings(context.path, comment_rows))
-    findings.extend(_what_docstring_findings(context.path, context.tree))
-    findings.extend(_scan_comment_blocks(context.path, comment_source))
-    findings.extend(_scan_docstrings(context.path, context.tree))
-    if context.tree is None and context.path.lower().endswith(".py"):
-        findings.extend(_lexical_docstring_findings(context.path, context.text))
-    findings.extend(_weak_why_findings(context.path, comment_rows))
+    findings.extend(scan_comment_contract(context.path, comment_text, context.tree, context.text))
     return findings
 
 class _ScanContext(NamedTuple):
@@ -341,7 +323,7 @@ def _scan_line_families(source_line: _SourceLine, sources: _LineSources, context
 
 def _scan_code_line(source_line: _SourceLine, comment_lines: list[str], active: frozenset[str]) -> list[dict]:
     scan_line = _line_or_blank(comment_lines, source_line.number)
-    findings = _comment_line_findings(source_line.path, source_line.number, scan_line, active)
+    findings = scan_comment_line(source_line.path, source_line.number, scan_line, active)
     if "code" in active:
         findings.extend(_hollow_test_line_findings(source_line.path, source_line.number, scan_line))
     return findings
@@ -360,8 +342,8 @@ def _english_view(masked: str, languages: list[str]) -> str:
 def _scan_english_families(path: str, masked: str, context: _ScanContext) -> list[dict]:
     if "english" not in context.active_families or not context.prose:
         return []
-    findings = _scan_prose_structure(path, masked, context.config)
-    findings.extend(cast(list[dict], _scan_slop_structure(path, masked)))
+    findings = scan_prose_structure(path, masked, context.config)
+    findings.extend(cast(list[dict], scan_slop_structure(path, masked)))
     if slop_phrase_candidate(masked):
         findings.extend(cast(list[dict], scan_slop_phrases(path, masked, context.config)))
     return findings
@@ -491,7 +473,7 @@ def _scan_punctuation(source_line: _SourceLine, scan_line: _PunctuationLine, pro
     for target, regexes, rule, detail, action in rules:
         found = _first_match(regexes, texts[target])
         if found is not None:
-            rows.append(_finding(
+            rows.append(finding_row(
                 "punctuation", rule, source_line.number,
                 detail + source_line.path, source_line.text, action, match=found,
             ))
@@ -512,18 +494,18 @@ def _scan_english(source_line: _SourceLine, scan_line: str) -> list[dict]:
     rows = []
     if source_line.text.lstrip().startswith(">"):
         return rows
-    scan_line = mask_quoted(_strip_inline_code(scan_line))
-    for pattern, rule, action in ENGLISH_RULES:
-        found = pattern.search(scan_line)
+    scan_line = phrase_text(_strip_inline_code(scan_line))
+    for family, rule, action in ENGLISH_RULES:
+        found = next(phrase_family_matches(family.patterns, scan_line, family.literal), None)
         if found:
-            rows.append(_finding(
+            rows.append(finding_row(
                 "english",
                 rule,
                 source_line.number,
                 "Plain English rule in " + source_line.path,
                 source_line.text,
                 action,
-                match=found.group(0),
+                match=scan_line[found.start():found.end()],
             ))
     return rows
 
@@ -533,7 +515,7 @@ def _file_length_findings(path: str, count: int) -> list[dict]:
     if policy is None or scan_input.is_data_file(path):
         return []
     rule, action = policy
-    return [_finding("code", rule, 1, f"File has {count} lines in {path}", path, action)]
+    return [finding_row("code", rule, 1, f"File has {count} lines in {path}", path, action)]
 
 
 def file_length_findings(path: str, text: str) -> list[dict]:
@@ -558,7 +540,7 @@ def _long_function_rows(context: _ScanContext) -> list[tuple[int, str, int]]:
 
 def _function_length_findings(context: _ScanContext) -> list[dict]:
     return [
-        spanning(_finding(
+        spanning(finding_row(
             "code", "function_too_long", line,
             "Function is over the length cap in " + context.path,
             name, "Extract helpers until each function does one thing.",
@@ -578,7 +560,7 @@ def _scan_code_file(context: _ScanContext, text: str) -> list[dict]:
 def _hollow_test_line_findings(path: str, line_number: int, line: str) -> list[dict]:
     if not _looks_like_empty_test(line):
         return []
-    return [_finding(
+    return [finding_row(
         "code",
         "hollow_test",
         line_number,
@@ -603,7 +585,7 @@ def _scan_hollow_test_blocks(path: str, lines: list[str]) -> list[dict]:
             continue
         block, next_index = _test_block(lines, index)
         if block and not any(ASSERT_RE.search(part) for part in block):
-            findings.append(spanning(_finding(
+            findings.append(spanning(finding_row(
                 "code",
                 "hollow_test",
                 index + 1,
@@ -653,22 +635,15 @@ def _looks_like_empty_test(line: str) -> bool:
     return bool(PASS_WORD_RE.search(stripped)) and not ASSERT_RE.search(stripped)
 
 
-def _is_table_separator_row(line: str) -> bool:
-    return bool(TABLE_SEPARATOR_RE.fullmatch(line.strip()))
-
-
 def _strip_punctuation_blocks(path: str, text: str, prose: bool | None = None) -> str:
     text = HTML_CODE_RE.sub(_blank_keep_newlines, text)
     text = HTML_SCRIPT_STYLE_RE.sub(_blank_keep_newlines, text)
     if not (prose if prose is not None else _is_prose(path, text)):
         return text
-    visible = []
-    fence = None
-    for line in text.splitlines():
-        fence, marker = _next_fence(line, fence)
-        hidden = marker or fence or _is_table_separator_row(line)
-        visible.append("" if hidden else line)
-    return "\n".join(visible)
+    return "\n".join(
+        "" if block.hidden or block.punctuation_separator else block.content
+        for block in markdown_lines(text, FencePolicy.PUNCTUATION)
+    )
 
 
 def _punctuation_prose_part(path: str, line: str, prose: bool) -> str:

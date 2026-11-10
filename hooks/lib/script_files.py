@@ -45,6 +45,7 @@ def runs_as_shell(path: Path) -> bool:
 def _with_regular(path: Path, read: Callable[[int], Result]) -> Result | None:
     """Opened without blocking and checked on the open descriptor, because a path checked first can be swapped for a FIFO."""
     try:
+        # Because filesystem names can contain literal tildes.
         descriptor = os.open(os.path.realpath(path), OPEN_FLAGS)
     except (OSError, ValueError):
         return None

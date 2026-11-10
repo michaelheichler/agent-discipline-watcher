@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .commit_inputs import (
-    PLAIN_COMMIT, Command, Input, InputScope, UnreadableCommit, is_dynamic, normalized, resolve_cwd, shell_input,
+    PLAIN_COMMIT, Command, Input, InputScope, UnreadableCommit, is_dynamic, normalized, shell_input,
 )
+from .path_policy import anchored
 from .shell_operators import SEPARATORS
 from .shell_syntax import WRAPPER_COMMANDS, _basename, _payload_command_index
 from .shell_text import INLINE_INPUT, Redirect, shell_text, split_redirects
@@ -76,6 +77,7 @@ class GitCall(NamedTuple):
     cwd: Path
     verb: str
     args: list[str]
+    stdin: str | None = None
 
 
 def git_calls(command: str | list[str], cwd: Path) -> list[GitCall]:
@@ -186,7 +188,7 @@ class _Walk:
             return
         if verb == "pushd":
             self.pushed.append(self.cwd)
-        self.cwd = resolve_cwd(self.cwd, args[-1]) if args else self.cwd
+        self.cwd = anchored(args[-1], self.cwd) if args else self.cwd
 
 
 def _segment_calls(command: Command, walk: _Walk) -> list[GitCall]:
@@ -206,7 +208,8 @@ def _segment_calls(command: Command, walk: _Walk) -> list[GitCall]:
     nested = (found for payload in _git_payloads(call) for found in _calls(payload, walk.cwd, walk.depth + 1, walk.touched))
     if any(found.verb == "commit" for found in nested):
         raise UnreadableCommit(HIDDEN_COMMIT)
-    return [call]
+    source = command.inputs.get(0)
+    return [call._replace(stdin=source.text if source is not None else None)]
 
 
 def _command_words(segment: list[str]) -> list[str]:
@@ -325,7 +328,7 @@ def _located_verb(git_words: list[str], cwd: Path) -> tuple[Path, int] | None:
 def _skip_git_flag(words: list[str], cursor: int, current: Path) -> tuple[int, Path, bool] | None:
     token = words[cursor]
     if token.startswith("-C") and len(token) > 2:
-        return cursor + 1, resolve_cwd(current, token[2:]), False
+        return cursor + 1, anchored(token[2:], current), False
     name, separator, inline = token.partition("=")
     if separator and name in PATH_FLAGS:
         return cursor + 1, _flag_cwd(name, current, inline), name == "--work-tree"
@@ -339,7 +342,7 @@ def _skip_git_flag(words: list[str], cursor: int, current: Path) -> tuple[int, P
 
 
 def _flag_cwd(flag: str, current: Path, value: str) -> Path:
-    resolved = resolve_cwd(current, value)
+    resolved = anchored(value, current)
     if flag == "--git-dir" and resolved.name == ".git":
         return resolved.parent
     return resolved

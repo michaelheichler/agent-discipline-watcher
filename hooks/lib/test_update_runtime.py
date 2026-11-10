@@ -280,12 +280,16 @@ def test_symlinked_update_lock_is_refused(available_update, tmp_path, capsys):
     assert foreign.read_text() == "keep"
 
 
-def test_another_update_lock_prevents_a_second_update(available_update, capsys):
+@pytest.mark.parametrize("mode", [
+    pytest.param(fcntl.LOCK_EX, id="updater-writer"),
+    pytest.param(fcntl.LOCK_SH, id="hook-reader"),
+])
+def test_another_update_lock_prevents_a_second_update(available_update, capsys, mode) -> None:
     updates = available_update.home / ".adw/updates"
     updates.mkdir(mode=0o700)
     descriptor = os.open(updates / "update.lock", os.O_CREAT | os.O_RDWR, 0o600)
     with os.fdopen(descriptor, "w") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(stream.fileno(), mode | fcntl.LOCK_NB)
         assert _update(available_update, ["update", "--omp"]) == 2
         assert "already running" in capsys.readouterr().err
     assert not (updates / "installed.json").exists()
@@ -579,3 +583,33 @@ def test_failed_block_write_rolls_the_update_back(available_update, capsys) -> N
     assert "settings are not JSON" in capsys.readouterr().err
     assert settings.read_text(encoding="utf-8") == '{"theme":"dark"}'
     assert not (available_update.home / ".adw/updates/installed.json").exists()
+
+
+def shared_update_lock_available(home: Path) -> bool:
+    lock = home / ".adw" / "updates" / "update.lock"
+    with os.fdopen(os.open(lock, os.O_CREAT | os.O_RDWR, 0o600), "a+") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        fcntl.flock(stream, fcntl.LOCK_UN)
+        return True
+
+
+def test_update_staging_releases_hooks_but_installation_remains_exclusive(available_update) -> None:
+    availability = []
+
+    def stage(_release, destination):
+        availability.append(shared_update_lock_available(available_update.home))
+        shutil.copytree(available_update.source, destination)
+
+    def install(source, hosts, environment):
+        availability.append(shared_update_lock_available(available_update.home))
+        _simulate_install(source, hosts, environment)
+
+    steps = dataclasses.replace(available_update.steps, stage_release=stage, run_installer=install)
+
+    result = update_runtime.main(["update", "--omp"], steps=steps)
+
+    assert result == 0
+    assert availability == [True, False]

@@ -27,7 +27,7 @@ type AdwCommandContext = {
   };
   ui: {
     notify(message: string, type?: "info" | "warning" | "error"): void;
-    custom<T>(
+    custom(
       factory: (
         tui: TUI,
         theme: unknown,
@@ -38,14 +38,9 @@ type AdwCommandContext = {
         overlay?: boolean;
         overlayOptions?: { fullscreen?: boolean; mouseTracking?: boolean };
       },
-    ): Promise<T>;
+    ): Promise<AdwConfigOutcome>;
   };
 };
-
-type CommandRegistrar = (
-  name: string,
-  spec: { description: string; handler: (args: string, ctx: AdwCommandContext) => Promise<void> },
-) => void;
 
 function bridgeErrorText(error: unknown): string {
   if (error instanceof AdwBridgeError) {
@@ -118,7 +113,7 @@ async function openAdwConfigure(
 }
 
 function registerAdwCommands(pi: ExtensionAPI, bridge: AdwBridgeRunner): void {
-  const registerCommand = (pi as unknown as { registerCommand?: CommandRegistrar }).registerCommand;
+  const registerCommand = pi.registerCommand;
   if (typeof registerCommand !== "function") return;
   const register = (name: string) =>
     registerCommand.call(pi, name, {

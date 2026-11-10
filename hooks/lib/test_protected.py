@@ -9,7 +9,7 @@ import pytest
 from lib import protected
 
 SURFACE = ".claude/skills/agent-discipline-watcher/SKILL.md"
-GRANT = json.dumps({protected.AUTH_KEY: True})
+GRANT = json.dumps({protected.AUTH_SETTING: True})
 ATTACK = {
     "punctuation": False,
     "english": False,
@@ -244,7 +244,7 @@ def test_env_authorization_releases_every_rule(tmp_path, monkeypatch):
 
 
 def test_a_config_key_does_not_release_the_path_rules(tmp_path):
-    config = {protected.AUTH_KEY: True}
+    config = {protected.AUTH_SETTING: True}
     assert protected.authorized(config) is False
     assert rules(str(tmp_path / SURFACE), tmp_path, config) == ["watcher_install_surface"]
     sealed = tmp_path / "project" / protected.CONFIG_SEAL_BASENAME
@@ -270,8 +270,8 @@ def _config(tmp_path):
 
 
 @pytest.mark.parametrize("payload", [
-    {protected.AUTH_KEY: True},
-    {"checks": {protected.AUTH_KEY: True}},
+    {protected.AUTH_SETTING: True},
+    {"checks": {protected.AUTH_SETTING: True}},
     {"rule_gates": {"suppression_escape_hatch": "off"}},
     {"rule_gates": {"config_seal": "observe"}},
     {"rule_gates": {"cap_override": "off"}},
@@ -285,7 +285,7 @@ def test_a_config_that_releases_a_self_protection_rule_blocks_on_creation(tmp_pa
     {},
     {"clean_code": False},
     {"rule_gates": {"suppression_escape_hatch": "enforce"}},
-    {protected.AUTH_KEY: False},
+    {protected.AUTH_SETTING: False},
 ])
 def test_a_config_that_releases_nothing_protected_still_creates(tmp_path, payload):
     assert rules(str(_config(tmp_path)), tmp_path, None, json.dumps(payload)) == []
@@ -344,7 +344,7 @@ def test_first_creation_of_a_benign_config_stays_allowed(tmp_path):
 
 
 def test_a_self_granted_config_cannot_authorize_its_own_grant(tmp_path):
-    granted = {protected.AUTH_KEY: True}
+    granted = {protected.AUTH_SETTING: True}
     assert rules(str(_config(tmp_path)), tmp_path, granted, GRANT) == ["config_seal"]
 
 
@@ -352,7 +352,7 @@ def test_the_grant_block_survives_an_existing_authorizing_config(tmp_path):
     target = _config(tmp_path)
     target.parent.mkdir(parents=True)
     target.write_text(GRANT, encoding="utf-8")
-    assert rules(str(target), tmp_path, {protected.AUTH_KEY: True}, GRANT) == ["config_seal"]
+    assert rules(str(target), tmp_path, {protected.AUTH_SETTING: True}, GRANT) == ["config_seal"]
 
 
 def test_the_grant_block_names_the_environment_escape(tmp_path):
@@ -381,3 +381,109 @@ def test_a_non_dict_config_argument_does_not_raise(tmp_path):
 def test_is_install_surface_path_matches_the_finding_rule(tmp_path):
     assert protected.is_install_surface_path(str(tmp_path / ".local/bin/agent-discipline"), tmp_path)
     assert not protected.is_install_surface_path(str(tmp_path / ".claude/skills/humanizer/SKILL.md"), tmp_path)
+
+
+@pytest.mark.parametrize("kind, expected", [
+    pytest.param("state", "state_mutation", id="state-alias"),
+    pytest.param("agent", "test_writer_definition", id="renamed-agent-alias"),
+    pytest.param("binary", None, id="binary-alias"),
+])
+def test_hardlink_identity_distinguishes_owned_state_agent_text_and_binary(tmp_path, kind, expected) -> None:
+    home = tmp_path / "home"
+    target = tmp_path / "workspace" / "alias"
+    target.parent.mkdir()
+    source = hardlink_source(home, kind)
+    os.link(source, target)
+
+    found = rules(str(target), home)
+
+    assert found == ([] if expected is None else [expected])
+
+
+def hardlink_source(home, kind):
+    if kind == "state":
+        source = home / ".adw" / "ledger" / "ledger.jsonl"
+        content = b"{}\n"
+    else:
+        source = home / "custom-agents" / "renamed.md"
+        content = b"---\nname: adw-test-writer\n---\n" if kind == "agent" else b"\x00\xff\x80binary"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(content)
+    return source
+
+
+def test_unreadable_owned_tree_blocks_hardlink_identity_uncertainty(tmp_path) -> None:
+    home = tmp_path / "home"
+    owned = home / ".adw" / "unreadable"
+    owned.mkdir(parents=True)
+    source = tmp_path / "source.js"
+    source.write_text("const count = 1;", encoding="utf-8")
+    target = tmp_path / "alias.js"
+    os.link(source, target)
+    owned.chmod(0)
+    try:
+        found = rules(str(target), home)
+    finally:
+        owned.chmod(0o700)
+
+    assert found == ["watcher_install_surface"]
+
+
+def test_installed_link_alias_blocks_without_sealing_its_canonical_source(tmp_path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "checkout" / "worker.py"
+    source.parent.mkdir()
+    source.write_text("value = 1\n", encoding="utf-8")
+    installed = home / ".agents" / "skills" / "agent-discipline-watcher"
+    installed.parent.mkdir(parents=True)
+    installed.symlink_to(source.parent, target_is_directory=True)
+    (source.parent / "cycle").symlink_to(source.parent, target_is_directory=True)
+    alias = tmp_path / "alias.py"
+    os.link(source, alias)
+
+    found = [rules(str(path), home) for path in (alias, source)]
+
+    assert found == [["watcher_install_surface"], []]
+
+
+def test_cached_hardlink_checks_never_walk_unrelated_project_content(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    package_store = workspace / "node_modules" / ".pnpm"
+    package_store.mkdir(parents=True)
+    source = package_store / "package.js"
+    source.write_text("const count = 1;", encoding="utf-8")
+    alias = workspace / "alias.js"
+    os.link(source, alias)
+    unrelated = workspace / "unreadable"
+    unrelated.mkdir()
+    for index in range(50000):
+        (package_store / f"file-{index}").touch()
+    (home / ".adw").mkdir(parents=True)
+    unrelated.chmod(0)
+    scandir = os.scandir
+    enumerated = []
+
+    def observed(path):
+        enumerated.append(os.fspath(path))
+        return scandir(path)
+
+    monkeypatch.chdir(workspace)
+    monkeypatch.setattr(os, "scandir", observed)
+    try:
+        result = repeated_identity_checks(alias, home, enumerated)
+    finally:
+        unrelated.chmod(0o700)
+
+    assert result == [([], False), ([], True)]
+    assert not any(path.startswith(str(workspace)) for path in enumerated)
+
+
+def repeated_identity_checks(alias, home, enumerated):
+    results = []
+    for _ in range(2):
+        before = len(enumerated)
+        findings = rules(str(alias), home)
+        results.append((findings, len(enumerated) == before))
+    return results

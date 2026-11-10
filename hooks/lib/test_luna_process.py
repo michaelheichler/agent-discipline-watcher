@@ -94,16 +94,22 @@ def _judge(tmp_path: Path, monkeypatch, source: str, timeout_seconds: float | No
 
 
 def _worker_with_orphan(child_marker: Path, last_line: str) -> str:
+    child_source = (
+        "import os,signal,time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"Path({str(child_marker)!r}).write_text(str(os.getpid())); time.sleep(30)"
+    )
     return f"""
         from pathlib import Path
         import subprocess
         import sys
         import time
         child = subprocess.Popen(
-            [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'],
+            [sys.executable, '-c', {child_source!r}],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        Path({str(child_marker)!r}).write_text(str(child.pid))
+        while not Path({str(child_marker)!r}).exists():
+            time.sleep(0.01)
         sys.stdin.read()
         {last_line}
     """
@@ -243,11 +249,31 @@ def test_base_exception_after_spawn_terminates_and_reaps_worker(tmp_path: Path, 
             processes[0].wait()
 
 
+def _timeout_when_child_ready(marker: Path):
+    real_popen = subprocess.Popen
+
+    def popen(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+
+        def communicate(_payload, *, timeout: float):
+            deadline = time.monotonic() + 10
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert marker.exists(), "Child failed to reach the TERM-ignore handshake"
+            raise subprocess.TimeoutExpired(process.args, timeout)
+
+        process.communicate = communicate
+        return process
+
+    return popen
+
+
 def test_timeout_kills_descendants_even_when_group_leader_exits_on_term(
     tmp_path: Path, monkeypatch,
 ) -> None:
     child_marker = tmp_path / "child-pid"
-    judge = _judge(tmp_path, monkeypatch, _worker_with_orphan(child_marker, "time.sleep(30)"), timeout_seconds=0.5)
+    judge = _judge(tmp_path, monkeypatch, _worker_with_orphan(child_marker, "time.sleep(30)"))
+    monkeypatch.setattr(subprocess, "Popen", _timeout_when_child_ready(child_marker))
     child_pid = -1
 
     try:

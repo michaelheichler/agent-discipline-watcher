@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -210,7 +211,7 @@ def test_confirmed_feedback_survives_cooldown_expiry_on_a_new_turn(tmp_path: Pat
 
 def test_transient_source_read_failure_keeps_confirmed_feedback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     payload, config, provider, first = _partial_review(tmp_path)
-    monkeypatch.setattr(journal, "_read_content", lambda _path: journal._ReadOutcome("transient"))
+    monkeypatch.setattr(journal, "read_content", lambda _path: SimpleNamespace(status="transient", value=None))
 
     response = stop.run({**payload, "stop_hook_active": True}, config, provider=provider)
 

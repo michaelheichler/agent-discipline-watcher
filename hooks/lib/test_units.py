@@ -9,13 +9,18 @@ from pathlib import PurePath
 from typing import NamedTuple
 
 try:
-    from .brace_functions import block_ends
+    from .brace_functions import block_ends, masked_code
 except ImportError:
-    from brace_functions import block_ends
+    from brace_functions import block_ends, masked_code
 
 PYTHON = "python"
 RUST = "rust"
-LANGUAGES = {".py": PYTHON, ".rs": RUST}
+JAVASCRIPT = "javascript"
+LANGUAGES = {".py": PYTHON, ".rs": RUST, **dict.fromkeys((".ts", ".tsx", ".js", ".jsx"), JAVASCRIPT)}
+_JS_PATH_RE = re.compile(r"\.(?:test|spec)\.(?:[jt]sx?)$", re.IGNORECASE)
+_JS_TEST_RE = re.compile(r"(?<![\w$.])(?P<kind>test|it|describe)(?:\.(?:only|skip|todo))?\s*\(")
+_JS_CALLBACK_RE = re.compile(r"=>\s*\{|\bfunction\s*\w*\s*\([^)]*\)\s*\{")
+_JS_ASSERT_RE = re.compile(r"(?<![\w$.])(?:(?:expect|assert)\s*\(|assert\s*\.\s*\w+\s*\()")
 _RUST_TEST_RE = re.compile(
     r"#\[\s*(?:tokio\s*::\s*)?test\b[^\]]*\]"
     r"(?:\s*#\[[^\]]*\])*\s*"
@@ -38,7 +43,10 @@ class Unit(NamedTuple):
 
 def language_of(path: str) -> str | None:
     """Pick by suffix, because the scanner sees paths first."""
-    return LANGUAGES.get(PurePath(path.lower()).suffix)
+    language = LANGUAGES.get(PurePath(path.lower()).suffix)
+    if language == JAVASCRIPT and not _JS_PATH_RE.search(path):
+        return None
+    return language
 
 
 def extract(path: str, text: str) -> list[Unit]:
@@ -48,7 +56,75 @@ def extract(path: str, text: str) -> list[Unit]:
         return _python_units(path, text) if "def test_" in text else []
     if language == RUST:
         return _rust_units(path, text)
+    if language == JAVASCRIPT:
+        return _javascript_units(path, text)
     return []
+
+
+def _call_end(code: str, opening: int) -> int:
+    depth = 0
+    for index in range(opening, len(code)):
+        if code[index] == "(":
+            depth += 1
+        elif code[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return opening
+
+
+def _javascript_units(path: str, text: str) -> list[Unit]:
+    code = masked_code(text, javascript=True)
+    ends = block_ends(text, javascript=True)
+    units = []
+    for found in _JS_TEST_RE.finditer(code):
+        end = _call_end(code, found.end() - 1)
+        callback = _JS_CALLBACK_RE.search(code, found.end(), end)
+        if callback is None or found.group("kind") == "describe":
+            continue
+        closing = ends.get(callback.end() - 1)
+        if closing is None:
+            continue
+        header = text[found.start():callback.start()].split(",", 1)[0].strip()
+        start = code.count("\n", 0, found.start()) + 1
+        stop = code.count("\n", 0, closing) + 1
+        units.append(Unit(path, header, start, stop, text[found.start():closing + 1], JAVASCRIPT))
+    return units
+
+
+def _javascript_expression_end(code: str, start: int) -> int:
+    stack = []
+    for index in range(start, len(code)):
+        char = code[index]
+        if not stack and char in ";,)]}":
+            return index
+        if char in "([{":
+            stack.append(char)
+        elif char in ")]}":
+            stack.pop()
+    return len(code)
+
+
+def javascript_scope(unit: Unit) -> str:
+    """Because helpers own their branches, mask nested callback scopes."""
+    code = masked_code(unit.body, javascript=True)
+    ends = block_ends(unit.body, javascript=True)
+    callbacks = list(_JS_CALLBACK_RE.finditer(code))
+    out = list(code)
+    for callback in callbacks[1:]:
+        opening = callback.end() - 1
+        closing = ends.get(opening)
+        if closing is not None:
+            out[callback.start():closing + 1] = ["\n" if char == "\n" else " "
+                                               for char in code[callback.start():closing + 1]]
+    for arrow in re.finditer(r"=>\s*(?!\s*\{)", code):
+        end = _javascript_expression_end(code, arrow.end())
+        out[arrow.start():end] = ["\n" if char == "\n" else " " for char in code[arrow.start():end]]
+    return "".join(out)
+
+
+def javascript_assertions(code: str) -> list[int]:
+    return [found.start() for found in _JS_ASSERT_RE.finditer(code)]
 
 
 def _python_tests(

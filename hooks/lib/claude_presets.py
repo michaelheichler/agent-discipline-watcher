@@ -5,6 +5,11 @@ import hashlib
 import json
 import shlex
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 from typing import Any
 
 PRESETS = ("luna",)
@@ -12,7 +17,7 @@ RETIRED_HANDLER = "claude_sonnet.sh"
 MANAGED_MARKER = "adw-managed-hook-v1"
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|apply_patch|Bash"
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-STABLE_ROOT = Path(".adw") / "install" / "agent-discipline-watcher"
+STABLE_ROOT = config_paths.install_root(Path("."))
 CACHE_PARTS = ("plugins", "cache")
 HANDLER_TIMEOUT = 120
 
@@ -27,7 +32,7 @@ def handler_root() -> Path:
     """The stable install, because a plugin cache revision vanishes on update."""
     if PLUGIN_ROOT.parts[-5:-3] != CACHE_PARTS:
         return PLUGIN_ROOT
-    stable = Path.home() / STABLE_ROOT
+    stable = config_paths.install_root()
     return stable if (stable / "hooks" / "claude_luna.sh").is_file() else PLUGIN_ROOT
 
 

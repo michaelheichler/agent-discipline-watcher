@@ -154,6 +154,19 @@ class Finding:
         return {key: value for key, value in fields if value is not None or key in _REQUIRED_KEYS}
 
 
+def finding_row(family: str, rule: str, line: int, detail: str, snippet: str, action: str, *, match: str | None = None) -> dict:
+    """Keep row limits consistent because rule families share the reporting contract."""
+    if not isinstance(rule, str) or not isinstance(line, int) or isinstance(line, bool):
+        raise TypeError("finding rule and line have invalid types")
+    if not all(isinstance(value, str) for value in (detail, snippet, action)):
+        raise TypeError("finding detail, snippet, and action must be strings")
+    return Finding(
+        family=family, rule=rule, line=line, detail=detail, force=True,
+        snippet=snippet.strip()[:180], action=action, path=None, severity=None,
+        tool_use_id=None, match=match[:180] if match is not None else None,
+    ).to_dict()
+
+
 def spanning(row: dict, end_line: int | None) -> dict:
     """Strict, because provenance reads BLOCK_RULES to decide which findings skip match narrowing."""
     if row["rule"] not in BLOCK_RULES:

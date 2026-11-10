@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from functools import cache
 from pathlib import Path
 from typing import NamedTuple
@@ -60,3 +61,16 @@ def is_finite(word: str) -> bool:
         return True
     data = _verb_data()
     return word not in data.not_finite and regular_finite(word, data.stems) and not _participle(word, data.stems)
+
+
+OBLIGATION_BRACKET_RE = re.compile(
+    r"\b(?:hat|haben|hatte|hatten)\b"
+    r"(?P<gap>(?:\W+\w+)*?)\W+(?P<closer>zu\s+[a-zäöüß]+(?:en|rn|ln)"
+    r"|[a-zäöüß]+zu[a-zäöüß]+(?:en|rn|ln))\b(?=\s*(?:[,;:.!?]|$))"
+)
+
+
+def obligation_brackets(sentence: str) -> list[re.Match[str]]:
+    """Recognize zu obligations, because haben can separate its finite verb from an infinitive."""
+    return [found for found in OBLIGATION_BRACKET_RE.finditer(sentence)
+            if is_infinitive(found.group("closer").replace("zu", "", 1).strip())]

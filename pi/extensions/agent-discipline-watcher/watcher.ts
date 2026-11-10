@@ -138,8 +138,12 @@ function patchText(args: Record<string, unknown>): string {
   return "";
 }
 
+export function isMcpTool(toolName: string | undefined): boolean {
+  return Boolean(toolName?.toLowerCase().startsWith("mcp__"));
+}
+
 export function hookToolName(toolName: string): string {
-  if (toolName.startsWith("mcp__")) {
+  if (isMcpTool(toolName)) {
     return toolName;
   }
   const mapped = TOOL_NAME_MAP[toolName.toLowerCase()];
@@ -157,7 +161,7 @@ export function isMutatingTool(toolName: string): boolean {
 
 export function isPreGateTool(toolName: string): boolean {
   const lower = toolName.toLowerCase();
-  return isMutatingTool(lower) || lower.startsWith("mcp__");
+  return isMutatingTool(lower) || isMcpTool(lower);
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -316,7 +320,9 @@ export function resolveRunner(
 function validatedToolInput(
   toolInput: Record<string, unknown>,
   cwd: string,
+  toolName: string | undefined,
 ): Record<string, unknown> {
+  if (isMcpTool(toolName)) return { ...toolInput };
   const normalized = normalizeArgs(toolInput);
   if (normalized.file_path !== undefined) {
     const target = canonicalPath(normalized.file_path, cwd);
@@ -474,7 +480,7 @@ export function watcherPayload(
     payload.tool_name = hookToolName(toolName);
   }
   if (toolInput) {
-    payload.tool_input = validatedToolInput(toolInput, cwd);
+    payload.tool_input = validatedToolInput(toolInput, cwd, toolName);
   }
   if (toolUseId) {
     payload.tool_use_id = toolUseId;

@@ -7,14 +7,16 @@ import re
 
 try:
     from . import Hit, Rule, RuleSet, Wording
-    from ._text import Span, placed
+    from ._text import Span, placed, line_units
     from .format import EMOJI, pattern_hits, scannable
     from ..prose_language import ParagraphLanguage
+    from ..markup import BREAK_THEN_HEADING_RE, BREAK_ONLY_RE, markdown_heading, one_row_table_separator
 except ImportError:
     from german_rules import Hit, Rule, RuleSet, Wording
-    from german_rules._text import Span, placed
+    from german_rules._text import Span, placed, line_units
     from german_rules.format import EMOJI, pattern_hits, scannable
     from prose_language import ParagraphLanguage
+    from markup import BREAK_THEN_HEADING_RE, BREAK_ONLY_RE, markdown_heading, one_row_table_separator
 
 FAKE_BULLET = Rule(
     "de_fake_bullet",
@@ -87,7 +89,6 @@ FAKE_BULLET_RE = re.compile(r"(?:^|(?<=:\s))[•▪◦‣](?=\s)")
 EMOJI_PRESENTATION = chr(0xFE0F)
 # humanizer-de Muster 15, because Q13 credits it.
 EMOJI_HEADING_RE = re.compile(r"^#{1,6}\s*" + EMOJI + r"|^" + EMOJI + EMOJI_PRESENTATION + r"?\s+\S+(?:\s+\S+){0,3}$")
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*$")
 SENTENCE_END = (".", "!", "?")
 # humanizer-de Muster 47, because Q13 credits it.
 FUNCTION_WORDS = frozenset(
@@ -103,21 +104,7 @@ ITEM_SPLIT_RE = re.compile(r"\s[-*+]\s+")
 BARE_KEYWORD_RE = re.compile(r"^[^\s.]+(?:\s[^\s.]+)?\.$")
 ABBREVIATIONS = frozenset({"usw.", "etc.", "bzw.", "Nr.", "ca.", "evtl.", "ggf.", "inkl.", "vgl."})
 MIN_BARE_ITEMS = 2
-# humanizer-de Muster 57 cases A to C, because Q13 credits it.
-THEMATIC_BREAK = r"(?:-{3,}|\*{3,}|_{3,})"
-BREAK_THEN_HEADING_RE = re.compile(r"^" + THEMATIC_BREAK + r"\s+#{1,6}\s")
-BREAK_ONLY_RE = re.compile(r"^" + THEMATIC_BREAK + r"$")
 NEXT_PARAGRAPH_GAP = 2
-SEPARATOR_ROW_RE = re.compile(r"\|(?:\s*:?-{3,}:?\s*\|)+")
-SEPARATOR_CELL_RE = re.compile(r":?-{3,}:?")
-PIPE_RE = re.compile(r"(?<!\\)\|")
-ONE_DATA_ROW_TABLE_ROWS = 3
-
-
-def _heading(text: str) -> re.Match[str] | None:
-    return HEADING_RE.match(text)
-
-
 def _title_word(heading: str) -> str | None:
     """Spare the word after a colon, because a German subtitle starts a new sentence."""
     words = heading.replace(":", " : ").split()
@@ -131,7 +118,7 @@ def _title_word(heading: str) -> str | None:
 def _title_case(paragraph: ParagraphLanguage) -> list[Hit]:
     """Skip a paragraph ending in a period, because then a body sentence follows the heading on the next line."""
     text = scannable(paragraph.text).rstrip()
-    found = _heading(text)
+    found = markdown_heading(text)
     if found is None or text.endswith(SENTENCE_END):
         return []
     word = _title_word(found.group(2))
@@ -165,11 +152,8 @@ def _bullet_punctuation(paragraph: ParagraphLanguage) -> list[Hit]:
 def _one_row_table(paragraph: ParagraphLanguage) -> list[Hit]:
     """Count pipes per row, because the scanner joins a table's lines with spaces."""
     text = scannable(paragraph.text)
-    separator = SEPARATOR_ROW_RE.search(text)
-    if not text.startswith("|") or separator is None:
-        return []
-    width = len(SEPARATOR_CELL_RE.findall(separator.group(0))) + 1
-    if len(PIPE_RE.findall(text)) != width * ONE_DATA_ROW_TABLE_ROWS:
+    separator = one_row_table_separator(text)
+    if separator is None:
         return []
     return [Hit(MARKDOWN_ARTIFACT.name, paragraph.line, paragraph.text, separator.group(0), paragraph.end_line)]
 
@@ -177,23 +161,29 @@ def _one_row_table(paragraph: ParagraphLanguage) -> list[Hit]:
 def _skipped_levels(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     hits, previous = [], 0
     for paragraph in paragraphs:
-        found = _heading(paragraph.text)
-        level = len(found.group(1)) if found else 0
-        if level > previous + 1 and previous:
-            hits.append(Hit(MARKDOWN_ARTIFACT.name, paragraph.line, paragraph.text, "#" * level))
-        previous = level or previous
+        for offset, text in line_units(paragraph):
+            found = markdown_heading(text)
+            level = len(found.group(1)) if found else 0
+            if level > previous + 1 and previous:
+                hits.append(placed(paragraph, (offset + found.start(1), offset + found.end(1)),
+                                   Hit(MARKDOWN_ARTIFACT.name, paragraph.line, text, "#" * level)))
+            previous = level or previous
     return hits
 
 
 def _break_before_heading(paragraphs: list[ParagraphLanguage]) -> list[Hit]:
     """Check both layouts, because a blank line between rule and heading splits them into two paragraphs."""
-    split = [
-        Hit(MARKDOWN_ARTIFACT.name, before.line, after.text, before.text)
-        for before, after in zip(paragraphs, paragraphs[1:])
-        if BREAK_ONLY_RE.match(before.text) and _heading(after.text)
-        and after.line - before.line <= NEXT_PARAGRAPH_GAP
-    ]
-    return [*split, *pattern_hits(MARKDOWN_ARTIFACT.name, paragraphs, BREAK_THEN_HEADING_RE)]
+    lines = [(paragraph, offset, text) for paragraph in paragraphs for offset, text in line_units(paragraph)]
+    split = []
+    for (before, offset, text), (after, next_offset, following) in zip(lines, lines[1:]):
+        line = before.lines_of(offset, offset + len(text))[0]
+        next_line = after.lines_of(next_offset, next_offset + len(following))[0]
+        if BREAK_ONLY_RE.fullmatch(text.strip()) and markdown_heading(following.strip()):
+            if next_line - line <= NEXT_PARAGRAPH_GAP:
+                split.append(placed(before, (offset, offset + len(text)),
+                                    Hit(MARKDOWN_ARTIFACT.name, line, following, text)))
+    combined = [*split, *pattern_hits(MARKDOWN_ARTIFACT.name, paragraphs, BREAK_THEN_HEADING_RE)]
+    return list({(hit.line, hit.match.strip()): hit for hit in combined}.values())
 
 
 def _each(paragraphs: list[ParagraphLanguage], judge) -> list[Hit]:

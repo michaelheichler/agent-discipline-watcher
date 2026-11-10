@@ -1,5 +1,6 @@
 import { completeSimple, type Api, type AssistantMessage, type Context, type Model, type SimpleStreamOptions } from "@oh-my-pi/pi-ai";
 import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { isRecord } from "./adw-config";
 
 export type OmpContext = Pick<ExtensionContext, "model" | "models" | "modelRegistry" | "sessionManager">;
 
@@ -32,7 +33,7 @@ export class OmpProviderFailure extends Error {
 export type CompleteSimple = typeof completeSimple;
 
 function boundaryEnabled(value: unknown): boolean {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && (value as { enabled?: unknown }).enabled === true;
+  return isRecord(value) && value.enabled === true;
 }
 
 function modelKey(model: Model<Api>): string {

@@ -6,6 +6,8 @@ import re
 from collections.abc import Callable, Iterable, Iterator
 from typing import NamedTuple
 
+from ..brace_functions import block_ends
+from ..test_units import javascript_assertions, javascript_scope
 from . import Hit, Rule, RuleSet, Unit, module_tree
 from ._rust_literals import rust_hits
 
@@ -96,6 +98,16 @@ def _loop_hits(test: ast.AST) -> Iterator[tuple[str, int]]:
         first = next(_loop_assertions(loop), None)
         if first is not None:
             yield LOOP, first.lineno
+
+
+def _javascript_loop_hits(unit: Unit) -> list[Hit]:
+    code = javascript_scope(unit)
+    ends = block_ends(code, javascript=True)
+    assertions = javascript_assertions(code)
+    loops = re.finditer(r"\b(?:(?:for|while)\s*\([^{}]*\)|do)\s*\{", code)
+    lines = {code.count("\n", 0, assertion) for loop in loops
+             for assertion in assertions if loop.end() <= assertion < ends.get(loop.end() - 1, 0)}
+    return [Hit(LOOP, unit.start + line, unit.body.splitlines()[line]) for line in sorted(lines)]
 
 
 def _bound_names(test: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
@@ -302,6 +314,8 @@ def check(unit: Unit, text: str) -> list[Hit]:
     """Share one entry, because the registry calls check per test."""
     if unit.language == "rust":
         return rust_hits(unit)
+    if unit.language == "javascript":
+        return _javascript_loop_hits(unit)
     test = _test_node(unit, text)
     if test is None:
         return []

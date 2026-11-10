@@ -6,14 +6,17 @@ import json
 import os
 import sys
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 # pylint: disable=import-error
-import mlx.core as mx  # WHY: lives in the runtime venv, never in the interpreter that runs the hooks.
-from transformers import AutoTokenizer
-
-import embedding_worker_watch
+# Because MLX requires its runtime venv, import it only for model work.
+try:
+    from . import embedding_worker_watch, process_records
+except ImportError:
+    import embedding_worker_watch
+    import process_records
 
 MODULE_NAME = "lfm2_bidirectional"
 MAX_LENGTH = 8192
@@ -37,6 +40,8 @@ def _module(directory: Path):
 
 
 def _weights(directory: Path, module) -> dict:
+    import mlx.core as mx
+
     weights: dict = {}
     for path in sorted(directory.glob("model*.safetensors")):
         weights.update(mx.load(str(path)))
@@ -44,6 +49,9 @@ def _weights(directory: Path, module) -> dict:
 
 
 def load(directory: Path) -> tuple:
+    import mlx.core as mx
+    from transformers import AutoTokenizer
+
     mx.set_cache_limit(CACHE_LIMIT_BYTES)
     module = _module(directory)
     config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
@@ -55,6 +63,8 @@ def load(directory: Path) -> tuple:
 
 
 def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
+    import mlx.core as mx
+
     with _LOCK:
         encoded = tokenizer(texts, padding=True, truncation=True, max_length=MAX_LENGTH, return_tensors="np")
         vectors = model.encode(mx.array(encoded["input_ids"]), mx.array(encoded["attention_mask"]), normalize=True)
@@ -65,7 +75,7 @@ def _encode(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 
 def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
-    """Encode a bounded collection in fixed-size tokenizer batches."""
+    """Because tokenizer memory grows with input, bound text size and encode fixed-size batches."""
     if any(not isinstance(text, str) for text in texts):
         raise ValueError("input must contain only strings")
     if any(len(text) > MAX_TEXT_CHARS for text in texts):
@@ -77,7 +87,7 @@ def embed(model, tokenizer, texts: list[str]) -> list[list[float]]:
 
 
 def _texts(body: dict) -> list[str]:
-    """Validate one request's input list before tokenization can consume it."""
+    """Because tokenization consumes untrusted input, validate its type and bounds first."""
     if not isinstance(body, dict):
         raise ValueError("request body must be a JSON object")
     given = body.get("input")
@@ -95,11 +105,11 @@ def _texts(body: dict) -> list[str]:
 
 
 class _PayloadTooLarge(ValueError):
-    """Mark a request rejected before its body is read into memory."""
+    """Because oversized bodies need HTTP 413, distinguish them before reading into memory."""
 
 
 def _read_body(handler: BaseHTTPRequestHandler) -> bytes:
-    """Read exactly one bounded HTTP request body from the Content-Length header."""
+    """Because body framing controls memory use, require a bounded Content-Length and reject truncation."""
     header = handler.headers.get("Content-Length")
     if header is None:
         raise ValueError("Content-Length header is required")
@@ -138,7 +148,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, {"status": "ok", "nonce": os.environ.get(NONCE_ENV, "")})
 
     def _embeddings(self) -> dict:
-        """Parse and encode one bounded JSON request."""
+        """Because malformed requests must not reach the model, validate JSON before encoding."""
         try:
             raw = _read_body(self)
             body = json.loads(raw.decode("utf-8"))
@@ -168,15 +178,31 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-def serve(directory: Path, port: int, root: Path) -> None:
-    """Load the model and bind the worker only to a valid loopback port."""
+def serve(
+    directory: Path, port: int, root: Path, *,
+    loader: Callable[[Path], tuple] = load,
+    server_factory: Callable = ThreadingHTTPServer,
+    watch: Callable = embedding_worker_watch.start,
+) -> None:
+    """Because model state stays local, validate the loopback port before loading."""
     if type(port) is not int or not 1 <= port <= 65_535:  # pylint: disable=unidiomatic-typecheck
         raise ValueError("port must be between 1 and 65535")
-    _Handler.model, _Handler.tokenizer = load(directory)
-    _Handler.model_id = directory.name
-    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-    embedding_worker_watch.start(root, server.shutdown)
-    server.serve_forever()
+    registration = process_records.register(
+        "embedding-worker", state_root=root.parent if root.name == "embedding-server" else root,
+    )
+    try:
+        model, tokenizer = loader(directory)
+        handler = type("SessionHandler", (_Handler,), {
+            "model": model, "tokenizer": tokenizer, "model_id": directory.name,
+        })
+        server = server_factory(("127.0.0.1", port), handler)
+        try:
+            watch(root, server.shutdown)
+            server.serve_forever()
+        finally:
+            server.server_close()
+    finally:
+        process_records.unregister(registration)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from .folder_trees import folder_trees
 from .shell_expansion import Expansions, expansions_for
 from .shell_lines import command_lines
 from .shell_operators import REDIRECT_HEAD_RE
+from .shell_text import ShellBody, shell_tokens
 from .xargs_feed import fed_calls
 from .shell_syntax import (
     CLOBBER_HEAD_RE, DYNAMIC_RE, ENV_SPLIT_STRING_FLAGS,
@@ -28,7 +29,7 @@ from .shell_syntax import (
     _fused_split_string_payload, _interpreter_code_flags,
     _is_literal_token, _is_quoted, _is_unquoted_assignment,
     _leading_assignments, _merge_adjacent_fragments, _merge_clobber_operator,
-    QUOTED_FRAGMENT_RE, _payload_command_index, _pipeline_groups, _segment_text, _segments,
+    _payload_command_index, _pipeline_groups, _segment_text, _segments,
     _skip_leading_redirect, _skip_prefixes, _skip_wrapper_options,
     _tokens, _words, _wrapper_consumes_value,
     has_process_substitution, interpreter_invocation,
@@ -64,7 +65,6 @@ PLACEHOLDER = "{}"
 DIRECTORY_VERBS = frozenset({"cd", "pushd", "popd"})
 TREE_VERB_RE = re.compile(r"\b(?:rm|mv|rsync)\b")
 EXPANSION_MEMO: ContextVar[dict[tuple[str, str | None], Expansions] | None] = ContextVar("expansion_memo", default=None)
-HEREDOC_RE = re.compile(r"<<(-?)\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s()<>|&;'\"]+))")
 LITERAL_PRODUCERS = frozenset({"echo", "printf"})
 HOME_TOKEN_RE = re.compile(r"^(?:~|\$HOME|\$\{HOME\})(?=/|$)")
 OPERAND_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -179,28 +179,30 @@ def line_segments(command: str) -> list[list[str]]:
 
 
 def _logical_lines(command: str) -> list[tuple[str, list[str | None], list[str]]]:
-    lines = command.splitlines()
     rows: list[tuple[str, list[str | None], list[str]]] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        index += 1
-        bodies: list[str | None] = []
-        raw_bodies: list[str] = []
-        for match in _heredoc_matches(line):
-            raw_body, dynamic, index = _heredoc_body(lines, index, match)
-            raw_bodies.append(raw_body)
-            bodies.append(None if dynamic else raw_body)
-        rows.append((line, bodies, raw_bodies))
+    start = 0
+    for token in shell_tokens(command, physical=True):
+        match = token.match
+        if match is not None and not (match.lastgroup == "separator" and match.group() == "\n"):
+            continue
+        stop = match.start() if match is not None else len(command)
+        raw_bodies = [_logical_body(body) for body in token.bodies]
+        bodies = [
+            None if not body.closed or (body.expands and DYNAMIC_RE.search(raw)) else raw
+            for body, raw in zip(token.bodies, raw_bodies)
+        ]
+        rows.append((command[start:stop].rstrip("\r"), bodies, raw_bodies))
+        start = token.end
+    if start < len(command):
+        rows.append((command[start:], [], []))
     return rows
 
 
 def _heredoc_matches(text: str) -> list[re.Match]:
     """Skip a << inside quotes, because the shell reads it as data."""
-    quoted = [span.span() for span in QUOTED_FRAGMENT_RE.finditer(text)]
     return [
-        match for match in HEREDOC_RE.finditer(text)
-        if not any(start <= match.start() < end for start, end in quoted)
+        token.match for token in shell_tokens(text, physical=True)
+        if token.match is not None and token.match.lastgroup == "heredoc"
     ]
 
 
@@ -223,19 +225,11 @@ def _is_heredoc_sink(segment: list[str]) -> bool:
     return index < len(segment) and _basename(segment[index]) in HEREDOC_SINKS
 
 
-def _heredoc_body(lines: list[str], index: int, match: re.Match) -> tuple[str, bool, int]:
-    strip, delimiter = match.group(1) == "-", match.group(2) or match.group(3) or match.group(4)
-    collected: list[str] = []
-    while index < len(lines):
-        raw = lines[index]
-        index += 1
-        line = raw.lstrip("\t") if strip else raw
-        if line.rstrip() == delimiter:
-            body = "".join(line + "\n" for line in collected)
-            expandable = match.group(4) is not None
-            return body, expandable and bool(DYNAMIC_RE.search(body)), index
-        collected.append(line)
-    return "\n".join(collected), True, index
+def _logical_body(body: ShellBody) -> str:
+    lines = body.text.splitlines()
+    if body.strip_tabs:
+        lines = [line.lstrip("\t") for line in lines]
+    return "\n".join(lines) + ("\n" if body.closed and lines else "")
 
 
 def _line_writes(line: str, bodies: list[str | None]) -> list[LiteralWrite]:

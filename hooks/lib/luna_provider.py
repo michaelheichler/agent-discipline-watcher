@@ -9,13 +9,19 @@ import time
 from hashlib import sha256
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 from types import SimpleNamespace
 from typing import Any, Callable, Protocol, cast
 
 from .judge_contracts import (
-    TOOL_BOUNDARY, JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_payload,
+    TOOL_BOUNDARY, JudgeRequest, JudgeResult, build_prompt, content_hash, output_schema, validate_response,
 )
 from .luna_runtime import require_runtime
+from .session_state import plugin_data_home
 from .luna_process import child_environment as _child_environment
 from .luna_process import sdk_environment as _sdk_environment
 from .luna_process import terminate_process_group as _terminate_process_group
@@ -223,6 +229,8 @@ class OpenAICodexSdk:
         return retry_on_overload(operation, max_attempts=max_attempts)
 
 
+
+
 def _normalized_timeout(timeout_seconds: object) -> float | None:
     if timeout_seconds is None:
         return None
@@ -256,13 +264,15 @@ def _runtime_launch(runtime: RuntimePaths) -> SdkLaunch:
 
 
 def _spawn_worker(worker_python: Path, launch: SdkLaunch) -> subprocess.Popen[str]:
+    environment = _child_environment(Path("../home"), Path(__file__).parents[1])
+    environment["ADW_PROCESS_STATE_ROOT"] = str(plugin_data_home())
     return subprocess.Popen(
         [str(worker_python), "-m", "lib.luna_worker"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
-        env=_child_environment(Path("../home"), Path(__file__).parents[1]),
+        env=environment,
         start_new_session=True,
         pass_fds=(launch.call_fd, launch.codex_home_fd, launch.cwd_fd),
     )
@@ -282,9 +292,9 @@ class LunaJudge:
         if (runtime_root is None) != (cache_root is None):
             raise ValueError("runtime_root and cache_root must be supplied together")
         self._default_storage = runtime_root is None
-        self._runtime_root = Path(runtime_root) if runtime_root is not None else Path.home() / ".adw" / "runtime"
-        self._cache_root = Path(cache_root) if cache_root is not None else Path.home() / ".adw" / "cache" / "judges"
-        self._auth_source = Path(auth_source) if auth_source is not None else Path.home() / ".codex" / "auth.json"
+        self._runtime_root = Path(runtime_root) if runtime_root is not None else config_paths.data_root() / "runtime"
+        self._cache_root = Path(cache_root) if cache_root is not None else config_paths.data_root() / "cache" / "judges"
+        self._auth_source = Path(auth_source) if auth_source is not None else config_paths.home_root() / ".codex" / "auth.json"
         self._timeout_seconds = _normalized_timeout(timeout_seconds)
 
     @property
@@ -432,7 +442,7 @@ def _parsed_payload(request: JudgeRequest, raw: SdkRunResult) -> dict[str, Any]:
     try:
         if not raw.final_response or not raw.final_response.strip():
             raise ValueError("empty final response")
-        payload = validate_payload(json.loads(raw.final_response), output_schema(request))
+        payload = validate_response(request, json.loads(raw.final_response))
         _validate_candidate_indexes(request, payload)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise LunaProviderFailure(

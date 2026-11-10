@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
-import { RULE_STATES } from "./adw-bridge";
+import { AdwBridgeError, createConfigureBridgeRunner } from "./adw-bridge";
 import { AdwConfigOverlayComponent, decodeAdwPolicy } from "./adw-config";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const RULE_STATES = ["off", "observe", "judged", "enforce"];
 
 type Values = Record<string, unknown>;
 
@@ -85,4 +90,66 @@ test.each(STRICTEST_STATES)("one Enter on a rule gate set to %s moves to the str
   screen.handleInput(ENTER);
 
   expect(ruleDetail(screen)).toBe(strictest);
+});
+
+test("preserves Python-advertised future policy states and choices", () => {
+  const values = { baseline: "future", future_option: "preserve", rule_gates: { [RULE]: { future_surface: "future" } } };
+  const state = decodeAdwPolicy({
+    ...bridgeRead(values, { future_surface: "future" }),
+    families: [{ name: "prose", states: ["future"], locked: false }],
+    family_states: { prose: "future" },
+    rules: [{ name: RULE, states: ["future"], locked: false }],
+    rule_states: { [RULE]: "future" },
+    wording: { baseline_wording: { future: { title: "Future choice" } } },
+  });
+
+  expect(state.values).toEqual(values);
+  expect(state.familyStates).toEqual({ prose: "future" });
+  expect(state.ruleStates).toEqual({ [RULE]: "future" });
+  expect(state.baselineModes).toEqual(["future"]);
+  expect(state.families[0]?.states).toEqual(["future"]);
+  expect(state.rules[0]?.states).toEqual(["future"]);
+});
+
+test("cycles rule gates through only Python-advertised choices", () => {
+  const saves: Values[] = [];
+  const policy = decodeAdwPolicy({
+    ...bridgeRead({ rule_gates: { [RULE]: "observe" } }, {}),
+    rules: [{ name: RULE, states: ["observe", "future"], locked: false }],
+    rule_states: { [RULE]: "observe" },
+  });
+  const screen = new AdwConfigOverlayComponent({} as never, policy, {
+    close() {}, requestRender() {}, notify() {},
+    save: async (_digest, saved) => { saves.push(saved); },
+  });
+  choose(screen, "Per-rule gates");
+
+  screen.handleInput(ENTER);
+  screen.handleInput(ESCAPE);
+  choose(screen, "Save policy");
+
+  expect(saves).toEqual([expect.objectContaining({ rule_gates: { [RULE]: "future" } })]);
+});
+
+function failedConfigure(response: unknown): unknown {
+  const directory = mkdtempSync(join(tmpdir(), "adw-config-failed-"));
+  const runner = join(directory, "runner.sh");
+  writeFileSync(runner, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(response)}'\nexit 1\n`, { mode: 0o700 });
+  try {
+    return createConfigureBridgeRunner(runner)({ operation: "read", cwd: directory });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test.each([
+  { ok: true, written: true },
+  { ok: false, error: { code: "invalid_config" } },
+])("rejects a failed child without a complete error envelope %j", response => {
+  expect(() => failedConfigure(response)).toThrow(AdwBridgeError);
+});
+
+test("preserves a failed child's explicit error envelope", () => {
+  const response = { ok: false, error: { code: "invalid_config", message: "invalid" } };
+  expect(failedConfigure(response)).toEqual(response);
 });

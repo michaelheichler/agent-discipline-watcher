@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import operator
 import re
-from pathlib import Path
 from typing import TypedDict, cast
+
+from . import path_policy
+
+resolved_path = path_policy.anchored
 
 _TOOL_INPUT_KEYS = ("tool_input", "toolInput", "input")
 # Copied from hooks.json because PostToolBatch has no matcher.
@@ -288,12 +291,3 @@ def removed_paths(payload: object) -> tuple[str, ...]:
         elif current and _PATCH_MOVE_RE.match(line):
             removed.append(current)
     return tuple(removed)
-
-
-def resolved_path(raw_path: str, cwd: Path) -> Path:
-    """Expand a leading ~ here because batch used to skip it, so a tilde path keyed differently than the scan that read it. An unresolvable ~user is kept literal, since it cannot exist on disk and the read that follows already treats a missing path as unscannable."""
-    try:
-        path = Path(raw_path).expanduser()
-    except (OSError, RuntimeError, ValueError):
-        path = Path(raw_path)
-    return path if path.is_absolute() else cwd / path

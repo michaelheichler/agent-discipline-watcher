@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable
@@ -16,8 +17,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from . import update_runtime
-from .update_runtime import HOSTS, INSTALL_PATH, MANAGED_LINKS, _check_path, _remove
+from . import adw_copies, embedding_lease, embedding_server, nuke_processes, update_runtime
+from .config_roots import install_root
+from .update_runtime import HOSTS, MANAGED_LINKS, check_path, _remove
 
 NAME = "agent-discipline-watcher"
 PLUGIN_ID = f"{NAME}@{NAME}"
@@ -71,6 +73,9 @@ class Plan:
     edits: list[Edit] = field(default_factory=list)
     removals: list[Path] = field(default_factory=list)
     state: Path | None = None
+    workers: list[nuke_processes.Worker] = field(default_factory=list)
+    lease_files: list[Path] = field(default_factory=list)
+    lease_dirs: list[Path] = field(default_factory=list)
 
 
 @functools.cache
@@ -208,7 +213,7 @@ def _write_with(loader: Callable[[], ModuleType]) -> Write:
 
 def _fixed_edits(home: Path) -> dict[str, EditPair]:
     rc = (strip_rc_block, _write_with(_codex_hooks))
-    omp = functools.partial(strip_omp_settings, skill_dir=home / INSTALL_PATH)
+    omp = functools.partial(strip_omp_settings, skill_dir=install_root(home))
     return {
         ".zshrc": rc, ".bashrc": rc,
         ".codex/hooks.json": (strip_codex_hooks, _write_with(_codex_hooks)),
@@ -243,8 +248,17 @@ def _claude_roots(home: Path, steps: NukeSteps) -> tuple[Path, ...]:
     roots = tuple(steps.claude_cache.config_roots(steps.environment(), home))
     for root in roots:
         _inside(root, home)
-        _check_path(root, home)
+        check_path(root, home)
     return roots
+
+
+def _account_copies(home: Path) -> list[Path]:
+    if sys.platform != "darwin":
+        return []
+    found = sorted(adw_copies.account_roots(home))
+    for root in found:
+        check_path(root / ".claude-plugin/plugin.json", home)
+    return found
 
 
 def _footprint(home: Path, roots: tuple[Path, ...]) -> list[Path]:
@@ -255,6 +269,8 @@ def _footprint(home: Path, roots: tuple[Path, ...]) -> list[Path]:
         paths.append(root.joinpath(*GUARDED_PARTS[-1]))
     for pattern in BACKUP_GLOBS:
         paths.extend(sorted((home / ".codex").glob(pattern)))
+    paths.extend(sorted((home / ".omp/agent").glob(f"settings.json.{NAME}.bak.*")))
+    paths.extend(_account_copies(home))
     return list(dict.fromkeys(paths))
 
 
@@ -289,7 +305,7 @@ def _check_removal(path: Path, scope: Scope) -> None:
     if (link or relative in BIN_LINKS) and not _owned_link(path, scope.home):
         raise RuntimeError(f"refusing a foreign link path: {path}")
     _guard_plugin_dir(path, scope)
-    _check_path(path, scope.home, allow_link=link)
+    check_path(path, scope.home, allow_link=link)
 
 
 def _pending(edit: Edit, home: Path) -> bool:
@@ -299,7 +315,7 @@ def _pending(edit: Edit, home: Path) -> bool:
     text = edit.path.read_text(encoding="utf-8")
     if edit.render(text) == text:
         return False
-    _check_path(edit.path, home)
+    check_path(edit.path, home)
     return True
 
 
@@ -320,20 +336,70 @@ def _plan_path(plan: Plan, path: Path, scope: Scope) -> None:
         plan.removals.append(path)
 
 
+def _lease_file(path: Path) -> bool:
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1 or metadata.st_mode & 0o022:
+        return False
+    row = embedding_lease.read_lease(path)
+    return (row is not None and isinstance(row.get("session_id"), str)
+            and path.name == row["session_id"] + embedding_lease.LEASE_SUFFIX
+            and type(row.get("pid")) is int)
+
+
+def _registered_leases(plan: Plan, home: Path) -> None:
+    server_root = home / STATE_PATH / embedding_server.ROOT_DIRNAME
+    registry = server_root / embedding_lease.ROOTS_DIRECTORY
+    check_path(registry, home)
+    for record in sorted(registry.glob("*" + embedding_lease.ROOT_SUFFIX)):
+        check_path(record, home)
+    for path in embedding_lease.registered_roots(server_root):
+        if path.name != embedding_lease.LEASE_DIRECTORY:
+            raise RuntimeError(f"invalid embedding lease registration: {path}")
+        if _is_state(path, home) or not os.path.lexists(path):
+            continue
+        if path.resolve() != path or path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o022 or not path.is_dir():
+            raise RuntimeError(f"refusing an unprotected embedding lease directory: {path}")
+        entries = list(path.iterdir())
+        owned = [entry for entry in entries if entry.name.endswith(embedding_lease.LEASE_SUFFIX) and _lease_file(entry)]
+        plan.lease_files.extend(owned)
+        if len(entries) == len(owned):
+            plan.lease_dirs.append(path)
+
+
+def _remove_leases(plan: Plan) -> None:
+    for path in plan.lease_files:
+        if not os.path.lexists(path):
+            continue
+        if path.parent.resolve() != path.parent or not _lease_file(path):
+            raise RuntimeError(f"embedding lease changed before removal: {path}")
+        path.unlink()
+        print(f"removed {path}")
+    for path in plan.lease_dirs:
+        if path.is_symlink():
+            raise RuntimeError(f"embedding lease directory changed before removal: {path}")
+        if path.exists() and not any(path.iterdir()):
+            path.rmdir()
+            print(f"removed {path}")
+
+
 def build_plan(home: Path, steps: NukeSteps) -> Plan:
     """Planned in full first because a refusal must write nothing."""
     scope = Scope(home, _claude_roots(home, steps), steps)
-    plan = Plan()
+    plan = Plan(workers=nuke_processes.workers(home))
+    _registered_leases(plan, home)
     for path in _footprint(home, scope.roots):
         _plan_path(plan, path, scope)
     if os.path.lexists(home / STATE_PATH):
-        _check_path(home / STATE_PATH, home)
+        check_path(home / STATE_PATH, home)
         plan.state = home / STATE_PATH
     return plan
 
 
 def plan_lines(plan: Plan) -> list[str]:
-    lines = [f"edit {edit.path}" for edit in (*plan.records, *plan.edits)]
+    lines = [f"stop ADW worker {worker.record.pid} ({worker.record.path})" for worker in plan.workers]
+    lines.extend(f"edit {edit.path}" for edit in (*plan.records, *plan.edits))
+    lines.extend(f"remove {path}" for path in plan.lease_files)
+    lines.extend(f"remove empty directory {path}" for path in plan.lease_dirs)
     lines.extend(f"remove {path}" for path in plan.removals)
     if plan.state is not None:
         lines.append(f"remove {plan.state}")
@@ -395,6 +461,9 @@ def _drop_records(plan: Plan, home: Path, steps: NukeSteps) -> list[Path]:
 
 def execute(plan: Plan, home: Path, steps: NukeSteps) -> list[Path]:
     """State goes last because this script runs from under it."""
+    for worker in plan.workers:
+        nuke_processes.stop_worker(worker)
+    _remove_leases(plan)
     edited = _drop_records(plan, home, steps)
     for edit in plan.edits:
         if _apply(edit):
@@ -411,7 +480,7 @@ def _closing(edited: list[Path]) -> None:
     print("Edited config files:" if edited else "Edited no config files.")
     for path in edited:
         print(f"  {path}")
-    print("Restart Claude Code, Codex, and OMP, then run ./install.sh from a checkout.")
+    print("Restart Claude Code, Codex, and OMP. ADW is uninstalled; no reinstall ran.")
 
 
 def _arguments(argv: list[str] | None) -> argparse.Namespace:

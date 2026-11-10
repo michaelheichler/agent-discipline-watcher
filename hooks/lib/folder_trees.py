@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 import os
+
+try:
+    from . import config_roots as config_paths
+except ImportError:
+    import config_roots as config_paths
 import time
 from typing import NamedTuple
 
@@ -114,6 +119,7 @@ def _walked(root: str, follow: bool) -> list[str] | None:
     """Empty for a file or a link removed as itself, because only a folder hides more files."""
     if not follow and os.path.islink(root):
         return []
+    # Because filesystem names can contain literal tildes.
     target = os.path.realpath(root) if follow else root
     return descendants(target) if os.path.isdir(target) else []
 
@@ -143,7 +149,7 @@ def _scan(walk: _Walk, folder: str) -> bool:
 
 def _protected_roots(cwd: str) -> list[str]:
     """Because removing any folder above them removes them too, the governing config and the state roots count."""
-    home = os.path.expanduser("~")
+    home = str(config_paths.home_root())
     start = os.path.abspath(cwd)
     configs = [os.path.join(folder, CONFIG_SEAL_BASENAME) for folder in (start, *_parents(start))]
     governing = next((path for path in configs if os.path.lexists(path)), None)
@@ -161,7 +167,9 @@ def _parents(path: str) -> list[str]:
 def _holds(place: str, protected: str, follow: bool) -> bool:
     if not follow and os.path.islink(place):
         return False
+    # Because filesystem names can contain literal tildes.
     folder = os.path.realpath(place)
+    # Because filesystem names can contain literal tildes.
     target = os.path.realpath(protected)
     return target == folder or target.startswith(folder.rstrip(os.sep) + os.sep)
 

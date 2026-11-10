@@ -210,20 +210,6 @@ def _failure_block(reason: object, attempts: int = 0) -> dict:
     return stop_block(_bounded(f"agent-discipline-watcher Luna review unavailable: {reason}.{suffix} Correct the review input or state and retry."))
 
 
-def _reject_overflow(overflow: list[dict[str, Any]]) -> None:
-    for marker in overflow:
-        if marker.get("path_identity") == journal.OVERFLOW_SENTINEL:
-            raise LunaReviewFailure(
-                "candidate journal overflow metadata is full; start a new Codex session because this session cannot recover all omitted files"
-            )
-        if not isinstance(marker.get("turn_id"), str):
-            raise LunaReviewFailure("current-session journal overflow state is malformed")
-        target = _bounded(marker.get("path_identity") or "an unknown file")
-        raise LunaReviewFailure(
-            f"the current-session journal was truncated for {target} above {MAX_COMMENT_ROWS} candidates; re-edit the affected file with fewer candidates before retrying"
-        )
-
-
 def _unique_turn_rows(rows: list[dict[str, Any]], turn_id: str) -> list[dict[str, Any]]:
     unique: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
     for row in rows:
@@ -246,23 +232,13 @@ def _journal_rows(
     session_id = payloads.session_id(payload)
     if not session_id:
         return []
+    project = payloads.cwd(payload) or None
     try:
-        rows = journal.read(session_id, state_root=state_root)
-        overflow = journal.read_overflow(session_id, state_root=state_root)
+        rows = journal.read_complete(session_id, state_root=state_root, project=project)
     except (OSError, ValueError, TypeError) as exc:
         raise LunaReviewFailure(f"current-session journal could not be read: {exc}") from exc
-    project = payloads.cwd(payload) or None
-    _reject_overflow([marker for marker in overflow if not _hidden_marker(marker, project)])
     project_rows = [row for row in rows if review_scope.is_project_file(str(row.get("path", "")), project)]
     return _unique_turn_rows(project_rows, turn_id)
-
-
-def _hidden_marker(marker: dict[str, Any], project: str | None) -> bool:
-    """Only a well-formed marker for a path outside review, because a sentinel or malformed marker must still fail closed."""
-    identity = marker.get("path_identity")
-    if not isinstance(identity, str) or identity == journal.OVERFLOW_SENTINEL or not isinstance(marker.get("turn_id"), str):
-        return False
-    return not review_scope.is_project_file(identity, project)
 
 
 def _pattern_work(rows: list[dict[str, Any]]) -> list[tuple[JudgeRequest, list[Any]]]:

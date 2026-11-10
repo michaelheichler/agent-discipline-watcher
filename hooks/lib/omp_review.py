@@ -10,7 +10,7 @@ import pre_bash
 from . import embedding_session, payloads, pattern_vote, review_scope
 from .config import payload_hook_config
 from .document_review import data_boundary_enabled
-from .journal import _read_regular_content
+from .journal import read_content
 from .judge_contracts import content_hash
 from .narration_candidates import COMMENTABLE_EXTS
 from .omp_review_findings import validated_findings
@@ -27,7 +27,7 @@ __all__ = ["data_boundary_enabled", "read_source", "run"]
 
 
 def read_source(path: Path) -> str:
-    outcome = _read_regular_content(path)
+    outcome = read_content(path)
     if outcome.status != "available" or outcome.value is None:
         raise ValueError(f"could not read a stable UTF-8 source file within 128 KiB: {path}")
     return outcome.value[1]

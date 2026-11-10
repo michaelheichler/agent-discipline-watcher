@@ -82,6 +82,7 @@ def _plain_json_file(path: str) -> bool:
         metadata = os.lstat(path)
     except OSError:
         return False
+    # Because filesystem names can contain literal tildes.
     real = os.path.realpath(path)
     return stat.S_ISREG(metadata.st_mode) and real.endswith(".json") and os.path.isfile(real)
 
