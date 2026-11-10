@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.1 (2026-11-10)
+
+### Fixed in the shell gates
+
+- **A heredoc commit message no longer blocks by mistake.** `git commit -m "$(cat <<'EOF' ... EOF)"` blocked a clean message as "The commit gate cannot read the quoting in this command" when the body held a quoted `)`, an apostrophe, or a trailing space after the delimiter. The shared lexer in `hooks/lib/shell_text.py` now treats a heredoc body inside `$(...)` as literal data, keeps the header newline apart from trailing whitespace, and extracts the message for `<<-` with its tabs stripped. `commit_command.py` drops its own heredoc regex and reads the message from the lexer. A sloppy message still blocks, and broken quoting, a hidden `--no-verify`, and a heredoc that writes a test or protected file still block.
+
 ## 0.34.0 (2026-11-10)
 
 ### Fixed in the gates

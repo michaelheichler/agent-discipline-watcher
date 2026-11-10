@@ -35,7 +35,7 @@ def _scan_pattern(*, physical: bool) -> str:
       | (?P<redirect>\d*(?:>>|>\||<>|>|<)[ \t]*(?:{SINGLE_QUOTE}|{DOUBLE_QUOTE}|[^\s;&|()<>'"]+))
       | (?P<comment>{disabled}{COMMENT})
       | (?P<separator>[;&|()\n])
-      | (?P<other>(?:[^\\'"`#;&|()<>\s$]|\$(?!\())+|\s+|.)
+      | (?P<other>(?:[^\\'"`#;&|()<>\s$]|\$(?!\())+|[^\S\n]+|.)
     """
 
 
@@ -113,6 +113,8 @@ def shell_tokens(text: str, *, physical: bool = False) -> Iterator[ShellToken]:
         position = match.end()
         if not physical and match.lastgroup in {"subst", "procsub"}:
             position = _closing_paren(text, position) + 1
+        if not physical and match.lastgroup == "double":
+            position = _quote_end(text, match.start() + 1, '"')
         if match.lastgroup == "heredoc":
             expands = match.group("bare") is not None and (physical or "\\" not in match.group())
             pending.append((_Heredoc(_delimiter(match), bool(match.group("strip")), False), expands))
@@ -128,19 +130,28 @@ def shell_tokens(text: str, *, physical: bool = False) -> Iterator[ShellToken]:
 @lru_cache(maxsize=16)
 def shell_words(command: str) -> tuple[str, ...]:
     fragments: list[str] = []
+    quoted: dict[str, str] = {}
+    marker = "\0"
+    while marker in command:
+        marker += "\0"
     start = 0
     for token in shell_tokens(command):
         source = command[start:token.end]
+        start = token.end
+        if token.match is not None and token.match.lastgroup == "double":
+            slot = f"{marker}{len(quoted)}{marker}"
+            quoted[slot] = source
+            fragments.append(f" {slot} ")
+            continue
         fragments.append(WORD_FRAGMENT_RE.sub(
             lambda match: f" {match.group()} " if match.group()[0] in "\"'" else match.group(),
             source,
         ))
-        start = token.end
     try:
         # Because callers retain quotes, shlex groups words without POSIX unquoting.
         lexer = shlex.shlex("".join(fragments), posix=False, punctuation_chars=";&|()>")
         lexer.whitespace_split = True
-        return tuple(lexer)
+        return tuple(quoted.get(word, word) for word in lexer)
     except ValueError:
         return tuple(command.split())
 
@@ -148,6 +159,25 @@ def shell_words(command: str) -> tuple[str, ...]:
 def shell_text(command: str) -> str:
     """Cut at a NUL, because bash reads its command as a C string and never sees past one."""
     return _scan(_normalize_ansi_c_quotes(command.split("\0", 1)[0]))
+
+
+def heredoc_value(word: str) -> str | None:
+    """Because cat emits literal heredoc data, commit messages use the lexer's body boundaries."""
+    if not word.startswith("$(") or _closing_paren(word, 2) != len(word) - 1:
+        return None
+    tokens = list(shell_tokens(word[2:-1]))
+    syntax = [
+        token.match for token in tokens
+        if token.match is not None and token.match.lastgroup != "comment" and token.match.group().strip()
+    ]
+    bodies = [body for token in tokens for body in token.bodies]
+    if len(syntax) != 2 or syntax[0].group() != "cat" or syntax[1].lastgroup != "heredoc":
+        return None
+    if len(bodies) != 1 or not bodies[0].closed:
+        return None
+    body = bodies[0]
+    value = "\n".join(line.lstrip("\t") for line in body.text.split("\n")) if body.strip_tabs else body.text
+    return value.rstrip("\n")
 
 
 def split_redirects(words: list[str]) -> tuple[list[str], list[Redirect]]:
@@ -207,8 +237,10 @@ class _Scanner:
         if kind == "herestring":
             self._herestring(match)
         if kind == "double":
-            self._lead_with(_substitutions(match.group()))
-        if kind in PASSED_THROUGH:
+            word = self.command[match.start():token.end]
+            self._lead_with(_substitutions(word))
+            self.parts.append(_quoted_substitutions(word))
+        elif kind in PASSED_THROUGH:
             self.parts.append(match.group())
 
     def _heredoc(self, match: re.Match) -> None:
@@ -268,16 +300,30 @@ class _Scanner:
 
 def _substitutions(text: str) -> list[str]:
     """Because bash runs only an unescaped $( or backtick inside double quotes, an escaped marker is skipped."""
-    bodies: list[str] = []
+    return [body for _, _, body in _substitution_spans(text)]
+
+
+def _substitution_spans(text: str) -> Iterator[tuple[int, int, str]]:
     cursor = 0
     while (match := SUBSTITUTION_RE.search(text, cursor)) is not None:
         cursor = match.end()
         if match.group().startswith("\\"):
             continue
         end = BACKTICK_BODY_RE.match(text, cursor).end() if match.group() == "`" else _closing_paren(text, cursor)
-        bodies.append(text[cursor:end])
+        yield match.start(), end + 1, text[cursor:end]
         cursor = end + 1
-    return bodies
+
+
+def _quoted_substitutions(word: str) -> str:
+    """Because substitution source has independent quotes, protect it in the outer word view."""
+    parts: list[str] = []
+    cursor = 0
+    for start, end, _ in _substitution_spans(word):
+        if end > len(word):
+            return word
+        parts.extend([word[cursor:start], word[start:end].replace("\\", "\\\\").replace('"', '\\"')])
+        cursor = end
+    return "".join([*parts, word[cursor:]])
 
 
 def _closing_paren(text: str, cursor: int) -> int:

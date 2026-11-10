@@ -16,7 +16,7 @@ from .commit_inputs import (
 from .path_policy import anchored
 from .shell_operators import SEPARATORS
 from .shell_syntax import WRAPPER_COMMANDS, _basename, _payload_command_index
-from .shell_text import INLINE_INPUT, Redirect, shell_text, split_redirects
+from .shell_text import INLINE_INPUT, Redirect, heredoc_value, shell_text, split_redirects
 
 __all__ = ["GitCall", "UnreadableCommit", "git_calls", "SHELL_ALIAS"]
 
@@ -60,7 +60,6 @@ BUILTIN_VERBS = frozenset("""
 PUNCTUATION_RUN_RE = re.compile(r"[;&|()\n]+")
 SHELL_OPERATOR_RE = re.compile(r"&&|\|\||\|&|[;&|()]|\n")
 VARIABLE_RE = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
-CAT_HEREDOC_RE = re.compile(r"\$\(\s*cat\s*<<-?\s*(['\"]?)([^\s'\"()]+)\1[ \t]*\n(?P<body>.*?)\n?\2[ \t]*\n\s*\)", re.DOTALL)
 
 UNREADABLE_QUOTING = f"The commit gate cannot read the quoting in this command, so it cannot see what the commit records. {PLAIN_COMMIT}"
 TOO_DEEP = f"This command nests shells or scripts deeper than the commit gate reads. {PLAIN_COMMIT}"
@@ -232,9 +231,9 @@ def _bind_input(inputs: dict[int, Input], redirect: Redirect) -> None:
 
 def _expanded(word: str, variables: dict[str, str]) -> str:
     """A $(cat <<EOF) word becomes its body, because that is the text bash hands the command."""
-    heredoc = CAT_HEREDOC_RE.fullmatch(word)
-    if heredoc:
-        return heredoc.group("body")
+    heredoc = heredoc_value(word)
+    if heredoc is not None:
+        return heredoc
     return VARIABLE_RE.sub(lambda match: variables.get(match.group(1) or match.group(2), match.group()), word)
 
 

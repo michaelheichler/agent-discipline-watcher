@@ -2,7 +2,7 @@
 
 Agent Discipline Watcher (ADW) checks agent-written prose, comments, tests, and commits, then blocks or reports each finding with one rule and one line.
 
-Current release: **0.34.0**.
+Current release: **0.34.1**.
 
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Pylint](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml/badge.svg)](https://github.com/michaelheichler/agent-discipline-watcher/actions/workflows/pylint.yml)

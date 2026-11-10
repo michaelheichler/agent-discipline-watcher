@@ -45,10 +45,11 @@ def command_lines(command: str) -> list[CommandLine]:
 
 def _taken(found: ShellPass, parts: list[str], token: ShellToken) -> None:
     match = token.match
+    source = match.string[match.start():min(token.end, len(match.string))]
     if match.lastgroup in SUBSTITUTING:
-        found.substitutions.extend(_substitutions(match.group()))
+        found.substitutions.extend(_substitutions(source))
     if match.lastgroup not in SKIPPED:
-        parts.append(match.string[match.start():min(token.end, len(match.string))])
+        parts.append(source)
 
 
 def _ended(found: ShellPass, parts: list[str], token: ShellToken) -> None:
