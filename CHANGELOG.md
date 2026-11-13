@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.34.2 (2026-11-13)
+
+### Fixed in the shell gates
+
+- **Script-directory assignments let the commit gate read nested helpers.** The gate resolves common `dirname` and `BASH_SOURCE` directory assignments against the enclosing script path before it parses that script. It also recognizes the `printf -v` and `case` migration preamble that computes the same directory without command substitution. Calls through `$SCRIPT_DIR` or `${SCRIPT_DIR}` then follow the same file checks as literal paths, including checks for nested commits. Paths that remain dynamic still block.
+- **Readable shell functions no longer make read paths appear stale.** The gate follows a function body when a call reaches it, including functions from resolved sourced files, and keeps function arguments separate from the enclosing script arguments. Source commands and file tests do not mark their operands as writes. Redirects and real writing commands still make later script reads stale, and unreadable function calls keep conservative tracking.
+
 ## 0.34.1 (2026-11-10)
 
 ### Fixed in the shell gates

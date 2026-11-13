@@ -3,18 +3,19 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NamedTuple
 
+from .commit_functions import with_positional as _with_positional
 from .path_policy import anchored
+from .script_directory import ScriptLocation, with_script_directory
 from .script_files import names_commit, runs_as_shell, script_text
 from .shell_syntax import SHELL_C_INTERPRETERS, _basename, _payload_command_index
 
 SCRIPT_READERS = frozenset({"source", "."})
 SHELL_VALUE_OPTIONS = frozenset({"-o", "+o", "-O", "+O"})
 STDIN_PATHS = frozenset({"-", "/dev/stdin"})
-POSITIONAL_RE = re.compile(r'"\$\{?([@*1-9])\}?"|\$\{?([@*1-9])\}?')
 FD_PATH_RE = re.compile(r"/dev/fd/(\d+)")
 
 PLAIN_COMMIT = "Run git commit as its own plain command."
@@ -46,6 +47,14 @@ class InputScope(NamedTuple):
     cwd: Path
     feed: Command | None
     touched: set[str]
+    script_kind: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _ScriptRead:
+    positional: list[str]
+    command: Command
+    scope: InputScope
 
 
 class _ShellArgs(NamedTuple):
@@ -63,16 +72,26 @@ def shell_input(command: Command, scope: InputScope) -> str | None:
     word = words[index] if index < len(words) else ""
     name = word if word in SCRIPT_READERS else _basename(word)
     args = words[index + 1:]
-    if name == "eval":
-        return " ".join(args)
+    if name in {"eval", "trap"}:
+        return _inline_script(name, args)
     if name in SHELL_C_INTERPRETERS:
         return _shell_script(_shell_args(args), command, scope)
     if name in SCRIPT_READERS:
         args = args[1:] if args[:1] == ["--"] else args
-        return _file_script(args[0], args[1:], command, scope) if args else None
+        if not args:
+            return None
+        sourced = scope._replace(script_kind="sourced" if "/" in args[0] else "")
+        return _file_script(args[0], _ScriptRead(args[1:], command, sourced))
     if "/" in word and runs_as_shell(anchored(word, scope.cwd)):
-        return _file_script(word, args, command, scope)
+        return _file_script(word, _ScriptRead(args, command, scope._replace(script_kind="executed")))
     return None
+
+
+def _inline_script(name: str, args: list[str]) -> str | None:
+    if name == "eval":
+        return " ".join(args)
+    args = args[1:] if args[:1] == ["--"] else args
+    return args[0] if args and not args[0].startswith("-") else None
 
 
 def normalized(cwd: Path, raw: str) -> str:
@@ -103,25 +122,25 @@ def _shell_script(shell: _ShellArgs, command: Command, scope: InputScope) -> str
         return _with_positional(shell.operand or "", shell.rest[1:])
     if shell.from_stdin or shell.operand is None:
         positional = shell.rest if shell.operand is None else [shell.operand, *shell.rest]
-        return _stdin_script(0, positional, command, scope)
-    return _file_script(shell.operand, shell.rest, command, scope)
+        return _stdin_script(0, _ScriptRead(positional, command, scope))
+    return _file_script(shell.operand, _ScriptRead(shell.rest, command, scope._replace(script_kind="executed")))
 
 
-def _file_script(word: str, positional: list[str], command: Command, scope: InputScope) -> str | None:
-    fd = _fd_of(word)
-    if fd is not None:
-        return _stdin_script(fd, positional, command, scope)
-    return _script_file(word, positional, command, scope)
+def _file_script(word: str, read: _ScriptRead) -> str | None:
+    descriptor = _fd_of(word)
+    if descriptor is not None:
+        return _stdin_script(descriptor, replace(read, scope=read.scope._replace(script_kind="")))
+    return _script_file(word, read)
 
 
-def _stdin_script(fd: int, positional: list[str], command: Command, scope: InputScope) -> str | None:
+def _stdin_script(descriptor: int, read: _ScriptRead) -> str | None:
     """Through the redirect first and the pipe after, because bash binds a redirect over the pipe."""
-    source = command.inputs.get(fd)
+    source = read.command.inputs.get(descriptor)
     if source is not None and source.text is not None:
-        return _with_positional(source.text, positional)
-    if source is not None and source.path is not None and _fd_of(source.path) != fd:
-        return _file_script(source.path, positional, command, scope)
-    return _with_positional(_feed_script(scope), positional) if scope.feed is not None else None
+        return _with_positional(source.text, read.positional)
+    if source is not None and source.path is not None and _fd_of(source.path) != descriptor:
+        return _file_script(source.path, read)
+    return _with_positional(_feed_script(read.scope), read.positional) if read.scope.feed is not None else None
 
 
 def _feed_script(scope: InputScope) -> str:
@@ -131,7 +150,7 @@ def _feed_script(scope: InputScope) -> str:
     if index < len(feed.words) and _basename(feed.words[index]) == "cat":
         files = [word for word in feed.words[index + 1:] if not word.startswith("-") or word == "-"]
         alone = InputScope(scope.cwd, None, scope.touched)
-        return "\n".join(_file_script(word, [], feed, alone) or "" for word in files or ["-"])
+        return "\n".join(_file_script(word, _ScriptRead([], feed, alone)) or "" for word in files or ["-"])
     if _mentions_commit(feed, scope.cwd):
         raise UnreadableCommit(PIPED_SHELL)
     return ""
@@ -143,7 +162,8 @@ def _mentions_commit(feed: Command, cwd: Path) -> bool:
     return any("commit" in text for text in texts) or any(names_commit(anchored(path, cwd)) for path in paths)
 
 
-def _script_file(word: str, positional: list[str], command: Command, scope: InputScope) -> str | None:
+def _script_file(word: str, read: _ScriptRead) -> str | None:
+    scope = read.scope
     if is_dynamic(word):
         raise UnreadableCommit(DYNAMIC_SCRIPT)
     path = Path(normalized(scope.cwd, word))
@@ -151,23 +171,13 @@ def _script_file(word: str, positional: list[str], command: Command, scope: Inpu
         raise UnreadableCommit(STALE_SCRIPT)
     text = script_text(path)
     if text is not None:
-        return _with_positional(text, positional)
-    if any("commit" in part for part in command.words) or names_commit(path):
+        if scope.script_kind:
+            location = ScriptLocation(path, word, scope.script_kind == "executed")
+            text = with_script_directory(text, location)
+        return _with_positional(text, read.positional)
+    if any("commit" in part for part in read.command.words) or names_commit(path):
         raise UnreadableCommit(UNREAD_SCRIPT)
     return None
-
-
-def _with_positional(text: str, positional: list[str]) -> str:
-    """Substituted, because "$@" runs the given words as a command while echo "$@" only prints them."""
-    return POSITIONAL_RE.sub(lambda match: _positional_value(match, positional), text) if positional else text
-
-
-def _positional_value(match: re.Match, positional: list[str]) -> str:
-    name = match.group(1) or match.group(2)
-    if name in "@*":
-        return shlex.join(positional)
-    index = int(name) - 1
-    return shlex.quote(positional[index]) if index < len(positional) else "''"
 
 
 def _fd_of(word: str | None) -> int | None:

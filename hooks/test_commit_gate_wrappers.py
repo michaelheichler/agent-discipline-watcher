@@ -21,6 +21,28 @@ DIRTY = "This sentence uses an em dash " + chr(0x2014) + " which the punctuation
 MESSAGE = "docs: update the note"
 COMMIT_SCRIPT = f"git commit -a -m '{MESSAGE}'\n"
 SAFE_SCRIPT = 'printf "ready\\n"\n'
+DIRECTORY_SCRIPTS = {
+    "scripts/safe.sh": SAFE_SCRIPT,
+    "scripts/dirname.sh": 'SCRIPT_DIR=$(dirname "$0")\nbash "$SCRIPT_DIR/safe.sh"\n',
+    "scripts/bash-source.sh": 'SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")\nbash "$SCRIPT_DIR/safe.sh"\n',
+    "scripts/percent-trim.sh": 'SCRIPT_DIR=${0%/*}\nbash "$SCRIPT_DIR/safe.sh"\n',
+    "scripts/printf-dir.sh": (
+        'printf -v SCRIPT_DIR \'%s\' "${BASH_SOURCE[0]}"\n'
+        'case "$SCRIPT_DIR" in\n'
+        '  *"/"*) printf -v SCRIPT_DIR \'%s\' "${SCRIPT_DIR%"/"*}" ;;\n'
+        '  *) printf -v SCRIPT_DIR \'%s\' . ;;\n'
+        'esac\n'
+        'bash "$SCRIPT_DIR/safe.sh"\n'
+    ),
+    "scripts/nested-commit.sh": 'SCRIPT_DIR=$(dirname "$0")\nbash "$SCRIPT_DIR/action.sh"\n',
+    "scripts/unresolved.sh": 'SCRIPT_DIR=$(dirname "$0")\nbash "$SCRIPT_DIR/$VAR"\n',
+    "functions.sh": 'publish() { git commit -a -m update; }\n',
+    "read-functions.sh": 'announce() { printf "ready\\n"; }\n',
+    "function-write.sh": (
+        'replace_script() { printf "git commit -a -m update\\n" > safe.sh; }\n'
+        'replace_script\nbash safe.sh\n'
+    ),
+}
 # So that a capped reader still faces a commit past the padding.
 PADDING = "# x\n" * 33_000
 # So that a gate stuck on a FIFO fails the test instead of hanging it.
@@ -127,7 +149,7 @@ def _scripted_repo(tmp_path: Path) -> Path:
         "safe.sh": SAFE_SCRIPT, "safe script.sh": SAFE_SCRIPT, "fresh.sh": SAFE_SCRIPT, "mentions.sh": 'echo "git commit"\n',
         "runner.sh": '"$@"\n', "exec-runner.sh": 'exec "$@"\n', "echo-runner.sh": 'echo "$@"\n',
         "oversized.sh": PADDING + COMMIT_SCRIPT, "oversized-safe.sh": PADDING + SAFE_SCRIPT,
-        **chain, "chain6.sh": "source action.sh\n",
+        **DIRECTORY_SCRIPTS, **chain, "chain6.sh": "source action.sh\n",
     }
     for name, text in scripts.items():
         (repo / name).write_text(text, encoding="utf-8")
@@ -139,6 +161,9 @@ def _scripted_repo(tmp_path: Path) -> Path:
 
 @pytest.mark.parametrize("command", [
     pytest.param("bash action.sh", id="script"),
+    pytest.param("bash scripts/nested-commit.sh", id="resolved-nested-commit"),
+    pytest.param("bash scripts/unresolved.sh", id="unresolved-nested-variable"),
+    pytest.param("source functions.sh; publish", id="sourced-function-commit"),
     pytest.param("bash link.sh", id="symlinked-script"),
     pytest.param("bash dirlink/action.sh", id="script-under-a-symlinked-directory"),
     pytest.param("bash -- action.sh", id="script-after-double-dash"),
@@ -168,6 +193,7 @@ def test_a_commit_run_through_a_script_is_denied(tmp_path: Path, command: str) -
 @pytest.mark.parametrize("command", [
     pytest.param(f"printf 'git commit -a -m \"{MESSAGE}\"\\n' > fresh.sh; bash fresh.sh", id="overwritten-script"),
     pytest.param("cp action.sh fresh.sh; bash fresh.sh", id="copied-script"),
+    pytest.param("bash function-write.sh", id="function-overwrites-commit-script"),
     pytest.param(f"printf 'git commit -a -m \"{MESSAGE}\"\\n' > new.sh; bash new.sh", id="created-script"),
     pytest.param("ln -sf action.sh stale-link.sh; bash stale-link.sh", id="retargeted-symlink"),
     pytest.param("printf 'x' >> safe.sh && bash safe.sh", id="appended-script"),
@@ -181,8 +207,6 @@ def test_a_script_changed_earlier_in_the_same_command_is_denied(tmp_path: Path, 
 
 
 @pytest.mark.parametrize("command", [
-    pytest.param("bash -x safe.sh; bash safe.sh", id="traced-run"),
-    pytest.param("bash --norc safe.sh; bash safe.sh", id="long-option-holding-an-n"),
     pytest.param("node safe.sh; bash safe.sh", id="node-run-without-check"),
 ])
 def test_a_script_executed_earlier_in_the_same_command_is_denied(tmp_path: Path, command: str) -> None:
@@ -243,6 +267,16 @@ def test_a_run_of_a_script_path_held_in_a_variable_still_blocks(tmp_path: Path, 
 
 @pytest.mark.parametrize("command", [
     pytest.param("bash safe.sh", id="script"),
+    pytest.param("bash -x safe.sh; bash safe.sh", id="traced-run"),
+    pytest.param("bash --norc safe.sh; bash safe.sh", id="long-option-holding-an-n"),
+    pytest.param("bash scripts/dirname.sh", id="dirname-script-dir"),
+    pytest.param("bash scripts/bash-source.sh", id="bash-source-script-dir"),
+    pytest.param("bash scripts/percent-trim.sh", id="percent-trim-script-dir"),
+    pytest.param("bash scripts/printf-dir.sh", id="printf-v-case-script-dir"),
+    pytest.param("source read-functions.sh; announce; bash read-functions.sh", id="sourced-readable-function"),
+    pytest.param(". safe.sh; [ -f safe.sh ]; bash safe.sh", id="dot-source-and-file-test"),
+    pytest.param("source safe.sh; [[ -f safe.sh ]]; bash safe.sh", id="source-and-double-bracket-test"),
+    pytest.param("source safe.sh; test -f safe.sh; bash safe.sh", id="source-and-test"),
     pytest.param('bash -- "safe script.sh"', id="quoted-path"),
     pytest.param("bash < safe.sh", id="stdin-redirect"),
     pytest.param("bash oversized-safe.sh", id="oversized-script"),
